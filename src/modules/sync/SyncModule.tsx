@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Radio, RefreshCw, Smartphone, Wifi, WifiOff, ArrowUpCircle, ArrowDownCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { IngestPanel } from '../../transfer/IngestPanel';
 
 interface Device {
   id: string;
@@ -46,6 +47,9 @@ export function SyncModule() {
 
   return (
     <div className="space-y-6">
+      {/* Офлайн-передача пакетов: QR / текст (Bluetooth-mesh подключается тем же интерфейсом) */}
+      <IngestPanel />
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Синхронизация</h1>

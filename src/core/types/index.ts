@@ -1,3 +1,82 @@
+// ============================================================
+// ЭТАПЫ ПРОИЗВОДСТВА («комнаты» цеха). Каждый этап — отдельный
+// модуль в src/stages/<id>. Полный офлайн: данные хранятся
+// локально, передача только через Bluetooth / QR / текст.
+// ============================================================
+export enum StageId {
+  STORAGE = 'storage',         // Склад материалов
+  SLURRY = 'slurry',           // Приготовление шлама
+  COATING = 'coating',         // Нанесение покрытия
+  CALENDARING = 'calendaring', // Каландрирование
+  SORTING = 'sorting',         // Сортировка / рубка пластин
+  ASSEMBLY = 'assembly',       // Сборка элементов
+  ELECTROLYTE = 'electrolyte', // Розлив электролита
+  FORMATION = 'formation',     // Формирование (ЧЦЦ)
+  AGING = 'aging',             // Старение
+}
+
+export const STAGE_LABELS: Record<StageId, string> = {
+  [StageId.STORAGE]: 'Склад материалов',
+  [StageId.SLURRY]: 'Приготовление шлама',
+  [StageId.COATING]: 'Нанесение покрытия',
+  [StageId.CALENDARING]: 'Каландрирование',
+  [StageId.SORTING]: 'Сортировка',
+  [StageId.ASSEMBLY]: 'Сборка элементов',
+  [StageId.ELECTROLYTE]: 'Розлив электролита',
+  [StageId.FORMATION]: 'Формирование (ЧЦЦ)',
+  [StageId.AGING]: 'Старение',
+};
+
+// Порядок техпроцесса (для навигации и KPI-цепочки)
+export const STAGE_ORDER: StageId[] = [
+  StageId.STORAGE, StageId.SLURRY, StageId.COATING, StageId.CALENDARING,
+  StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
+  StageId.FORMATION, StageId.AGING,
+];
+
+// Запись в журнале работ конкретной комнаты (единица учёта для KPI)
+export interface JournalEntry {
+  id: string;
+  stage: StageId;
+  taskId?: string;          // связь с заданием (если работа по заданию)
+  workerId: string;         // кто выполнил
+  summary: string;          // что сделано
+  params?: Record<string, number | string>; // специфичные параметры этапа
+  defects?: string;         // дефекты / брак (пусто = без замечаний)
+  createdAt: Date;
+}
+
+// Комментарий в комнате этапа (общая секция для всех ролей комнаты)
+export interface StageComment {
+  id: string;
+  stage: StageId;
+  authorId: string;
+  text: string;
+  journalEntryId?: string;  // опциональная привязка к записи журнала
+  createdAt: Date;
+}
+
+// ============================================================
+// ОФЛАЙН-ПАКЕТ ПЕРЕДАЧИ (Bluetooth / QR / текст — единый формат)
+// ============================================================
+export type SyncPacketType =
+  | 'task'        // новое задание / изменение задания
+  | 'result'      // результат выполнения (закрытие задания)
+  | 'journal'     // запись журнала комнаты
+  | 'comment'     // комментарий
+  | 'user'        // пользователь (создаётся только chief)
+  | 'forced-push';// принудительная запись master'ом в slave-устройство
+
+export interface SyncPacket {
+  v: 1;
+  type: SyncPacketType;
+  stage?: StageId;
+  payload: unknown;         // Task | JournalEntry | StageComment | User ...
+  from: string;             // id отправителя (User.id)
+  ts: number;               // timestamp миллисекунды
+  forced?: boolean;         // пакет от master, применяется безусловно
+}
+
 // Роли пользователей в системе
 export enum UserRole {
   WORKER = 'worker',           // Работник
@@ -63,6 +142,7 @@ export interface Task {
   updatedAt: Date;
   dueDate?: Date;
   techCardId?: string;
+  stage?: StageId;      // этап производства (комната), к относится задание
   workshopId?: string;
   comments: TaskComment[];
   attachments: TaskAttachment[];
