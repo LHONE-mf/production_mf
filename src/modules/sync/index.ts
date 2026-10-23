@@ -1,0 +1,1 @@
+export { SyncModule } from './SyncModule';
