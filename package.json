@@ -1,11 +1,14 @@
 {
-  "name": "sandbox-workspace",
+  "name": "li-ion-production",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:add": "npx cap add android"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -42,5 +45,6 @@
     "typescript": "^5.7.0",
     "vite": "^6.3.5",
     "vite-plugin-pwa": "^2.0.0"
-  }
+  },
+  "version": "0.1.0"
 }
