@@ -22,6 +22,7 @@ const KIND_LABELS: Record<MixComponent['kind'], string> = {
 const emptyDraft = (): Omit<MixComponent, 'id' | 'updatedAt'> => ({
   name: '', kind: 'active',
   densitySettled: undefined, densityTrue: undefined, capacity: undefined, ssa: undefined, d50: undefined,
+  viscosity: undefined,
 });
 
 export function ComponentsDatabase() {
@@ -43,6 +44,7 @@ export function ComponentsDatabase() {
       kind: draft.kind,
       densitySettled: draft.densitySettled, densityTrue: draft.densityTrue,
       capacity: draft.capacity, ssa: draft.ssa, d50: draft.d50,
+      viscosity: draft.viscosity,
       updatedAt: now,
     };
     await db.mixComponents.put(rec);
@@ -58,7 +60,7 @@ export function ComponentsDatabase() {
     setOutPacket({ v: 1, type: 'mix-component', stage: StageId.SLURRY, payload: c, from: currentUser!.id, ts: Date.now() });
   };
 
-  const field = (label: string, key: 'densitySettled' | 'densityTrue' | 'capacity' | 'ssa' | 'd50', hint: string) => (
+  const field = (label: string, key: 'densitySettled' | 'densityTrue' | 'capacity' | 'ssa' | 'd50' | 'viscosity', hint: string) => (
     <label className="text-xs text-slate-400 space-y-1">
       <span>{label} <span className="text-slate-600">({hint})</span></span>
       <input
@@ -111,12 +113,13 @@ export function ComponentsDatabase() {
               </select>
             </label>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             {field('Плотн. утряски', 'densitySettled', 'г/см³')}
             {field('Истинная плотн.', 'densityTrue', 'г/см³')}
             {field('Ёмкость', 'capacity', 'мАч/г')}
             {field('SSA', 'ssa', 'м²/г')}
             {field('D50', 'd50', 'мкм')}
+            {field('Вязкость', 'viscosity', 'мПа·с, для р-телей')}
           </div>
           <div className="flex gap-2">
             <button onClick={save} disabled={!draft.name.trim()} className="px-4 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded text-sm text-white font-medium">
@@ -141,6 +144,7 @@ export function ComponentsDatabase() {
               <th className="py-2 pr-2">C, мАч/г</th>
               <th className="py-2 pr-2">SSA</th>
               <th className="py-2 pr-2">D50</th>
+              <th className="py-2 pr-2">η, мПа·с</th>
               <th className="py-2">Действия</th>
             </tr>
           </thead>
@@ -154,6 +158,7 @@ export function ComponentsDatabase() {
                 <td className="py-2 pr-2 text-xs">{c.capacity ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.ssa ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.d50 ?? '—'}</td>
+                <td className="py-2 pr-2 text-xs">{c.viscosity ?? '—'}</td>
                 <td className="py-2 whitespace-nowrap">
                   <button onClick={() => share(c)} title="Отправить QR/текстом" className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded mr-1">📡</button>
                   {canEdit && (

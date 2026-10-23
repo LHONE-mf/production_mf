@@ -66,8 +66,13 @@ export function MixBatchJournal() {
                   </p>
                   <span className="text-xs text-slate-500">{new Date(b.createdAt).toLocaleString('ru-RU')}</span>
                 </div>
-                <div className="flex gap-3 text-xs mt-1">
+                <div className="flex gap-3 text-xs mt-1 flex-wrap">
                   <span className={b.viscosity ? 'text-slate-300' : 'text-slate-600'}>Вязкость: {b.viscosity ?? '—'}</span>
+                  {b.pasteCalc && (
+                    <span className="text-emerald-400/80" title={`Расчёт по модели ${b.pasteCalc.etaModel}: ${b.pasteCalc.etaPredictedCp} сП · СВ ${b.pasteCalc.solidsPctMass}% масс. · ρ ${b.pasteCalc.pasteDensity} г/см³`}>
+                      расч. η≈{b.pasteCalc.etaPredictedCp.toLocaleString('ru-RU')} сП · СВ {b.pasteCalc.solidsPctMass}%
+                    </span>
+                  )}
                   <span className={b.fineness ? 'text-slate-300' : 'text-slate-600'}>Перетир: {b.fineness != null ? `${b.fineness} мкм` : '—'}</span>
                   <span className="text-slate-500">{open ? '▲ свернуть' : '▼ открыть детали'}</span>
                 </div>

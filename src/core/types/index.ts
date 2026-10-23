@@ -61,6 +61,7 @@ export interface MixComponent {
   capacity?: number;             // удельная ёмкость, мАч/г (если применимо)
   ssa?: number;                  // удельная площадь поверхности частиц, м²/г (BET)
   d50?: number;                  // D50 — медианный размер частиц, мкм
+  viscosity?: number;            // динамическая вязкость чистого компонента (растворителя), мПа·с (сП) при 25°C — для моделей вязкости пасты
   updatedAt: number;             // для разрешения конфликтов при офлайн-синхронизации
 }
 
@@ -112,6 +113,13 @@ export interface MixBatch {
   modeActual?: MixModeStage[];   // факт режима (если отличался)
   viscosity?: number;            // вязкость (сП или мПа·с — как принято на участке)
   fineness?: number;             // степень перетира, мкм (лаборатория Хегмана)
+  pasteCalc?: {                  // расчётные свойства пасты на момент замеса (модели реологии)
+    solidsPctMass: number;       // содержание СВ по массе, %
+    solidsPctVol: number;        // содержание СВ по объёму (φ), %
+    pasteDensity: number;        // расчётная плотность пасты, г/см³
+    etaModel: string;            // модель вязкости (maronpearson и т.п.)
+    etaPredictedCp: number;      // предсказанная вязкость, мПа·с (сП)
+  };
   notes?: string;                // примечания / дефекты
   workerId: string;              // кто выполнил
   createdAt: number;

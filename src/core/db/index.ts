@@ -180,8 +180,8 @@ export async function initializeDatabase() {
       { id: 'mc-sbr',   name: 'SBR (латекс)', kind: 'binder', updatedAt: now },
       { id: 'mc-cb',    name: 'Carbon Black (CB)', kind: 'conductive', densitySettled: 0.05, densityTrue: 1.8, ssa: 60, d50: 0.02, updatedAt: now },
       { id: 'mc-cn',    name: 'CNT-добавка', kind: 'conductive', updatedAt: now },
-      { id: 'mc-water', name: 'Вода деионизованная', kind: 'solvent', densityTrue: 1, updatedAt: now },
-      { id: 'mc-nmp',   name: 'NMP (растворитель)', kind: 'solvent', densityTrue: 1.03, updatedAt: now },
+      { id: 'mc-water', name: 'Вода деионизованная', kind: 'solvent', densityTrue: 1, viscosity: 0.89, updatedAt: now },
+      { id: 'mc-nmp',   name: 'NMP (растворитель)', kind: 'solvent', densityTrue: 1.03, viscosity: 1.87, updatedAt: now },
     ] as MixComponent[]);
 
     await db.mixRecipes.bulkAdd([

@@ -8,8 +8,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { MixRecipe, MixComponent, MixModeStage, StageId, SyncPacket, UserRole, Task } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
-import { calcGrammages, fmtG } from './mixMath';
+import { calcGrammages, calcPasteProperties, fmtG } from './mixMath';
 import { PacketOutModal } from './_ui/PacketOutModal';
+import { PastePropertiesPanel } from './PastePropertiesPanel';
 
 interface Props {
   /** рецепт, переданный из базы («Взять в расчёт») */
@@ -46,6 +47,8 @@ export function GrammageCalculator({ presetRecipe, onPresetConsumed }: Props) {
   const [notes, setNotes] = useState('');
   const [savedMsg, setSavedMsg] = useState('');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
+  const [phiMax, setPhiMax] = useState(0.62);   // φm — макс. упаковка для моделей вязкости
+  const [shearRate, setShearRate] = useState(50); // γ̇, 1/с — для модели Кросса
 
   // рецепт из базы → в черновик
   useEffect(() => {
@@ -64,6 +67,16 @@ export function GrammageCalculator({ presetRecipe, onPresetConsumed }: Props) {
     if (draft.lines.length === 0) return null;
     return calcGrammages({ lines: draft.lines }, compMap, draft.batchKg);
   }, [draft, compMap]);
+
+  // Свойства пасты: расчётное содержание СВ + вязкость по реологическим моделям
+  const paste = useMemo(() => {
+    if (!calc) return null;
+    try {
+      return calcPasteProperties(calc.rows, compMap, { phiMax, shearRate });
+    } catch {
+      return null;
+    }
+  }, [calc, compMap, phiMax, shearRate]);
 
   const addLine = () =>
     setDraft((d) => ({ ...d, lines: [...d.lines, { componentId: components?.[0]?.id ?? '', pct: 1 }] }));
@@ -95,6 +108,13 @@ export function GrammageCalculator({ presetRecipe, onPresetConsumed }: Props) {
       modeActual: draft.mode.length ? draft.mode : undefined,
       viscosity: viscosity.trim() ? Number(viscosity.replace(',', '.')) : undefined,
       fineness: fineness.trim() ? Number(fineness.replace(',', '.')) : undefined,
+      pasteCalc: paste ? {
+        solidsPctMass: Math.round(paste.solidsPctMass * 10) / 10,
+        solidsPctVol: Math.round(paste.solidsPctVol * 10) / 10,
+        pasteDensity: Math.round(paste.pasteDensity * 100) / 100,
+        etaModel: 'maronpearson',
+        etaPredictedCp: Math.round(paste.etaAbs.maronpearson),
+      } : undefined,
       notes: notes.trim() || undefined,
       workerId: currentUser.id,
       createdAt: now,
@@ -230,6 +250,15 @@ export function GrammageCalculator({ presetRecipe, onPresetConsumed }: Props) {
             <span>Доля СВ: <b className="font-mono text-white">{calc.solidsPct.toFixed(1)}%</b></span>
           </div>
         )}
+
+        {/* Расчётные свойства пасты: СВ + модели вязкости */}
+        <PastePropertiesPanel
+          paste={paste}
+          phiMax={phiMax}
+          shearRate={shearRate}
+          onPhiMaxChange={setPhiMax}
+          onShearRateChange={setShearRate}
+        />
       </div>
 
       {/* Режим замеса (из рецепта / вручную) */}
