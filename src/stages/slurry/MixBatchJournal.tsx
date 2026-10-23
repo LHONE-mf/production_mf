@@ -16,6 +16,13 @@ export function MixBatchJournal() {
   const batches = useLiveQuery(() => db.mixBatches.orderBy('createdAt').reverse().toArray(), []);
   const components = useLiveQuery(() => db.mixComponents.toArray(), []);
   const users = useLiveQuery(() => db.users.toArray(), []);
+  // Защита от «грязных» записей в базе (пришли пакетом с других устройств):
+  // без этих проверок .map/.reduce роняют весь экран → откат на главную.
+  const safeBatches = (batches ?? []).map((b) => ({
+    ...b,
+    weighings: Array.isArray(b.weighings) ? b.weighings : [],
+    modeActual: Array.isArray(b.modeActual) ? b.modeActual : undefined,
+  }));
   const compName = (id: string) => components?.find((c) => c.id === id)?.name ?? id;
   const userName = (id: string) => users?.find((u) => u.id === id)?.fullName ?? id;
 
@@ -42,10 +49,10 @@ export function MixBatchJournal() {
       </p>
 
       <div className="space-y-2">
-        {(batches ?? []).map((b) => {
+        {safeBatches.map((b) => {
           const open = openId === b.id;
-          const totalPlanned = b.weighings.reduce((s, w) => s + w.plannedG, 0);
-          const totalActual = b.weighings.reduce((s, w) => s + w.actualG, 0);
+          const totalPlanned = b.weighings.reduce((s, w) => s + (Number(w.plannedG) || 0), 0);
+          const totalActual = b.weighings.reduce((s, w) => s + (Number(w.actualG) || 0), 0);
           return (
             <div key={b.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3 space-y-2">
               <button className="w-full text-left" onClick={() => setOpenId(open ? null : b.id)}>
@@ -74,14 +81,14 @@ export function MixBatchJournal() {
                       </tr>
                     </thead>
                     <tbody>
-                      {b.weighings.map((w) => {
-                        const d = w.actualG - w.plannedG;
+                      {b.weighings.map((w, wi) => {
+                        const d = (Number(w.actualG) || 0) - (Number(w.plannedG) || 0);
                         return (
-                          <tr key={w.componentId} className="border-b border-slate-800 text-slate-200">
+                          <tr key={w.componentId + '-' + wi} className="border-b border-slate-800 text-slate-200">
                             <td className="py-1 pr-2">{compName(w.componentId)}</td>
-                            <td className="py-1 pr-2 text-right font-mono">{w.plannedG.toLocaleString('ru-RU')}</td>
-                            <td className="py-1 pr-2 text-right font-mono">{w.actualG.toLocaleString('ru-RU')}</td>
-                            <td className={`py-1 text-right font-mono ${Math.abs(d) > w.plannedG * 0.01 ? 'text-red-400' : 'text-slate-400'}`}>
+                            <td className="py-1 pr-2 text-right font-mono">{(Number(w.plannedG) || 0).toLocaleString('ru-RU')}</td>
+                            <td className="py-1 pr-2 text-right font-mono">{(Number(w.actualG) || 0).toLocaleString('ru-RU')}</td>
+                            <td className={`py-1 text-right font-mono ${Math.abs(d) > (Number(w.plannedG) || 0) * 0.01 ? 'text-red-400' : 'text-slate-400'}`}>
                               {d >= 0 ? '+' : ''}{d.toLocaleString('ru-RU')}
                             </td>
                           </tr>
@@ -100,7 +107,7 @@ export function MixBatchJournal() {
                     <div className="text-xs text-slate-400 space-y-0.5">
                       <p className="font-semibold text-slate-300">Фактический режим:</p>
                       {b.modeActual.map((s, i) => (
-                        <p key={s.id}>{i + 1}. {s.name}: {s.disperserRpm ?? '—'}/{s.paddleRpm ?? '—'} об/мин
+                        <p key={s.id ?? i}>{i + 1}. {s.name}: {s.disperserRpm ?? '—'}/{s.paddleRpm ?? '—'} об/мин
                           {s.vacuumOn ? `, вакуум ${s.vacuumKpa ?? '?'} кПа` : ''}, {s.tempC ?? '—'}°C, {s.minutes} мин</p>
                       ))}
                     </div>

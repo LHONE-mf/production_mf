@@ -1,7 +1,7 @@
 // Общий UI-помощник комнаты замесов: вывод пакета (QR / текст) для офлайн-передачи.
 // Никакого онлайна — только QR, текст, позже Bluetooth тем же форматом LIP:.
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../../core/types';
 import { encodePacket } from '../../../transfer/packet';
@@ -12,7 +12,16 @@ interface Props {
 }
 
 export function PacketOutModal({ packet, onClose }: Props) {
-  const [encoded] = useState(() => encodePacket(packet));
+  // encodePacket может бросить исключение на некорректных данных —
+  // считаем в useMemo с try/catch, чтобы модалка не роняла всё приложение.
+  const encoded = useMemo(() => {
+    try {
+      return encodePacket(packet);
+    } catch (e) {
+      console.error('PacketOutModal: не удалось закодировать пакет', e);
+      return '';
+    }
+  }, [packet]);
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -40,7 +49,9 @@ export function PacketOutModal({ packet, onClose }: Props) {
           текст и передайте сообщением — приложение подхватит пакет само.
         </p>
         <div className="bg-white rounded-lg p-3 flex justify-center">
-          <QRCodeSVG value={encoded} size={220} />
+          {encoded ? <QRCodeSVG value={encoded} size={220} /> : (
+            <p className="text-red-600 text-sm p-4">Не удалось закодировать пакет для передачи.</p>
+          )}
         </div>
         <textarea readOnly rows={3} className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] font-mono text-slate-300" value={encoded} />
         <button

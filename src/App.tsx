@@ -10,6 +10,7 @@ import { CommunicationModule } from './modules/communication/CommunicationModule
 import { SyncModule } from './modules/sync/SyncModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
 import { renderStageIfActive } from './stages/StageRouter';
+import { ErrorBoundary } from './shared/ErrorBoundary';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
@@ -61,7 +62,9 @@ function App() {
 
   return (
     <AppLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderContent()}
+      <ErrorBoundary key={activeTab} onReset={() => setActiveTab('dashboard')}>
+        {renderContent()}
+      </ErrorBoundary>
     </AppLayout>
   );
 }
