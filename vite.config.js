@@ -4,7 +4,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
-  base: "./", // важно для запуска APK (Capacitor) и с локальных файлов
+  // Для GitHub Pages нужен абсолютный путь вида /имя-репозитория/
+  // (задаётся переменной VITE_BASE в workflow сборки сайта).
+  // Для APK (Capacitor) и локального запуска — относительный путь "./".
+  base: process.env.VITE_BASE || "./",
   plugins: [
     react(),
     tailwindcss(),

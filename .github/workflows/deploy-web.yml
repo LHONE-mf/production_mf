@@ -26,7 +26,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build
+      # VITE_BASE — путь репозитория на GitHub Pages (обязательно с завершающим /)
+      - run: VITE_BASE="/production_mf/" npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
