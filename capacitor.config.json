@@ -1,0 +1,12 @@
+{
+  "appId": "ru.liion.production",
+  "appName": "Li-Ion Production",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}

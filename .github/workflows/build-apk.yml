@@ -1,0 +1,117 @@
+name: Build Android APK (Capacitor)
+
+# Собираем APK через GitHub Actions при пуше в main и при релизных тегах.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: {} # ручной запуск с вкладки Actions
+
+permissions:
+  contents: write # нужно, чтобы закоммитить android/ папку обратно в репозиторий
+
+jobs:
+  build-apk:
+    name: Сборка APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Клонирование репозитория
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Сборка веб-версии (PWA)
+        run: npm run build
+
+      - name: Настройка Java (для Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Добавление Android-платформы Capacitor
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Исправление версии Java в Gradle
+        working-directory: android
+        run: |
+          # Устраняет ошибку "invalid source release: 21": шаблон Capacitor ожидает Java 21,
+          # а раннер использует Java 17. Приводим все упоминания к VERSION_17.
+          sed -i 's/VERSION_21/VERSION_17/g' variables.gradle app/build.gradle 2>/dev/null || true
+          grep -n "VERSION_" variables.gradle app/build.gradle || true
+
+      - name: Подготовка ключа подписи
+        id: keystore
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "Секрет KEYSTORE_BASE64 не задан - генерируем временный ключ"
+            keytool -genkeypair -v -keystore "$RUNNER_TEMP/release.keystore" -alias workshop -keyalg RSA -keysize 2048 -validity 10000 -storepass changeit -keypass changeit -dname "CN=Workshop, OU=Dev, O=MF, L=Moscow, ST=MS, C=RU"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "storepass=changeit" >> "$GITHUB_OUTPUT"
+            echo "alias=workshop" >> "$GITHUB_OUTPUT"
+            echo "keypass=changeit" >> "$GITHUB_OUTPUT"
+          else
+            echo "Используем пользовательский ключ из Secrets"
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
+            echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
+            echo "keypass=$KEY_PASS" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Настройка подписи приложения в Gradle
+        working-directory: android
+        env:
+          RELEASE_STORE_FILE: ${{ steps.keystore.outputs.path }}
+          RELEASE_STORE_PASSWORD: ${{ steps.keystore.outputs.storepass }}
+          RELEASE_KEY_ALIAS: ${{ steps.keystore.outputs.alias }}
+          RELEASE_KEY_PASSWORD: ${{ steps.keystore.outputs.keypass }}
+        run: |
+          {
+            echo "RELEASE_STORE_FILE=$RELEASE_STORE_FILE"
+            echo "RELEASE_STORE_PASSWORD=$RELEASE_STORE_PASSWORD"
+            echo "RELEASE_KEY_ALIAS=$RELEASE_KEY_ALIAS"
+            echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
+          } >> gradle.properties
+          python3 ../scripts/configure_signing.py
+
+      - name: Сборка подписанного APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease
+
+      - name: Публикация артефакта
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-signed
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Сохранение android проекта в репозиторий
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add android/ 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "CI: сохранение Android проекта (Java 17 + подпись)"
+            git pull --rebase origin main || true
+            git push origin HEAD:main
+          else
+            echo "Изменений нет"
+          fi
