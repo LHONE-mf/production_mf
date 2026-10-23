@@ -5,7 +5,7 @@
 // ============================================================
 export enum StageId {
   STORAGE = 'storage',         // Склад материалов
-  SLURRY = 'slurry',           // Приготовление шлама
+  SLURRY = 'slurry',           // Комната замесов (приготовление шлама)
   COATING = 'coating',         // Нанесение покрытия
   CALENDARING = 'calendaring', // Каландрирование
   SORTING = 'sorting',         // Сортировка / рубка пластин
@@ -17,7 +17,7 @@ export enum StageId {
 
 export const STAGE_LABELS: Record<StageId, string> = {
   [StageId.STORAGE]: 'Склад материалов',
-  [StageId.SLURRY]: 'Приготовление шлама',
+  [StageId.SLURRY]: 'Комната замесов',
   [StageId.COATING]: 'Нанесение покрытия',
   [StageId.CALENDARING]: 'Каландрирование',
   [StageId.SORTING]: 'Сортировка',
@@ -46,6 +46,78 @@ export interface JournalEntry {
   createdAt: Date;
 }
 
+// ============================================================
+// КОМНАТА ЗАМЕСОВ (slurry): компоненты, стандартные замесы,
+// режимы замеса, журнал фактических замесов.
+// ============================================================
+
+// Компонент замеса из справочной базы (редактируется технологом/мастером)
+export interface MixComponent {
+  id: string;
+  name: string;                  // название (например «LFP», «PVDF», «вода деионизованная»)
+  kind: 'active' | 'binder' | 'conductive' | 'solvent' | 'additive'; // тип компонента
+  densitySettled?: number;       // плотность утряски, г/см³
+  densityTrue?: number;          // истинная плотность, г/см³
+  capacity?: number;             // удельная ёмкость, мАч/г (если применимо)
+  ssa?: number;                  // удельная площадь поверхности частиц, м²/г (BET)
+  d50?: number;                  // D50 — медианный размер частиц, мкм
+  updatedAt: number;             // для разрешения конфликтов при офлайн-синхронизации
+}
+
+// Строка рецепта: компонент + доля
+export interface MixRecipeLine {
+  componentId: string;
+  pct: number;                   // % массы (для сухих — от массы СВ; для растворителя — от массы СВ)
+}
+
+// Этап режима замеса (скорости диспергатора/лопастей, вакуум, термостат, время)
+export interface MixModeStage {
+  id: string;
+  name: string;                  // например «Диспергирование СВ»
+  disperserRpm?: number;         // скорость диспергатора (высокооборотистая мешалка), об/мин
+  paddleRpm?: number;            // скорость лопастей (низкооборотистая мешалка), об/мин
+  vacuumOn: boolean;             // вакуум включён?
+  vacuumKpa?: number;            // глубина вакуума, кПа (если включён)
+  tempC?: number;                // температура термостата (чиллера), °C
+  minutes: number;               // длительность этапа, мин
+}
+
+// Стандартный замес (рецепт + режим) — редактируемая база
+export interface MixRecipe {
+  id: string;
+  name: string;                  // например «Катод LFP R-07»
+  dryMassKg: number;             // базовая масса сухих веществ, кг
+  lines: MixRecipeLine[];        // строки с выбором компонентов
+  mode: MixModeStage[];          // этапы режима замеса
+  note?: string;
+  updatedBy: string;             // кто последний редактировал (User.id)
+  updatedAt: number;
+}
+
+// Фактическая навеска компонента в замесе
+export interface MixBatchWeighing {
+  componentId: string;
+  plannedG: number;              // расчётная граммовка, г
+  actualG: number;               // фактическая навеска, г
+}
+
+// Журнал замеса — результат выполнения (slave → master пакетами)
+export interface MixBatch {
+  id: string;
+  recipeId?: string;             // по какому стандартному замесу делали (если по базе)
+  recipeName: string;            // снимок названия на момент замеса
+  taskId?: string;               // задание, в рамках которого выполнен замес
+  batchKg: number;               // масса замеса (СВ), кг
+  weighings: MixBatchWeighing[]; // фактические навески
+  modeActual?: MixModeStage[];   // факт режима (если отличался)
+  viscosity?: number;            // вязкость (сП или мПа·с — как принято на участке)
+  fineness?: number;             // степень перетира, мкм (лаборатория Хегмана)
+  notes?: string;                // примечания / дефекты
+  workerId: string;              // кто выполнил
+  createdAt: number;
+  updatedAt: number;             // для синхронизации
+}
+
 // Комментарий в комнате этапа (общая секция для всех ролей комнаты)
 export interface StageComment {
   id: string;
@@ -60,12 +132,15 @@ export interface StageComment {
 // ОФЛАЙН-ПАКЕТ ПЕРЕДАЧИ (Bluetooth / QR / текст — единый формат)
 // ============================================================
 export type SyncPacketType =
-  | 'task'        // новое задание / изменение задания
-  | 'result'      // результат выполнения (закрытие задания)
-  | 'journal'     // запись журнала комнаты
-  | 'comment'     // комментарий
-  | 'user'        // пользователь (создаётся только chief)
-  | 'forced-push';// принудительная запись master'ом в slave-устройство
+  | 'task'          // новое задание / изменение задания
+  | 'result'        // результат выполнения (закрытие задания)
+  | 'journal'       // запись журнала комнаты
+  | 'comment'       // комментарий
+  | 'user'          // пользователь (создаётся только chief)
+  | 'mix-batch'     // журнал замеса (результат, отправляется slave → master)
+  | 'mix-component' // компонент из базы комнаты замесов
+  | 'mix-recipe'    // стандартный замес из базы
+  | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
 export interface SyncPacket {
   v: 1;

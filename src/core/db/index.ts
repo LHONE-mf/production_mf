@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId } from '../types';
+import { v4 as uuidv4 } from 'uuid';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -9,6 +10,10 @@ export class AppDatabase extends Dexie {
   syncLogs!: Table<SyncLog, string>;
   journal!: Table<JournalEntry, string>;      // журналы работ комнат
   stageComments!: Table<StageComment, string>; // комментарии в комнатах
+  // Комната замесов: базы и журнал
+  mixComponents!: Table<MixComponent, string>; // база компонентов с параметрами
+  mixRecipes!: Table<MixRecipe, string>;       // база стандартных (редактируемых) замесов
+  mixBatches!: Table<MixBatch, string>;        // журнал фактических замесов
 
   constructor() {
     super('LiIonProductionDB');
@@ -26,6 +31,13 @@ export class AppDatabase extends Dexie {
       journal: 'id, stage, workerId, taskId, createdAt',
       stageComments: 'id, stage, authorId, journalEntryId, createdAt',
       tasks: 'id, status, assignedTo, createdBy, priority, updatedAt, stage',
+    });
+
+    // v3: комната замесов — компоненты, стандартные замесы, журнал замесов
+    this.version(3).stores({
+      mixComponents: 'id, name, kind, updatedAt',
+      mixRecipes: 'id, name, updatedBy, updatedAt',
+      mixBatches: 'id, recipeId, taskId, workerId, updatedAt',
     });
   }
 }
@@ -87,7 +99,7 @@ export async function initializeDatabase() {
         comments: [], attachments: [],
       },
       {
-        id: 'task-005', title: 'Приготовление шлама LFP (партия 12)',
+        id: 'task-005', title: 'Комната замесов LFP (партия 12)',
         description: 'Замесить шлам по рецепту R-07: катод LFP, PVDF, CMC, вода. Проверить вязкость.',
         status: TaskStatus.ASSIGNED, priority: TaskPriority.HIGH,
         assignedTo: 'worker-002', createdBy: 'master-001',
@@ -148,5 +160,72 @@ export async function initializeDatabase() {
         journalEntryId: 'jr-002', createdAt: new Date(Date.now() - 40000000),
       },
     ] as StageComment[]);
+  }
+
+  // Демо-базы комнаты замесов: компоненты, стандартные замесы, журнал замесов
+  if ((await db.mixComponents.count()) === 0) {
+    const now = Date.now();
+    await db.mixComponents.bulkAdd([
+      { id: 'mc-lfp',   name: 'LFP (LiFePO4)', kind: 'active', densitySettled: 1.5, densityTrue: 3.6, capacity: 155, ssa: 18, d50: 0.8, updatedAt: now },
+      { id: 'mc-nmc',   name: 'NMC 622', kind: 'active', densitySettled: 1.9, densityTrue: 4.75, capacity: 165, ssa: 12, d50: 5, updatedAt: now },
+      { id: 'mc-gr',    name: 'Графит', kind: 'active', densitySettled: 0.9, densityTrue: 2.25, capacity: 350, ssa: 2, d50: 12, updatedAt: now },
+      { id: 'mc-pvdf',  name: 'PVDF (связующее)', kind: 'binder', densitySettled: 0.5, densityTrue: 1.78, updatedAt: now },
+      { id: 'mc-cmc',   name: 'CMC (связующее)', kind: 'binder', densityTrue: 1.59, updatedAt: now },
+      { id: 'mc-sbr',   name: 'SBR (латекс)', kind: 'binder', updatedAt: now },
+      { id: 'mc-cb',    name: 'Carbon Black (CB)', kind: 'conductive', densitySettled: 0.05, densityTrue: 1.8, ssa: 60, d50: 0.02, updatedAt: now },
+      { id: 'mc-cn',    name: 'CNT-добавка', kind: 'conductive', updatedAt: now },
+      { id: 'mc-water', name: 'Вода деионизованная', kind: 'solvent', densityTrue: 1, updatedAt: now },
+      { id: 'mc-nmp',   name: 'NMP (растворитель)', kind: 'solvent', densityTrue: 1.03, updatedAt: now },
+    ] as MixComponent[]);
+
+    await db.mixRecipes.bulkAdd([
+      {
+        id: 'mr-lfp-r07', name: 'Катод LFP R-07', dryMassKg: 100,
+        lines: [
+          { componentId: 'mc-lfp', pct: 94 },
+          { componentId: 'mc-pvdf', pct: 3 },
+          { componentId: 'mc-cb', pct: 2 },
+          { componentId: 'mc-water', pct: 48 }, // от массы сухих веществ
+        ],
+        mode: [
+          { id: uuidv4(), name: 'Смешивание СВ (лопасти)', paddleRpm: 40, vacuumOn: false, tempC: 25, minutes: 15 },
+          { id: uuidv4(), name: 'Диспергирование', disperserRpm: 1200, paddleRpm: 40, vacuumOn: true, vacuumKpa: -80, tempC: 30, minutes: 45 },
+          { id: uuidv4(), name: 'Разбавление до вязкости', disperserRpm: 600, paddleRpm: 35, vacuumOn: true, vacuumKpa: -60, tempC: 25, minutes: 20 },
+        ],
+        note: 'Контролировать вязкость каждые 10 мин на этапе разбавления.',
+        updatedBy: 'tech-001', updatedAt: now,
+      },
+      {
+        id: 'mr-gr-anode', name: 'Анод графитовый A-03', dryMassKg: 80,
+        lines: [
+          { componentId: 'mc-gr', pct: 95 },
+          { componentId: 'mc-cb', pct: 1 },
+          { componentId: 'mc-cmc', pct: 1.5 },
+          { componentId: 'mc-sbr', pct: 2.5 },
+          { componentId: 'mc-water', pct: 55 },
+        ],
+        mode: [
+          { id: uuidv4(), name: 'Набухание CMC', paddleRpm: 30, vacuumOn: false, tempC: 25, minutes: 20 },
+          { id: uuidv4(), name: 'Диспергирование СВ', disperserRpm: 900, paddleRpm: 35, vacuumOn: true, vacuumKpa: -70, tempC: 28, minutes: 40 },
+          { id: uuidv4(), name: 'Добавление SBR', disperserRpm: 500, paddleRpm: 30, vacuumOn: true, vacuumKpa: -70, tempC: 25, minutes: 15 },
+        ],
+        updatedBy: 'tech-001', updatedAt: now,
+      },
+    ] as MixRecipe[]);
+
+    await db.mixBatches.bulkAdd([
+      {
+        id: 'mb-001', recipeId: 'mr-lfp-r07', recipeName: 'Катод LFP R-07', taskId: 'task-005',
+        batchKg: 100,
+        weighings: [
+          { componentId: 'mc-lfp', plannedG: 94000, actualG: 94020 },
+          { componentId: 'mc-pvdf', plannedG: 3000, actualG: 3000 },
+          { componentId: 'mc-cb', plannedG: 2000, actualG: 1990 },
+          { componentId: 'mc-water', plannedG: 48000, actualG: 47500 },
+        ],
+        viscosity: 3100, fineness: 15, notes: 'Вязкость в норме, перетир контрольный.',
+        workerId: 'worker-002', createdAt: now - 86400000, updatedAt: now - 86400000,
+      },
+    ] as MixBatch[]);
   }
 }

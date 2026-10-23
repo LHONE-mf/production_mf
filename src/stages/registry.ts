@@ -13,7 +13,7 @@ export interface StageMeta {
 
 export const STAGES: StageMeta[] = [
   { id: StageId.STORAGE,     title: 'Склад материалов',        icon: '📦', tools: ['Учёт партий', 'Запасы', 'Журнал', 'Комментарии'] },
-  { id: StageId.SLURRY,      title: 'Приготовление шлама',     icon: '🧪', tools: ['Шлам-калькулятор', 'База рецептов', 'Журнал', 'Комментарии'] },
+  { id: StageId.SLURRY,      title: 'Комната замесов',            icon: '🧪', tools: ['Расчёт граммовок', 'База замесов', 'База компонентов', 'Журнал замеса', 'Комментарии'] },
   { id: StageId.COATING,     title: 'Нанесение покрытия',      icon: '🖌️', tools: ['Параметры нанесения', 'Журнал', 'Комментарии'] },
   { id: StageId.CALENDARING, title: 'Каландрирование',         icon: '🔄', tools: ['Расчёт обжатия', 'Журнал', 'Комментарии'] },
   { id: StageId.SORTING,     title: 'Сортировка',              icon: '✂️', tools: ['Размеры пластин', 'Дефекты', 'Журнал', 'Комментарии'] },
