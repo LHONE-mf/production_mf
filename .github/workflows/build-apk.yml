@@ -1,0 +1,64 @@
+name: Build Android APK (Capacitor)
+
+# Собираем APK через GitHub Actions при пуше в main и при релизных тегах.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch: {} # ручной запуск с вкладки Actions
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    name: Сборка APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Клонирование репозитория
+        uses: actions/checkout@v4
+
+      - name: Установка Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Сборка веб-версии (PWA)
+        run: npm run build
+
+      - name: Настройка Java (для Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Добавление Android-платформы Capacitor
+        run: |
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Сборка APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Сборка подписанного release APK"
+            ./gradlew assembleRelease
+          else
+            echo "Секреты подписи не заданы — собираем debug APK"
+            ./gradlew assembleDebug
+          fi
+
+      - name: Публикация артефакта
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
