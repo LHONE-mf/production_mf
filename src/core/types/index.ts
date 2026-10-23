@@ -126,6 +126,57 @@ export interface MixBatch {
   updatedAt: number;             // для синхронизации
 }
 
+// ============================================================
+// КОМНАТА НАНЕСЕНИЯ ПОКРЫТИЯ (coating): данные замеса → намазка,
+// журнал нанесения с подстроечными параметрами.
+// ============================================================
+
+// Снимок данных замеса, передаваемых на участок нанесения (офлайн-пакетом).
+// Нужны для расчёта зазора фильера–фольга и скорости шнекового насоса.
+export interface CoatingMixSnapshot {
+  mixBatchId: string;            // запись журнала замеса
+  recipeName: string;            // название замеса (снимок)
+  viscosity?: number;            // вязкость пасты, мПа·с (сП)
+  fineness?: number;             // степень перетира, мкм
+  solidsPctMass?: number;        // содержание СВ по массе, %
+  solidsPctVol?: number;         // содержание СВ по объёму (φ), %
+  pasteDensity?: number;         // плотность пасты, г/см³
+  batchKg?: number;              // масса замеса, кг
+  createdAt: number;             // когда сформирован снимок
+}
+
+// Режим нанесения
+export type CoatMode = 'continuous' | 'intermittent';
+
+// Запись журнала нанесения покрытия
+export interface CoatRun {
+  id: string;
+  taskId?: string;                 // задание (если работа по заданию)
+  mixBatchId?: string;             // замес, из которого взята паста
+  mixSnapshot?: CoatingMixSnapshot;// снимок данных замеса (пришёл пакетом или выбран вручную)
+  foilType: string;                // фольга (Al / Cu) + толщина, напр. «Al 12 мкм»
+  targetDryMgm2?: number;          // целевая поверхностная плотность сухого покрытия, мг/см²
+  // Подстроечные параметры линии
+  screwRpm?: number;               // скорость шнекового насоса, об/мин
+  webSpeedMpm?: number;            // скорость движения фольги, м/мин
+  ovenTempsC: number[];            // температуры в шести печах, °C (индексы 0..5)
+  // Режим нанесения
+  mode: CoatMode;                  // сплошное / с промежутками
+  gapWidthMm?: number;             // размер промежутка (полосы без покрытия), мм
+  gapPitchMm?: number;             // расстояние между промежутками (шаг), мм
+  // Длины
+  segLengthsM: number[];           // длина участков нанесения, м (можно добавлять/удалять)
+  sideALengthM?: number;           // общая длина нанесённого покрытия, сторона A (м) — считается из segLengthsM
+  sideBLengthM?: number;           // общая длина, сторона B (м) — второй проход (двусторонняя намазка)
+  wetThicknessUm?: number;         // мокрая толщина (зазор фильеры), мкм
+  headGapUm?: number;              // расчётный/фактический зазор фильера–фольга, мкм
+  defects?: string;                // дефекты / замечания
+  notes?: string;
+  workerId: string;
+  createdAt: number;
+  updatedAt: number;               // для синхронизации slave → master
+}
+
 // Комментарий в комнате этапа (общая секция для всех ролей комнаты)
 export interface StageComment {
   id: string;
@@ -148,6 +199,8 @@ export type SyncPacketType =
   | 'mix-batch'     // журнал замеса (результат, отправляется slave → master)
   | 'mix-component' // компонент из базы комнаты замесов
   | 'mix-recipe'    // стандартный замес из базы
+  | 'coating-mix'   // данные замеса → участку нанесения (снимок для расчётов)
+  | 'coat-run'      // запись журнала нанесения покрытия (slave → master)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
 export interface SyncPacket {

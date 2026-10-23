@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -72,12 +72,34 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         await db.mixRecipes.put(r);
         return { ok: true, message: `Стандартный замес обновлён: ${r.name}${p.forced ? ' (forced master→slave)' : ''}` };
       }
+      case 'coating-mix': {
+        // Данные замеса → участку нанесения: кладём в «входящие замесы» комнаты намазки.
+        const snap = p.payload as CoatingMixSnapshot;
+        await db.coatIncomingMixes.put(snap);
+        return { ok: true, message: `Данные замеса приняты: «${snap?.recipeName}» (вязкость ${snap?.viscosity ?? '—'} сП)` };
+      }
+      case 'coat-run': {
+        // Журнал нанесения: slave → master. Свежесть по updatedAt; forced — безусловно.
+        const r = p.payload as CoatRun;
+        if (!Array.isArray(r.segLengthsM)) r.segLengthsM = [];
+        if (!Array.isArray(r.ovenTempsC)) r.ovenTempsC = new Array(6).fill(0);
+        const existing = await db.coatRuns.get(r.id);
+        if (existing && !p.forced && existing.updatedAt >= r.updatedAt) {
+          return { ok: true, message: `Запись нанесения от ${new Date(r.createdAt).toLocaleDateString('ru-RU')} уже новее — пропущено` };
+        }
+        await db.coatRuns.put(r);
+        return { ok: true, message: `Журнал нанесения получен (${p.forced ? 'принудительно' : 'slave → master'})` };
+      }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun;
         if ('login' in payload) {
           await db.users.put(payload as User);
           return { ok: true, message: `(forced) пользователь обновлён: ${(payload as User).login}` };
+        }
+        if ('segLengthsM' in payload && 'ovenTempsC' in payload) {
+          await db.coatRuns.put(payload as CoatRun);
+          return { ok: true, message: '(forced) журнал нанесения применён' };
         }
         if ('lines' in payload && 'dryMassKg' in payload) {
           await db.mixRecipes.put(payload as MixRecipe);

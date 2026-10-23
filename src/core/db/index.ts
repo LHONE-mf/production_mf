@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -14,6 +14,9 @@ export class AppDatabase extends Dexie {
   mixComponents!: Table<MixComponent, string>; // база компонентов с параметрами
   mixRecipes!: Table<MixRecipe, string>;       // база стандартных (редактируемых) замесов
   mixBatches!: Table<MixBatch, string>;        // журнал фактических замесов
+  // Комната нанесения покрытия
+  coatRuns!: Table<CoatRun, string>;           // журнал нанесения
+  coatIncomingMixes!: Table<CoatingMixSnapshot, string>; // принятые данные замесов (входящие на намазку)
 
   constructor() {
     super('LiIonProductionDB');
@@ -44,6 +47,12 @@ export class AppDatabase extends Dexie {
     // добавляем индекс createdAt в журнал замесов (Dexie пересоздаст индекс при открытии)
     this.version(4).stores({
       mixBatches: 'id, recipeId, taskId, workerId, createdAt, updatedAt',
+    });
+
+    // v5: комната нанесения покрытия — журнал нанесения + входящие данные замесов
+    this.version(5).stores({
+      coatRuns: 'id, taskId, mixBatchId, workerId, createdAt, updatedAt',
+      coatIncomingMixes: 'mixBatchId, recipeName, createdAt',
     });
   }
 }
@@ -233,5 +242,42 @@ export async function initializeDatabase() {
         workerId: 'worker-002', createdAt: now - 86400000, updatedAt: now - 86400000,
       },
     ] as MixBatch[]);
+  }
+
+  // Демо-журнал нанесения покрытия (комната Coating)
+  if ((await db.coatRuns.count()) === 0) {
+    const now = Date.now();
+    await db.coatRuns.bulkAdd([
+      {
+        id: 'cr-001', taskId: 'task-006', mixBatchId: 'mb-001',
+        mixSnapshot: {
+          mixBatchId: 'mb-001', recipeName: 'Катод LFP R-07', viscosity: 3100, fineness: 15,
+          solidsPctMass: 64.9, solidsPctVol: 42.8, pasteDensity: 2.05, batchKg: 100, createdAt: now - 86400000,
+        },
+        foilType: 'Al 12 мкм', targetDryMgm2: 28,
+        screwRpm: 45, webSpeedMpm: 8,
+        ovenTempsC: [80, 95, 110, 120, 115, 100],
+        mode: 'continuous',
+        segLengthsM: [420, 380], sideALengthM: 800, sideBLengthM: 0,
+        wetThicknessUm: 180, headGapUm: 190,
+        defects: '', notes: 'Линия 1, смена утренняя.',
+        workerId: 'worker-003', createdAt: now - 43200000, updatedAt: now - 43200000,
+      },
+      {
+        id: 'cr-002', mixBatchId: 'mb-001',
+        mixSnapshot: {
+          mixBatchId: 'mb-001', recipeName: 'Катод LFP R-07', viscosity: 3100, fineness: 15,
+          solidsPctMass: 64.9, solidsPctVol: 42.8, pasteDensity: 2.05, batchKg: 100, createdAt: now - 86400000,
+        },
+        foilType: 'Al 12 мкм', targetDryMgm2: 28,
+        screwRpm: 52, webSpeedMpm: 10,
+        ovenTempsC: [85, 100, 115, 125, 120, 105],
+        mode: 'intermittent', gapWidthMm: 60, gapPitchMm: 240,
+        segLengthsM: [300], sideALengthM: 300, sideBLengthM: 295,
+        wetThicknessUm: 175, headGapUm: 185,
+        defects: 'Смещение полос ~2 мм на участке 120 м',
+        workerId: 'worker-003', createdAt: now - 7200000, updatedAt: now - 7200000,
+      },
+    ] as CoatRun[]);
   }
 }

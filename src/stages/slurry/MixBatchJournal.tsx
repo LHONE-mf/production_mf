@@ -44,6 +44,27 @@ export function MixBatchJournal() {
     });
   };
 
+  // Отправка данных замеса на участок нанесения (пакет 'coating-mix'):
+  // вязкость, перетир, СВ, ρ пасты — нужны для расчёта зазора фильеры и скорости шнека.
+  const sendToCoating = (b: MixBatch) => {
+    if (!currentUser) return;
+    const snap = {
+      mixBatchId: b.id,
+      recipeName: b.recipeName,
+      viscosity: b.viscosity,
+      fineness: b.fineness,
+      solidsPctMass: b.pasteCalc?.solidsPctMass,
+      solidsPctVol: b.pasteCalc?.solidsPctVol,
+      pasteDensity: b.pasteCalc?.pasteDensity,
+      batchKg: b.batchKg,
+      createdAt: Date.now(),
+    };
+    setOutPacket({
+      v: 1, type: 'coating-mix', stage: StageId.COATING,
+      payload: snap, from: currentUser.id, ts: Date.now(),
+    });
+  };
+
   return (
     <div className="space-y-3">
       <h3 className="text-white font-semibold">📒 Журнал замеса</h3>
@@ -126,6 +147,10 @@ export function MixBatchJournal() {
                   <div className="flex gap-2 flex-wrap">
                     <button onClick={() => send(b)} className="text-xs px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded text-white font-medium">
                       📡 Отправить результат (slave → master)
+                    </button>
+                    <button onClick={() => sendToCoating(b)} title="Передать вязкость/СВ/ρ пасты на участок нанесения для расчёта зазора и шнека"
+                      className="text-xs px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 rounded text-white font-medium">
+                      🖌️ На намазку (данные замеса)
                     </button>
                     {isManager && (
                       <button onClick={() => send(b, true)} title="Принудительно дописать во все slave"
