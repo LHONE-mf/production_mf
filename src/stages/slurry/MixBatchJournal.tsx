@@ -13,7 +13,11 @@ export function MixBatchJournal() {
   const currentUser = useAuthStore((s) => s.currentUser);
   const isManager = !!currentUser && [UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
 
-  const batches = useLiveQuery(() => db.mixBatches.orderBy('createdAt').reverse().toArray(), []);
+  // Сортировка на уровне приложения: не зависит от наличия индекса createdAt в IndexedDB
+  const batches = useLiveQuery(async () => {
+    const all = await db.mixBatches.toArray();
+    return all.sort((a, b) => String(b.createdAt ?? b.updatedAt ?? '').localeCompare(String(a.createdAt ?? a.updatedAt ?? '')));
+  }, []);
   const components = useLiveQuery(() => db.mixComponents.toArray(), []);
   const users = useLiveQuery(() => db.users.toArray(), []);
   // Защита от «грязных» записей в базе (пришли пакетом с других устройств):

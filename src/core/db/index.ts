@@ -39,6 +39,12 @@ export class AppDatabase extends Dexie {
       mixRecipes: 'id, name, updatedBy, updatedAt',
       mixBatches: 'id, recipeId, taskId, workerId, updatedAt',
     });
+
+    // v4: фикс ошибки "KeyPath createdAt on object store mixBatches is not indexed"
+    // добавляем индекс createdAt в журнал замесов (Dexie пересоздаст индекс при открытии)
+    this.version(4).stores({
+      mixBatches: 'id, recipeId, taskId, workerId, createdAt, updatedAt',
+    });
   }
 }
 
