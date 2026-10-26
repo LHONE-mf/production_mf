@@ -27,10 +27,10 @@ export function IngestPanel({ buildOutgoing }: Props) {
   stopRef.current = bt.stop;
   useEffect(() => () => { stopRef.current(); }, []);
 
-  const showOutgoing = () => {
+  const showOutgoing = async () => {
     const p = buildOutgoing?.();
     if (!p) return;
-    setOutgoing(encodePacket(p));
+    setOutgoing(await encodePacket(p));
   };
 
   const acceptIncoming = async () => {

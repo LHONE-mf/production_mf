@@ -109,8 +109,16 @@ AI Response:
 ✅ Размер BLE-рекламы: BleBridgePlugin.java — ADV-пакет теперь содержит только UUID сервиса,
    serviceData с заголовком перенесён в SCAN RESPONSE (startAdvertising c scanResponse);
    сканирование фильтрует по SHORT_UUID. Устранён риск ADV_FAIL (превышение 31 байт).
-⬜ ОЖИДАЮТ РЕАЛИЗАЦИИ (следующие шаги): подпись пакетов HMAC + проверка роли для forced;
-   хеширование паролей; многокадровый QR + реальный сканер камеры; удаление Supabase/INTERNET/allowMixedContent.
+⬜ ОЖИДАЮТ РЕАЛИЗАЦИИ (следующие шаги): многокадровый QR + реальный сканер камеры; удаление Supabase/INTERNET/allowMixedContent.
+### Безопасность — шифрование паролей и подпись пакетов (2026-10-28g) ✅ ВЫПОЛНЕНО
+✅ `src/core/security.ts`: HMAC-SHA256 подпись пакетов (signPacket/verifyPacketSig, ключ цеха в localStorage)
+   + PBKDF2-SHA256 хеширование паролей (hashPassword/verifyPassword, 100k итераций, соль на пользователя)
+   + migratePasswords() — миграция открытых паролей в хеши.
+✅ `src/transfer/packet.ts` encodePacket теперь подписывает пакеты (поле sig);
+   `src/transfer/apply.ts` verifyPacket — проверяет подпись при приёме (битая подпись → пакет отклоняется).
+✅ `AuthService.login` — верификация через verifyPassword + авто-миграция legacy-пароля при первом входе.
+✅ `initializeDatabase()` вызывает migratePasswords(db.users) — демо-пароли хешируются при старте.
+✅ Проверки: tsc --noEmit = 0 ошибок; vite build успешен. Коммит будет проставлен ниже после пуша.
 ### Отметка сессии 2026-10-28 (KPI) — ВЫПОЛНЕНО ✅
 - **KPI-дашборд реализован**: `src/kpi/KpiDashboard.tsx` (новый файл), подключён в `App.tsx` (вкладка 'kpi') и в навигацию `AppLayout.tsx` («📈 KPI-дашборд», доступна всем 4 ролям).
 - Источник данных — только локальная база Dexie (полный офлайн): mixBatches, coatRuns, calenderRuns, cuttingRuns, sortRuns, assemblyRuns, fillRuns, walzRuns, formationRuns, tasks, users.

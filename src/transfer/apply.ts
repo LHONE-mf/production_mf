@@ -2,15 +2,34 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole } from '../core/types';
+import { verifyPacketSig } from '../core/security';
 
 export interface ApplyResult {
   ok: boolean;
   message: string;
 }
 
+/** Пакеты, которые обязан подтверждать мастер или начальник производства. */
+const PRIVILEGED_TYPES = new Set<string>(['user', 'mix-recipe', 'sort-spec']);
+
 export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
   try {
+    // ── Безопасность (офлайн-подпись пакетов) ────────────────────────────────
+    // 1) forced (принудительная допись master→slave) допускается только с ролью master/chief.
+    if (p.forced && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
+      return { ok: false, message: 'Отклонено: forced-пакет без роли мастера/начальника' };
+    }
+    // 2) Если подпись есть — проверяем её (устройство цеха). Без подписи пакеты тоже
+    //    проходят (обратная совместимость со старыми APK), но привилегированные типы
+    //    требуют роль мастера/начальника.
+    if (p.sig && !(await verifyPacketSig(p))) {
+      return { ok: false, message: 'Отклонено: подпись пакета не совпадает с ключом цеха' };
+    }
+    if (PRIVILEGED_TYPES.has(p.type) && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
+      return { ok: false, message: `Отклонено: тип «${p.type}» принимает только мастер/начальник производства` };
+    }
+
     switch (p.type) {
       case 'task': {
         const t = p.payload as Task;
@@ -25,6 +44,9 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         const { taskId, status, note } = p.payload as { taskId: string; status: string; note?: string };
         const t = await db.tasks.get(taskId);
         if (!t) return { ok: false, message: 'Задание не найдено на этом устройстве' };
+        if (t.updatedAt >= new Date(p.ts)) {
+          return { ok: true, message: `Результат по «${t.title}» устарел — пропущен` };
+        }
         await db.tasks.put({ ...t, status: status as Task['status'], updatedAt: new Date(p.ts) });
         return { ok: true, message: `Результат принят: «${t.title}» → ${status}` };
       }

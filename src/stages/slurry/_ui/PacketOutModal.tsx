@@ -1,7 +1,7 @@
 // Общий UI-помощник комнаты замесов: вывод пакета (QR / текст) для офлайн-передачи.
 // Никакого онлайна — только QR, текст, позже Bluetooth тем же форматом LIP:.
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../../core/types';
 import { encodePacket } from '../../../transfer/packet';
@@ -12,15 +12,14 @@ interface Props {
 }
 
 export function PacketOutModal({ packet, onClose }: Props) {
-  // encodePacket может бросить исключение на некорректных данных —
-  // считаем в useMemo с try/catch, чтобы модалка не роняла всё приложение.
-  const encoded = useMemo(() => {
-    try {
-      return encodePacket(packet);
-    } catch (e) {
-      console.error('PacketOutModal: не удалось закодировать пакет', e);
-      return '';
-    }
+  const [encoded, setEncoded] = useState('');
+  // encodePacket теперь async (подпись пакета WebCrypto) — считаем в useEffect.
+  useEffect(() => {
+    let alive = true;
+    encodePacket(packet)
+      .then((s) => { if (alive) setEncoded(s); })
+      .catch((e) => console.error('PacketOutModal: не удалось закодировать пакет', e));
+    return () => { alive = false; };
   }, [packet]);
   const [copied, setCopied] = useState(false);
 

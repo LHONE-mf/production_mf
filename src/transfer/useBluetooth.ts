@@ -82,7 +82,7 @@ export function useBluetooth(onApplied?: (res: ApplyResult) => void) {
       log('Подготовка к отправке…', 'info');
       let encoded = '';
       try {
-        encoded = encodePacket(packet);
+        encoded = await encodePacket(packet);
       } catch (e: any) {
         log('Не удалось закодировать пакет: ' + String(e?.message || e), 'err');
         setStatus('error');

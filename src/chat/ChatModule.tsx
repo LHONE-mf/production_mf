@@ -79,7 +79,7 @@ export function ChatModule() {
     const p = buildPacket(text);
     await db.chatMessages.put(p.payload as ChatMessage);
     setDraft('');
-    setOutText(encodePacket(p));
+    setOutText(await encodePacket(p));
     setOutMode('qr');
     scrollToBottom();
   };
@@ -101,7 +101,7 @@ export function ChatModule() {
     setNotice(applied ? 'Сообщение принято ✓' : 'Сообщение не принято');
     if (relayPacket) {
       // предлагаем авто-ретрансляцию дальше по mesh
-      setOutText(encodePacket(relayPacket));
+      setOutText(await encodePacket(relayPacket));
       setOutMode('qr');
     }
   };
@@ -111,7 +111,7 @@ export function ChatModule() {
    *  формат пакета = одно сообщение. Поэтому ретранслируем по одному. */
   const relayOne = async (m: ChatMessage) => {
     const p: SyncPacket = { v: 1, type: 'chat', payload: m, from: m.from, ts: m.ts };
-    setOutText(encodePacket(p));
+    setOutText(await encodePacket(p));
     setOutMode('qr');
   };
 

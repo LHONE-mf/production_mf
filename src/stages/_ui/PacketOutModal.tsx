@@ -2,7 +2,7 @@
 // Порядок: Bluetooth — преимущественный способ (Android APK), затем QR, затем текст.
 // Никакого онлайна!
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../core/types';
 import { encodePacket } from '../../transfer/packet';
@@ -16,13 +16,14 @@ interface Props {
 type Tab = 'bluetooth' | 'qr' | 'text';
 
 export function PacketOutModal({ packet, onClose }: Props) {
-  const encoded = useMemo(() => {
-    try {
-      return encodePacket(packet);
-    } catch (e) {
-      console.error('PacketOutModal: не удалось закодировать пакет', e);
-      return '';
-    }
+  const [encoded, setEncoded] = useState('');
+  // encodePacket теперь async (подпись пакета WebCrypto) — считаем в useEffect.
+  useEffect(() => {
+    let alive = true;
+    encodePacket(packet)
+      .then((s) => { if (alive) setEncoded(s); })
+      .catch((e) => console.error('PacketOutModal: не удалось закодировать пакет', e));
+    return () => { alive = false; };
   }, [packet]);
 
   const bt = useBluetooth();

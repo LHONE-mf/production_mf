@@ -576,6 +576,8 @@ export interface SyncPacket {
   from: string;             // id отправителя (User.id)
   ts: number;               // timestamp миллисекунды
   forced?: boolean;         // пакет от master, применяется безусловно
+  role?: UserRole;          // роль отправителя (для проверки forced)
+  sig?: string;             // подпись пакета (HMAC-SHA256, base64url), см. security.ts
 }
 
 // Роли пользователей в системе

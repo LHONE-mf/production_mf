@@ -1,5 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
+import { migratePasswords } from '../security';
 import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
@@ -451,4 +452,7 @@ export async function initializeDatabase() {
       authorId: 'tech-001', createdAt: now - 1500000, updatedAt: now - 1500000,
     } as SortSpec);
   }
+
+  // Безопасность: миграция открытых паролей демо/старых пользователей в PBKDF2-хеши
+  await migratePasswords(db.users);
 }

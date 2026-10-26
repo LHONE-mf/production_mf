@@ -1,13 +1,29 @@
 // Единый офлайн-формат пакета для Bluetooth / QR / текста.
 // JSON → base64 (префикс "LIP:"). При автоподхвате из текста ищем подстроку LIP:...
 
-import { SyncPacket } from '../core/types';
+import { SyncPacket, UserRole } from '../core/types';
+import { signPacket } from '../core/security';
 
 export const PACKET_PREFIX = 'LIP:';
 
-/** Пакет → текст для QR / сообщения */
-export function encodePacket(p: SyncPacket): string {
-  const json = JSON.stringify({ ...p, payload: p.payload });
+/** Роль текущего пользователя из zustand-persist сессии (localStorage). */
+export function currentSenderRole(): UserRole | undefined {
+  try {
+    const raw = localStorage.getItem('auth-storage');
+    if (!raw) return undefined;
+    const st = JSON.parse(raw)?.state?.session;
+    return st?.user?.role ?? st?.role;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Пакет → текст для QR / сообщения. Подпись (sig) добавляется автоматически,
+ *  если пакет ещё не подписан. Роль отправителя подставляется из текущей сессии. */
+export async function encodePacket(p: SyncPacket): Promise<string> {
+  const withRole: SyncPacket = p.role ? p : { ...p, role: currentSenderRole() };
+  const signed: SyncPacket = withRole.sig ? withRole : { ...withRole, sig: await signPacket(withRole) };
+  const json = JSON.stringify(signed);
   // btoa не любит кириллицу — сначала в UTF-8 escape
   const utf8 = unescape(encodeURIComponent(json));
   return PACKET_PREFIX + btoa(utf8);

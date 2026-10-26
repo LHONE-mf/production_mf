@@ -1,5 +1,6 @@
 import { db } from '../../../core/db';
 import { User, UserRole } from '../../../core/types';
+import { verifyPassword, hashPassword, isLegacyPlainPassword } from '../../../core/security';
 
 export class AuthService {
   static async login(login: string, password: string): Promise<User | null> {
@@ -8,7 +9,16 @@ export class AuthService {
       .equals(login)
       .first();
 
-    if (user && user.password === password && user.isActive) {
+    if (!user || !user.isActive) return null;
+
+    // Поддержка старых открытых паролей с авто-миграцией в хеш при первом входе
+    if (isLegacyPlainPassword(user.password)) {
+      if (user.password !== password) return null;
+      await db.users.update(user.id, { password: await hashPassword(password) });
+      return user;
+    }
+
+    if (await verifyPassword(password, user.password)) {
       return user;
     }
     return null;
