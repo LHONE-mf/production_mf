@@ -109,7 +109,22 @@ AI Response:
 ✅ Размер BLE-рекламы: BleBridgePlugin.java — ADV-пакет теперь содержит только UUID сервиса,
    serviceData с заголовком перенесён в SCAN RESPONSE (startAdvertising c scanResponse);
    сканирование фильтрует по SHORT_UUID. Устранён риск ADV_FAIL (превышение 31 байт).
-⬜ ОЖИДАЮТ РЕАЛИЗАЦИИ (следующие шаги): многокадровый QR + реальный сканер камеры; удаление Supabase/INTERNET/allowMixedContent.
+
+### Безопасность и QR (шаг 2026-10-28i, HEAD будет проставлен ниже после пуша)
+✅ Многокадровый QR: packet.ts — toQrChunks разбивает пакет >1200 символов на кадры
+   `LIPM:<id>:<номер>/<всего>:<часть>`; decodePacketFromQr собирает кадры на приёмнике
+   (кэш сборки + автоочистка старше 5 мин). Одиночные LIP:... обратно совместимы.
+   IngestPanel: показ кадров «Кадр N из M» с кнопками ◀/▶ переключения.
+✅ Реальный QR-сканер камеры: новый src/transfer/QrScanner.tsx на html5-qrcode
+   (facingMode environment, дедуп повторов 1.5с, непрерывный режим для многокадровых
+   пакетов, понятная ошибка при отказе доступа к камере). Кнопка «📷 Сканировать QR
+   камерой» в IngestPanel; распознанный текст сразу применяется через applyPacket.
+✅ Supabase удалён из package.json (npm uninstall), grep "supabase" src/ package.json = 0.
+✅ AndroidManifest: allowBackup=true→false, разрешение INTERNET удалено (принцип офлайн).
+   ВНИМАНИЕ: CI-коммит «сохранение Android проекта» может вернуть старый манифест — проверить.
+✅ Проверки: tsc --noEmit exit 0; vite build exit 0 (sw.js сгенерирован).
+⬜ ОЖИДАЮТ: заглушка камеры в CommunicationModule (заменить на QrScanner), UI «ключа цеха»
+   для HMAC, тесты encode/decode/apply, mesh-ретрансляция данных (не только чата).
 ### Безопасность — шифрование паролей и подпись пакетов (2026-10-28g) ✅ ВЫПОЛНЕНО
 ✅ `src/core/security.ts`: HMAC-SHA256 подпись пакетов (signPacket/verifyPacketSig, ключ цеха в localStorage)
    + PBKDF2-SHA256 хеширование паролей (hashPassword/verifyPassword, 100k итераций, соль на пользователя)
