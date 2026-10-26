@@ -13,7 +13,6 @@ import { AssemblyModule } from './assembly/AssemblyRoom';
 import { FillRoom } from './electrolyte/FillRoom';
 import { WalzingRoom } from './walzing/WalzingRoom';
 import { FormationModule } from './formation/FormationRoom';
-import { AgingModule } from './aging/AgingModule';
 
 const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   [StageId.STORAGE]: StorageModule,
@@ -28,7 +27,6 @@ const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   [StageId.ELECTROLYTE_705]: () => <FillRoom box="floor7-room5" />,
   [StageId.WALZING]: WalzingRoom,
   [StageId.FORMATION]: FormationModule,
-  [StageId.AGING]: AgingModule,
 };
 
 /** Если activeTab начинается с "stage:" — возвращаем компонент комнаты, иначе null */

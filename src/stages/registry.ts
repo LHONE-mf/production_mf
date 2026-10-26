@@ -23,7 +23,6 @@ export const STAGES: StageMeta[] = [
   { id: StageId.ELECTROLYTE_705, title: 'Заливка (7 эт. / к.5)', icon: '🏭', tools: ['Партии со сборки', 'Дозировка/вакуум/выдержка', 'Журнал заливки', 'Передача на вальцовку', 'Комментарии'] },
   { id: StageId.WALZING,   title: 'Вальцовка',               icon: '🎡', tools: ['Партии с заливки (7 эт.)', 'Диаметр до/после, усилие, проходы', 'Журнал вальцовки', 'Комментарии'] },
   { id: StageId.FORMATION,   title: 'Формирование (ЧЦЦ)',      icon: '⚡', tools: ['Профили ЦЦ', 'Токи/напряжения', 'Журнал', 'Комментарии'] },
-  { id: StageId.AGING,       title: 'Старение',                icon: '⏳', tools: ['Таблица старения', 'Отбор брака', 'Журнал', 'Комментарии'] },
 ];
 
 export function getStageMeta(id: StageId): StageMeta {

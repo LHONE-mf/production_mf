@@ -15,7 +15,6 @@ export enum StageId {
   ELECTROLYTE_705 = 'electrolyte-705', // Заливка электролита: бокс 7 этаж, к.5
   WALZING = 'walzing',       // Вальцовка (обжим залитых ячеек, после 7 этажа)
   FORMATION = 'formation',     // Формирование (ЧЦЦ)
-  AGING = 'aging',             // Старение
 }
 
 export const STAGE_LABELS: Record<StageId, string> = {
@@ -30,14 +29,13 @@ export const STAGE_LABELS: Record<StageId, string> = {
   [StageId.ELECTROLYTE_705]: 'Заливка электролита (7 эт. / к.5)',
   [StageId.WALZING]: 'Вальцовка',
   [StageId.FORMATION]: 'Формирование (ЧЦЦ)',
-  [StageId.AGING]: 'Старение',
 };
 
 // Порядок техпроцесса (для навигации и KPI-цепочки)
 export const STAGE_ORDER: StageId[] = [
   StageId.STORAGE, StageId.SLURRY, StageId.COATING, StageId.CALENDARING,
   StageId.CUTTING, StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
-  StageId.ELECTROLYTE_705, StageId.WALZING, StageId.FORMATION, StageId.AGING,
+  StageId.ELECTROLYTE_705, StageId.WALZING, StageId.FORMATION,
 ];
 
 // ============================================================
