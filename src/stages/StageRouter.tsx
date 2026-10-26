@@ -9,7 +9,7 @@ import { CoatingModule } from './coating/CoatingModule';
 import { CalendaringModule } from './calendaring/CalendaringRoom';
 import { CuttingModule } from './cutting/CuttingRoom';
 import { SortingModule } from './sorting/SortingRoom';
-import { AssemblyModule } from './assembly/AssemblyModule';
+import { AssemblyModule } from './assembly/AssemblyRoom';
 import { ElectrolyteModule } from './electrolyte/ElectrolyteModule';
 import { FormationModule } from './formation/FormationModule';
 import { AgingModule } from './aging/AgingModule';
