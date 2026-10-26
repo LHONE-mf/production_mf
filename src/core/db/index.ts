@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -23,6 +23,9 @@ export class AppDatabase extends Dexie {
   // Комната нарезки электродов
   cuttingRolls!: Table<CuttingIncoming, string>; // входящие рулоны с каландра + задание технолога
   cuttingRuns!: Table<CutRun, string>;           // журнал нарезки → сортировка
+  // Комната сортировки электродов
+  sortSpecs!: Table<SortSpec, string>;           // спецификации технолога (параметры из КД)
+  sortRuns!: Table<SortRun, string>;             // журнал сортировки (разнос по категориям)
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -78,6 +81,12 @@ export class AppDatabase extends Dexie {
     this.version(8).stores({
       cuttingRolls: 'id, electrodeType, createdAt',              // CuttingIncoming[]
       cuttingRuns: 'id, incomingId, workerId, createdAt, updatedAt', // CutRun[]
+    });
+
+    // v9: комната сортировки электродов — спецификации технолога (КД) + журнал сортировки
+    this.version(9).stores({
+      sortSpecs: 'id, batchName, cutRunId, electrodeType, createdAt, updatedAt', // SortSpec[]
+      sortRuns: 'id, specId, batchName, workerId, createdAt, updatedAt',         // SortRun[]
     });
   }
 }

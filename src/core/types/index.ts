@@ -205,6 +205,8 @@ export type SyncPacketType =
   | 'calender-result' // результат прокатки → нарезка / master
   | 'cutting-roll'    // рулон + задание технолога: каландр/технолог → нарезка
   | 'cut-run'         // запись журнала нарезки → сортировка / master
+  | 'sort-spec'       // спецификация сортировки от технолога (параметры из КД) → сортировка
+  | 'sort-run'        // результат сортировки партии → мастер/технолог (master)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
@@ -241,6 +243,59 @@ export interface CutRun {
   defectCount: number;         // количество с дефектами
   defects?: string;            // виды дефектов / обрывы
   breaks?: number;             // число обрывов ленты
+  notes?: string;
+  workerId: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ============================================================
+// КОМНАТА СОРТИРОВКИ ЭЛЕКТРОДОВ: партия с нарезки (cut-run) +
+// спецификация технолога (параметры из КД) → разнесение годных
+// электродов по категориям → журнал сортировки → master.
+// ============================================================
+
+// Категория сортировки (строка спецификации технолога из КД)
+export interface SortCategory {
+  name: string;               // название категории/сорта, напр. «Сорт А»
+  criteria: string;           // критерии из КД: толщина, размеры, сопротивление и т.п.
+  minUm?: number;             // допуск: мин., мкм (если параметр — толщина)
+  maxUm?: number;             // допуск: макс., мкм
+  notes?: string;             // примечание технолога
+}
+
+// Спецификация сортировки от технолога (master) — параметры из КД
+export interface SortSpec {
+  id: string;                 // = sortRunKey партии или отдельный id
+  batchName: string;          // название партии нарезанных электродов (из CutRun/incoming)
+  incomingId?: string;        // CuttingIncoming.id
+  cutRunId?: string;          // CutRun.id — конкретная партия нарезки
+  electrodeType: ElectrodeShape;
+  coatingType?: string;       // тип покрытия (анод/катод, материал)
+  parameterName: string;      // сортируемый параметр (напр. «толщина электрода», «омич. сопр.»)
+  unit: string;               // единица измерения (мкм, мОм·см², мм…)
+  categories: SortCategory[]; // категории с допусками из КД
+  techNotes?: string;
+  authorId: string;           // технолог, выдавший спецификацию
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Одна строка разноса: сколько электродов отнесено в категорию
+export interface SortBucket {
+  categoryName: string;       // = SortCategory.name
+  count: number;              // количество электродов в категории
+}
+
+// Результат сортировки партии (запись журнала оператора)
+export interface SortRun {
+  id: string;
+  specId: string;             // SortSpec.id по которой сортировали
+  batchName: string;          // название партии (пришла с нарезки)
+  goodCount: number;          // сколько годных пришло с нарезки (контрольная сумма входа)
+  buckets: SortBucket[];      // разнесено по категориям
+  rejected: number;           // не подошли ни под одну категорию / брак при сортировке
+  defects?: string;           // замеченные дефекты в ходе сортировки
   notes?: string;
   workerId: string;
   createdAt: number;

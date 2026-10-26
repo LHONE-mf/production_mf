@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -153,6 +153,32 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.cuttingRuns.put(cr);
         return { ok: true, message: `✂️ Партия нарезки получена: годных ${cr.goodCount}, дефектных ${cr.defectCount} → на сортировку` };
+      }
+      case 'sort-spec': {
+        // Спецификация сортировки от технолога (параметры из КД) → комната сортировки.
+        const ss = p.payload as SortSpec;
+        if (!ss.id || !ss.batchName || !Array.isArray(ss.categories) || ss.categories.length === 0) {
+          return { ok: false, message: 'Спецификация сортировки повреждена (нет партии или категорий)' };
+        }
+        const prev = await db.sortSpecs.get(ss.id);
+        if (prev && !p.forced && prev.updatedAt >= ss.updatedAt) {
+          return { ok: true, message: `Спецификация «${ss.batchName}» уже новее — пропущено` };
+        }
+        await db.sortSpecs.put(ss);
+        return { ok: true, message: `📐 Технолог задал сортировку «${ss.batchName}»: ${ss.parameterName}, категорий: ${ss.categories.length}` };
+      }
+      case 'sort-run': {
+        // Результат сортировки партии → мастер/технолог (master). Свежесть по updatedAt; forced — безусловно.
+        const sr = p.payload as SortRun;
+        if (!sr.id || !Array.isArray(sr.buckets)) {
+          return { ok: false, message: 'Запись сортировки повреждена' };
+        }
+        const existing = await db.sortRuns.get(sr.id);
+        if (existing && !p.forced && existing.updatedAt >= sr.updatedAt) {
+          return { ok: true, message: `Сортировка партии «${sr.batchName}» уже новее — пропущено` };
+        }
+        await db.sortRuns.put(sr);
+        return { ok: true, message: `🔀 Сортировка «${sr.batchName}» принята: категорий ${sr.buckets.length}, отбраковано ${sr.rejected}` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же
