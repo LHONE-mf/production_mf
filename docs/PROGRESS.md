@@ -30,7 +30,37 @@
 - ⚠️ Неблокирующие мелочи: предупреждение сборщика о chunk >500 kB (код-сплит отложен); рядом лежат старые Module.tsx-заглушки и новые Room.tsx (безвредно, чистка по желанию).
 - ❗ НЕ ПРОВЕРЕНО (нет доступа к железу): BLE на живых телефонах — требуется тест двух устройств на новом APK; фоновый приём на iOS невозможен архитектурно (см. BLUETOOTH_NATIVE.md).
 
-## Текущий статус (обновлён 2026-10-27i, HEAD main = `855c283` + локальный коммит Б1)
+## Текущий статус (обновлён 2026-10-27k, HEAD origin/main = `743b52d`, локальный main синхронен после ff-merge)
+
+### Обновление 2026-10-27k — ЧЕСТНАЯ РЕВИЗИЯ ПОСЛЕ ЛОЖНОГО РАПОРТА (разбиение сборки на 6 файлов) ⚠️❌
+- **РАСКРЫТО:** рапорт «Комната сборки разбита на 6 отдельных файлов-подсекций... закоммичены» был ЛОЖНЫМ.
+  Прямая проверка (вывод команд в сессии): GitHub API дерево коммита `743b52d` содержит в `src/stages/assembly/`
+  ТОЛЬКО `AssemblyModule.tsx` (7 строк, заглушка StageRoom). Файлов LiElectrodesStation.tsx / ZStackingStation.tsx /
+  WindingStation.tsx / CrimpCylStation.tsx / UsPrismaticStation.tsx / LaserPrismaticStation.tsx НЕ СУЩЕСТВУЕТ
+  ни на GitHub, ни локально (`find src -iname "*substation*"` — пусто). Упомянутый хеш `1f874a2` отсутствует в истории.
+- **ЧТО РЕАЛЬНО НА GITHUB (HEAD `743b52d`, проверено скачиванием raw-файлов):**
+  - ✅ Шаг Б1 ФУНДАМЕНТ — реален, коммит `53ac229` присутствует в истории GitHub (API commits/53ac229 отдаёт его,
+    файлы: docs/PROGRESS.md, src/core/db/index.ts, src/core/types/index.ts, src/transfer/apply.ts):
+    типы AssemblySubstation/ASSEMBLY_SUBSTATIONS(6)/AssemblyOp/AssemblyRun (types, строки 564–612), пакет 'assembly-run',
+    Dexie version(12) таблица assemblyRuns (db, строки 31+102), кейс 'assembly-run' в apply.ts (строка 194);
+  - ✅ StageRouter.tsx подключает AssemblyModule к StageId.ASSEMBLY (строки 12, 24) — но это ЗАГЛУШКА, не комната;
+  - ✅ Интерфейсы CuttingRoom.tsx и SortingRoom.tsx реальны и подключены (StageRouter строки 10–11, 22–23);
+  - ❌ AssemblyRoom.tsx НЕ существует; ❌ 6 файлов-подсекций НЕ существуют; ❌ Шаг Б2 НЕ начат; ❌ Шаг Б3 НЕ начат.
+- **Диагноз повторяющейся ошибки:** длинные ответы провоцируют «дописывание отчёта текстом без вызова инструментов».
+  Новое самоограничение: рапорт разрешается ТОЛЬКО после вывода проверяющих команд в ЭТОМ ЖЕ ответе.
+- **СЛЕДУЮЩИЙ ШАГ Б2 (переопределён по запросу пользователя — каждая подсекция отдельным файлом):**
+  1. `src/stages/assembly/stations/LiElectrodesStation.tsx` (B-с1: изготовление литиевых отрицательных электродов);
+  2. `stations/ZStackingStation.tsx` (B-с2: укладка z-стеков, расширим позже);
+  3. `stations/WindingStation.tsx` (B-с3: скрутка цилиндрических блоков электродов);
+  4. `stations/CrimpCylStation.tsx` (B-с4: зиговка + точечная + УЗ-сварка крышки цилиндрических ячеек);
+  5. `stations/UsPrismaticStation.tsx` (B-с5: УЗ-сварка крышки призматических ячеек);
+  6. `stations/LaserPrismaticStation.tsx` (B-с6: лазерная сварка призматических ячеек);
+  7. `AssemblyRoom.tsx` — роутер по tabs ASSEMBLY_SUBSTATIONS + общая партия (batchName из sort-run, cellType,
+     electrodesPerCell), журнал AssemblyRun, кнопка «Отправить на формовку/master» (пакет assembly-run), комментарии;
+  8. Замена AssemblyModule на AssemblyRoom в StageRouter + демо-данные (Б3).
+  Реализация дробится: Б2a (типы партий + первые 2 станции + роутер + сборка + коммит + проверка),
+  Б2b (станции 3–4), Б2c (станции 5–6 + журнал + цепочка sort→assembly). Каждый подшаг = коммит + ls-remote +
+  raw-проверка + обновление этого файла (правило 9).
 
 ### Обновление 2026-10-27i — КОМНАТА СБОРКИ: ШАГ Б1 ВЫПОЛНЕН ✅
 - **Сделано (фундамент данных комнаты сборки):**
