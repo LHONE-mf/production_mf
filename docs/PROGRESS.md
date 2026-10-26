@@ -23,7 +23,7 @@
 - Шаг 2: `src/stages/cutting/CuttingRoom.tsx` — вкладки 📥 Рулоны с каландра / ✂️ Нарезка (калькулятор выхода: полосы и призматические, ширина ножа) / 📒 Журнал / 💬 Комментарии; отправка cut-run на сортировку + forced master.
 - Шаг 3: комната подключена в StageRouter (SORTING → CuttingModule), registry: «Нарезка электродов»; в JournalTab каландра — авто-формирование пакета cutting-roll при сохранении прокатки без дефектов; демо-рулоны cal-demo-001/002 в initializeDatabase.
 - Проверки: tsc --noEmit exit 0; npm run build успешен.
-- СТАТУС: изменения локальные, коммит+пуш в процессе этой сессии (проверять по git ls-remote ниже).
+- СТАТУС: ✅ закоммичено и проверено на GitHub — HEAD main = `65ce978`, CuttingRoom.tsx HTTP 200, CuttingModule в StageRouter (2 совпадения).
 
 ### Git
 - Ветка `main`, HEAD = `d7c70b5`, синхронизирован с `origin/main` (проверено `git ls-remote`).
