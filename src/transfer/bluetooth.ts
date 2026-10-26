@@ -15,6 +15,16 @@ import {
   numbersToDataView,
   dataViewToNumbers,
 } from '@capacitor-community/bluetooth-le';
+import BleBridge from './BleBridge';
+
+/** Нативный плагин доступен только в Android-APK */
+const nativeBleAvailable = (): boolean => {
+  try {
+    return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+  } catch {
+    return false;
+  }
+};
 
 export const isNativePlatform = (): boolean => {
   try {
@@ -166,6 +176,48 @@ export async function startReceiveMode(
     return async () => {};
   }
 
+  // ── Основной путь: нативный плагин BleBridge (scan + GATT read) ──
+  if (nativeBleAvailable()) {
+    try {
+      let handle: { remove: () => void } | null = null;
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let stopped = false;
+
+      const cleanup = async () => {
+        if (stopped) return;
+        stopped = true;
+        if (timer) clearTimeout(timer);
+        try { if (handle) await handle.remove(); } catch { /* ignore */ }
+        try { await BleBridge.stopReceive(); } catch { /* ignore */ }
+      };
+
+      handle = await BleBridge.addListener('packet', (ev) => {
+        if (stopped) return;
+        const idx = ev.packet.indexOf('LIP:');
+        if (idx < 0) return;
+        const payload = ev.packet.slice(idx);
+        try { JSON.parse(payload); } catch { return; }
+        log(`Пакет получен по BLE (${ev.len} байт, RSSI ${ev.rssi}) ✓`, 'ok');
+        onPacket(payload);
+      });
+
+      await BleBridge.startReceive();
+      log('Режим приёма активен (нативный BLE). Ждём передачи…', 'ok');
+
+      timer = setTimeout(() => {
+        if (!stopped) {
+          log('Приём остановлен по таймауту (нет активности).', 'err');
+          cleanup();
+        }
+      }, timeoutMs);
+
+      return cleanup;
+    } catch (e: any) {
+      log('Нативный BLE недоступен (' + String(e?.message || e) + '), пробую запасной путь…', 'info');
+    }
+  }
+
+  // ── Запасной путь: библиотека bluetooth-le (central + notifications) ──
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const seen = new Map<string, { chunks: number[]; expectedLen: number; checksum: number }>();
@@ -294,6 +346,37 @@ export async function sendPacketOverBle(
     log('Отправка по Bluetooth доступна только в Android-приложении. Здесь — QR/текст.', 'err');
     return false;
   }
+
+  // ── Основной путь: нативный плагин — широковещательная раздача пакета ──
+  if (nativeBleAvailable()) {
+    try {
+      const bytes = encodeBytes(encoded);
+      log(`Раздаю пакет по BLE (${bytes.length} байт). Приёмники должны быть в режиме приёма…`, 'info');
+      const res = await BleBridge.startAdvertise({ packet: encoded });
+      let clients = 0;
+      const c1 = await BleBridge.addListener('txClientConnected', () => {
+        clients++;
+        log(`Приёмник подключился (${clients}). Отдаю данные…`, 'ok');
+      });
+      // Ждём 8 секунд — за это время все запустившие приём устройства успеют
+      // просканировать, подключиться и прочитать характеристику.
+      await new Promise((r) => setTimeout(r, 8000));
+      await c1.remove();
+      await BleBridge.stopAdvertise();
+      if (clients > 0) {
+        log(`Пакет роздан ${clients} приёмнику(ам) по Bluetooth ✓`, 'ok');
+      } else {
+        log('Ни один приёмник не подключился. Проверьте, что на них включён «Режим приёма».', 'err');
+        return false;
+      }
+      void res;
+      return true;
+    } catch (e: any) {
+      log('Нативная раздача недоступна (' + String(e?.message || e) + '), пробую ручное подключение…', 'info');
+    }
+  }
+
+  // ── Запасной путь: системный диалог + запись в GATT приёмника ──
   try {
     log('Включаем Bluetooth…', 'info');
     await ensureInitialized(log);

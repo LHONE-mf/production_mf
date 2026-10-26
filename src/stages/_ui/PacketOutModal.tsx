@@ -82,8 +82,9 @@ export function PacketOutModal({ packet, onClose }: Props) {
           <div className="space-y-3">
             <p className="text-xs text-slate-400">
               Работает в Android-приложении (APK). На принимающем устройстве откройте
-              «Синхронизация → Bluetooth» и включите <b>режим приёма</b>, затем нажмите
-              «Отправить по Bluetooth» здесь и выберите это устройство в списке.
+              «Синхронизация → Bluetooth» и включите <b>режим приёма</b>, затем здесь нажмите
+              <b> «Раздать пакет»</b> — устройство само раздаст пакет всем приёмникам рядом
+              (широковещательно, без выбора устройства). В веб-версии Bluetooth недоступен.
               {!bt.available && (
                 <span className="text-amber-400 block mt-1">
                   ⚠ В веб-версии Bluetooth недоступен — используйте QR или текст.
@@ -112,7 +113,7 @@ export function PacketOutModal({ packet, onClose }: Props) {
                   disabled={!bt.available || !encoded}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white font-medium"
                 >
-                  📤 Отправить по BT
+                  📤 Раздать пакет
                 </button>
               </div>
             )}
