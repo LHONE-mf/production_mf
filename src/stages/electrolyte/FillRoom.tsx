@@ -11,7 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
-  ElectrolyteBox, ElectrolyteIncoming, FillRun, SyncPacket, StageId, UserRole,
+  ElectrolyteBox, ElectrolyteIncoming, FillRun, FormationIncoming, SyncPacket, StageId, UserRole,
   WalzingIncoming,
 } from '../../core/types';
 import { db } from '../../core/db';
@@ -63,6 +63,7 @@ export function FillRoom({ box }: Props) {
     if (!ar) return;
     const ei: ElectrolyteIncoming = {
       id: uuidv4(), box, batchName: ar.batchName, cellType: ar.cellType,
+      serialRange: ar.serialRange,   // номера аккумуляторов мигрируют со сборки
       cellsIn: ar.cellsOut, fromAssemblyRunId: ar.id,
       receivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
@@ -75,7 +76,8 @@ export function FillRoom({ box }: Props) {
 
   // ------- форма записи заливки -------
   const [form, setForm] = useState({
-    batchName: '', electrolyteName: '', doseMin: '', doseActual: '',
+    batchName: '', serialPrefix: '', serialStart: '', serialEnd: '',
+    electrolyteName: '', doseMin: '', doseActual: '',
     vacuumKpa: '', pressureKpa: '', dwellMin: '', temperatureC: '', humidityPpm: '',
     cellsFilled: '', cellsScrap: '', defects: '', comment: '',
   });
@@ -85,8 +87,12 @@ export function FillRoom({ box }: Props) {
   const saveRun = async (sendAfter: boolean) => {
     if (!currentUser || !form.batchName.trim()) return;
     const now = new Date().toISOString();
+    const ss = Number(form.serialStart); const se = Number(form.serialEnd);
+    const sr = (Number.isFinite(ss) && Number.isFinite(se) && se >= ss)
+      ? { prefix: form.serialPrefix.trim() || undefined, start: ss, end: se } : undefined;
     const run: FillRun = {
       id: uuidv4(), box, batchName: form.batchName.trim(),
+      serialRange: sr,
       electrolyteName: form.electrolyteName.trim() || undefined,
       doseMin: form.doseMin ? Number(form.doseMin) : undefined,
       doseActual: form.doseActual ? Number(form.doseActual) : undefined,
@@ -111,7 +117,7 @@ export function FillRoom({ box }: Props) {
       v: 1, type: 'fill-run', stage: meta.stage, payload: run,
       from: currentUser.id, ts: Date.now(), forced: isMaster || undefined,
     });
-    setForm({ batchName: '', electrolyteName: '', doseMin: '', doseActual: '', vacuumKpa: '', pressureKpa: '', dwellMin: '', temperatureC: '', humidityPpm: '', cellsFilled: '', cellsScrap: '', defects: '', comment: '' });
+    setForm({ batchName: '', serialPrefix: '', serialStart: '', serialEnd: '', electrolyteName: '', doseMin: '', doseActual: '', vacuumKpa: '', pressureKpa: '', dwellMin: '', temperatureC: '', humidityPpm: '', cellsFilled: '', cellsScrap: '', defects: '', comment: '' });
     setTab('journal');
   };
 
@@ -186,6 +192,12 @@ export function FillRoom({ box }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Партия (название)</label>
               <input className={inputCls} value={form.batchName} onChange={set('batchName')} placeholder="напр. ПАРТ-2026-041" /></div>
+            <div><label className={labelCls}>Номера АК: префикс / нач. / кон.</label>
+              <span className="flex gap-1">
+                <input className={inputCls + ' w-20'} value={form.serialPrefix} onChange={set('serialPrefix')} placeholder="MF-" />
+                <input className={inputCls + ' w-24'} type="number" value={form.serialStart} onChange={set('serialStart')} placeholder="1001" />
+                <input className={inputCls + ' w-24'} type="number" value={form.serialEnd} onChange={set('serialEnd')} placeholder="1200" />
+              </span></div>
             <div><label className={labelCls}>Марка электролита</label>
               <input className={inputCls} value={form.electrolyteName} onChange={set('electrolyteName')} placeholder="напр. LiPF6 EC/DMC" /></div>
             <div><label className={labelCls}>Доза целевая, мг</label>
@@ -239,6 +251,7 @@ export function FillRoom({ box }: Props) {
                       const now = new Date().toISOString();
                       const wi: WalzingIncoming = {
                         id: r.id, batchName: r.batchName, cellType: undefined,
+                        serialRange: r.serialRange,
                         cellsIn: r.cellsFilled, electrolyteName: r.electrolyteName,
                         fromFillRunId: r.id, receivedAt: now, updatedAt: now,
                       };
@@ -246,6 +259,20 @@ export function FillRoom({ box }: Props) {
                     }}
                       className="text-xs bg-amber-800 hover:bg-amber-700 text-white rounded px-2 py-1"
                       title="Отправить партию залитых ячеек на вальцовку">🎡 На вальцовку ▸</button>
+                  )}
+                  {box === 'dry-room' && r.cellsFilled > 0 && (
+                    <button onClick={() => {
+                      if (!currentUser) return;
+                      const now = new Date().toISOString();
+                      const fi: FormationIncoming = {
+                        id: r.id, sourceBox: box, batchName: r.batchName,
+                        serialRange: r.serialRange, cellsIn: r.cellsFilled,
+                        fromFillRunId: r.id, receivedAt: now, updatedAt: now,
+                      };
+                      setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                    }}
+                      className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
+                      title="Отправить партию (с номерами АК) на формирование">⚡ На формовку ▸</button>
                   )}
                   <button onClick={() => setOutPacket({ v: 1, type: 'fill-run', stage: meta.stage, payload: r, from: currentUser?.id ?? 'unknown', ts: Date.now(), forced: isMaster || undefined })}
                     className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>

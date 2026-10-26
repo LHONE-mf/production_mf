@@ -12,6 +12,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import {
+  SerialRange,
   AssemblyOp, AssemblyRun, AssemblySubstation, CellType, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
@@ -50,6 +51,18 @@ export function AssemblyModule() {
     [runs, selectedId],
   );
 
+  // Номера аккумуляторов партии: вводятся на сборке, мигрируют со сборки → заливка → формовка
+  const [serialForm, setSerialForm] = useState({ prefix: '', start: '', end: '' });
+
+  const saveSerialRange = async () => {
+    if (!selected) return;
+    const start = Number(serialForm.start);
+    const end = Number(serialForm.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
+    const sr: SerialRange = { prefix: serialForm.prefix.trim() || undefined, start, end };
+    await db.assemblyRuns.put({ ...selected, serialRange: sr, updatedAt: new Date().toISOString() });
+  };
+
   const addComment = async (text: string) => {
     if (!currentUser || !text.trim()) return;
     await db.stageComments.add({
@@ -67,6 +80,7 @@ export function AssemblyModule() {
     const run: AssemblyRun = {
       id: uuidv4(),
       batchName: sr.batchName,
+      serialRange: undefined,        // номера аккумуляторов задаёт сборщик при взятии партии (мигрируют на заливку → формовку)
       cellType: (spec?.electrodeType === 'strip' ? 'cylindrical' : 'prismatic') as CellType,
       electrodeType: spec?.electrodeType,
       coatingType: spec?.coatingType,
@@ -143,12 +157,28 @@ export function AssemblyModule() {
               </option>
             ))}
           </select>
-          {selected && (
-            <button onClick={() => sendToMaster(selected, false)}
-              className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
-              📤 Отправить результат (QR/BLE/текст)
-            </button>
-          )}
+          {selected && (() => {
+            const sr = selected.serialRange;
+            return (
+              <span className="flex items-center gap-1.5 flex-wrap">
+                <input className={inputCls + ' w-20'} placeholder="префикс" value={serialForm.prefix}
+                  onChange={(e) => setSerialForm((f) => ({ ...f, prefix: e.target.value }))} />
+                <input className={inputCls + ' w-24'} placeholder="№ нач." type="number" value={serialForm.start}
+                  onChange={(e) => setSerialForm((f) => ({ ...f, start: e.target.value }))} />
+                <input className={inputCls + ' w-24'} placeholder="№ кон." type="number" value={serialForm.end}
+                  onChange={(e) => setSerialForm((f) => ({ ...f, end: e.target.value }))} />
+                <button onClick={saveSerialRange}
+                  className="px-2 py-1 bg-indigo-700 hover:bg-indigo-600 rounded text-xs text-white">🔢 Задать номера</button>
+                <span className="text-xs text-slate-300" title="Диапазон номеров аккумуляторов партии — уходит на заливку и формирование">
+                  № {sr ? `${sr.prefix ?? ''}${sr.start}…${sr.prefix ?? ''}${sr.end}` : 'не заданы'}
+                </span>
+                <button onClick={() => sendToMaster(selected, false)}
+                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
+                  📤 Отправить результат (QR/BLE/текст)
+                </button>
+              </span>
+            );
+          })()}
         </div>
       )}
 

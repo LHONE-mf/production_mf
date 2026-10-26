@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { WalzingIncoming, WalzRun, SyncPacket, StageId, UserRole } from '../../core/types';
+import { WalzingIncoming, WalzRun, SerialRange, FormationIncoming, SyncPacket, StageId, UserRole } from '../../core/types';
 import { db } from '../../core/db';
 import { useAuthStore } from '../../core/store/authStore';
 import { PacketOutModal } from '../_ui/PacketOutModal';
@@ -47,8 +47,10 @@ export function WalzingRoom() {
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const [incomingSerial, setIncomingSerial] = useState<{ id: string; sr?: SerialRange } | null>(null);
   const takeIncoming = (wi: WalzingIncoming) => {
     setForm((f) => ({ ...f, batchName: wi.batchName, cellsIn: String(wi.cellsIn) }));
+    setIncomingSerial({ id: wi.id, sr: wi.serialRange }); // номера АК мигрируют с заливки
     setTab('new');
   };
 
@@ -58,6 +60,7 @@ export function WalzingRoom() {
     const run: WalzRun = {
       id: uuidv4(),
       batchName: form.batchName.trim(),
+      serialRange: incomingSerial?.sr,
       machineNo: form.machineNo.trim() || undefined,
       incomingDiameter: form.incomingDiameter ? Number(form.incomingDiameter) : undefined,
       finalDiameter: form.finalDiameter ? Number(form.finalDiameter) : undefined,
@@ -189,6 +192,18 @@ export function WalzingRoom() {
             <div key={r.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-white font-medium">{r.batchName}</span>
+                <button onClick={() => {
+                    if (!currentUser) return;
+                    const now = new Date().toISOString();
+                    const fi: FormationIncoming = {
+                      id: r.id, sourceBox: 'walzing', batchName: r.batchName,
+                      serialRange: r.serialRange, cellsIn: r.cellsOut,
+                      fromWalzRunId: r.id, receivedAt: now, updatedAt: now,
+                    };
+                    setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                  }}
+                    className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
+                    title="Отправить партию (с номерами АК) на формирование">⚡ На формовку ▸</button>
                 <button onClick={() => setOutPacket({ v: 1, type: 'walz-run', stage, payload: r, from: currentUser?.id ?? 'unknown', ts: Date.now(), forced: isMaster || undefined })}
                   className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>
               </div>

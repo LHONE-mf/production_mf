@@ -12,7 +12,7 @@ import { SortingModule } from './sorting/SortingRoom';
 import { AssemblyModule } from './assembly/AssemblyRoom';
 import { FillRoom } from './electrolyte/FillRoom';
 import { WalzingRoom } from './walzing/WalzingRoom';
-import { FormationModule } from './formation/FormationModule';
+import { FormationModule } from './formation/FormationRoom';
 import { AgingModule } from './aging/AgingModule';
 
 const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {

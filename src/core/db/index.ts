@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -35,6 +35,9 @@ export class AppDatabase extends Dexie {
   // Вальцовка (после заливки на 7 этаже): обжим залитых ячеек
   walzingIncoming!: Table<WalzingIncoming, string>;          // входящие партии с заливки
   walzRuns!: Table<WalzRun, string>;                         // журнал вальцовки
+  // Формировка (связана с заливкой в сухой комнате): номера АК мигрируют сборка → заливка → формовка
+  formationIncoming!: Table<FormationIncoming, string>;      // входящие партии на формовку
+  formationRuns!: Table<FormationRun, string>;               // журнал формировки
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -118,6 +121,12 @@ export class AppDatabase extends Dexie {
     this.version(14).stores({
       walzingIncoming: 'id, batchName, receivedAt, updatedAt',                    // WalzingIncoming[]
       walzRuns: 'id, batchName, workerId, createdAt, updatedAt',                  // WalzRun[]
+    });
+
+    // v15: формирование (ЧЦЦ) — входящие партии с номерами АК + журнал формовки
+    this.version(15).stores({
+      formationIncoming: 'id, batchName, sourceBox, receivedAt, updatedAt',       // FormationIncoming[]
+      formationRuns: 'id, batchName, workerId, startDate, createdAt, updatedAt',  // FormationRun[]
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.

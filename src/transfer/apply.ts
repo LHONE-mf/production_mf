@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -248,6 +248,28 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.walzRuns.put(wr);
         return { ok: true, message: `🎡 Вальцовка «${wr.batchName}» принята: годных ${wr.cellsOut}, брак ${wr.cellsScrap}` };
+      }
+      case 'formation-in': {
+        // Партия на формировку (из сухой комнаты заливки или с вальцовки), с номерами АК
+        const fi = p.payload as FormationIncoming;
+        if (!fi.id || !fi.batchName) return { ok: false, message: 'Партия на формировку повреждена' };
+        const existing = await db.formationIncoming.get(fi.id);
+        if (existing && !p.forced && existing.updatedAt >= fi.updatedAt) {
+          return { ok: true, message: `Партия «${fi.batchName}» на формировке уже новее — пропущено` };
+        }
+        await db.formationIncoming.put(fi);
+        return { ok: true, message: `⚡ На формировку принята партия «${fi.batchName}»: ${fi.cellsIn} яч.` };
+      }
+      case 'formation-run': {
+        // Результат формировки → master / старение
+        const fr = p.payload as FormationRun;
+        if (!fr.id || !fr.batchName) return { ok: false, message: 'Запись формировки повреждена' };
+        const existing = await db.formationRuns.get(fr.id);
+        if (existing && !p.forced && existing.updatedAt >= fr.updatedAt) {
+          return { ok: true, message: `Формировка «${fr.batchName}» уже новее — пропущено` };
+        }
+        await db.formationRuns.put(fr);
+        return { ok: true, message: `⚡ Формировка «${fr.batchName}» принята: годных ${fr.cellsOut}, КЭ ${fr.coulombEfficiencyPct ?? '—'}%` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же
