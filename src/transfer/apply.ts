@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -126,6 +126,20 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.calenderRuns.put(c);
         return { ok: true, message: `Результат прокатки получен${c.hasDefects ? ' ⚠ с дефектами' : ''} → доступен для нарезки` };
+      }
+      case 'chat': {
+        // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же
+        // сообщения просто обновит ttl и не создаст дубль.
+        const m = p.payload as ChatMessage;
+        if (!m.id || !m.text) return { ok: false, message: 'Пустое сообщение чата' };
+        const existing = await db.chatMessages.get(m.id);
+        if (existing) {
+          // уже есть — обновим ttl (для дальнейшей ретрансляции), дубликат игнорируем
+          await db.chatMessages.put({ ...existing, ttl: Math.max(existing.ttl ?? 0, m.ttl ?? 0) });
+          return { ok: true, message: `Чат: дубликат «${m.fromName}» пропущен` };
+        }
+        await db.chatMessages.put(m);
+        return { ok: true, message: `💬 Сообщение от ${m.fromName}` };
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести

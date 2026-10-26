@@ -203,6 +203,7 @@ export type SyncPacketType =
   | 'coat-run'      // запись журнала нанесения покрытия (slave → master)
   | 'roll-spec'     // рулон намазка → технологу (master) → каландрирование
   | 'calender-result' // результат прокатки → нарезка / master
+  | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
 // ============================================================
@@ -255,6 +256,23 @@ export interface CalenderRun {
   createdAt: number;
   updatedAt: number;
 }
+
+// ============================================================
+// МЕШ-ЧАТ (офлайн): сообщения распространяются по BLE-mesh,
+// QR и тексту тем же механизмом LIP-пакетов.
+// ============================================================
+export interface ChatMessage {
+  id: string;            // id = from + ':' + ts (детерминированный — дедупликация в mesh)
+  from: string;          // User.id автора
+  fromName: string;      // имя автора для отображения (на случай, если пользователя ещё нет в базе)
+  role?: UserRole;       // роль автора (для бейджа)
+  text: string;
+  ts: number;            // миллисекунды
+  ttl: number;           // счётчик ретрансляций: стартует с MAX_HOPS, уменьшается при каждой пересылке
+}
+
+export const CHAT_MAX_HOPS = 5;   // сколько раз пакет может быть ретранслирован
+export const CHAT_TTL_START = CHAT_MAX_HOPS;
 
 export interface SyncPacket {
   v: 1;

@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -20,6 +20,8 @@ export class AppDatabase extends Dexie {
   // Комната каландрирования
   rollSpecs!: Table<RollSpec, string>;         // рулоны, пришедшие с намазки (roll-spec)
   calenderRuns!: Table<CalenderRun, string>;   // журнал прокатки (параметры, зазоры, дефекты)
+  // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
+  chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
   constructor() {
     super('LiIonProductionDB');
@@ -62,6 +64,11 @@ export class AppDatabase extends Dexie {
     this.version(6).stores({
       rollSpecs: 'id, mixName, createdAt',            // RollSpec[] — пришли от участка нанесения
       calenderRuns: 'id, rollId, taskId, workerId, createdAt, updatedAt', // CalenderRun[]
+    });
+
+    // v7: меш-чат — сообщения, доставленные по Bluetooth/QR/тексту
+    this.version(7).stores({
+      chatMessages: 'id, from, ts',
     });
   }
 }

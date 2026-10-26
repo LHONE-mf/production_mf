@@ -169,3 +169,13 @@ export function PacketOutModal({ packet, onClose }: Props) {
     </div>
   );
 }
+
+// Небольшой помощник: только QR-картинка из закодированного текста пакета.
+// Используется в чате (ChatModule), чтобы не дублировать модалку целиком.
+export function PacketQrView({ text }: { text: string }) {
+  return (
+    <div className="bg-white rounded-lg p-3 flex justify-center">
+      <QRCodeSVG value={text} size={220} />
+    </div>
+  );
+}

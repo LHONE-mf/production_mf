@@ -7,7 +7,7 @@ import { UserRole, Task } from '../../core/types';
 import { STAGES } from '../../stages/registry';
 import { 
   Battery, LogOut, LayoutDashboard, Users, ClipboardList, 
-  Bluetooth, Radio, BarChart3, Settings, Menu, X 
+  Bluetooth, Radio, BarChart3, Settings, Menu, X, MessageSquare
 } from 'lucide-react';
 
 interface AppLayoutProps {
@@ -42,6 +42,12 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       id: 'tasks',
       label: 'Задания',
       icon: <ClipboardList className="w-5 h-5" />,
+      roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
+    },
+    {
+      id: 'chat',
+      label: 'Чат цеха',
+      icon: <MessageSquare className="w-5 h-5" />,
       roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {
