@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -29,6 +29,9 @@ export class AppDatabase extends Dexie {
   defectRegistry!: Table<DefectEntry, string>;   // реестр дефектов электродов (критичные/не критичные)
   // Комната сборки элементов
   assemblyRuns!: Table<AssemblyRun, string>;     // партии сборки: подсекции, выход ячеек, дефекты
+  // Заливка электролита (два помещения: сухая комната и 7 этаж/к.5)
+  electrolyteIncoming!: Table<ElectrolyteIncoming, string>; // входящие партии ячеек со сборки
+  fillRuns!: Table<FillRun, string>;                         // журнал заливки
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -100,6 +103,12 @@ export class AppDatabase extends Dexie {
     // v12: комната сборки — партии ячеек, идущие по подсекциям (Шаг Б1)
     this.version(12).stores({
       assemblyRuns: 'id, batchName, cellType, workerId, createdAt, updatedAt',   // AssemblyRun[]
+    });
+
+    // v13: заливка электролита — два бокса (сухая комната и 7 этаж/к.5)
+    this.version(13).stores({
+      electrolyteIncoming: 'id, box, batchName, receivedAt, updatedAt',           // ElectrolyteIncoming[]
+      fillRuns: 'id, box, batchName, workerId, createdAt, updatedAt',             // FillRun[]
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.

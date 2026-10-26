@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -204,6 +204,28 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.assemblyRuns.put(ar);
         return { ok: true, message: `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
+      }
+      case 'electrolyte-in': {
+        // Входящая партия ячеек со сборки в бокс заливки (сухая комната / 7 эт. к.5)
+        const ei = p.payload as ElectrolyteIncoming;
+        if (!ei.id || !ei.batchName || !ei.box) return { ok: false, message: 'Партия для заливки повреждена' };
+        const existing = await db.electrolyteIncoming.get(ei.id);
+        if (existing && !p.forced && existing.updatedAt >= ei.updatedAt) {
+          return { ok: true, message: `Партия «${ei.batchName}» уже принята в бокс — пропущено` };
+        }
+        await db.electrolyteIncoming.put(ei);
+        return { ok: true, message: `💧 Принято в заливку: «${ei.batchName}», ячеек ${ei.cellsIn}` };
+      }
+      case 'fill-run': {
+        // Результат заливки электролита → master / формирование
+        const fr = p.payload as FillRun;
+        if (!fr.id || !fr.batchName || !fr.box) return { ok: false, message: 'Запись заливки повреждена' };
+        const existing = await db.fillRuns.get(fr.id);
+        if (existing && !p.forced && existing.updatedAt >= fr.updatedAt) {
+          return { ok: true, message: `Заливка «${fr.batchName}» уже новее — пропущено` };
+        }
+        await db.fillRuns.put(fr);
+        return { ok: true, message: `💧 Заливка «${fr.batchName}» принята: залито ${fr.cellsFilled}, брак ${fr.cellsScrap}` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же

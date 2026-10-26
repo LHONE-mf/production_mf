@@ -10,7 +10,7 @@ import { CalendaringModule } from './calendaring/CalendaringRoom';
 import { CuttingModule } from './cutting/CuttingRoom';
 import { SortingModule } from './sorting/SortingRoom';
 import { AssemblyModule } from './assembly/AssemblyRoom';
-import { ElectrolyteModule } from './electrolyte/ElectrolyteModule';
+import { FillRoom } from './electrolyte/FillRoom';
 import { FormationModule } from './formation/FormationModule';
 import { AgingModule } from './aging/AgingModule';
 
@@ -22,7 +22,9 @@ const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   [StageId.CUTTING]: CuttingModule,
   [StageId.SORTING]: SortingModule,
   [StageId.ASSEMBLY]: AssemblyModule,
-  [StageId.ELECTROLYTE]: ElectrolyteModule,
+  // Две комнаты заливки электролита — одно и то же приложение, разные помещения
+  [StageId.ELECTROLYTE]: () => <FillRoom box="dry-room" />,
+  [StageId.ELECTROLYTE_705]: () => <FillRoom box="floor7-room5" />,
   [StageId.FORMATION]: FormationModule,
   [StageId.AGING]: AgingModule,
 };

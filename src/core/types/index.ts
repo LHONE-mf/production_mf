@@ -11,7 +11,8 @@ export enum StageId {
   CUTTING = 'cutting',         // Нарезка электродов (рулон → пластины/полосы)
   SORTING = 'sorting',         // Сортировка электродов по параметрам КД
   ASSEMBLY = 'assembly',       // Сборка элементов
-  ELECTROLYTE = 'electrolyte', // Розлив электролита
+  ELECTROLYTE = 'electrolyte', // Заливка электролита: бокс сухой комнаты
+  ELECTROLYTE_705 = 'electrolyte-705', // Заливка электролита: бокс 7 этаж, к.5
   FORMATION = 'formation',     // Формирование (ЧЦЦ)
   AGING = 'aging',             // Старение
 }
@@ -24,7 +25,8 @@ export const STAGE_LABELS: Record<StageId, string> = {
   [StageId.CUTTING]: 'Нарезка электродов',
   [StageId.SORTING]: 'Сортировка',
   [StageId.ASSEMBLY]: 'Сборка элементов',
-  [StageId.ELECTROLYTE]: 'Розлив электролита',
+  [StageId.ELECTROLYTE]: 'Заливка электролита (сухая комната)',
+  [StageId.ELECTROLYTE_705]: 'Заливка электролита (7 эт. / к.5)',
   [StageId.FORMATION]: 'Формирование (ЧЦЦ)',
   [StageId.AGING]: 'Старение',
 };
@@ -33,8 +35,52 @@ export const STAGE_LABELS: Record<StageId, string> = {
 export const STAGE_ORDER: StageId[] = [
   StageId.STORAGE, StageId.SLURRY, StageId.COATING, StageId.CALENDARING,
   StageId.CUTTING, StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
-  StageId.FORMATION, StageId.AGING,
+  StageId.ELECTROLYTE_705, StageId.FORMATION, StageId.AGING,
 ];
+
+// ============================================================
+// ЗАЛИВКА ЭЛЕКТРОЛИТА. Два разных помещения с одним процессом:
+//  - ELECTROLYTE      — бокс сухой комнаты;
+//  - ELECTROLYTE_705  — бокс на 7 этаже, комната 5.
+// Партии приходят со СБОРКИ (assembly-run). Детали помещений
+// опишем позже — структура намеренно расширяемая.
+// ============================================================
+export type ElectrolyteBox = 'dry-room' | 'floor7-room5';
+
+/** Входящая партия ячеек со сборки в один из боксов заливки */
+export interface ElectrolyteIncoming {
+  id: string;
+  box: ElectrolyteBox;               // куда пришла партия (помещение)
+  batchName: string;                 // название партии со сборки
+  cellType?: CellType;               // тип ячейки (цилиндрическая/призматическая)
+  cellsIn: number;                   // сколько ячеек принято
+  fromAssemblyRunId?: string;        // связь с AssemblyRun
+  receivedAt: string;
+  updatedAt: string;
+}
+
+/** Запись журнала заливки электролита (одна операция/партия в боксе) */
+export interface FillRun {
+  id: string;
+  box: ElectrolyteBox;               // помещение заливки
+  batchName: string;                 // партия (из входящей или вручную)
+  electrolyteName?: string;          // марка/название электролита
+  doseMin?: number;                  // дозировка целевая, мг (задаёт технолог)
+  doseActual?: number;               // фактическая дозировка, мг
+  vacuumKpa?: number;                // глубина вакуума при пропитке, кПа
+  pressureKpa?: number;              // давление впрыска, кПа
+  dwellMin?: number;                 // выдержка (время пропитки), мин
+  temperatureC?: number;             // температура в боксе / электролита, °C
+  humidityPpm?: number;              // точка росы / влажность бокса, °C т.р. или ppm
+  cellsFilled: number;               // залито ячеек (годных)
+  cellsScrap: number;                // брак (недолив/перелив/пузыри/подтекание)
+  defects: string[];                 // дефекты по реестру
+  comment?: string;
+  taskId?: string;
+  workerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // Запись в журнале работ конкретной комнаты (единица учёта для KPI)
 export interface JournalEntry {
@@ -211,6 +257,8 @@ export type SyncPacketType =
   | 'sort-run'        // результат сортировки партии → мастер/технолог (master)
   | 'defect-entry'    // запись реестра дефектов электродов (критичные/не критичные)
   | 'assembly-run'    // партия сборки элементов (сортировка → сборка → формовка/master)
+  | 'electrolyte-in'  // входящая партия ячеек со сборки в бокс заливки
+  | 'fill-run'        // результат заливки электролита (журнал → master/формирование)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
