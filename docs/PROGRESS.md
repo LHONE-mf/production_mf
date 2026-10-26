@@ -16,7 +16,17 @@
 
 ---
 
-## Текущий статус (обновлён 2026-10-27d, HEAD main = `d2f52bf`, проверено git ls-remote)
+## Текущий статус (обновлён 2026-10-27e, HEAD main = `f8a85b9` + локальный коммит S4)
+
+### Обновление 2026-10-27e — Шаг S4 ВЫПОЛНЕН: разделены комнаты НАРЕЗКИ и СОРТИРОВКИ ✅
+- Добавлен `StageId.CUTTING = 'cutting'` в enum, STAGE_LABELS («Нарезка электродов»), STAGE_ORDER (после CALENDARING).
+- registry.ts: CUTTING → «Нарезка электродов» ✂️; SORTING → «Сортировка электродов» 🗂️ (свои списки инструментов).
+- StageRouter.tsx: [CUTTING]: CuttingModule, [SORTING]: SortingModule — каждая комната на своём id.
+- CuttingRoom.tsx: все StageId.SORTING заменены на StageId.CUTTING (задания, комментарии, cut-run пакеты).
+- CalendaringRoom: пакет cutting-roll остаётся stage CALENDARING (источник) — CuttingRoom фильтрует по CUTTING||CALENDARING, цепочка каланд→нарезка работает.
+- БД: Dexie version(11) upgrade — перенос старых строк stage:'sorting' → 'cutting' в таблицах journal/stageComments/tasks (однократная миграция при открытии существующей базы); populate-хук для новых баз.
+- Проверки: npx tsc --noEmit — 0 ошибок; npm run build — успешно (PWA 11 entries).
+- ⚠ ПОСЛЕ КОММИТА ОБЯЗАТЕЛЬНО: git ls-remote origin main + raw URL проверка файлов (types/index.ts содержит CUTTING, registry.ts содержит «Сортировка электродов»).
 
 ### Обновление 2026-10-27d — РЕВИЗИЯ ПРОГРЕССА (этот коммит)
 - Проверено фактами: локальный main синхронизирован с origin/main (`git pull --rebase` → fast-forward до `d2f52bf`).

@@ -8,7 +8,8 @@ export enum StageId {
   SLURRY = 'slurry',           // Комната замесов (приготовление шлама)
   COATING = 'coating',         // Нанесение покрытия
   CALENDARING = 'calendaring', // Каландрирование
-  SORTING = 'sorting',         // Сортировка / рубка пластин
+  CUTTING = 'cutting',         // Нарезка электродов (рулон → пластины/полосы)
+  SORTING = 'sorting',         // Сортировка электродов по параметрам КД
   ASSEMBLY = 'assembly',       // Сборка элементов
   ELECTROLYTE = 'electrolyte', // Розлив электролита
   FORMATION = 'formation',     // Формирование (ЧЦЦ)
@@ -20,6 +21,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
   [StageId.SLURRY]: 'Комната замесов',
   [StageId.COATING]: 'Нанесение покрытия',
   [StageId.CALENDARING]: 'Каландрирование',
+  [StageId.CUTTING]: 'Нарезка электродов',
   [StageId.SORTING]: 'Сортировка',
   [StageId.ASSEMBLY]: 'Сборка элементов',
   [StageId.ELECTROLYTE]: 'Розлив электролита',
@@ -30,7 +32,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
 // Порядок техпроцесса (для навигации и KPI-цепочки)
 export const STAGE_ORDER: StageId[] = [
   StageId.STORAGE, StageId.SLURRY, StageId.COATING, StageId.CALENDARING,
-  StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
+  StageId.CUTTING, StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
   StageId.FORMATION, StageId.AGING,
 ];
 

@@ -42,13 +42,13 @@ export function CuttingModule() {
 
   const tasks = useLiveQuery(async () => {
     const all = await db.tasks.toArray();
-    return all.filter((t) => t.stage === StageId.SORTING || t.stage === StageId.CALENDARING);
+    return all.filter((t) => t.stage === StageId.CUTTING || t.stage === StageId.CALENDARING);
   }, []);
 
   const addComment = async (text: string) => {
     if (!currentUser || !text.trim()) return;
     await db.stageComments.add({
-      id: uuidv4(), stage: StageId.SORTING, authorId: currentUser.id,
+      id: uuidv4(), stage: StageId.CUTTING, authorId: currentUser.id,
       text: text.trim(), createdAt: new Date(),
     });
   };
@@ -91,7 +91,7 @@ export function CuttingModule() {
             const fresh = { ...run, workerId: currentUser!.id, updatedAt: Date.now() };
             db.cuttingRuns.put(fresh);
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.SORTING,
+              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
             });
           }}
@@ -107,14 +107,14 @@ export function CuttingModule() {
             const fresh = { ...r, updatedAt: Date.now() };
             db.cuttingRuns.put(fresh);
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.SORTING,
+              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
             });
           }}
         />
       )}
 
-      {tab === 'comments' && <CommentsSection stage={StageId.SORTING} onAdd={addComment} />}
+      {tab === 'comments' && <CommentsSection stage={StageId.CUTTING} onAdd={addComment} />}
 
       <details className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
         <summary className="text-white text-sm font-medium cursor-pointer">📋 Задания этапа ({(tasks ?? []).length})</summary>

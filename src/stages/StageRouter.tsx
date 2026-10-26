@@ -19,6 +19,7 @@ const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   [StageId.SLURRY]: SlurryModule,
   [StageId.COATING]: CoatingModule,
   [StageId.CALENDARING]: CalendaringModule,
+  [StageId.CUTTING]: CuttingModule,
   [StageId.SORTING]: SortingModule,
   [StageId.ASSEMBLY]: AssemblyModule,
   [StageId.ELECTROLYTE]: ElectrolyteModule,

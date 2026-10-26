@@ -94,6 +94,33 @@ export class AppDatabase extends Dexie {
     this.version(10).stores({
       defectRegistry: 'id, severity, title, createdAt, updatedAt',               // DefectEntry[]
     });
+
+    // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
+    // Комнаты нарезки и сортировки разделены (Шаг S4). Миграция однократная,
+    // выполняется при открытии БД (populate = новая база, upgrade = существующая).
+    this.on('populate', async () => { await migrateCuttingStage(); });
+    this.version(11).upgrade(async (tx) => {
+      const tables = [tx.table('journal'), tx.table('stageComments'), tx.table('tasks')];
+      for (const table of tables) {
+        await table.toCollection().modify((row: any) => {
+          if (row.stage === 'sorting') row.stage = 'cutting';
+        });
+      }
+    });
+  }
+}
+
+/** Перенос старых записей нарезки с id SORTING на CUTTING для НОВЫХ баз (populate) */
+async function migrateCuttingStage() {
+  try {
+    const jOld = await db.journal.filter((j) => j.stage === ('sorting' as StageId)).toArray();
+    for (const j of jOld) { j.stage = StageId.CUTTING; await db.journal.put(j); }
+    const cOld = await db.stageComments.filter((c) => c.stage === ('sorting' as StageId)).toArray();
+    for (const c of cOld) { c.stage = StageId.CUTTING; await db.stageComments.put(c); }
+    const tOld = await db.tasks.filter((t) => t.stage === ('sorting' as StageId)).toArray();
+    for (const t of tOld) { t.stage = StageId.CUTTING; await db.tasks.put(t); }
+  } catch (e) {
+    console.warn('migrateCuttingStage: пропускаем миграцию', e);
   }
 }
 
