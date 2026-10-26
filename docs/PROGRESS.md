@@ -101,6 +101,16 @@ AI Response:
 - ⚠️ Неблокирующие мелочи: предупреждение сборщика о chunk >500 kB (код-сплит отложен); рядом лежат старые Module.tsx-заглушки и новые Room.tsx (безвредно, чистка по желанию).
 - ❗ НЕ ПРОВЕРЕНО (нет доступа к железу): BLE на живых телефонах — требуется тест двух устройств на новом APK; фоновый приём на iOS невозможен архитектурно (см. BLUETOOTH_NATIVE.md).
 
+## Текущий статус (обновлён 2026-10-28n)
+
+### ✅ СДЕЛАНО: Чистка структуры (пункт 3 плана preliminary_analysis), коммит ниже по тексту
+- Удалены мёртвые заглушки без ссылок: `src/stages/assembly/AssemblyModule.tsx`, `src/stages/calendaring/CalendaringModule.tsx`, `src/stages/coating/CoatingModule.tsx`, `src/stages/slurry/SlurryModule.tsx`, дубликат `src/stages/slurry/_ui/PacketOutModal.tsx` (старая версия без Bluetooth; все комнаты замесов уже импортируют общую `src/stages/_ui/PacketOutModal.tsx`).
+- Исправлены импорты в `StageRouter.tsx`: SlurryModule → из `slurry/SlurryRoom`, CoatingModule → из `coating/CoatingRoom` (функции с такими именами реально экспортируются этими файлами).
+- ⚠️ Заглушку `storage/StorageModule.tsx` при первой попытке удаления пришлось ВЕРНУТЬ: StageRouter импортирует её, а отдельной StorageRoom не существует. Удаление возможно только вместе с созданием комнаты «Склад» (этап STORAGE пока работает через заглушку).
+- Проверки: `tsc --noEmit` — 0 ошибок; `vite build` — успешно (sw.js сгенерирован).
+- МОДУЛЬ СВЯЗИ (`modules/communication/CommunicationModule.tsx`) НЕ тронут — требует проверки на живых устройствах (BLE отложен до релиза).
+
+### История статуса (предыдущая запись)
 ## Текущий статус (обновлён 2026-10-28i, HEAD origin/main = `0a3ae86` — проверено ls-remote и свежим клоном)
 
 ### Исправления по результатам аудита кода (2026-10-28)

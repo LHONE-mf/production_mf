@@ -4,8 +4,8 @@
 import React from 'react';
 import { StageId } from '../core/types';
 import { StorageModule } from './storage/StorageModule';
-import { SlurryModule } from './slurry/SlurryModule';
-import { CoatingModule } from './coating/CoatingModule';
+import { SlurryModule } from './slurry/SlurryRoom';
+import { CoatingModule } from './coating/CoatingRoom';
 import { CalendaringModule } from './calendaring/CalendaringRoom';
 import { CuttingModule } from './cutting/CuttingRoom';
 import { SortingModule } from './sorting/SortingRoom';
