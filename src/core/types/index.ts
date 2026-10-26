@@ -207,6 +207,7 @@ export type SyncPacketType =
   | 'cut-run'         // запись журнала нарезки → сортировка / master
   | 'sort-spec'       // спецификация сортировки от технолога (параметры из КД) → сортировка
   | 'sort-run'        // результат сортировки партии → мастер/технолог (master)
+  | 'defect-entry'    // запись реестра дефектов электродов (критичные/не критичные)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
@@ -256,11 +257,27 @@ export interface CutRun {
 // ============================================================
 
 // Категория сортировки (строка спецификации технолога из КД)
+// ── Реестр дефектов электродов (сортировка по КД) ────────────────────────────
+export type DefectSeverity = 'critical' | 'non-critical';
+
+export interface DefectEntry {
+  id: string;
+  title: string;              // название дефекта
+  severity: DefectSeverity;   // критичный / не критичный
+  description?: string;       // как проявляется / откуда берётся
+  action?: string;            // требуемое действие (отбраковка / допустимо в пределах нормы)
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface SortCategory {
   name: string;               // название категории/сорта, напр. «Сорт А»
-  criteria: string;           // критерии из КД: толщина, размеры, сопротивление и т.п.
-  minUm?: number;             // допуск: мин., мкм (если параметр — толщина)
-  maxUm?: number;             // допуск: макс., мкм
+  criteria: string;           // критерии из КД: толщина, масса, размеры и т.п.
+  minUm?: number;             // допуск по толщине: мин., мкм
+  maxUm?: number;             // допуск по толщине: макс., мкм
+  minMass?: number;           // допуск по массе: мин., г
+  maxMass?: number;           // допуск по массе: макс., г
+  allowedDefects?: string[];  // id дефектов из реестра, допустимых для этой категории
   notes?: string;             // примечание технолога
 }
 
@@ -285,6 +302,8 @@ export interface SortSpec {
 export interface SortBucket {
   categoryName: string;       // = SortCategory.name
   count: number;              // количество электродов в категории
+  avgThicknessUm?: number;    // средняя измеренная толщина, мкм
+  avgMassG?: number;          // средняя измеренная масса, г
 }
 
 // Результат сортировки партии (запись журнала оператора)

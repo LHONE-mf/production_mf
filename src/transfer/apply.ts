@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -179,6 +179,17 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.sortRuns.put(sr);
         return { ok: true, message: `🔀 Сортировка «${sr.batchName}» принята: категорий ${sr.buckets.length}, отбраковано ${sr.rejected}` };
+      }
+      case 'defect-entry': {
+        // Запись реестра дефектов электродов (ведёт технолог/master, подгружается на сортировке)
+        const d = p.payload as DefectEntry;
+        if (!d.id || !d.title || !d.severity) return { ok: false, message: 'Запись дефекта повреждена' };
+        const prev = await db.defectRegistry.get(d.id);
+        if (prev && !p.forced && prev.updatedAt >= d.updatedAt) {
+          return { ok: true, message: `Дефект «${d.title}» уже новее — пропущено` };
+        }
+        await db.defectRegistry.put(d);
+        return { ok: true, message: `📋 Реестр дефектов обновлён: ${d.title} (${d.severity === 'critical' ? 'критичный' : 'не критичный'})` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же

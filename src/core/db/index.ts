@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -26,6 +26,7 @@ export class AppDatabase extends Dexie {
   // Комната сортировки электродов
   sortSpecs!: Table<SortSpec, string>;           // спецификации технолога (параметры из КД)
   sortRuns!: Table<SortRun, string>;             // журнал сортировки (разнос по категориям)
+  defectRegistry!: Table<DefectEntry, string>;   // реестр дефектов электродов (критичные/не критичные)
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -87,6 +88,11 @@ export class AppDatabase extends Dexie {
     this.version(9).stores({
       sortSpecs: 'id, batchName, cutRunId, electrodeType, createdAt, updatedAt', // SortSpec[]
       sortRuns: 'id, specId, batchName, workerId, createdAt, updatedAt',         // SortRun[]
+    });
+
+    // v10: реестр дефектов электродов для сортировки (критичные / не критичные)
+    this.version(10).stores({
+      defectRegistry: 'id, severity, title, createdAt, updatedAt',               // DefectEntry[]
     });
   }
 }
@@ -351,5 +357,37 @@ export async function initializeDatabase() {
         createdAt: now - 5000000,
       },
     ] as CuttingIncoming[]);
+  }
+
+  // Демо: реестр дефектов электродов (сортировка по КД) — критичные / не критичные
+  if ((await db.defectRegistry.count()) === 0) {
+    const now = Date.now();
+    await db.defectRegistry.bulkAdd([
+      { id: 'def-001', title: 'Разрушение токосъёмного слоя (осыпание)', severity: 'critical', description: 'Осыпание/отслоение активного слоя, видна фольга пятнами', action: 'Отбраковка', createdAt: now, updatedAt: now },
+      { id: 'def-002', title: 'Сквозное повреждение фольги (прокол/разрыв)', severity: 'critical', description: 'Механическое повреждение токоcollectора насквозь', action: 'Отбраковка', createdAt: now, updatedAt: now },
+      { id: 'def-003', title: 'Перекос реза (> допуск КД)', severity: 'critical', description: 'Нарезка смещена относительно полей покрытия', action: 'Отбраковка', createdAt: now, updatedAt: now },
+      { id: 'def-004', title: 'Заусеницы / burr на кромке', severity: 'non-critical', description: 'Незначительные заусеницы по краю реза', action: 'Допустимо в пределах нормы КД', createdAt: now, updatedAt: now },
+      { id: 'def-005', title: 'Царапины покрытия (неглубокие)', severity: 'non-critical', description: 'Поверхностные риски без обнажения фольги', action: 'В низший сорт', createdAt: now, updatedAt: now },
+      { id: 'def-006', title: 'Наплывы / капли пасты', severity: 'non-critical', description: 'Локальные утолщения слоя после намазки', action: 'Контроль толщины, в низший сорт', createdAt: now, updatedAt: now },
+      { id: 'def-007', title: 'Обнажённые участки вне поля', severity: 'non-critical', description: 'Промазы покрытия в межрядных промежутках', action: 'Допустимо в пределах нормы КД', createdAt: now, updatedAt: now },
+    ] as DefectEntry[]);
+  }
+
+  // Демо: спецификация сортировки от технолога (партия с нарезки cal-demo-001)
+  if ((await db.sortSpecs.count()) === 0) {
+    const now = Date.now();
+    await db.sortSpecs.add({
+      id: 'ss-demo-001',
+      batchName: 'Партия R-07/№4 (полосы LFP 950 мм)',
+      incomingId: 'cal-demo-001', cutRunId: undefined,
+      electrodeType: 'strip', coatingType: 'LFP (катод)',
+      parameterName: 'Толщина электрода', unit: 'мкм',
+      categories: [
+        { name: 'Сорт А', criteria: 'Толщина 148–152 мкм; масса 4,80–4,95 г; дефекты только некритичные (допускаются: заусеницы, царапины)', minUm: 148, maxUm: 152, minMass: 4.8, maxMass: 4.95, allowedDefects: ['def-004', 'def-005'], notes: 'Основной сорт, идёт на сборку 21700' },
+        { name: 'Сорт Б', criteria: 'Толщина 145–148 или 152–155 мкм; масса вне допуска А', minUm: 145, maxUm: 155, minMass: 4.65, maxMass: 5.1, allowedDefects: ['def-004', 'def-005', 'def-006'], notes: 'Низший сорт, резерв' },
+      ],
+      techNotes: 'Критичные дефекты — только отбраковка. Контроль: 10 пластин из каждой коробки.',
+      authorId: 'tech-001', createdAt: now - 1500000, updatedAt: now - 1500000,
+    } as SortSpec);
   }
 }
