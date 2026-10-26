@@ -5,7 +5,7 @@ import { db } from '../../core/db';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
 import { UserRole, Task } from '../../core/types';
 import { STAGES } from '../../stages/registry';
-import { 
+import { TrendingUp, 
   Battery, LogOut, LayoutDashboard, Users, ClipboardList, 
   Bluetooth, Radio, BarChart3, Settings, Menu, X, MessageSquare
 } from 'lucide-react';
@@ -36,6 +36,12 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       id: 'dashboard',
       label: 'Дашборд',
       icon: <LayoutDashboard className="w-5 h-5" />,
+      roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
+    },
+    {
+      id: 'kpi',
+      label: 'KPI-дашборд',
+      icon: <TrendingUp className="w-5 h-5" />,
       roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {

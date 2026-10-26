@@ -4,6 +4,7 @@ import { initializeDatabase } from './core/db';
 import { LoginForm } from './modules/auth/components/LoginForm';
 import { AppLayout } from './shared/layouts/AppLayout';
 import { Dashboard } from './modules/dashboard/Dashboard';
+import { KpiDashboard } from './kpi/KpiDashboard';
 import { TasksModule } from './modules/tasks/TasksModule';
 import { UsersModule } from './modules/users/UsersModule';
 import { CommunicationModule } from './modules/communication/CommunicationModule';
@@ -46,6 +47,8 @@ function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
+      case 'kpi':
+        return <KpiDashboard />;
       case 'tasks':
         return <TasksModule />;
       case 'users':
