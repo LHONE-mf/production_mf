@@ -16,6 +16,16 @@
 
 ---
 
+## АУДИТ ПОЛНЫЙ — 2026-10-26 (результаты прямой проверки, не намерения)
+- ✅ TypeScript: `tsc --noEmit` — 0 ошибок. Сборка: `vite build` + PWA — успешно (8.5 с).
+- ✅ Синхронизация: GitHub main HEAD = `1377d1a`, локальный main синхронен (0 ahead / 0 behind).
+- ✅ Файлы проверены скачиванием с raw.githubusercontent.com (HTTP 200): CuttingRoom.tsx (424 стр.), SortingRoom.tsx (790 стр.), BleBridgePlugin.java (путь ru/liion/production), MainActivity.java (registerPlugin(BleBridgePlugin.class) присутствует), AndroidManifest.xml (BLUETOOTH_SCAN/CONNECT/ADVERTISE + legacy ≤30).
+- ✅ Цепочка данных сквозная: mix-batch → coating-mix → coat-run → roll-spec/calender-result → cutting-roll → cut-run → sort-spec/sort-run; все кейсы есть в apply.ts.
+- ✅ База: Dexie v11, миграция старых записей sorting→cutting на месте; таблицы cuttingRolls/cutRuns/sortSpecs/sortRuns проиндексированы.
+- ✅ Кнопка выхода из профиля: две в AppLayout.tsx (моб. шапка + сайдбар).
+- ⚠️ Неблокирующие мелочи: предупреждение сборщика о chunk >500 kB (код-сплит отложен); рядом лежат старые Module.tsx-заглушки и новые Room.tsx (безвредно, чистка по желанию).
+- ❗ НЕ ПРОВЕРЕНО (нет доступа к железу): BLE на живых телефонах — требуется тест двух устройств на новом APK; фоновый приём на iOS невозможен архитектурно (см. BLUETOOTH_NATIVE.md).
+
 ## Текущий статус (обновлён 2026-10-27e, HEAD main = `f8a85b9` + локальный коммит S4)
 
 ### Обновление 2026-10-27e — Шаг S4 ВЫПОЛНЕН: разделены комнаты НАРЕЗКИ и СОРТИРОВКИ ✅
