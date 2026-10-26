@@ -103,6 +103,13 @@ AI Response:
 
 ## Текущий статус (обновлён 2026-10-28a, HEAD origin/main = `72d5659`, локальный main синхронен после ff-merge)
 
+### Обновление 2026-10-28b — ПРОКРУТКА СПИСКА КОМНАТ ✅ (запрос пользователя: список не помещался и не прокручивался)
+- **Диагноз:** в `src/shared/layouts/AppLayout.tsx` мобильный drawer имел `nav overflow-y-auto`, но без высоты
+  (aside не был flex-колонкой, nav без min-h-0/flex-1) — контейнер растягивался на всю высоту контента и скролл не возникал.
+- **Исправлено:** мобильный aside → `flex flex-col`; его nav → `flex-1 min-h-0 overflow-y-auto overscroll-contain`
+  + WebkitOverflowScrolling touch. Десктопный nav усилен (`min-h-0 overscroll-contain`). tsc — 0 ошибок, vite build успешен.
+- **СЛЕДУЮЩИЙ ШАГ:** Б2c (станции B-c5/B-c6).
+
 ### Обновление 2026-10-28a — ПЛАНОВАЯ РЕВИЗИЯ ПРОЕКТА ✅ (выводы команд в сессии ревизии)
 - **Git:** до начала проверки `git ls-remote` показал удалённый HEAD `72d5659` при локальном `8575abe` — расхождение вызвано CI-коммитом GitHub Actions («CI: сохранение Android проекта», изменён только android/gradle.properties). Выполнен `git pull --rebase` → fast-forward, локальный и удалённый HEAD совпадают (`72d5659`). Рабочее дерево чистое.
 - **Комната сборки (проверка рапорта Б2b):** ФАКТИЧЕСКИ подтверждено наличие файлов `AssemblyRoom.tsx` (12,9 КБ), `LiElectrodesStation.tsx`, `ZStackingStation.tsx`, `WindingStation.tsx`, `CrimpCylStation.tsx`; AssemblyRoom импортирует все 4 станции (строки 20–23) и рендерит их (строки 184–196). StageRouter подключает AssemblyRoom (строка 12). Рапорт Б2b соответствует действительности.

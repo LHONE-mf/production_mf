@@ -109,7 +109,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
           {filteredNav.map((item) => (
             <button
               key={item.id}
@@ -168,7 +168,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-slate-800 p-4">
+          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-slate-800 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <Battery className="w-6 h-6 text-green-400" />
@@ -178,7 +178,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <nav className="space-y-1 overflow-y-auto">
+            <nav className="flex-1 min-h-0 space-y-1 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
               {filteredNav.map((item) => (
                 <button
                   key={item.id}
