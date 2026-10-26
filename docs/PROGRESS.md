@@ -63,8 +63,8 @@
 
 ### План реализации комнаты нарезки (по шагам, 2–3 действия за ход)
 
-- [ ] Шаг 1. Типы: `CuttingIncoming` (рулон+параметры технолога), `CutRun` (журнал) в `src/core/types/index.ts`; таблицы БД v8 в `db/index.ts` (`cuttingRolls`, `cuttingRuns`) + индексы; кейсы `cutting-roll`, `cut-run` в `packet.ts`/`apply.ts`.
-- [ ] Шаг 2. Комната `src/stages/cutting/CuttingRoom.tsx`: входящие рулоны (из каландра + приём пакета), форма задания технолога (тип электродов, покрытие, длина), калькулятор выхода, журнал нарезки (годные/дефекты), кнопки отправки (QR/текст/BLE) на сортировку.
+- [x] **Шаг 1 — ГОТОВ (2026-10-26).** Типы `ElectrodeShape`, `CuttingIncoming`, `CutRun` + кейсы пакетов в `src/core/types/index.ts`; таблицы БД v8 (`cuttingRolls`, `cuttingRuns`) в `db/index.ts`; кейсы `cutting-roll`, `cut-run` в `apply.ts`. Проверка: `npx tsc --noEmit` — 0 ошибок.
+- [ ] Шаг 2. Комната `src/stages/cutting/CuttingRoom.tsx`: входящие рулоны (из каландра + приём пакета), форма задания технолога (тип электродов, покрытие, длина), калькулятор выхода, журнал нарезки (годные/дефекты), кнопки отправки (QR/текст/BLE) на сортировку. Кнопка «✂️ На нарезку» в CalendaringRoom → пакет `cutting-roll`.
 - [ ] Шаг 3. Подключение: `StageRouter.tsx` (SORTING → CuttingRoom), `registry.ts` (название «Нарезка электродов ✂️»), демо-данные. Сборка `npm run build` → коммит → push → **проверка через ls-remote + raw URL** → обновление этого файла.
 
 ### Дальше в бэклоге (после нарезки)

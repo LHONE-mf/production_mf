@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -126,6 +126,33 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.calenderRuns.put(c);
         return { ok: true, message: `Результат прокатки получен${c.hasDefects ? ' ⚠ с дефектами' : ''} → доступен для нарезки` };
+      }
+      case 'cutting-roll': {
+        // Рулон + задание технолога → нарезка. Сохраняем входящий рулон целиком.
+        const ci = p.payload as CuttingIncoming;
+        if (!ci?.roll || !ci.electrodeType) {
+          return { ok: false, message: 'Пакет нарезки повреждён (нет рулона или типа электродов)' };
+        }
+        const prev = await db.cuttingRolls.get(ci.id);
+        if (prev && !p.forced && prev.createdAt >= ci.createdAt) {
+          return { ok: true, message: `Рулон «${ci.roll.mixName}» уже принят ранее — пропущено` };
+        }
+        await db.cuttingRolls.put(ci);
+        const typeLabel = ci.electrodeType === 'strip' ? 'полосы (цилиндрические)' : 'призматические пластины';
+        return { ok: true, message: `📥 На нарезку: «${ci.roll.mixName}» · ${typeLabel}${ci.electrodeLengthMm ? ` · L=${ci.electrodeLengthMm} мм` : ''}` };
+      }
+      case 'cut-run': {
+        // Журнал нарезки → сортировка / master. Свежесть по updatedAt; forced — безусловно.
+        const cr = p.payload as CutRun;
+        if (!cr.id || typeof cr.goodCount !== 'number') {
+          return { ok: false, message: 'Запись нарезки повреждена' };
+        }
+        const existing = await db.cuttingRuns.get(cr.id);
+        if (existing && !p.forced && existing.updatedAt >= cr.updatedAt) {
+          return { ok: true, message: `Партия нарезки от ${new Date(cr.createdAt).toLocaleDateString('ru-RU')} уже новее — пропущено` };
+        }
+        await db.cuttingRuns.put(cr);
+        return { ok: true, message: `✂️ Партия нарезки получена: годных ${cr.goodCount}, дефектных ${cr.defectCount} → на сортировку` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же

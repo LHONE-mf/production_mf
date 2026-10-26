@@ -203,8 +203,49 @@ export type SyncPacketType =
   | 'coat-run'      // запись журнала нанесения покрытия (slave → master)
   | 'roll-spec'     // рулон намазка → технологу (master) → каландрирование
   | 'calender-result' // результат прокатки → нарезка / master
+  | 'cutting-roll'    // рулон + задание технолога: каландр/технолог → нарезка
+  | 'cut-run'         // запись журнала нарезки → сортировка / master
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
+
+// ============================================================
+// КОМНАТА НАРЕЗКИ ЭЛЕКТРОДОВ: рулон с каландра + задание технолога
+// (тип электрода, покрытие, длина) → журнал нарезки → сортировка.
+// ============================================================
+
+export type ElectrodeShape = 'strip' | 'prismatic'; // полосы (цилиндрические) | призматические пластины
+
+// Входящий рулон на нарезку: спецификация рулона + прокатка + задание технолога
+export interface CuttingIncoming {
+  id: string;                 // = calenderRunId (или rollId, если прокатки нет)
+  roll: RollSpec;             // данные рулона с намазки (название замеса, толщины, длины)
+  calender?: CalenderRun;     // результат прокатки (зазоры, толщина после, дефекты)
+  thicknessAfterUm?: number;  // толщина после прокатки (мкм) — удобная копия для отображения
+  electrodeType: ElectrodeShape;      // тип электродов от технолога
+  coatingType?: string;               // тип электродного покрытия (анод/катод, материал)
+  electrodeLengthMm?: number;         // длина электрода, мм (для цилиндрических полос)
+  webWidthMm?: number;                // ширина полотна/рулона, мм (по умолчанию из фольги)
+  techNotes?: string;                 // примечание технолога
+  createdAt: number;
+}
+
+// Запись журнала нарезки (результат оператора) → далее на сортировку
+export interface CutRun {
+  id: string;
+  incomingId: string;          // CuttingIncoming.id
+  taskId?: string;
+  electrodeType: ElectrodeShape;
+  coatingType?: string;
+  electrodeLengthMm?: number;  // фактическая длина, мм
+  goodCount: number;           // количество нарезанных годных электродов
+  defectCount: number;         // количество с дефектами
+  defects?: string;            // виды дефектов / обрывы
+  breaks?: number;             // число обрывов ленты
+  notes?: string;
+  workerId: string;
+  createdAt: number;
+  updatedAt: number;
+}
 
 // ============================================================
 // КОМНАТА КАЛАНДРИРОВАНИЯ: рулон с намазки incoming → технологу,
