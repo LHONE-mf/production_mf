@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -190,6 +190,20 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.defectRegistry.put(d);
         return { ok: true, message: `📋 Реестр дефектов обновлён: ${d.title} (${d.severity === 'critical' ? 'критичный' : 'не критичный'})` };
+      }
+      case 'assembly-run': {
+        // Партия сборки: пришла с сортировки (название партии), идёт по подсекциям.
+        // Результат уходит на формовку / всем master-устройствам. Свежесть по updatedAt; forced — безусловно.
+        const ar = p.payload as AssemblyRun;
+        if (!ar.id || !ar.batchName || !Array.isArray(ar.ops)) {
+          return { ok: false, message: 'Партия сборки повреждена' };
+        }
+        const existing = await db.assemblyRuns.get(ar.id);
+        if (existing && !p.forced && existing.updatedAt >= ar.updatedAt) {
+          return { ok: true, message: `Сборка «${ar.batchName}» уже новее — пропущено` };
+        }
+        await db.assemblyRuns.put(ar);
+        return { ok: true, message: `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же

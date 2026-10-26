@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -27,6 +27,8 @@ export class AppDatabase extends Dexie {
   sortSpecs!: Table<SortSpec, string>;           // спецификации технолога (параметры из КД)
   sortRuns!: Table<SortRun, string>;             // журнал сортировки (разнос по категориям)
   defectRegistry!: Table<DefectEntry, string>;   // реестр дефектов электродов (критичные/не критичные)
+  // Комната сборки элементов
+  assemblyRuns!: Table<AssemblyRun, string>;     // партии сборки: подсекции, выход ячеек, дефекты
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -93,6 +95,11 @@ export class AppDatabase extends Dexie {
     // v10: реестр дефектов электродов для сортировки (критичные / не критичные)
     this.version(10).stores({
       defectRegistry: 'id, severity, title, createdAt, updatedAt',               // DefectEntry[]
+    });
+
+    // v12: комната сборки — партии ячеек, идущие по подсекциям (Шаг Б1)
+    this.version(12).stores({
+      assemblyRuns: 'id, batchName, cellType, workerId, createdAt, updatedAt',   // AssemblyRun[]
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.

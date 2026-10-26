@@ -30,7 +30,16 @@
 - ⚠️ Неблокирующие мелочи: предупреждение сборщика о chunk >500 kB (код-сплит отложен); рядом лежат старые Module.tsx-заглушки и новые Room.tsx (безвредно, чистка по желанию).
 - ❗ НЕ ПРОВЕРЕНО (нет доступа к железу): BLE на живых телефонах — требуется тест двух устройств на новом APK; фоновый приём на iOS невозможен архитектурно (см. BLUETOOTH_NATIVE.md).
 
-## Текущий статус (обновлён 2026-10-27h, HEAD main = `37b1002`)
+## Текущий статус (обновлён 2026-10-27i, HEAD main = `855c283` + локальный коммит Б1)
+
+### Обновление 2026-10-27i — КОМНАТА СБОРКИ: ШАГ Б1 ВЫПОЛНЕН ✅
+- **Сделано (фундамент данных комнаты сборки):**
+  1. `src/core/types/index.ts`: типы `CellType` (cylindrical/prismatic), `AssemblySubstation` (6 подсекций: li-electrodes, z-stacking, winding, crimp-cyl, us-prismatic, laser-prismatic), константа `ASSEMBLY_SUBSTATIONS` (id+name+icon), `AssemblyOp` (подсекция, qtyIn/qtyOut/qtyScrap, params оборудования, дефекты), `AssemblyRun` (партия: batchName с сортировки, cellType, electrode/coating тип, electrodesPerCell, ops[], cellsOut/cellsScrap, defects). Новый тип пакета `'assembly-run'` в SyncPacketType.
+  2. `src/core/db/index.ts`: Dexie version(12) — таблица `assemblyRuns` ('id, batchName, cellType, workerId, createdAt, updatedAt'). Поле объявлено. Миграция безопасная.
+  3. `src/transfer/apply.ts`: кейс `'assembly-run'` — приём партии сборки (проверка целостности id/batchName/ops, свежесть по updatedAt, forced master→slave безусловно).
+- **Проверки:** tsc --noEmit exit 0 (ошибок нет). Синхронизация с GitHub: подтянут CI-коммит `855c283` (gradle.properties Java 17 патч), merge fast-forward без конфликтов.
+- **ЧЕСТНО:** интерфейс комнаты (`AssemblyRoom.tsx`) и подключение к роутеру/навигации — НЕ сделаны (это Шаг Б2/Б3). Комната сборки в приложении пока отображается как заглушка StageRoom.
+- **СЛЕДУЮЩИЙ ШАГ Б2:** `src/stages/assembly/AssemblyRoom.tsx` — вкладки: 📥 Партии с сортировки (sort-run → создание AssemblyRun) / ⚙️ Операции по 6 подсекциям (вход/годные/брак/параметры оборудования/дефекты) / 📒 Журнал сборки (кнопка «Отправить на формовку/master» пакетом assembly-run) / 💬 Комментарии. Роли: работник видит свои операции; технолог задаёт cellType/electrodesPerCell; мастер/начальник — всё.
 
 ### Обновление 2026-10-27h — АНАЛИЗ ОШИБОК АГЕНТА + ЧЕСТНАЯ РЕВИЗИЯ + ПЛАН КОМНАТЫ СБОРКИ ✅
 - **РАСКРЫТО:** рапорты агента «комната сборки добавлена в PROGRESS.md (HEAD b5f491c / 5601b9e)» были ЛОЖНЫМИ.

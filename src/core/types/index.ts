@@ -210,6 +210,7 @@ export type SyncPacketType =
   | 'sort-spec'       // спецификация сортировки от технолога (параметры из КД) → сортировка
   | 'sort-run'        // результат сортировки партии → мастер/технолог (master)
   | 'defect-entry'    // запись реестра дефектов электродов (критичные/не критичные)
+  | 'assembly-run'    // партия сборки элементов (сортировка → сборка → формовка/master)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 
@@ -553,4 +554,59 @@ export interface AuthSession {
   role: UserRole;
   token: string;
   expiresAt: Date;
+}
+
+// ===================== КОМНАТА СБОРКИ (Шаг Б1) =====================
+// Тип ячейки, которую собирают на участке
+export type CellType = 'cylindrical' | 'prismatic'; // цилиндрическая / призматическая
+
+// Шесть подсекций участка сборки (каждая — отдельный блок кода, расширяем по плану)
+export type AssemblySubstation =
+  | 'li-electrodes'   // B-с1: изготовление отрицательных (литиевых) электродов
+  | 'z-stacking'      // B-с2: укладка (Z-стэкинг) — будет расширен
+  | 'winding'         // B-с3: скрутка цилиндрических блоков электродов (spiral wound)
+  | 'crimp-cyl'       // B-с4: зиговка + точечная + ультразвуковая сварка крышки цилиндрических ячеек
+  | 'us-prismatic'    // B-с5: ультразвуковая сварка крышки призматических ячеек
+  | 'laser-prismatic';// B-с6: лазерная сварка призматических ячеек
+
+export const ASSEMBLY_SUBSTATIONS: { id: AssemblySubstation; name: string; icon: string }[] = [
+  { id: 'li-electrodes',   name: 'Литиевые электроды',            icon: '🔘' },
+  { id: 'z-stacking',      name: 'Укладка (Z-стэкинг)',           icon: '📚' },
+  { id: 'winding',         name: 'Скрутка блоков',                icon: '🌀' },
+  { id: 'crimp-cyl',       name: 'Зиговка + точечная + УЗ (цил.)', icon: '🔩' },
+  { id: 'us-prismatic',    name: 'УЗ-сварка крышки (призм.)',     icon: '🔊' },
+  { id: 'laser-prismatic', name: 'Лазерная сварка (призм.)',      icon: '🔦' },
+];
+
+// Одна операция на подсекции сборки (партия деталей проходит через подсекции по очереди)
+export interface AssemblyOp {
+  substation: AssemblySubstation;
+  workerId: string;
+  startedAt?: string;        // ISO — время начала (факультативно)
+  finishedAt?: string;       // ISO — время окончания
+  qtyIn: number;             // сколько деталей/блоков подали на операцию
+  qtyOut: number;            // годных после операции
+  qtyScrap: number;          // в брак
+  params: Record<string, number | string>; // параметры оборудования (мощность УЗ, импульс точечной сварки, скорость лазера и т.п.)
+  defects: string[];         // описания дефектов, замеченных на операции
+  note?: string;
+}
+
+// Партия сборки: пришла с сортировки (название партии), идёт по подсекциям, результат уходит на формовку
+export interface AssemblyRun {
+  id: string;
+  batchName: string;                 // название партии с сортировки (приходит из sort-run)
+  cellType: CellType;                // тип ячейки (задаёт технолог)
+  electrodeType?: string;            // перенос из задания технолога (полосы / призматические)
+  coatingType?: string;              // тип электродного покрытия
+  electrodesPerCell?: number;        // сколько электродов в одной ячейке (для расчёта выхода ячеек)
+  ops: AssemblyOp[];                 // операции по подсекциям (добавляются по мере прохождения)
+  cellsOut: number;                  // итог: собрано ячеек/батареь (годных)
+  cellsScrap: number;                // итог: брак ячеек
+  defects: string[];                 // сводные дефекты по партии
+  comment?: string;
+  taskId?: string;
+  workerId: string;
+  createdAt: string;
+  updatedAt: string;
 }
