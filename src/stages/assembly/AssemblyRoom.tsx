@@ -21,6 +21,8 @@ import { LiElectrodesStation } from './LiElectrodesStation';
 import { ZStackingStation } from './ZStackingStation';
 import { WindingStation } from './WindingStation';
 import { CrimpCylStation } from './CrimpCylStation';
+import { UsPrismaticStation } from './UsPrismaticStation';
+import { LaserPrismaticStation } from './LaserPrismaticStation';
 
 type Tab = 'incoming' | AssemblySubstation | 'journal' | 'comments';
 
@@ -114,8 +116,8 @@ export function AssemblyModule() {
     { id: 'z-stacking', label: '📚 B-с2 Z-стэкинг' },
     { id: 'winding', label: '🌀 B-с3 Скрутка' },
     { id: 'crimp-cyl', label: '🔩 B-с4 Зиговка+точка+УЗ цил.' },
-    { id: 'us-prismatic', label: '🔊 B-с5 УЗ призм. (Б2b)' },
-    { id: 'laser-prismatic', label: '🔦 B-с6 Лазер призм. (Б2b)' },
+    { id: 'us-prismatic', label: '🔊 B-с5 УЗ призм.' },
+    { id: 'laser-prismatic', label: '🔦 B-с6 Лазер призм.' },
     { id: 'journal', label: `📒 Журнал партий (${(runs ?? []).length})` },
     { id: 'comments', label: '💬 Комментарии' },
   ];
@@ -196,12 +198,13 @@ export function AssemblyModule() {
         <CrimpCylStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : <NoBatch />)}
 
-      {['us-prismatic', 'laser-prismatic'].includes(tab) && (
-        <div className="bg-slate-900 border border-dashed border-slate-700 rounded p-6 text-center">
-          <p className="text-sm text-slate-400">Станция будет добавлена шагом <b>Б2c</b> отдельным файлом.</p>
-          <p className="text-xs text-slate-600 mt-1">id: {tab}</p>
-        </div>
-      )}
+      {tab === 'us-prismatic' && (selected ? (
+        <UsPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : <NoBatch />)}
+
+      {tab === 'laser-prismatic' && (selected ? (
+        <LaserPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : <NoBatch />)}
 
       {tab === 'journal' && (
         <div className="space-y-2">
