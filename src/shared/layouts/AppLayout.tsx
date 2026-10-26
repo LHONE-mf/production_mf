@@ -1,7 +1,10 @@
 import React from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../../core/store/authStore';
+import { db } from '../../core/db';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
-import { UserRole } from '../../core/types';
+import { UserRole, Task } from '../../core/types';
+import { STAGES } from '../../stages/registry';
 import { 
   Battery, LogOut, LayoutDashboard, Users, ClipboardList, 
   Bluetooth, Radio, BarChart3, Settings, Menu, X 
@@ -69,6 +72,19 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
   const filteredNav = navItems.filter((item) => item.roles.includes(currentUser.role));
 
+  // Комнаты этапов: worker видит только комнаты своих заданий, остальные роли — все этапы
+  const tasksByWorker = useLiveQuery<Task[]>(
+    async () => (currentUser ? db.tasks.where('assignedTo').equals(currentUser.id).toArray() : []),
+    [currentUser?.id],
+  ) ?? [];
+  const visibleStages = (() => {
+    if (currentUser.role !== UserRole.WORKER) return STAGES;
+    const workerStages = new Set<string>();
+    tasksByWorker.forEach((t) => t.stage && workerStages.add(t.stage));
+    const list = STAGES.filter((s) => workerStages.has(s.id));
+    return list.length ? list : STAGES.slice(0, 1);
+  })();
+
   return (
     <div className="min-h-screen bg-slate-900 flex">
       {/* Sidebar - Desktop */}
@@ -87,7 +103,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {filteredNav.map((item) => (
             <button
               key={item.id}
@@ -100,6 +116,23 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             >
               {item.icon}
               {item.label}
+            </button>
+          ))}
+
+          {/* Комнаты этапов производства */}
+          <p className="px-3 pt-4 pb-1 text-xs uppercase tracking-wider text-slate-500 font-semibold">Этапы цеха</p>
+          {visibleStages.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => onTabChange(`stage:${s.id}`)}
+              className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all ${
+                activeTab === `stage:${s.id}`
+                  ? 'bg-green-500/20 text-green-300 border border-green-500/30'
+                  : 'text-slate-300 hover:bg-slate-700/50'
+              }`}
+            >
+              <span>{s.icon}</span>
+              <span className="truncate">{s.title}</span>
             </button>
           ))}
         </nav>
@@ -139,7 +172,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <nav className="space-y-1">
+            <nav className="space-y-1 overflow-y-auto">
               {filteredNav.map((item) => (
                 <button
                   key={item.id}
@@ -152,6 +185,18 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
                 >
                   {item.icon}
                   {item.label}
+                </button>
+              ))}
+              <p className="px-3 pt-3 pb-1 text-xs uppercase tracking-wider text-slate-500 font-semibold">Этапы цеха</p>
+              {visibleStages.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => { onTabChange(`stage:${s.id}`); setSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${
+                    activeTab === `stage:${s.id}` ? 'bg-green-500/20 text-green-300' : 'text-slate-300 hover:bg-slate-700/50'
+                  }`}
+                >
+                  <span>{s.icon}</span> {s.title}
                 </button>
               ))}
             </nav>

@@ -43,12 +43,14 @@ jobs:
           npx cap sync android
 
       - name: Исправление версии Java в Gradle
-        working-directory: android
         run: |
-          # Устраняет ошибку "invalid source release: 21": шаблон Capacitor ожидает Java 21,
-          # а раннер использует Java 17. Приводим все упоминания к VERSION_17.
-          sed -i 's/VERSION_21/VERSION_17/g' variables.gradle app/build.gradle 2>/dev/null || true
-          grep -n "VERSION_" variables.gradle app/build.gradle || true
+          # Устраняет ошибку "invalid source release: 21": Capacitor 8 требует Java 21,
+          # а раннер использует Java 17. Приводим ВСЕ упоминания VERSION_21 к VERSION_17
+          # во всех gradle-файлах проекта И внутри пакета node_modules/@capacitor/android.
+          find android node_modules/@capacitor/android -name "*.gradle" -type f \
+            -exec sed -i 's/VERSION_21/VERSION_17/g; s/JavaVersion\.VERSION_21/JavaVersion.VERSION_17/g' {} + 2>/dev/null || true
+          echo "Проверка результата:"
+          grep -rn "VERSION_21" android node_modules/@capacitor/android --include="*.gradle" && echo "ВНИМАНИЕ: остались VERSION_21!" || echo "OK: VERSION_21 не найдено"
 
       - name: Подготовка ключа подписи
         id: keystore

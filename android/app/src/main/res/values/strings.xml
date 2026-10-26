@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Li-Ion Production</string>
+    <string name="title_activity_main">Li-Ion Production</string>
+    <string name="package_name">ru.liion.production</string>
+    <string name="custom_url_scheme">ru.liion.production</string>
+</resources>

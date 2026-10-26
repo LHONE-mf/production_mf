@@ -9,6 +9,8 @@ import { UsersModule } from './modules/users/UsersModule';
 import { CommunicationModule } from './modules/communication/CommunicationModule';
 import { SyncModule } from './modules/sync/SyncModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
+import { renderStageIfActive } from './stages/StageRouter';
+import { ErrorBoundary } from './shared/ErrorBoundary';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
@@ -36,6 +38,10 @@ function App() {
   }
 
   const renderContent = () => {
+    // Комнаты этапов производства ("stage:<id>")
+    const stageView = renderStageIfActive(activeTab);
+    if (stageView) return stageView;
+
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard />;
@@ -56,7 +62,9 @@ function App() {
 
   return (
     <AppLayout activeTab={activeTab} onTabChange={setActiveTab}>
-      {renderContent()}
+      <ErrorBoundary key={activeTab} onReset={() => setActiveTab('dashboard')}>
+        {renderContent()}
+      </ErrorBoundary>
     </AppLayout>
   );
 }
