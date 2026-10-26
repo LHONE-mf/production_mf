@@ -215,9 +215,13 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             <Battery className="w-5 h-5 text-green-400" />
             <span className="text-white font-bold text-sm">Li-Ion Production</span>
           </div>
-          <div className={`w-8 h-8 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}>
-            {currentUser.fullName.charAt(0)}
-          </div>
+          <button
+            onClick={logout}
+            title="Выйти из профиля"
+            className={`w-8 h-8 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
         </header>
 
         {/* Page content */}
