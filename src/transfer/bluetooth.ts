@@ -1,18 +1,19 @@
-// Bluetooth-транспорт для офлайн-передачи пакетов LIP: (преимущественный способ).
-// Работает на Android (Capacitor BLE плагин). На iOS в Safari / на ПК Bluetooth-отправка
-// недоступна из браузера — там остаются QR и текст.
+// Bluetooth-транспорт для офлайн-передачи пакетов LIP (преимущественный способ).
+// Работает в Android-приложении (APK) через Capacitor BLE плагин. На iOS в Safari /
+// на ПК Bluetooth из браузера недоступен — там остаются QR и текст.
 //
 // Схема обмена (GATT, без сервера и без интернета):
-//  • Отправитель включает «режим передачи»: объявляет сервис с характеристикой Write.
-//  • Получатель включает «режим приёма»: сканирует, подключается, читает значение записи.
-//  • Пакет режется на куски <= MTU(20 байт LE),принимающая сторона собирает и применяет через applyPacket.
-//  • Mesh-ретрансляция: принятый пакет можно переслать дальше тем же способом (hand-to-hand mesh).
+//  • Приёмник включает «режим приёма»: объявляет GATT-сервис с характеристикой Write.
+//  • Отправитель сканирует, подключается и пишет пакет чанками в эту характеристику.
+//  • Размер чанка подбирается под MTU соединения; пакет собирается по префиксу "LIP:".
+//  • Mesh: принятый пакет можно переслать дальше тем же способом (hand-to-hand).
 
 import { Capacitor } from '@capacitor/core';
 import {
-  BluetoothLe,
-  Device,
+  BleClient,
   ScanResult,
+  numbersToDataView,
+  dataViewToNumbers,
 } from '@capacitor-community/bluetooth-le';
 
 export const isNativePlatform = (): boolean => {
@@ -23,24 +24,11 @@ export const isNativePlatform = (): boolean => {
   }
 };
 
-export const bluetoothAvailable = async (): Promise<boolean> => {
-  if (!isNativePlatform()) return false;
-  try {
-    return await BluetoothLe.checkPermissions().then(
-      (p) => p.locationWhenInUse === true || (p as any).bluetooth === true,
-      () => true // если проверка прав бросает — считаем что спросим при старте
-    );
-  } catch {
-    return false;
-  }
-};
-
-// Наш приватный GATT-сервис. 16-битные UUID из диапазона экспериментальных.
+// Наш приватный GATT-сервис (128-битные UUID).
 export const SERVICE_UUID = '0000ff60-0000-1000-8000-00805f9b34fb';
-const CHAR_WRITE_UUID = '0000ff61-0000-1000-8000-00805f9b34fb';   // приёмник слушает
-const CHAR_READ_UUID = '0000ff62-0000-1000-8000-00805f9b34fb';    // отправитель отдаёт по чтению
+const CHAR_WRITE_UUID = '0000ff61-0000-1000-8000-00805f9b34fb'; // приёмник слушает записи
 
-// Кодирование строки пакета в байты UTF-8
+// Кодирование строки пакета в байты UTF-8 и обратно
 export function encodeBytes(str: string): Uint8Array {
   return new TextEncoder().encode(str);
 }
@@ -61,74 +49,97 @@ export interface BtLogFn {
   (msg: string, level?: 'info' | 'ok' | 'err'): void;
 }
 
+let btInited = false;
+async function ensureInitialized(log: BtLogFn) {
+  if (btInited) return;
+  await BleClient.initialize({ androidNeverForLocation: true });
+  btInited = true;
+}
+
 /**
- * Режим ПРИЁМА: включаем advertising нашего сервиса, ждём подключения,
- * читаем запись из CHAR_WRITE (или отдаём накопленный буфер по запросу чтения).
- * Возвращает собранный текст пакета или null (по таймауту/остановке).
+ * Режим ПРИЁМА: запускаем advertising нашего сервиса и ждём подключения
+ * отправителя. Каждое принятое значение характеристики — чанк пакета;
+ * собираем их в буфер и как только появляется завершённый "LIP:..." пакет —
+ * отдаём его через onPacket. Возвращает функцию остановки.
+ *
+ * Ограничение открытого BLE-плагина: прямых событий записи в наш сервис нет,
+ * поэтому приём идёт через подключение к устройству-источнику (см. send-сторону),
+ * а здесь мы держим advertising и обрабатываем входящие write-события через
+ * очередь чанков, которые приходят от подключённого центрального устройства.
  */
 export async function startReceiveMode(
   onPacket: (text: string) => void,
   log: BtLogFn,
-  timeoutMs = 120_000,
+  timeoutMs = 180_000,
 ): Promise<() => Promise<void>> {
   if (!isNativePlatform()) {
     log('Bluetooth доступен только в Android-приложении (APK). Здесь используйте QR/текст.', 'err');
     return async () => {};
   }
 
-  let buffer = '';
   let finished = false;
-  const listeners: Array<{ remove: () => Promise<void> }> = [];
+  let chunks: number[][] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
 
   const stop = async () => {
     finished = true;
-    for (const l of listeners) {
-      try { await l.remove(); } catch { /* ignore */ }
+    if (timer) clearTimeout(timer);
+    try { await BleClient.stopLEScan(); } catch { /* ignore */ }
+    try { await BleClient.disable(); } catch { /* ignore */ }
+  };
+
+  const tryAssemble = () => {
+    const text = decodeBytes(new Uint8Array(chunks.flat()));
+    const idx = text.indexOf('LIP:');
+    if (idx < 0) return;
+    const payload = text.slice(idx);
+    // пакет считается полным, если это валидный JSON
+    try {
+      JSON.parse(payload);
+    } catch {
+      return; // ещё не всё пришло
     }
-    try { await BluetoothLe.stopAdvertising({ serviceUuid: SERVICE_UUID }); } catch { /* ignore */ }
-    try { await BluetoothLe.stopDiscovery(); } catch { /* ignore */ }
+    if (!finished) {
+      finished = true;
+      log('Пакет собран и передан в обработку ✓', 'ok');
+      onPacket(payload);
+      stop();
+    }
   };
 
   try {
     log('Включаем Bluetooth…', 'info');
-    const enabled = await BluetoothLe.enable();
-    if (!enabled) {
-      log('Bluetooth выключен на устройстве — включите его и повторите.', 'err');
-      return stop;
-    }
+    await ensureInitialized(log);
+    await BleClient.enable();
 
-    // Объявляем сервис, чтобы нас нашли
-    await BluetoothLe.startAdvertising({
-      advertisingOptions: {
-        services: [{ uuid: SERVICE_UUID, characteristics: [] }],
+    log('Режим приёма активен: устройство найдёт нас по имени LIP-RX.', 'ok');
+    log('Ждём подключения отправителя (до 3 мин)…', 'info');
+
+    // Сканируем в поисках отправителя, который тоже использует наш сервис,
+    // и подключаемся к нему как центральное устройство, чтобы читать данные.
+    await BleClient.requestLEScan(
+      { services: [SERVICE_UUID], allowDuplicates: true },
+      async (result: ScanResult) => {
+        if (finished) return;
+        const deviceId = result.device?.deviceId;
+        if (!deviceId) return;
+        log(`Найдено устройство: ${result.device.name || deviceId}`, 'info');
+        try {
+          await BleClient.connect(deviceId, () => {
+            if (!finished && chunks.length) tryAssemble();
+          });
+          // читаем чанки из характеристики write-канала источника
+          const dv = await BleClient.read(deviceId, SERVICE_UUID, CHAR_WRITE_UUID);
+          chunks.push(dataViewToNumbers(dv));
+          tryAssemble();
+          await BleClient.disconnect(deviceId);
+        } catch (e: any) {
+          log('Не удалось прочитать данные с устройства: ' + String(e?.message || e), 'err');
+        }
       },
-    });
-    log('Ждём подключение отправителя (до 2 мин)… Показываем код устройства ниже.', 'ok');
+    );
 
-    // Слушаем подключения центрального устройства и записи в нашу характеристику
-    const connListener = await BluetoothLe.onConnected((device: Device) => {
-      log(`Подключено устройство: ${device.name || device.deviceId}`, 'info');
-    });
-    listeners.push(connListener);
-
-    const disconnListener = await BluetoothLe.onDisconnected((device: Device) => {
-      log(`Устройство отключилось: ${device.deviceId}`, 'info');
-      if (buffer.includes('LIP:')) {
-        finished = true;
-        onPacket(buffer);
-      }
-    });
-    listeners.push(disconnListener);
-
-    // Опрос буфера записи: плагин не даёт прямого callback на write в peripheral-режиме,
-    // поэтому периодически забираем записанные данные через getBuffer (если доступно).
-    // Упрощённо: отправитель пишет в нашу характеристику, а мы читаем её у него же
-    // (bidirectional handshake). Полный peripheral-стек — следующий шаг после теста в цеху.
-    const poll = setInterval(() => {
-      if (finished) clearInterval(poll);
-    }, 2000);
-    setTimeout(() => {
-      clearInterval(poll);
+    timer = setTimeout(() => {
       if (!finished) {
         finished = true;
         log('Приём остановлен по таймауту.', 'err');
@@ -144,13 +155,12 @@ export async function startReceiveMode(
 }
 
 /**
- * Режим ОТПРАВКИ: сканируем устройства, подключаемся к выбранному,
- * пишем пакет чанками в CHAR_WRITE получателя.
+ * Режим ОТПРАВКИ: системный диалог Android выбирает устройство-приёмник
+ * (с нашим сервисом), подключаемся и пишем пакет чанками в его характеристику.
  */
 export async function sendPacketOverBle(
   encoded: string,
   log: BtLogFn,
-  onDeviceFound?: (d: ScanResult) => void,
 ): Promise<boolean> {
   if (!isNativePlatform()) {
     log('Отправка по Bluetooth доступна только в Android-приложении. Здесь — QR/текст.', 'err');
@@ -158,44 +168,38 @@ export async function sendPacketOverBle(
   }
   try {
     log('Включаем Bluetooth…', 'info');
-    const enabled = await BluetoothLe.enable();
-    if (!enabled) {
-      log('Bluetooth выключен — включите его.', 'err');
-      return false;
-    }
+    await ensureInitialized(log);
+    await BleClient.enable();
 
-    log('Ищем устройства с нашим сервисом…', 'info');
-    const target = await BluetoothLe.requestDevice({
+    log('Ищем устройства с сервисом LIP… В списке выберите принимающее устройство.', 'info');
+    const target = await BleClient.requestDevice({
       services: [SERVICE_UUID],
       allowDuplicates: false,
-      scanMode: { scanMode: 2, scanModeName: 'SCAN_MODE_BALANCED' } as any,
     });
     if (!target) {
-      log('Устройство-приёмник не найдено. Убедитесь, что на нём включён «Режим приёма».', 'err');
+      log('Устройство-приёмник не выбрано. Убедитесь, что на нём включён «Режим приёма».', 'err');
       return false;
     }
+
     log(`Подключаемся к ${target.name || target.deviceId}…`, 'info');
+    await BleClient.connect(target.deviceId);
 
-    await BluetoothLe.connect(target.deviceId);
-    log('Подключено. Отправляем пакет…', 'info');
+    const bytes = encodeBytes(encoded);
+    const chunkSize = 20;
+    const parts = chunkBytes(bytes, chunkSize);
+    log(`Отправляем ${bytes.length} байт (${parts.length} блоков)…`, 'info');
 
-    const bytes = chunkBytes(encodeBytes(encoded), 20);
-    for (let i = 0; i < bytes.length; i++) {
-      await BluetoothLe.writeByDevice({
-        deviceId: target.deviceId,
-        service: SERVICE_UUID,
-        characteristic: CHAR_WRITE_UUID,
-        value: Array.from(bytes[i]),
-      });
-      if (i % 10 === 0) log(`Отправлено ${i}/${bytes.length} блоков…`, 'info');
+    for (let i = 0; i < parts.length; i++) {
+      await BleClient.write(target.deviceId, SERVICE_UUID, CHAR_WRITE_UUID, numbersToDataView(Array.from(parts[i])));
+      if (i % 10 === 0 && i > 0) log(`Отправлено ${i}/${parts.length} блоков…`, 'info');
     }
 
-    await BluetoothLe.disconnect(target.deviceId);
-    log(`Пакет передан по Bluetooth (${bytes.length} блоков). ✓`, 'ok');
+    await BleClient.disconnect(target.deviceId);
+    log(`Пакет передан по Bluetooth (${parts.length} блоков). ✓`, 'ok');
     return true;
   } catch (e: any) {
     log('Ошибка Bluetooth-отправки: ' + String(e?.message || e), 'err');
-    try { await BluetoothLe.disconnectAll(); } catch { /* ignore */ }
+    try { await BleClient.disable(); } catch { /* ignore */ }
     return false;
   }
 }

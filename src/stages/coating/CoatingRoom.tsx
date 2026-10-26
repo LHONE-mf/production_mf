@@ -9,7 +9,7 @@ import { db } from '../../core/db';
 import { CoatingMixSnapshot, CoatRun, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
-import { PacketOutModal } from '../../_ui/PacketOutModal';
+import { PacketOutModal } from '../_ui/PacketOutModal';
 import { headGapUm, requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm, intermittentCoverage } from './coatMath';
 
 type Tab = 'mixes' | 'setup' | 'journal' | 'comments';
