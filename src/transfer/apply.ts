@@ -2,7 +2,7 @@
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun } from '../core/types';
+import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun } from '../core/types';
 
 export interface ApplyResult {
   ok: boolean;
@@ -226,6 +226,28 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.fillRuns.put(fr);
         return { ok: true, message: `💧 Заливка «${fr.batchName}» принята: залито ${fr.cellsFilled}, брак ${fr.cellsScrap}` };
+      }
+      case 'walzing-in': {
+        // Залитые ячейки с 7 этажа/к.5 → входящие партии на вальцовку
+        const wi = p.payload as WalzingIncoming;
+        if (!wi.id || !wi.batchName) return { ok: false, message: 'Партия на вальцовку повреждена' };
+        const existing = await db.walzingIncoming.get(wi.id);
+        if (existing && !p.forced && existing.updatedAt >= wi.updatedAt) {
+          return { ok: true, message: `Партия «${wi.batchName}» на вальцовке уже новее — пропущено` };
+        }
+        await db.walzingIncoming.put(wi);
+        return { ok: true, message: `🎡 На вальцовку принята партия «${wi.batchName}»: ${wi.cellsIn} яч.` };
+      }
+      case 'walz-run': {
+        // Результат вальцовки → master / формирование
+        const wr = p.payload as WalzRun;
+        if (!wr.id || !wr.batchName) return { ok: false, message: 'Запись вальцовки повреждена' };
+        const existing = await db.walzRuns.get(wr.id);
+        if (existing && !p.forced && existing.updatedAt >= wr.updatedAt) {
+          return { ok: true, message: `Вальцовка «${wr.batchName}» уже новее — пропущено` };
+        }
+        await db.walzRuns.put(wr);
+        return { ok: true, message: `🎡 Вальцовка «${wr.batchName}» принята: годных ${wr.cellsOut}, брак ${wr.cellsScrap}` };
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же

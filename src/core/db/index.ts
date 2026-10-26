@@ -1,6 +1,6 @@
 import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
-import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun } from '../types';
 
 export class AppDatabase extends Dexie {
   users!: Table<User, string>;
@@ -32,6 +32,9 @@ export class AppDatabase extends Dexie {
   // Заливка электролита (два помещения: сухая комната и 7 этаж/к.5)
   electrolyteIncoming!: Table<ElectrolyteIncoming, string>; // входящие партии ячеек со сборки
   fillRuns!: Table<FillRun, string>;                         // журнал заливки
+  // Вальцовка (после заливки на 7 этаже): обжим залитых ячеек
+  walzingIncoming!: Table<WalzingIncoming, string>;          // входящие партии с заливки
+  walzRuns!: Table<WalzRun, string>;                         // журнал вальцовки
   // Меш-чат (офлайн): сообщения, доставленные по Bluetooth/QR/тексту
   chatMessages!: Table<ChatMessage, string>;   // id = from:ts — дедупликация в mesh
 
@@ -109,6 +112,12 @@ export class AppDatabase extends Dexie {
     this.version(13).stores({
       electrolyteIncoming: 'id, box, batchName, receivedAt, updatedAt',           // ElectrolyteIncoming[]
       fillRuns: 'id, box, batchName, workerId, createdAt, updatedAt',             // FillRun[]
+    });
+
+    // v14: вальцовка — обжим залитых ячеек после заливки на 7 этаже (к.5)
+    this.version(14).stores({
+      walzingIncoming: 'id, batchName, receivedAt, updatedAt',                    // WalzingIncoming[]
+      walzRuns: 'id, batchName, workerId, createdAt, updatedAt',                  // WalzRun[]
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.

@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   ElectrolyteBox, ElectrolyteIncoming, FillRun, SyncPacket, StageId, UserRole,
+  WalzingIncoming,
 } from '../../core/types';
 import { db } from '../../core/db';
 import { useAuthStore } from '../../core/store/authStore';
@@ -230,8 +231,25 @@ export function FillRoom({ box }: Props) {
             <div key={r.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-white font-medium">{r.batchName}</span>
-                <button onClick={() => setOutPacket({ v: 1, type: 'fill-run', stage: meta.stage, payload: r, from: currentUser?.id ?? 'unknown', ts: Date.now(), forced: isMaster || undefined })}
-                  className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>
+                <div className="flex gap-1">
+                  {/* только бокс 7 эт./к.5 передаёт залитые ячейки на вальцовку */}
+                  {box === 'floor7-room5' && r.cellsFilled > 0 && (
+                    <button onClick={() => {
+                      if (!currentUser) return;
+                      const now = new Date().toISOString();
+                      const wi: WalzingIncoming = {
+                        id: r.id, batchName: r.batchName, cellType: undefined,
+                        cellsIn: r.cellsFilled, electrolyteName: r.electrolyteName,
+                        fromFillRunId: r.id, receivedAt: now, updatedAt: now,
+                      };
+                      setOutPacket({ v: 1, type: 'walzing-in', stage: StageId.WALZING, payload: wi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                    }}
+                      className="text-xs bg-amber-800 hover:bg-amber-700 text-white rounded px-2 py-1"
+                      title="Отправить партию залитых ячеек на вальцовку">🎡 На вальцовку ▸</button>
+                  )}
+                  <button onClick={() => setOutPacket({ v: 1, type: 'fill-run', stage: meta.stage, payload: r, from: currentUser?.id ?? 'unknown', ts: Date.now(), forced: isMaster || undefined })}
+                    className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>
+                </div>
               </div>
               <div className="text-xs text-slate-300">
                 {r.electrolyteName ?? 'электролит не указан'} · доза {num(r.doseActual)} / {num(r.doseMin, ' мг')} · вакуум {num(r.vacuumKpa, ' кПа')} · давление {num(r.pressureKpa, ' кПа')}

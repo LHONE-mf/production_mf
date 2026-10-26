@@ -13,6 +13,7 @@ export enum StageId {
   ASSEMBLY = 'assembly',       // Сборка элементов
   ELECTROLYTE = 'electrolyte', // Заливка электролита: бокс сухой комнаты
   ELECTROLYTE_705 = 'electrolyte-705', // Заливка электролита: бокс 7 этаж, к.5
+  WALZING = 'walzing',       // Вальцовка (обжим залитых ячеек, после 7 этажа)
   FORMATION = 'formation',     // Формирование (ЧЦЦ)
   AGING = 'aging',             // Старение
 }
@@ -27,6 +28,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
   [StageId.ASSEMBLY]: 'Сборка элементов',
   [StageId.ELECTROLYTE]: 'Заливка электролита (сухая комната)',
   [StageId.ELECTROLYTE_705]: 'Заливка электролита (7 эт. / к.5)',
+  [StageId.WALZING]: 'Вальцовка',
   [StageId.FORMATION]: 'Формирование (ЧЦЦ)',
   [StageId.AGING]: 'Старение',
 };
@@ -35,7 +37,7 @@ export const STAGE_LABELS: Record<StageId, string> = {
 export const STAGE_ORDER: StageId[] = [
   StageId.STORAGE, StageId.SLURRY, StageId.COATING, StageId.CALENDARING,
   StageId.CUTTING, StageId.SORTING, StageId.ASSEMBLY, StageId.ELECTROLYTE,
-  StageId.ELECTROLYTE_705, StageId.FORMATION, StageId.AGING,
+  StageId.ELECTROLYTE_705, StageId.WALZING, StageId.FORMATION, StageId.AGING,
 ];
 
 // ============================================================
@@ -74,6 +76,47 @@ export interface FillRun {
   humidityPpm?: number;              // точка росы / влажность бокса, °C т.р. или ppm
   cellsFilled: number;               // залито ячеек (годных)
   cellsScrap: number;                // брак (недолив/перелив/пузыри/подтекание)
+  defects: string[];                 // дефекты по реестру
+  comment?: string;
+  taskId?: string;
+  workerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================
+// ВАЛЬЦОВКА (обжим/вальцевание залитых цилиндрических ячеек).
+// Расположена ПОСЛЕ заливки на 7 этаже (к.5): туда приходят залитые
+// ячейки, обжимаются на вальцовочном станке и далее идут на формирование.
+// Параметры станка уточним позже — структура расширяемая.
+// ============================================================
+
+/** Входящая партия залитых ячеек на вальцовку (из бокса 7 эт./к.5) */
+export interface WalzingIncoming {
+  id: string;                        // = fillRunId
+  batchName: string;                 // название партии заливки
+  cellType?: CellType;               // тип ячейки
+  cellsIn: number;                   // сколько ячеек принято под вальцовку
+  electrolyteName?: string;          // марка электролита (из заливки)
+  fromFillRunId?: string;            // связь с FillRun
+  receivedAt: string;
+  updatedAt: string;
+}
+
+/** Запись журнала вальцовки (одна операция/партия на станке) */
+export interface WalzRun {
+  id: string;
+  batchName: string;                 // партия (из входящей или вручную)
+  machineNo?: string;                // номер вальцовочного станка
+  incomingDiameter?: number;         // диаметр ячейки до вальцовки, мм
+  finalDiameter?: number;            // целевой/итоговый диаметр после вальцовки, мм
+  passes?: number;                   // количество проходов (валков)
+  pressureKgf?: number;              // усилие обжима, кгс
+  speedRpm?: number;                 // скорость вращения/подачи, об/мин
+  temperatureC?: number;             // температура ячейки/окружения, °C
+  cellsIn: number;                   // подано ячеек
+  cellsOut: number;                  // годных после вальцовки
+  cellsScrap: number;                // брак (разрыв,мятость,недобор диаметра)
   defects: string[];                 // дефекты по реестру
   comment?: string;
   taskId?: string;
@@ -258,7 +301,9 @@ export type SyncPacketType =
   | 'defect-entry'    // запись реестра дефектов электродов (критичные/не критичные)
   | 'assembly-run'    // партия сборки элементов (сортировка → сборка → формовка/master)
   | 'electrolyte-in'  // входящая партия ячеек со сборки в бокс заливки
-  | 'fill-run'        // результат заливки электролита (журнал → master/формирование)
+  | 'fill-run'        // результат заливки электролита (журнал → вальцовка/master)
+  | 'walzing-in'      // залитые ячейки с 7 этажа/к.5 → на вальцовку
+  | 'walz-run'        // запись журнала вальцовки (→ формирование/master)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
 

@@ -11,6 +11,7 @@ import { CuttingModule } from './cutting/CuttingRoom';
 import { SortingModule } from './sorting/SortingRoom';
 import { AssemblyModule } from './assembly/AssemblyRoom';
 import { FillRoom } from './electrolyte/FillRoom';
+import { WalzingRoom } from './walzing/WalzingRoom';
 import { FormationModule } from './formation/FormationModule';
 import { AgingModule } from './aging/AgingModule';
 
@@ -25,6 +26,7 @@ const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   // Две комнаты заливки электролита — одно и то же приложение, разные помещения
   [StageId.ELECTROLYTE]: () => <FillRoom box="dry-room" />,
   [StageId.ELECTROLYTE_705]: () => <FillRoom box="floor7-room5" />,
+  [StageId.WALZING]: WalzingRoom,
   [StageId.FORMATION]: FormationModule,
   [StageId.AGING]: AgingModule,
 };
