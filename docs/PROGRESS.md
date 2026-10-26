@@ -102,6 +102,15 @@ AI Response:
 - ❗ НЕ ПРОВЕРЕНО (нет доступа к железу): BLE на живых телефонах — требуется тест двух устройств на новом APK; фоновый приём на iOS невозможен архитектурно (см. BLUETOOTH_NATIVE.md).
 
 ## Текущий статус (обновлён 2026-10-28f, HEAD origin/main = `a00d68e` + локальные коммиты вальцовки и формировки; новый HEAD будет проставлен после пуша этого шага)
+
+### Исправления по результатам аудита кода (2026-10-28)
+✅ BLE-приём: в src/transfer/bluetooth.ts заменена битая проверка `JSON.parse("LIP:...")`
+   на `decodePacket(payload)` (строки ~199 и ~247). Пакеты больше не отбрасываются молча.
+✅ Размер BLE-рекламы: BleBridgePlugin.java — ADV-пакет теперь содержит только UUID сервиса,
+   serviceData с заголовком перенесён в SCAN RESPONSE (startAdvertising c scanResponse);
+   сканирование фильтрует по SHORT_UUID. Устранён риск ADV_FAIL (превышение 31 байт).
+⬜ ОЖИДАЮТ РЕАЛИЗАЦИИ (следующие шаги): подпись пакетов HMAC + проверка роли для forced;
+   хеширование паролей; многокадровый QR + реальный сканер камеры; удаление Supabase/INTERNET/allowMixedContent.
 ### Отметка сессии 2026-10-28 (KPI) — ВЫПОЛНЕНО ✅
 - **KPI-дашборд реализован**: `src/kpi/KpiDashboard.tsx` (новый файл), подключён в `App.tsx` (вкладка 'kpi') и в навигацию `AppLayout.tsx` («📈 KPI-дашборд», доступна всем 4 ролям).
 - Источник данных — только локальная база Dexie (полный офлайн): mixBatches, coatRuns, calenderRuns, cuttingRuns, sortRuns, assemblyRuns, fillRuns, walzRuns, formationRuns, tasks, users.

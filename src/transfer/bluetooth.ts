@@ -16,6 +16,7 @@ import {
   dataViewToNumbers,
 } from '@capacitor-community/bluetooth-le';
 import BleBridge from './BleBridge';
+import { decodePacket } from './packet';
 
 /** Нативный плагин доступен только в Android-APK */
 const nativeBleAvailable = (): boolean => {
@@ -196,7 +197,9 @@ export async function startReceiveMode(
         const idx = ev.packet.indexOf('LIP:');
         if (idx < 0) return;
         const payload = ev.packet.slice(idx);
-        try { JSON.parse(payload); } catch { return; }
+        // Валидация через decodePacket: строка "LIP:<base64>" НЕ является JSON,
+        // поэтому JSON.parse здесь всегда падал и молча отбрасывал пакеты.
+        if (!decodePacket(payload)) return;
         log(`Пакет получен по BLE (${ev.len} байт, RSSI ${ev.rssi}) ✓`, 'ok');
         onPacket(payload);
       });
@@ -241,7 +244,8 @@ export async function startReceiveMode(
     if (idx < 0) return;
     const payload = text.slice(idx);
     try {
-      JSON.parse(payload); // полный ли пакет?
+      // Полный пакет проверяем декодированием (JSON внутри base64, не сама строка)
+      if (!decodePacket(payload)) return;
     } catch {
       return;
     }

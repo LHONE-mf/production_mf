@@ -58,6 +58,8 @@ public class BleBridgePlugin extends Plugin {
 
     private static final ParcelUuid SERVICE_UUID =
             ParcelUuid.fromString("0000FF60-0000-1000-8000-00805F9B34FB");
+    private static final ParcelUuid SHORT_UUID =
+            ParcelUuid.fromString("0000FF60-0000-1000-8000-00805F9B34FB");
     private static final ParcelUuid CHAR_DATA_UUID =
             ParcelUuid.fromString("0000FF61-0000-1000-8000-00805F9B34FB");
 
@@ -126,8 +128,17 @@ public class BleBridgePlugin extends Plugin {
                 .setTimeout(0)
                 .build();
 
+        // Реклама разбита на два блока, чтобы не превысить 31 байт payload:
+        //  • ADV-пакет: только 16-битный UUID сервиса (5 байт) — влезает гарантированно;
+        //  • SCAN RESPONSE: serviceData с заголовком пакета (полные 128-бит UUID + 9 байт).
+        // Приёмник сканирует с setScanResponse(true), поэтому заголовок приходит.
         AdvertiseData data = new AdvertiseData.Builder()
-                .addServiceUuid(SERVICE_UUID)
+                .addServiceUuid(SHORT_UUID)
+                .setIncludeDeviceName(false)
+                .setIncludeTxPowerLevel(false)
+                .build();
+
+        AdvertiseData scanResponse = new AdvertiseData.Builder()
                 .addServiceData(SERVICE_UUID, header)
                 .setIncludeDeviceName(false)
                 .build();
@@ -151,7 +162,7 @@ public class BleBridgePlugin extends Plugin {
         };
 
         try {
-            adv.startAdvertising(settings, data, advCallback);
+            adv.startAdvertising(settings, data, scanResponse, advCallback);
         } catch (SecurityException e) {
             call.reject("PERMISSION_DENIED");
         }
@@ -245,10 +256,15 @@ public class BleBridgePlugin extends Plugin {
         if (scanner == null) { call.reject("NO_SCANNER"); return; }
 
         List<ScanFilter> filters = new ArrayList<>();
-        filters.add(new ScanFilter.Builder().setServiceUuid(SERVICE_UUID).build());
+        // Фильтр по 16-битному UUID (совпадает с полным FF60 в ADV-пакете).
+        filters.add(new ScanFilter.Builder().setServiceUuid(SHORT_UUID).build());
 
         ScanSettings settings = new ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                // Обязательно: заголовок пакета лежит в SCAN RESPONSE, без этого флага
+                // он не придёт и приёмник не увидит, что подключаться.
+                .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
+                .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
                 .build();
 
         scanCb = new ScanCallback() {
