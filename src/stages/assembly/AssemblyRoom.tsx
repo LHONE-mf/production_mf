@@ -19,6 +19,8 @@ import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { LiElectrodesStation } from './LiElectrodesStation';
 import { ZStackingStation } from './ZStackingStation';
+import { WindingStation } from './WindingStation';
+import { CrimpCylStation } from './CrimpCylStation';
 
 type Tab = 'incoming' | AssemblySubstation | 'journal' | 'comments';
 
@@ -110,8 +112,8 @@ export function AssemblyModule() {
     { id: 'incoming', label: `📥 Партии с сортировки (${(sortRuns ?? []).length})` },
     { id: 'li-electrodes', label: '🔘 B-с1 Литиевые электроды' },
     { id: 'z-stacking', label: '📚 B-с2 Z-стэкинг' },
-    { id: 'winding', label: '🌀 B-с3 Скрутка (Б2b)' },
-    { id: 'crimp-cyl', label: '🔩 B-с4 Зиговка+УЗ цил. (Б2b)' },
+    { id: 'winding', label: '🌀 B-с3 Скрутка' },
+    { id: 'crimp-cyl', label: '🔩 B-с4 Зиговка+точка+УЗ цил.' },
     { id: 'us-prismatic', label: '🔊 B-с5 УЗ призм. (Б2b)' },
     { id: 'laser-prismatic', label: '🔦 B-с6 Лазер призм. (Б2b)' },
     { id: 'journal', label: `📒 Журнал партий (${(runs ?? []).length})` },
@@ -186,9 +188,17 @@ export function AssemblyModule() {
         <ZStackingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : <NoBatch />)}
 
-      {['winding', 'crimp-cyl', 'us-prismatic', 'laser-prismatic'].includes(tab) && (
+      {tab === 'winding' && (selected ? (
+        <WindingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : <NoBatch />)}
+
+      {tab === 'crimp-cyl' && (selected ? (
+        <CrimpCylStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : <NoBatch />)}
+
+      {['us-prismatic', 'laser-prismatic'].includes(tab) && (
         <div className="bg-slate-900 border border-dashed border-slate-700 rounded p-6 text-center">
-          <p className="text-sm text-slate-400">Станция будет добавлена шагом <b>Б2b</b> отдельным файлом.</p>
+          <p className="text-sm text-slate-400">Станция будет добавлена шагом <b>Б2c</b> отдельным файлом.</p>
           <p className="text-xs text-slate-600 mt-1">id: {tab}</p>
         </div>
       )}
