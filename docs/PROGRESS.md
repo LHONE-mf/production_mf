@@ -16,7 +16,14 @@
 
 ---
 
-## Текущий статус (ревизия 2026-10-26)
+## Текущий статус (ревизия 2026-10-27, нарезка готова)
+
+### Обновление 2026-10-27 — КОМНАТА НАРЕЗКИ ЭЛЕКТРОДОВ (Шаги 1–3 выполнены)
+- Шаг 1 (ранее, коммит `5fa13aa`): типы CuttingIncoming/CutRun/ElectrodeShape, Dexie v8 (cuttingRolls/cuttingRuns), apply.ts кейсы cutting-roll/cut-run.
+- Шаг 2: `src/stages/cutting/CuttingRoom.tsx` — вкладки 📥 Рулоны с каландра / ✂️ Нарезка (калькулятор выхода: полосы и призматические, ширина ножа) / 📒 Журнал / 💬 Комментарии; отправка cut-run на сортировку + forced master.
+- Шаг 3: комната подключена в StageRouter (SORTING → CuttingModule), registry: «Нарезка электродов»; в JournalTab каландра — авто-формирование пакета cutting-roll при сохранении прокатки без дефектов; демо-рулоны cal-demo-001/002 в initializeDatabase.
+- Проверки: tsc --noEmit exit 0; npm run build успешен.
+- СТАТУС: изменения локальные, коммит+пуш в процессе этой сессии (проверять по git ls-remote ниже).
 
 ### Git
 - Ветка `main`, HEAD = `d7c70b5`, синхронизирован с `origin/main` (проверено `git ls-remote`).

@@ -8,7 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import {
-  CalenderParams, CalenderRun, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole,
+  CalenderParams, CalenderRun, CuttingIncoming, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -134,6 +134,10 @@ export function CalendaringModule() {
           userName={userName}
           canForce={isTechManager}
           onNew={() => setTab('params')}
+          onCutSend={(ci) => setOutPacket({
+            v: 1, type: 'cutting-roll', stage: StageId.CALENDARING,
+            payload: ci, from: currentUser!.id, ts: Date.now(),
+          })}
           onSend={(r, forced) => {
             const fresh = { ...r, updatedAt: Date.now() };
             db.calenderRuns.put(fresh);
@@ -364,7 +368,7 @@ function ParamsTab({
 
 // ── Вкладка: журнал прокатки (оператор каландра) ────────────────────
 function JournalTab({
-  rolls, runs, userName, canForce, onSend, onNew,
+  rolls, runs, userName, canForce, onSend, onNew, onCutSend,
 }: {
   rolls: RollSpec[];
   runs: CalenderRun[];
@@ -372,6 +376,7 @@ function JournalTab({
   canForce: boolean;
   onSend: (r: CalenderRun, forced: boolean) => void;
   onNew: () => void;
+  onCutSend: (ci: CuttingIncoming) => void;
 }) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -405,6 +410,27 @@ function JournalTab({
       updatedAt: Date.now(),
     };
     await db.calenderRuns.put(updated);
+    // авто-передача на нарезку: прокатанный рулон без дефектов уходит пакетом cutting-roll.
+    // Задание технолога (тип электродов / L) берём из уже принятых входящих, иначе значения по умолчанию.
+    if (!updated.hasDefects) {
+      const prevIncoming = await db.cuttingRolls.get(updated.id);
+      const rsForCut = rolls.find((x) => x.id === updated.rollId);
+      if (rsForCut) {
+        const ci: CuttingIncoming = {
+          id: updated.id,
+          roll: rsForCut,
+          calender: updated,
+          thicknessAfterUm: updated.thicknessAfterUm,
+          electrodeType: prevIncoming?.electrodeType ?? 'strip',
+          coatingType: prevIncoming?.coatingType ?? rsForCut.mixName,
+          electrodeLengthMm: prevIncoming?.electrodeLengthMm,
+          webWidthMm: prevIncoming?.webWidthMm,
+          techNotes: prevIncoming?.techNotes ?? updated.notes,
+          createdAt: Date.now(),
+        };
+        onCutSend(ci);
+      }
+    }
     // дубль в общий журнал работ комнаты (для KPI)
     const roll = rolls.find((x) => x.id === r.rollId);
     await db.journal.add({

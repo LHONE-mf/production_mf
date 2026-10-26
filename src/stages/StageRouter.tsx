@@ -7,7 +7,7 @@ import { StorageModule } from './storage/StorageModule';
 import { SlurryModule } from './slurry/SlurryModule';
 import { CoatingModule } from './coating/CoatingModule';
 import { CalendaringModule } from './calendaring/CalendaringRoom';
-import { SortingModule } from './sorting/SortingModule';
+import { CuttingModule } from './cutting/CuttingRoom';
 import { AssemblyModule } from './assembly/AssemblyModule';
 import { ElectrolyteModule } from './electrolyte/ElectrolyteModule';
 import { FormationModule } from './formation/FormationModule';
@@ -18,7 +18,7 @@ const STAGE_COMPONENTS: Record<StageId, React.ComponentType> = {
   [StageId.SLURRY]: SlurryModule,
   [StageId.COATING]: CoatingModule,
   [StageId.CALENDARING]: CalendaringModule,
-  [StageId.SORTING]: SortingModule,
+  [StageId.SORTING]: CuttingModule,
   [StageId.ASSEMBLY]: AssemblyModule,
   [StageId.ELECTROLYTE]: ElectrolyteModule,
   [StageId.FORMATION]: FormationModule,

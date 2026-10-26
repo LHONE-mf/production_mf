@@ -305,4 +305,42 @@ export async function initializeDatabase() {
       },
     ] as CoatRun[]);
   }
+
+  // Демо для комнаты нарезки электродов: рулон пришёл с каландра + задание технолога
+  if ((await db.cuttingRolls.count()) === 0) {
+    const now = Date.now();
+    await db.cuttingRolls.bulkAdd([
+      {
+        id: 'cal-demo-001',
+        roll: {
+          id: 'cal-demo-001', mixName: 'Катод LFP R-07 (рулон №4)',
+          thicknessBeforeUm: 180, segLengthsM: [420, 380],
+          sideALengthM: 800, sideBLengthM: 0, foilType: 'Al 12 мкм', createdAt: now - 3600000,
+        },
+        calender: {
+          id: 'cal-demo-001', rollId: 'cal-demo-001', gapsMm: [0.35, 0.28, 0.25],
+          totalLengthM: 800, thicknessAfterUm: 150, hasDefects: false,
+          workerId: 'worker-003', createdAt: now - 1800000, updatedAt: now - 1800000,
+        },
+        thicknessAfterUm: 150,
+        electrodeType: 'strip', coatingType: 'LFP (катод)',
+        electrodeLengthMm: 950, webWidthMm: 318,
+        techNotes: 'Полосы для цилиндрических 21700. Рез по центру поля.',
+        createdAt: now - 1700000,
+      },
+      {
+        id: 'cal-demo-002',
+        roll: {
+          id: 'cal-demo-002', mixName: 'Анод графит R-03 (рулон №2)',
+          thicknessBeforeUm: 160, segLengthsM: [300],
+          sideALengthM: 300, sideBLengthM: 295, foilType: 'Cu 8 мкм', createdAt: now - 5400000,
+        },
+        thicknessAfterUm: 132,
+        electrodeType: 'prismatic', coatingType: 'Графит (анод)',
+        electrodeLengthMm: 210, webWidthMm: 260,
+        techNotes: 'Пластины для призматических ячеек 48Ah.',
+        createdAt: now - 5000000,
+      },
+    ] as CuttingIncoming[]);
+  }
 }
