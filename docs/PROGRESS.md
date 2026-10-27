@@ -103,6 +103,11 @@ AI Response:
 
 ## Текущий статус (обновлён 2026-10-28n)
 
+### 2026-10-28: Целевая структура (docs/TARGET_STRUCTURE.md)
+- Создан файл `docs/TARGET_STRUCTURE.md` — целевая организация кода (core/production/transfer/modules/stages).
+  Это ЦЕЛЬ, а не список файлов «сделать сразу»; движение поэтапное T1→T10 (таблица в конце файла).
+- Первый шаг по плану структуры — **T1**: вынести версии Dexie из `src/core/db/index.ts` в `migrations.ts`.
+
 ### ✅ СДЕЛАНО: Чистка структуры (пункт 3 плана preliminary_analysis), коммит ниже по тексту
 - Удалены мёртвые заглушки без ссылок: `src/stages/assembly/AssemblyModule.tsx`, `src/stages/calendaring/CalendaringModule.tsx`, `src/stages/coating/CoatingModule.tsx`, `src/stages/slurry/SlurryModule.tsx`, дубликат `src/stages/slurry/_ui/PacketOutModal.tsx` (старая версия без Bluetooth; все комнаты замесов уже импортируют общую `src/stages/_ui/PacketOutModal.tsx`).
 - Исправлены импорты в `StageRouter.tsx`: SlurryModule → из `slurry/SlurryRoom`, CoatingModule → из `coating/CoatingRoom` (функции с такими именами реально экспортируются этими файлами).
