@@ -2,7 +2,7 @@
 // JSON → base64 (префикс "LIP:"). При автоподхвате из текста ищем подстроку LIP:...
 
 import { SyncPacket, UserRole } from '../core/types';
-import { signPacket } from '../core/security';
+import { signPacket, hasWorkshopKey } from '../core/security';
 
 export const PACKET_PREFIX = 'LIP:';
 
@@ -19,8 +19,12 @@ export function currentSenderRole(): UserRole | undefined {
 }
 
 /** Пакет → текст для QR / сообщения. Подпись (sig) добавляется автоматически,
- *  если пакет ещё не подписан. Роль отправителя подставляется из текущей сессии. */
+ *  если пакет ещё не подписан. Роль отправителя подставляется из текущей сессии.
+ *  Бросает ошибку, если ключ цеха не задан — неподписанные пакеты не выпускаем. */
 export async function encodePacket(p: SyncPacket): Promise<string> {
+  if (!hasWorkshopKey()) {
+    throw new Error('Ключ цеха не задан: задайте его в разделе «Синхронизация», чтобы подписывать пакеты');
+  }
   const withRole: SyncPacket = p.role ? p : { ...p, role: currentSenderRole() };
   const signed: SyncPacket = withRole.sig ? withRole : { ...withRole, sig: await signPacket(withRole) };
   const json = JSON.stringify(signed);

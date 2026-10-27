@@ -8,6 +8,7 @@ import { useAuthStore } from '../core/store/authStore';
 import { SyncPacket } from '../core/types';
 import { encodePacket, decodePacketFromQr, toQrChunks } from './packet';
 import { applyPacket, ApplyResult } from './apply';
+import { setWorkshopKey, hasWorkshopKey } from '../core/security';
 import { useBluetooth } from './useBluetooth';
 import { QrScanner } from './QrScanner';
 
@@ -23,6 +24,8 @@ export function IngestPanel({ buildOutgoing }: Props) {
   const [outgoing, setOutgoing] = useState<string | null>(null);
   const [qrFrame, setQrFrame] = useState(0);
   const [scanning, setScanning] = useState(false);
+  const [keySet, setKeySet] = useState(hasWorkshopKey());
+  const [keyInput, setKeyInput] = useState('');
   const bt = useBluetooth((res) => setResult(res));
 
   const outgoingChunks = outgoing ? toQrChunks(outgoing) : [];
@@ -36,8 +39,25 @@ export function IngestPanel({ buildOutgoing }: Props) {
   const showOutgoing = async () => {
     const p = buildOutgoing?.();
     if (!p) return;
-    setQrFrame(0);
-    setOutgoing(await encodePacket(p));
+    try {
+      setQrFrame(0);
+      setOutgoing(await encodePacket(p));
+    } catch (e) {
+      setResult({ ok: false, message: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  /** Сохранить ключ цеха (подпись пакетов). Повторное сохранение = смена ключа. */
+  const saveKey = () => {
+    const k = keyInput.trim();
+    if (k.length < 4) {
+      setResult({ ok: false, message: 'Ключ цеха слишком короткий (минимум 4 символа)' });
+      return;
+    }
+    setWorkshopKey(k);
+    setKeySet(true);
+    setKeyInput('');
+    setResult({ ok: true, message: 'Ключ цеха сохранён. Пакеты будут подписываться этим ключом.' });
   };
 
   const acceptIncoming = async () => {
@@ -66,6 +86,32 @@ export function IngestPanel({ buildOutgoing }: Props) {
   return (
     <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 space-y-4">
       <h3 className="text-white font-semibold">📡 Офлайн-передача (Bluetooth / QR / текст)</h3>
+
+      {/* Ключ цеха — обязателен для подписи и приёма пакетов */}
+      <div className={`space-y-2 border rounded-lg p-3 ${keySet ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-amber-500/40 bg-amber-500/10'}`}>
+        {keySet ? (
+          <p className="text-xs text-emerald-400 font-medium">🔐 Ключ цеха задан — пакеты подписываются и проверяются (HMAC-SHA256).</p>
+        ) : (
+          <p className="text-xs text-amber-300 font-medium">⚠ Ключ цеха не задан. Без него нельзя подписать или принять пакет. Введите общий ключ производства (его задаёт начальник производства один раз на каждом устройстве).</p>
+        )}
+        <div className="flex gap-2">
+          <input
+            type="password"
+            className="flex-1 bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500"
+            placeholder={keySet ? 'Новый ключ (смена)…' : 'Ключ цеха'}
+            value={keyInput}
+            onChange={(e) => setKeyInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && saveKey()}
+          />
+          <button
+            onClick={saveKey}
+            disabled={!keyInput.trim()}
+            className="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 rounded text-sm text-white font-medium"
+          >
+            {keySet ? 'Сменить' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
 
       {/* Bluetooth-приём — преимущественный способ */}
       <div className="space-y-2 border border-blue-500/30 bg-blue-500/5 rounded-lg p-3">

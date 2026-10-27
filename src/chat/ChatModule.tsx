@@ -77,11 +77,16 @@ export function ChatModule() {
     const text = draft.trim();
     if (!text || !currentUser) return;
     const p = buildPacket(text);
-    await db.chatMessages.put(p.payload as ChatMessage);
-    setDraft('');
-    setOutText(await encodePacket(p));
-    setOutMode('qr');
-    scrollToBottom();
+    try {
+      const encoded = await encodePacket(p);
+      await db.chatMessages.put(p.payload as ChatMessage);
+      setDraft('');
+      setOutText(encoded);
+      setOutMode('qr');
+      scrollToBottom();
+    } catch (e) {
+      setNotice(e instanceof Error ? `✖ ${e.message}` : '✖ Не удалось подписать пакет');
+    }
   };
 
   /** Принять входящий пакет (из BLE-автоприёма или вставленного текста) */
@@ -101,8 +106,12 @@ export function ChatModule() {
     setNotice(applied ? 'Сообщение принято ✓' : 'Сообщение не принято');
     if (relayPacket) {
       // предлагаем авто-ретрансляцию дальше по mesh
-      setOutText(await encodePacket(relayPacket));
-      setOutMode('qr');
+      try {
+        setOutText(await encodePacket(relayPacket));
+        setOutMode('qr');
+      } catch (e) {
+        setNotice(`Ретрансляция недоступна: ${e instanceof Error ? e.message : 'нет ключа цеха'}`);
+      }
     }
   };
 
@@ -111,8 +120,12 @@ export function ChatModule() {
    *  формат пакета = одно сообщение. Поэтому ретранслируем по одному. */
   const relayOne = async (m: ChatMessage) => {
     const p: SyncPacket = { v: 1, type: 'chat', payload: m, from: m.from, ts: m.ts };
-    setOutText(await encodePacket(p));
-    setOutMode('qr');
+    try {
+      setOutText(await encodePacket(p));
+      setOutMode('qr');
+    } catch (e) {
+      setNotice(e instanceof Error ? `✖ ${e.message}` : '✖ Не удалось подписать пакет');
+    }
   };
 
   const copyOut = async () => {

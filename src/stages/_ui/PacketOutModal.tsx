@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../core/types';
 import { encodePacket } from '../../transfer/packet';
+import { hasWorkshopKey } from '../../core/security';
 import { useBluetooth } from '../../transfer/useBluetooth';
 
 interface Props {
@@ -17,12 +18,13 @@ type Tab = 'bluetooth' | 'qr' | 'text';
 
 export function PacketOutModal({ packet, onClose }: Props) {
   const [encoded, setEncoded] = useState('');
+  const [encError, setEncError] = useState('');
   // encodePacket теперь async (подпись пакета WebCrypto) — считаем в useEffect.
   useEffect(() => {
     let alive = true;
     encodePacket(packet)
-      .then((s) => { if (alive) setEncoded(s); })
-      .catch((e) => console.error('PacketOutModal: не удалось закодировать пакет', e));
+      .then((s) => { if (alive) { setEncoded(s); setEncError(''); } })
+      .catch((e) => { if (alive) setEncError(e instanceof Error ? e.message : String(e)); });
     return () => { alive = false; };
   }, [packet]);
 
@@ -75,8 +77,13 @@ export function PacketOutModal({ packet, onClose }: Props) {
           ))}
         </div>
 
-        {!encoded && (
-          <p className="text-red-400 text-sm">Не удалось закодировать пакет для передачи.</p>
+        {!hasWorkshopKey() && (
+          <p className="text-amber-300 text-sm bg-amber-500/10 border border-amber-500/40 rounded-lg p-2">
+            ⚠ Ключ цеха не задан — пакет нельзя подписать и передать. Задайте ключ в разделе «Синхронизация».
+          </p>
+        )}
+        {hasWorkshopKey() && !encoded && encError && (
+          <p className="text-red-400 text-sm">Не удалось закодировать пакет для передачи: {encError}</p>
         )}
 
         {tab === 'bluetooth' && encoded && (
