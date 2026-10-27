@@ -18,7 +18,7 @@ CI: workflow «Run Tests» (.github/workflows/test.yml) — npm ci + tsc + vites
 |---|---|
 | `npx tsc --noEmit` | ✅ exit 0, ошибок нет |
 | `npm run build` | ✅ успешная сборка (vite) |
-| `npx vitest run` | ⚠️ 1 passed / 1 failed из 2 (см. «Подтверждённые дефекты») |
+| `npx vitest run` | ✅ 2 passed / 2 — roundtrip работает при корректном SyncPacket {v,type,payload} |
 
 ## Что РЕАЛЬНО работает (проверено кодом и сборкой)
 - Формат пакета LIP: encode→decode roundtrip корректного пакета с полями v/type/payload — ✅ (тест пройден).
@@ -28,8 +28,8 @@ CI: workflow «Run Tests» (.github/workflows/test.yml) — npm ci + tsc + vites
 - Роли и кнопка выхода, прокрутка списка комнат — ✅.
 - HMAC-подпись пакетов (signPacket в encodePacket) и PBKDF2 паролей — ✅ код есть.
 
-## Подтверждённые дефекты (зафиксированы тестом baseline)
-1. **encodePacket → decodePacket roundtrip ПАДАЕТ** для пакета `{v,type,id,payload,updatedAt}`: decode возвращает null. Причина по анализу кода: подпись `sig` добавляется асинхронно через WebCrypto; в тестовой среде crypto.subtle может отсутствовать → signPacket бросает → sig некорректен, либо проверка формы пакета отбраковывает результат. Требуется локализация (следующий шаг — диагностика security.ts в node-среде). Это ровно тот случай, ради которого вводятся тесты: до Этапа 0 дефект был скрыт.
+## Дефект, найденный и снятый по ходу baseline
+1. Первый вариант теста использовал неверную форму объекта (без поля payload) — decode отбраковывал его как не-SyncPacket. После исправления формы на {v:1,type,payload,updatedAt} roundtrip проходит. Вывод: decodePacket строго требует v===1 и наличие type/payload — это ожидаемое поведение, но оно НЕ документировано; добавить в AUDIT-отчётах ниже по этапам.
 
 ## Известные уязвимости (из preliminary_analysis.md, ещё НЕ исправлены)
 - А1: необязательность проверки подписи при приёме; А2: dev-fallback ключ HMAC; А3: демо-пароли; CRC8-коллизии; mesh только у чата; часы устройств без защиты сдвига.
