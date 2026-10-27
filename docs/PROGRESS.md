@@ -412,3 +412,14 @@ chief/admin123 · master/master123 · technologist/tech123 · worker/worker123
 - ✅ В .github/workflows/build-apk.yml добавлен блок concurrency (group: build-apk-${{ github.ref }}, cancel-in-progress: true) — защита от гонки параллельных сборок, из-за которой пуш CI-коммита падал с "remote rejected: cannot lock ref 'refs/heads/main'". В deploy-web.yml concurrency был и раньше.
 - ✅ Коммит 933af3d запушен; ЛОКАЛЬНЫЙ HEAD == УДАЛЁННЫЙ main (проверено git ls-remote + git show origin/main по файлу).
 - ⚠️ УРОК: два предыдущих ответа («Добавляй concurrency» / «Группировка») были пустыми обещаниями без вызовов инструментов — файл НЕ менялся. Реальная работа сделана только в этой отметке. Перед любым рапортом — проверка grep по origin/main.
+
+## Отметка 2026-10-28 (сессия: ЭТАП №0 — тестовая инфраструктура) ✅ ВЫПОЛНЕНО
+HEAD origin/main = `5e67ee5` (проверено ls-remote, LOCAL==REMOTE).
+Создано/изменено (коммиты Этапа 0):
+- package.json: команды test / test:watch / test:coverage; devDeps: vitest@2, happy-dom, fake-indexeddb.
+- vitest.config.ts (happy-dom, setup src/test/setup.ts), src/test/setup.ts (fake-indexeddb/auto + webcrypto).
+- src/core/__tests__/baseline.test.ts — 2 теста packet encode/decode, оба проходят (VITEST_EXIT=0, «Tests 2 passed (2)»).
+- .github/workflows/test.yml — CI: npm ci → tsc → vitest (continue-on-error на baseline) → build; concurrency добавлен.
+- docs/AUDIT_BASELINE.md — отчёт об исходном состоянии: что работает (tsc 0 ошибок, vite build OK, roundtrip LIP, decode null на мусор), найденный нюанс (decodePacket строго требует v===1+type/payload — не документировано), список открытых уязвимостей А1–А3 из preliminary_analysis.md.
+Важно: package-lock.json обновлён и закоммичен (npm install -D).
+СЛЕДУЮЩИЙ ШАГ (Этап 1, безопасность): А1 обязательная верификация sig в apply.ts, А2 удаление dev-fallback ключа, фикс демо-паролей (А3). Ждём подтверждения пользователя.
