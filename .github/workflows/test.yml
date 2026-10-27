@@ -23,6 +23,5 @@ jobs:
         run: npx tsc --noEmit
       - name: Unit tests (Vitest)
         run: npm test -- --run
-        continue-on-error: true   # Этап 0: baseline — падающие тесты не блокируют main
       - name: Build web
         run: npm run build

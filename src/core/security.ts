@@ -19,8 +19,14 @@ export function setWorkshopKey(key: string): void {
   localStorage.setItem(KEY_STORE, key.trim());
 }
 
+/** true — если ключ цеха задан (пакеты можно подписывать и проверять). */
+export function hasWorkshopKey(): boolean {
+  return getWorkshopKey().length > 0;
+}
+
 async function hmacSecret(): Promise<CryptoKey> {
-  const key = getWorkshopKey() || 'LIP-default-dev-key'; // dev-режим до ввода ключа
+  const key = getWorkshopKey();
+  if (!key) throw new Error('Ключ цеха не задан');
   return crypto.subtle.importKey('raw', te.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 }
 

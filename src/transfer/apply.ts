@@ -20,11 +20,10 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
     if (p.forced && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
       return { ok: false, message: 'Отклонено: forced-пакет без роли мастера/начальника' };
     }
-    // 2) Если подпись есть — проверяем её (устройство цеха). Без подписи пакеты тоже
-    //    проходят (обратная совместимость со старыми APK), но привилегированные типы
-    //    требуют роль мастера/начальника.
-    if (p.sig && !(await verifyPacketSig(p))) {
-      return { ok: false, message: 'Отклонено: подпись пакета не совпадает с ключом цеха' };
+    // 2) Подпись обязательна: пакеты без sig или с чужой подписью отклоняются.
+    //    (Устройства без ключа цеха не смогут ни подписать, ни принять пакет.)
+    if (!(await verifyPacketSig(p))) {
+      return { ok: false, message: p.sig ? 'Отклонено: подпись пакета не совпадает с ключом цеха' : 'Отклонено: пакет не подписан (нет sig). Проверьте ключ цеха на обоих устройствах' };
     }
     if (PRIVILEGED_TYPES.has(p.type) && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
       return { ok: false, message: `Отклонено: тип «${p.type}» принимает только мастер/начальник производства` };
