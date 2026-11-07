@@ -1,3 +1,4 @@
+import type { TaskPayloadV1 } from './taskDto';
 import Dexie, { type Table } from 'dexie';
 
 /** Separate database keeps existing production schema and migrations untouched. */
@@ -8,7 +9,7 @@ export interface PendingTaskOperation {
   entityId: string;
   operationType: 'upsert';
   expectedRevision: number;
-  payload: { title: string; status: 'pending' | 'in_progress' | 'completed'; assigneeId?: string | null };
+  payload: TaskPayloadV1;
   queuedAt: number;
   state: 'pending' | 'conflict';
   actualRevision?: number;
