@@ -28,7 +28,12 @@ export function SyncModule() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const pending = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('pending').count(), []);
-  const conflicts = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('conflict').count(), []);
+  const conflictOperations = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('conflict').toArray(), []);
+  const conflicts = conflictOperations?.length;
+  const conflictingTasks = useLiveQuery(async () => {
+    const operations = await db.hybridTaskOutbox.where('state').equals('conflict').toArray();
+    return Promise.all(operations.map(async operation => ({ operation, task: await db.tasks.get(operation.entityId) })));
+  }, []);
 
   async function connect() {
     setBusy(true); setError(''); setMessage('');
@@ -130,6 +135,20 @@ export function SyncModule() {
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{pending ?? '—'}</p><p className="text-slate-400 text-xs">Ожидают отправки</p></div>
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты / отклонённые операции</p></div>
         </div>
+        {(conflictingTasks?.length ?? 0) > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-white font-semibold text-sm">Задания, требующие внимания</h3>
+            {conflictingTasks?.map(({ operation, task }) => (
+              <div key={operation.operationId} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1">
+                <p className="text-white text-sm font-medium">{task?.title || operation.payload.title || operation.entityId}</p>
+                <p className="text-amber-200 text-xs">Изменение не принято сервером или обнаружен конфликт. Локальная копия сохранена.</p>
+                <p className="text-slate-400 text-xs">Ожидаемая версия: {operation.expectedRevision ?? '—'} · Версия на сервере: {operation.actualRevision ?? 'неизвестна'}</p>
+                <p className="text-slate-500 text-xs break-all">ID операции: {operation.operationId}</p>
+              </div>
+            ))}
+            <p className="text-slate-400 text-xs">Автоматическое разрешение конфликтов пока отключено, чтобы не потерять изменения.</p>
+          </div>
+        )}
         <p className="flex gap-2 text-slate-400 text-xs"><WifiOff className="w-4 h-4 shrink-0" /> Локальные задания не отправляются автоматически. Для серверных заданий требуется зарегистрированное устройство и действующая учётная запись. Подключение к серверу не заменяет офлайн-передачу.</p>
       </div>
       <IngestPanel />
