@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -15,7 +16,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'
     if (!user || !(await verifyPassword(password, user.password_hash))) return reply.code(401).send({ error: 'invalid_credentials' });
     const token = newToken();
     await pool.query(`INSERT INTO sessions (id, organization_id, user_id, token_hash, expires_at)
-      VALUES ($1, $2, $3, $4, now() + interval '12 hours')`, [crypto.randomUUID(), organizationId, user.id, tokenHash(token)]);
+      VALUES ($1, $2, $3, $4, now() + interval '12 hours')`, [randomUUID(), organizationId, user.id, tokenHash(token)]);
     return { accessToken: token, tokenType: 'Bearer', expiresIn: 43200, user: { id: user.id, role: user.role, organizationId } };
   });
   app.get('/auth/me', async (request, reply) => {
@@ -39,7 +40,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'
     const userId = parsed.data.userId ?? principal.id;
     const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND organization_id = $2 AND active = true', [userId, principal.organization_id]);
     if (!owner.rows.length) return reply.code(404).send({ error: 'user_not_found' });
-    const id = crypto.randomUUID();
+    const id = randomUUID();
     await pool.query('INSERT INTO devices (id, organization_id, user_id, public_key) VALUES ($1,$2,$3,$4)', [id, principal.organization_id, userId, parsed.data.publicKey]);
     return reply.code(201).send({ id, userId });
   });
