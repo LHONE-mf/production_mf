@@ -1,4 +1,7 @@
 import React, { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../core/db';
+import type { Task as StoredTask } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
 import { ROLE_LABELS } from '../../core/permissions';
@@ -68,7 +71,14 @@ const PRIORITY_CONFIG = {
 
 export function TasksModule() {
   const { currentUser } = useAuthStore();
-  const [tasks] = useState<Task[]>(DEMO_TASKS);
+  const storedTasks = useLiveQuery(() => db.tasks.toArray(), []);
+  const users = useLiveQuery(() => db.users.toArray(), []);
+  const tasks: Task[] = (storedTasks ?? []).map(task => ({
+    ...task,
+    assignedToName: users?.find(user => user.id === task.assignedTo)?.fullName ?? (task.assignedTo || 'Не назначен'),
+    createdByName: users?.find(user => user.id === task.createdBy)?.fullName ?? task.createdBy,
+    progress: task.status === TaskStatus.COMPLETED ? 100 : 0,
+  }));
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -141,6 +151,7 @@ export function TasksModule() {
         </div>
       </div>
 
+      {storedTasks === undefined && <p className="text-slate-400 text-sm">Загрузка заданий...</p>}
       {/* Task list */}
       <div className="space-y-3">
         {filteredTasks.map((task) => (
@@ -155,7 +166,7 @@ export function TasksModule() {
       </div>
 
       {/* Create task modal */}
-      {showCreateModal && <CreateTaskModal onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} onClose={() => setShowCreateModal(false)} />}
     </div>
   );
 }
@@ -228,11 +239,30 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
   );
 }
 
-function CreateTaskModal({ onClose }: { onClose: () => void }) {
+function CreateTaskModal({ onClose, creatorId, users }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}> }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
   const [assignee, setAssignee] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  async function createTask() {
+    if (!title.trim()) { setError('Введите название задания'); return; }
+    setSaving(true); setError('');
+    try {
+      const now = new Date();
+      const task: StoredTask = {
+        id: crypto.randomUUID(), title: title.trim(), description: description.trim(),
+        priority, status: assignee ? TaskStatus.ASSIGNED : TaskStatus.CREATED,
+        assignedTo: assignee, createdBy: creatorId, createdAt: now, updatedAt: now,
+        comments: [], attachments: [],
+      };
+      // Local-only until an authenticated server session and enrolled device are available.
+      await db.tasks.add(task);
+      onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось сохранить задание'); }
+    finally { setSaving(false); }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -287,13 +317,13 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
                 className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
               >
                 <option value="">Выберите...</option>
-                <option value="worker-001">Козлов Д.С.</option>
-                <option value="worker-002">Новиков А.М.</option>
-                <option value="worker-003">Морозов С.Н.</option>
+                {users.filter(user => user.isActive).map(user => <option key={user.id} value={user.id}>{user.fullName}</option>)}
               </select>
             </div>
           </div>
 
+          {error && <p role="alert" className="text-red-300 text-sm">{error}</p>}
+          <p className="text-slate-400 text-xs">Задание сохраняется на этом устройстве. Серверная синхронизация пока не подключена.</p>
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -302,10 +332,11 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
               Отмена
             </button>
             <button
-              onClick={onClose}
+              onClick={createTask}
+              disabled={saving}
               className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition shadow-lg shadow-blue-500/20"
             >
-              Создать
+              {saving ? 'Сохранение...' : 'Создать'}
             </button>
           </div>
         </div>
