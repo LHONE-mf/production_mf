@@ -22,3 +22,14 @@ These are intentionally isolated primitives, **not** a functioning Android sync 
 6. Add integration tests for restart, airplane mode, duplicate delivery, revocation, concurrent edits, and crash recovery.
 
 No production data is migrated or transmitted by this change.
+
+## Atomic opt-in task path (Dexie v16)
+
+New `src/core/sync/atomicTasks.ts` and `atomicClient.ts` use three new tables in the existing `LiIonProductionDB` (schema v16): `hybridTaskOutbox`, `hybridTaskRevisions`, and `hybridSyncMetadata`.
+
+- `saveServerManagedTask(task, deviceId)` writes a task and its pending operation **in one IndexedDB transaction**. It refuses non-UUID legacy/demo task and device identifiers and refuses a second unacknowledged edit to the same task.
+- `pushAtomicTasks(session)` atomically records acknowledged revisions and deletes acknowledged operations; conflicts remain available for manual handling.
+- `pullAtomicTasks(session)` applies changes and advances the cursor **in one IndexedDB transaction**. It refuses overwriting unmanaged local tasks, pending local edits, or revision gaps.
+- No app UI currently calls these opt-in functions. Existing local operations, including the Zustand task store, continue unchanged; the separate prototype outbox is **not migrated** automatically.
+
+**Caution:** The server's simplified task DTO is not sufficient to reconstruct the full production Task model (description, priority, creator, history, attachments, status distinctions). The current pull path inserts placeholder values for new server tasks and must not be used on production records until a versioned full-fidelity DTO and migration are implemented. No automatic background sync has been enabled.
