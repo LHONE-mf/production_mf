@@ -49,3 +49,10 @@ Outbox entries have three distinct states:
 - `rejected`: the server refused the operation (for example, invalid assignment or unenrolled device). The server's rejection reason is saved for diagnosis.
 
 Both conflict and rejection entries remain stored locally and are **not automatically retried** or discarded. The synchronization screen displays each affected task and supports read-only comparison against the server's current task. A safe write-side conflict resolution workflow is not implemented yet; do not manually delete outbox records to make an error disappear. Earlier installations may contain rejected operations recorded as `conflict`; these legacy entries are not reclassified automatically.
+
+
+## Single-organization device binding (temporary safety restriction)
+
+Because the existing Dexie task and revision tables are not tenant-partitioned, a device is bound to one server origin and one organization on first verified server login. A subsequent login for a different organization/server is blocked. Login checks the server-returned organization ID against the requested organization before establishing the binding. This is intentionally **not** multi-tenant support.
+
+If a device already contains synchronization revisions, queued operations, or a legacy task cursor without a tenant binding, login refuses synchronization. Preserve and back up the database; a deliberate migration is required. Do not delete the cursor or outbox manually to bypass this check. Local-only task data is not deleted by this guard.
