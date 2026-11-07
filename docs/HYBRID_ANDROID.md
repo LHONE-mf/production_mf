@@ -33,3 +33,9 @@ New `src/core/sync/atomicTasks.ts` and `atomicClient.ts` use three new tables in
 - No app UI currently calls these opt-in functions. Existing local operations, including the Zustand task store, continue unchanged; the separate prototype outbox is **not migrated** automatically.
 
 **Caution:** The server's simplified task DTO is not sufficient to reconstruct the full production Task model (description, priority, creator, history, attachments, status distinctions). The current pull path inserts placeholder values for new server tasks and must not be used on production records until a versioned full-fidelity DTO and migration are implemented. No automatic background sync has been enabled.
+
+## Task wire format v1
+
+The new `src/core/sync/taskDto.ts` and `apps/server/src/task-schema.ts` define a versioned full task payload: title, description, six statuses, priority, assignment, creator, timestamps, stage, technical-card reference, comments and attachments. The server validates the payload and tenant user references. `atomicTasks.ts` now queues the full DTO; `atomicClient.ts` reconstructs complete tasks on pull.
+
+**Migration warning:** previously queued prototype operations use the old three-field payload and will be rejected by the updated server. Do not delete existing queues automatically; introduce a deliberate migration or conflict recovery path before enabling sync. Attachments are currently JSON-embedded and limited to 1 MB each and 30 per task; large files need a separate authenticated blob transport. UI integration remains disabled.
