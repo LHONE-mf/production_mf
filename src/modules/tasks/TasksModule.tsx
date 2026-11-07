@@ -4,10 +4,9 @@ import { db } from '../../core/db';
 import type { Task as StoredTask } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
-import { ROLE_LABELS } from '../../core/permissions';
 import { 
-  Plus, Filter, Search, Clock, CheckCircle, AlertTriangle, 
-  Circle, Play, XCircle, ChevronDown, MoreVertical, QrCode,
+  Plus, Search, Clock, CheckCircle, 
+  Circle, Play, XCircle, QrCode,
   Share2, Bluetooth
 } from 'lucide-react';
 
@@ -25,33 +24,6 @@ interface Task {
   dueDate?: Date;
   progress: number;
 }
-
-const DEMO_TASKS: Task[] = [
-  {
-    id: '1', title: 'Сборка блока ячеек 48V', description: 'Собрать блок из 13 последовательных ячеек',
-    status: TaskStatus.IN_PROGRESS, priority: TaskPriority.HIGH, assignedTo: 'worker-001',
-    assignedToName: 'Козлов Д.С.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 3600000), dueDate: new Date(Date.now() + 7200000), progress: 60,
-  },
-  {
-    id: '2', title: 'Сварка никелевых контактов', description: 'Провести точечную сварку 48 контактов',
-    status: TaskStatus.ASSIGNED, priority: TaskPriority.MEDIUM, assignedTo: 'worker-002',
-    assignedToName: 'Новиков А.М.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 1800000), dueDate: new Date(Date.now() + 14400000), progress: 0,
-  },
-  {
-    id: '3', title: 'Тестирование BMS платы', description: 'Проверить все каналы балансировки',
-    status: TaskStatus.CREATED, priority: TaskPriority.LOW, assignedTo: 'worker-003',
-    assignedToName: 'Морозов С.Н.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 900000), progress: 0,
-  },
-  {
-    id: '4', title: 'Калибровка датчиков температуры', description: 'Калибровка 8 термопар на линии 2',
-    status: TaskStatus.COMPLETED, priority: TaskPriority.MEDIUM, assignedTo: 'worker-001',
-    assignedToName: 'Козлов Д.С.', createdBy: 'tech-001', createdByName: 'Сидоров А.В.',
-    createdAt: new Date(Date.now() - 86400000), progress: 100,
-  },
-];
 
 const STATUS_CONFIG = {
   [TaskStatus.CREATED]: { label: 'Создано', icon: Circle, color: 'text-slate-400', bg: 'bg-slate-500/20' },
