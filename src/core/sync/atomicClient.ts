@@ -16,12 +16,13 @@ async function send(session: HybridSession, path: string, init?: RequestInit) {
 /** Acknowledgements and revision metadata are committed atomically. */
 export async function pushAtomicTasks(session: HybridSession) {
   const pending = (await db.hybridTaskOutbox.where('state').equals('pending').sortBy('queuedAt')).slice(0, 50);
-  if (!pending.length) return { accepted: 0, conflicts: 0 };
+  if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
   const operations = pending.map(({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }) => ({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }));
   const response = await send(session, '/sync/push', { method: 'POST', body: JSON.stringify({ operations }) });
-  let accepted = 0, conflicts = 0;
+  let accepted = 0, conflicts = 0, rejected = 0;
   await db.transaction('rw', db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
-    for (const result of response.results as Array<{operationId:string;status:string;revision?:number;actualRevision?:number}>) {
+    if (!Array.isArray(response.results)) throw new Error('Invalid sync response: missing results');
+    for (const result of response.results as Array<{operationId:string;status:string;revision?:number;actualRevision?:number;reason?:string}>) {
       const item = pending.find(op => op.operationId === result.operationId);
       if (!item) continue;
       const current = await db.hybridTaskOutbox.get(item.operationId);
@@ -30,13 +31,18 @@ export async function pushAtomicTasks(session: HybridSession) {
         await db.hybridTaskRevisions.put({ entityId: item.entityId, revision: result.revision! });
         await db.hybridTaskOutbox.delete(item.operationId);
         accepted++;
+      } else if (result.status === 'rejected') {
+        // Keep the operation for diagnosis and retry only after the cause is resolved.
+        // Do not silently discard a locally saved assignment.
+        await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: undefined });
+        rejected++;
       } else if (result.status === 'conflict') {
         await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: result.actualRevision });
         conflicts++;
       }
     }
   });
-  return { accepted, conflicts };
+  return { accepted, conflicts, rejected };
 }
 
 /**
