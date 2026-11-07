@@ -31,3 +31,15 @@ Apply `apps/server/migrations/002_sessions.sql` after the first migration. Run `
 Endpoints: POST `/auth/login` with organizationId, login, password; GET `/auth/me`; POST `/auth/logout`; POST `/devices` (chief only, publicKey and optional userId); POST `/devices/:id/revoke` (chief only). Bearer tokens are random, stored only as SHA-256 hashes in the database, and expire after 12 hours. Login has an in-process rate limit, not a distributed limiter.
 
 **Not production-ready:** no refresh/offline session flow, audit logging, automated migrations, trusted device proof-of-possession, or distributed rate limiting. Device public keys are currently registration metadata only and do not authorize sync requests.
+
+## Task synchronization prototype
+
+Apply `apps/server/migrations/003_sync_entities.sql` after migrations 001 and 002.
+
+- `POST /sync/push`: Bearer-authenticated chief/master only. Accepts `{operations:[{operationId,deviceId,entityType:"task",entityId,operationType:"upsert",expectedRevision:0,payload:{title,status,assigneeId?}}]}` (1–50 operations). A new entity uses expectedRevision 0; updates use the last acknowledged revision.
+- `GET /sync/pull?cursor=0&limit=100`: Bearer-authenticated chief/master only. Returns ordered changes and nextCursor.
+- A device must be enrolled to the current user and organization and not revoked.
+- The first protocol slice intentionally rejects all non-task entity types. No arbitrary SQL or generic entity writes are exposed.
+- Writes use a transaction and organization-scoped advisory lock to serialize commit order for the cursor stream. Repeated operation IDs are recognized and revision conflicts returned rather than overwritten.
+
+**Not yet production-ready:** sync is not integrated with Android, no device private-key proof, worker-scoped sync or domain authorization on individual task assignments, and no database-backed integration tests. The sync endpoint is intentionally limited to managers until task-level access control is built. For large organizations, replace the organization-wide lock with a transactional outbox / commit-order mechanism.
