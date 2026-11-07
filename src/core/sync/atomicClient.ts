@@ -52,10 +52,13 @@ export async function pushAtomicTasks(session: HybridSession) {
 export async function pullAtomicTasks(session: HybridSession) {
   const cursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
   const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100');
+  if (!Array.isArray(response.changes) || !Number.isSafeInteger(Number(response.nextCursor)) || Number(response.nextCursor) < cursor) {
+    throw new Error('Invalid sync response: changes or cursor');
+  }
   const changes = response.changes as RemoteTaskChange[];
   await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
     for (const change of changes) {
-      if (change.entity_type !== 'task') throw new Error('Unexpected sync entity');
+      if (change.entity_type !== 'task' || !Number.isSafeInteger(change.revision) || change.revision < 1) throw new Error('Invalid sync entity or revision');
       const queued = await db.hybridTaskOutbox.where('entityId').equals(change.entity_id).count();
       if (queued) throw new Error('Pending local edit blocks remote task ' + change.entity_id);
       const current = await db.tasks.get(change.entity_id);
