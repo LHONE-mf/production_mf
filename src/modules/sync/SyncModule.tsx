@@ -25,6 +25,8 @@ export function SyncModule() {
   const [devicePublicKey, setDevicePublicKey] = useState('');
   const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
   const [serverRole, setServerRole] = useState('');
+  const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; title: string; description: string; status: string; priority: string }>>({});
+  const [inspectingTask, setInspectingTask] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const pending = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('pending').count(), []);
@@ -73,6 +75,21 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
+  async function inspectConflict(taskId: string) {
+    if (!session) { setError('Сначала подключитесь к серверу'); return; }
+    setBusy(true); setError('');
+    try {
+      const response = await fetch(serverEndpoint(session.serverUrl, '/sync/task/' + encodeURIComponent(taskId)), {
+        headers: { Authorization: 'Bearer ' + session.accessToken },
+      });
+      if (!response.ok) throw new Error('Не удалось получить серверную версию: HTTP ' + response.status);
+      const data: { revision: number; payload: { title: string; description: string; status: string; priority: string } } = await response.json();
+      setRemoteTasks(previous => ({ ...previous, [taskId]: { revision: data.revision, ...data.payload } }));
+      setInspectingTask(taskId);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка получения задания'); }
+    finally { setBusy(false); }
+  }
+
   async function synchronize() {
     if (!session) return;
     setBusy(true); setError(''); setMessage('');
@@ -85,7 +102,7 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
-  function disconnect() { setSession(null); setServerRole(''); setEnrolledDeviceId(''); setPassword(''); setMessage('Соединение отключено'); setError(''); }
+  function disconnect() { setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setEnrolledDeviceId(''); setPassword(''); setMessage('Соединение отключено'); setError(''); }
 
   return (
     <div className="space-y-6">
@@ -144,6 +161,13 @@ export function SyncModule() {
                 <p className="text-amber-200 text-xs">Изменение не принято сервером или обнаружен конфликт. Локальная копия сохранена.</p>
                 <p className="text-slate-400 text-xs">Ожидаемая версия: {operation.expectedRevision ?? '—'} · Версия на сервере: {operation.actualRevision ?? 'неизвестна'}</p>
                 <p className="text-slate-500 text-xs break-all">ID операции: {operation.operationId}</p>
+                {session && <button disabled={busy} type="button" onClick={() => void inspectConflict(operation.entityId)} className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-white disabled:opacity-50">Сравнить с сервером</button>}
+                {inspectingTask === operation.entityId && remoteTasks[operation.entityId] && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-blue-300 text-xs font-semibold">На устройстве</p><p className="text-white text-sm">{task?.title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{task?.description}</p><p className="text-slate-400 text-xs">{task?.status} · {task?.priority}</p></div>
+                    <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-green-300 text-xs font-semibold">На сервере · версия {remoteTasks[operation.entityId].revision}</p><p className="text-white text-sm">{remoteTasks[operation.entityId].title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{remoteTasks[operation.entityId].description}</p><p className="text-slate-400 text-xs">{remoteTasks[operation.entityId].status} · {remoteTasks[operation.entityId].priority}</p></div>
+                  </div>
+                )}
               </div>
             ))}
             <p className="text-slate-400 text-xs">Автоматическое разрешение конфликтов пока отключено, чтобы не потерять изменения.</p>
