@@ -29,13 +29,20 @@ adb shell screencap -p /sdcard/production-mf-relaunch.png
 adb pull /sdcard/production-mf-relaunch.png artifacts/android-smoke/relaunch.png
 adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
 adb pull /sdcard/production-mf-relaunch-ui.xml artifacts/android-smoke/relaunch-ui.xml || true
-# Simulate the physical/system Back gesture once and collect the result.
-# Keep this diagnostic-only until the intended double-back exit UX is implemented.
+# First Back must keep the app in foreground and show the exit hint.
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 adb shell screencap -p /sdcard/production-mf-after-back.png
 adb pull /sdcard/production-mf-after-back.png artifacts/android-smoke/after-back.png
 adb shell dumpsys window > artifacts/android-smoke/window.txt
+adb shell pidof "$PACKAGE" > artifacts/android-smoke/pid-after-first-back.txt
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+adb shell dumpsys window > artifacts/android-smoke/window-after-second-back.txt
+if grep -E 'mCurrentFocus|mFocusedApp|topResumedActivity' artifacts/android-smoke/window-after-second-back.txt | grep -q "$PACKAGE"; then
+  echo 'ERROR: Second Back did not exit Production MF' >&2
+  exit 1
+fi
 adb logcat -d -v time > artifacts/android-smoke/logcat.txt
 
 # Check the app process is still alive and its Activity has foreground focus.
