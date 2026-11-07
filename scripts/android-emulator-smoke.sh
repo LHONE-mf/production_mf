@@ -29,6 +29,12 @@ adb shell screencap -p /sdcard/production-mf-relaunch.png
 adb pull /sdcard/production-mf-relaunch.png artifacts/android-smoke/relaunch.png
 adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
 adb pull /sdcard/production-mf-relaunch-ui.xml artifacts/android-smoke/relaunch-ui.xml || true
+# Simulate the physical/system Back gesture once and collect the result.
+# Keep this diagnostic-only until the intended double-back exit UX is implemented.
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+adb shell screencap -p /sdcard/production-mf-after-back.png
+adb pull /sdcard/production-mf-after-back.png artifacts/android-smoke/after-back.png
 adb shell dumpsys window > artifacts/android-smoke/window.txt
 adb logcat -d -v time > artifacts/android-smoke/logcat.txt
 
