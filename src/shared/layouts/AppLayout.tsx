@@ -98,7 +98,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   })();
 
   return (
-    <div className="min-h-screen bg-slate-900 flex">
+    <div className="h-full min-h-0 bg-slate-900 flex">
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-slate-800/80 backdrop-blur border-r border-slate-700/50">
         {/* Logo */}
@@ -217,9 +217,9 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Mobile header */}
-        <header className="lg:hidden flex items-center justify-between p-4 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
+        <header className="lg:hidden flex shrink-0 items-center justify-between px-4 py-3 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
           <button onClick={() => setSidebarOpen(true)} className="text-white">
             <Menu className="w-6 h-6" />
           </button>
@@ -237,7 +237,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-y-auto overscroll-contain">
           {children}
         </main>
       </div>
