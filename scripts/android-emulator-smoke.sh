@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p artifacts/android-smoke
+PACKAGE="ru.liion.production"
+ACTIVITY="ru.liion.production/.MainActivity"
+
+adb wait-for-device
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 0
+adb shell wm size 412x915
+adb shell wm density 420
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb logcat -c
+adb shell am force-stop "$PACKAGE" || true
+adb shell am start -W -n "$ACTIVITY"
+sleep 12
+
+adb shell screencap -p /sdcard/production-mf-launch.png
+adb pull /sdcard/production-mf-launch.png artifacts/android-smoke/launch.png
+adb shell uiautomator dump /sdcard/production-mf-ui.xml || true
+adb pull /sdcard/production-mf-ui.xml artifacts/android-smoke/ui.xml || true
+adb shell dumpsys window > artifacts/android-smoke/window.txt
+adb logcat -d -v time > artifacts/android-smoke/logcat.txt
+
+# Check the app process is still alive and its Activity has foreground focus.
+adb shell pidof "$PACKAGE" > artifacts/android-smoke/pid.txt
+grep -E "mCurrentFocus|mFocusedApp|topResumedActivity" artifacts/android-smoke/window.txt > artifacts/android-smoke/focus.txt || true
+if ! grep -q "$PACKAGE" artifacts/android-smoke/focus.txt; then
+  echo "ERROR: Production MF did not reach foreground. See logs and screenshot." >&2
+  exit 1
+fi
+if grep -E "FATAL EXCEPTION|Process: $PACKAGE.*|ANR in $PACKAGE" artifacts/android-smoke/logcat.txt > artifacts/android-smoke/crashes.txt; then
+  echo "ERROR: Android crash detected. See crashes.txt" >&2
+  exit 1
+fi
+echo "Emulator smoke test passed. Inspect launch.png for status-bar and layout issues."
