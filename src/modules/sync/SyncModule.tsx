@@ -159,6 +159,7 @@ export function SyncModule() {
               <div key={operation.operationId} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1">
                 <p className="text-white text-sm font-medium">{task?.title || operation.payload.title || operation.entityId}</p>
                 <p className="text-amber-200 text-xs">Изменение не принято сервером или обнаружен конфликт. Локальная копия сохранена.</p>
+                {operation.rejectionReason && <p className="text-red-300 text-xs">Причина отказа: {operation.rejectionReason}</p>}
                 <p className="text-slate-400 text-xs">Ожидаемая версия: {operation.expectedRevision ?? '—'} · Версия на сервере: {operation.actualRevision ?? 'неизвестна'}</p>
                 <p className="text-slate-500 text-xs break-all">ID операции: {operation.operationId}</p>
                 {session && <button disabled={busy} type="button" onClick={() => void inspectConflict(operation.entityId)} className="rounded-lg bg-slate-700 px-3 py-1.5 text-xs text-white disabled:opacity-50">Сравнить с сервером</button>}
