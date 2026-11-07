@@ -65,6 +65,20 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     }
     return { results };
   });
+  // Read-only comparison endpoint. Never resolves conflicts or changes server data.
+  app.get('/sync/task/:id', async (request, reply) => {
+    const principal = await authenticate(pool, request.headers.authorization);
+    if (!principal) return reply.code(401).send({ error: 'unauthorized' });
+    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
+    const parsed = z.string().uuid().safeParse((request.params as { id: string }).id);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_task_id' });
+    const result = await pool.query(
+      'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3',
+      [principal.organization_id, 'task', parsed.data],
+    );
+    if (!result.rows.length) return reply.code(404).send({ error: 'task_not_found' });
+    return { revision: result.rows[0].revision, payload: result.rows[0].payload };
+  });
   app.get('/sync/pull', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
