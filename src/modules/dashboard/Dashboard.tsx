@@ -1,6 +1,8 @@
 import React from 'react';
 import { useAuthStore } from '../../core/store/authStore';
-import { UserRole } from '../../core/types';
+import { UserRole, TaskStatus } from '../../core/types';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../core/db';
 import { ROLE_LABELS } from '../../core/permissions';
 import { 
   ClipboardList, Users, CheckCircle, Clock, AlertTriangle, 
@@ -32,7 +34,7 @@ export function Dashboard() {
       </div>
 
       {/* Role-specific stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {role === UserRole.CHIEF && <ChiefStats />}
         {role === UserRole.MASTER && <MasterStats />}
         {role === UserRole.TECHNOLOGIST && <TechnologistStats />}
@@ -40,7 +42,7 @@ export function Dashboard() {
       </div>
 
       {/* Role-specific content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {role === UserRole.CHIEF && <ChiefDashboard />}
         {role === UserRole.MASTER && <MasterDashboard />}
         {role === UserRole.TECHNOLOGIST && <TechnologistDashboard />}
@@ -52,7 +54,7 @@ export function Dashboard() {
 
 function StatCard({ icon, label, value, color, trend }: { icon: React.ReactNode; label: string; value: string | number; color: string; trend?: string }) {
   return (
-    <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
+    <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-xl p-3 sm:p-5">
       <div className="flex items-start justify-between">
         <div className={`w-10 h-10 ${color} rounded-xl flex items-center justify-center`}>
           {icon}
@@ -73,12 +75,18 @@ function StatCard({ icon, label, value, color, trend }: { icon: React.ReactNode;
 }
 
 function ChiefStats() {
+  const users = useLiveQuery(() => db.users.count(), []);
+  const tasks = useLiveQuery(() => db.tasks.toArray(), []);
+  const today = new Date().toDateString();
+  const active = tasks?.filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.REJECTED).length ?? 0;
+  const completed = tasks?.filter(t => t.status === TaskStatus.COMPLETED && t.updatedAt && new Date(t.updatedAt).toDateString() === today).length ?? 0;
+  const overdue = tasks?.filter(t => t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.REJECTED).length ?? 0;
   return (
     <>
-      <StatCard icon={<Users className="w-5 h-5 text-white" />} label="Сотрудников" value={6} color="bg-blue-500" trend="+2" />
-      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="Заданий активно" value={12} color="bg-orange-500" />
-      <StatCard icon={<CheckCircle className="w-5 h-5 text-white" />} label="Завершено сегодня" value={8} color="bg-green-500" trend="+15%" />
-      <StatCard icon={<AlertTriangle className="w-5 h-5 text-white" />} label="Просрочено" value={1} color="bg-red-500" />
+      <StatCard icon={<Users className="w-5 h-5 text-white" />} label="Сотрудников" value={users ?? '—'} color="bg-blue-500" />
+      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="Активных заданий" value={active} color="bg-orange-500" />
+      <StatCard icon={<CheckCircle className="w-5 h-5 text-white" />} label="Завершено сегодня" value={completed} color="bg-green-500" />
+      <StatCard icon={<AlertTriangle className="w-5 h-5 text-white" />} label="Просрочено" value={overdue} color="bg-red-500" />
     </>
   );
 }
@@ -117,63 +125,18 @@ function WorkerStats() {
 }
 
 function ChiefDashboard() {
+  const tasks = useLiveQuery(() => db.tasks.orderBy('updatedAt').reverse().limit(5).toArray(), []);
   return (
-    <>
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-400" />
-          Сводка по производству
-        </h3>
-        <div className="space-y-3">
-          {[
-            { line: 'Линия 1 - Сборка ячеек', progress: 78, status: 'active' },
-            { line: 'Линия 2 - Формирование', progress: 45, status: 'active' },
-            { line: 'Линия 3 - Тестирование', progress: 92, status: 'active' },
-            { line: 'Линия 4 - Упаковка', progress: 15, status: 'waiting' },
-          ].map((item) => (
-            <div key={item.line} className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-slate-300">{item.line}</span>
-                  <span className="text-slate-400">{item.progress}%</span>
-                </div>
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className={`h-full rounded-full transition-all ${
-                      item.progress > 80 ? 'bg-green-500' : item.progress > 40 ? 'bg-blue-500' : 'bg-orange-500'
-                    }`}
-                    style={{ width: `${item.progress}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Battery className="w-5 h-5 text-green-400" />
-          Последние события
-        </h3>
-        <div className="space-y-3">
-          {[
-            { time: '10:32', event: 'Мастер Петров завершил смену на Линии 1', type: 'success' },
-            { time: '09:45', event: 'Технолог Сидоров обновил тех.карту TC-004', type: 'info' },
-            { time: '09:12', event: 'Обнаружено отклонение параметра на Линии 2', type: 'warning' },
-            { time: '08:30', event: 'Начало дневной смены. 6 сотрудников', type: 'info' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-start gap-3 p-2 rounded-lg hover:bg-slate-700/30">
-              <span className="text-slate-500 text-xs mt-0.5 w-10 flex-shrink-0">{item.time}</span>
-              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                item.type === 'success' ? 'bg-green-400' : item.type === 'warning' ? 'bg-yellow-400' : 'bg-blue-400'
-              }`} />
-              <span className="text-slate-300 text-sm">{item.event}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <section className="lg:col-span-2 bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
+      <h3 className="text-white font-semibold mb-3">Последние задания</h3>
+      {!tasks?.length ? <p className="text-slate-400 text-sm">Заданий пока нет. Создайте первое задание в разделе «Задания».</p> :
+        <div className="space-y-2">{tasks.map(task =>
+          <div key={task.id} className="flex justify-between gap-3 rounded-lg bg-slate-900/50 p-3">
+            <span className="text-white text-sm truncate">{task.title}</span>
+            <span className="text-slate-400 text-xs shrink-0">{task.status}</span>
+          </div>
+        )}</div>}
+    </section>
   );
 }
 
