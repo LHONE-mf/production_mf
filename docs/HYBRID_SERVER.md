@@ -23,3 +23,11 @@ The database port is intentionally not published by Compose. For migrations, use
 ## Next increment
 
 Implement authenticated device enrollment and a transactional push/pull API with revision checking and cursor-based replication; then wire Dexie outbox on Android.
+
+## Authentication increment
+
+Apply `apps/server/migrations/002_sessions.sql` after the first migration. Run `npm run bootstrap -- 'Workshop' chief '<strong-password>'` from `apps/server` with DATABASE_URL set, on a new empty database only. Avoid putting real passwords into shell history; use an appropriately secured provisioning process before production.
+
+Endpoints: POST `/auth/login` with organizationId, login, password; GET `/auth/me`; POST `/auth/logout`; POST `/devices` (chief only, publicKey and optional userId); POST `/devices/:id/revoke` (chief only). Bearer tokens are random, stored only as SHA-256 hashes in the database, and expire after 12 hours. Login has an in-process rate limit, not a distributed limiter.
+
+**Not production-ready:** no refresh/offline session flow, audit logging, automated migrations, trusted device proof-of-possession, or distributed rate limiting. Device public keys are currently registration metadata only and do not authorize sync requests.
