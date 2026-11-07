@@ -39,3 +39,13 @@ New `src/core/sync/atomicTasks.ts` and `atomicClient.ts` use three new tables in
 The new `src/core/sync/taskDto.ts` and `apps/server/src/task-schema.ts` define a versioned full task payload: title, description, six statuses, priority, assignment, creator, timestamps, stage, technical-card reference, comments and attachments. The server validates the payload and tenant user references. `atomicTasks.ts` now queues the full DTO; `atomicClient.ts` reconstructs complete tasks on pull.
 
 **Migration warning:** previously queued prototype operations use the old three-field payload and will be rejected by the updated server. Do not delete existing queues automatically; introduce a deliberate migration or conflict recovery path before enabling sync. Attachments are currently JSON-embedded and limited to 1 MB each and 30 per task; large files need a separate authenticated blob transport. UI integration remains disabled.
+
+
+## Synchronization failures and conflict handling
+
+Outbox entries have three distinct states:
+- `pending`: queued for server delivery.
+- `conflict`: the server has a different revision. Inspect the two versions before deciding what to retain.
+- `rejected`: the server refused the operation (for example, invalid assignment or unenrolled device). The server's rejection reason is saved for diagnosis.
+
+Both conflict and rejection entries remain stored locally and are **not automatically retried** or discarded. The synchronization screen displays each affected task and supports read-only comparison against the server's current task. A safe write-side conflict resolution workflow is not implemented yet; do not manually delete outbox records to make an error disappear. Earlier installations may contain rejected operations recorded as `conflict`; these legacy entries are not reclassified automatically.
