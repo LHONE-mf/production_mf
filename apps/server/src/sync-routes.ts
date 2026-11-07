@@ -27,14 +27,14 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       try {
         await client.query('BEGIN');
         // Serialize all writes to the same entity, including initial creation.
-        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [principal.organization_id + ':task:' + op.entityId]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [principal.organization_id + ':sync-sequence']);
         const device = await client.query('SELECT id FROM devices WHERE id=$1 AND organization_id=$2 AND user_id=$3 AND revoked_at IS NULL', [op.deviceId, principal.organization_id, principal.id]);
         if (!device.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'device_not_enrolled' }); continue; }
-        const duplicate = await client.query('SELECT operation_id, entity_id, entity_type, revision, result_payload FROM sync_operations WHERE operation_id=$1', [op.operationId]);
+        const duplicate = await client.query('SELECT operation_id, entity_id, entity_type, device_id, actor_id, payload, revision, result_payload FROM sync_operations WHERE operation_id=$1', [op.operationId]);
         if (duplicate.rowCount) {
           const prev = duplicate.rows[0];
           await client.query('ROLLBACK');
-          results.push(prev.entity_id === op.entityId && prev.entity_type === op.entityType ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
+          results.push(prev.entity_id === op.entityId && prev.entity_type === op.entityType && prev.device_id === op.deviceId && prev.actor_id === principal.id && JSON.stringify(prev.payload) === JSON.stringify(op.payload) ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
           continue;
         }
         const current = await client.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
