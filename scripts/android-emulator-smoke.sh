@@ -29,27 +29,30 @@ adb shell screencap -p /sdcard/production-mf-relaunch.png
 adb pull /sdcard/production-mf-relaunch.png artifacts/android-smoke/relaunch.png
 adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
 adb pull /sdcard/production-mf-relaunch-ui.xml artifacts/android-smoke/relaunch-ui.xml || true
-# First Back must keep the app in foreground and show the exit hint.
+# Both Back presses must occur within the app's two-second exit window.
+# Avoid screenshot pulls/dumpsys between presses: those can exceed the window.
+adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
 sleep 2
-adb shell screencap -p /sdcard/production-mf-after-back.png
-adb pull /sdcard/production-mf-after-back.png artifacts/android-smoke/after-back.png
-adb shell dumpsys window > artifacts/android-smoke/window.txt
-adb shell pidof "$PACKAGE" > artifacts/android-smoke/pid-after-first-back.txt
-adb shell input keyevent KEYCODE_BACK
-sleep 1
 adb shell dumpsys window > artifacts/android-smoke/window-after-second-back.txt
 if grep -E 'mCurrentFocus|mFocusedApp|topResumedActivity' artifacts/android-smoke/window-after-second-back.txt | grep -q "$PACKAGE"; then
-  echo 'ERROR: Second Back did not exit Production MF' >&2
+  echo 'ERROR: Two consecutive Back presses did not exit Production MF' >&2
   exit 1
 fi
-adb logcat -d -v time > artifacts/android-smoke/logcat.txt
 
-# Check the app process is still alive and its Activity has foreground focus.
+# Reopen and verify a single Back does not exit the app.
+adb shell am start -W -n "$ACTIVITY"
+sleep 3
+adb shell input keyevent KEYCODE_BACK
+sleep 1
+adb shell dumpsys window > artifacts/android-smoke/window.txt
+adb shell screencap -p /sdcard/production-mf-after-back.png
+adb pull /sdcard/production-mf-after-back.png artifacts/android-smoke/after-back.png
+adb logcat -d -v time > artifacts/android-smoke/logcat.txt
 adb shell pidof "$PACKAGE" > artifacts/android-smoke/pid.txt
 grep -E "mCurrentFocus|mFocusedApp|topResumedActivity" artifacts/android-smoke/window.txt > artifacts/android-smoke/focus.txt || true
 if ! grep -q "$PACKAGE" artifacts/android-smoke/focus.txt; then
-  echo "ERROR: Production MF did not reach foreground. See logs and screenshot." >&2
+  echo "ERROR: Production MF exited after a single Back press." >&2
   exit 1
 fi
 if grep -E "FATAL EXCEPTION|Process: $PACKAGE.*|ANR in $PACKAGE" artifacts/android-smoke/logcat.txt > artifacts/android-smoke/crashes.txt; then
