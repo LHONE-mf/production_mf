@@ -1,6 +1,6 @@
 import { db } from '../db';
 import type { HybridSession, RemoteTaskChange } from './hybridClient';
-import { TaskStatus, type Task } from '../types';
+import { decodeTask } from './taskDto';
 
 function urlFor(session: HybridSession, path: string) {
   const origin = new URL(session.serverUrl);
@@ -54,12 +54,10 @@ export async function pullAtomicTasks(session: HybridSession) {
       if (queued) throw new Error('Pending local edit blocks remote task ' + change.entity_id);
       const current = await db.tasks.get(change.entity_id);
       const knownRevision = (await db.hybridTaskRevisions.get(change.entity_id))?.revision ?? 0;
-      if (!current) throw new Error('New remote tasks require full-fidelity task DTO import');
-      if (knownRevision === 0) throw new Error('Unmanaged local task ID collision');
+      if (current && knownRevision === 0) throw new Error('Unmanaged local task ID collision');
       if (knownRevision >= change.revision) continue;
-      if (current && knownRevision !== change.revision - 1) throw new Error('Revision gap: full reconciliation required');
-      const status = change.payload.status === 'pending' ? TaskStatus.ASSIGNED : change.payload.status === 'in_progress' ? TaskStatus.IN_PROGRESS : TaskStatus.COMPLETED;
-      const task: Task = { ...current, title: change.payload.title, status, assignedTo: change.payload.assigneeId ?? '', updatedAt: new Date() };
+      if (knownRevision !== 0 && knownRevision !== change.revision - 1) throw new Error('Revision gap: full reconciliation required');
+      const task = decodeTask(change.entity_id, change.payload);
       await db.tasks.put(task);
       await db.hybridTaskRevisions.put({ entityId: task.id, revision: change.revision });
     }
