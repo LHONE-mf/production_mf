@@ -1,3 +1,4 @@
+import type { TaskPayloadV1 } from './taskDto';
 import { hybridOutbox, pendingTaskOperations } from './hybridOutbox';
 
 export interface HybridSession {
@@ -11,7 +12,7 @@ export interface RemoteTaskChange {
   entity_type: 'task';
   entity_id: string;
   revision: number;
-  payload: { title: string; status: 'pending' | 'in_progress' | 'completed'; assigneeId?: string | null };
+  payload: TaskPayloadV1;
 }
 export type TaskChangeConsumer = (changes: RemoteTaskChange[]) => Promise<void>;
 
