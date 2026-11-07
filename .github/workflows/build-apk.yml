@@ -56,16 +56,28 @@ jobs:
           KS_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASS: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ] || [ -z "$KS_ALIAS" ] || [ -z "$KEY_PASS" ]; then
-            echo "::error::Permanent signing secrets are required. Refusing to publish an APK signed with a disposable key: Android cannot update an existing installation when the signing certificate changes."
-            echo "Set KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD in repository Actions secrets."
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ] && [ -n "$KEY_PASS" ]; then
+            echo "Using secure release signing secrets"
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
+            echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
+            echo "keypass=$KEY_PASS" >> "$GITHUB_OUTPUT"
+          elif [ -z "$KS_B64$KS_PASS$KS_ALIAS$KEY_PASS" ]; then
+            if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+              echo "::error::Release tags require a private release signing key in GitHub Actions secrets."
+              exit 1
+            fi
+            echo "::warning::Development APK signed with the public DEVELOPMENT key. Never distribute as production."
+            base64 -d scripts/dev-signing/keystore.b64 > "$RUNNER_TEMP/release.keystore"
+            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+            echo "storepass=productionmfdev" >> "$GITHUB_OUTPUT"
+            echo "alias=production-mf-dev" >> "$GITHUB_OUTPUT"
+            echo "keypass=productionmfdev" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Signing secrets are partially configured. Supply all four or none."
             exit 1
           fi
-          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-          echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-          echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
-          echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
-          echo "keypass=$KEY_PASS" >> "$GITHUB_OUTPUT"
 
       - name: Настройка подписи приложения в Gradle
         working-directory: android
@@ -82,6 +94,11 @@ jobs:
             echo "RELEASE_KEY_PASSWORD=$RELEASE_KEY_PASSWORD"
           } >> gradle.properties
           python3 ../scripts/configure_signing.py
+
+      - name: Generate Production MF launcher icons
+        run: |
+          python3 -m pip install --quiet cairosvg Pillow
+          python3 scripts/generate_android_icons.py
 
       - name: Сборка подписанного APK
         working-directory: android
