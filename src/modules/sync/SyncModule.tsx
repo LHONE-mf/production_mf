@@ -74,7 +74,7 @@ export function SyncModule() {
     try {
       const pushed = await pushAtomicTasks(session);
       const pulled = await pullAtomicTasks(session);
-      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts +
+      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
         (pulled.hasMore ? '. Есть дополнительные изменения — повторите синхронизацию.' : '.'));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка синхронизации'); }
     finally { setBusy(false); }
@@ -128,7 +128,7 @@ export function SyncModule() {
         {message && <p role="status" className="text-green-300 text-sm">{message}</p>}
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{pending ?? '—'}</p><p className="text-slate-400 text-xs">Ожидают отправки</p></div>
-          <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты</p></div>
+          <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты / отклонённые операции</p></div>
         </div>
         <p className="flex gap-2 text-slate-400 text-xs"><WifiOff className="w-4 h-4 shrink-0" /> Локальные задания не отправляются автоматически. Для серверных заданий требуется зарегистрированное устройство и действующая учётная запись. Подключение к серверу не заменяет офлайн-передачу.</p>
       </div>
