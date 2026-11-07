@@ -42,6 +42,9 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
           const assignee = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2 AND active=true', [op.payload.assignedTo, principal.organization_id]);
           if (!assignee.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_assignee' }); continue; }
         }
+        if (op.payload.comments.some(c => c.taskId !== op.entityId) || op.payload.attachments.some(a => a.taskId !== op.entityId)) {
+          await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_task_children' }); continue;
+        }
         const creator = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2', [op.payload.createdBy, principal.organization_id]);
         if (!creator.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_creator' }); continue; }
         const current = await client.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
