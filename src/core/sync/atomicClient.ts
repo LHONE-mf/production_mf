@@ -34,10 +34,10 @@ export async function pushAtomicTasks(session: HybridSession) {
       } else if (result.status === 'rejected') {
         // Keep the operation for diagnosis and retry only after the cause is resolved.
         // Do not silently discard a locally saved assignment.
-        await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: undefined });
+        await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: undefined, rejectionReason: result.reason || 'server_rejected' });
         rejected++;
       } else if (result.status === 'conflict') {
-        await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: result.actualRevision });
+        await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: result.actualRevision, rejectionReason: undefined });
         conflicts++;
       }
     }
