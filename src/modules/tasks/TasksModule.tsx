@@ -148,7 +148,11 @@ export function TasksModule() {
 function TaskCard({ task, canManage, onEdit }: { task: Task; canManage: boolean; onEdit: () => void }) {
   const [statusError, setStatusError] = useState('');
   const [updating, setUpdating] = useState(false);
+  const managedRevision = useLiveQuery(() => db.hybridTaskRevisions.get(task.id), [task.id]);
+  const queuedEdits = useLiveQuery(() => db.hybridTaskOutbox.where('entityId').equals(task.id).count(), [task.id]);
+  const serverManaged = Boolean(managedRevision) || Boolean(queuedEdits);
   async function changeStatus(status: TaskStatus) {
+    if (serverManaged) { setStatusError('This task is managed by the server. Editing requires a connected sync session.'); return; }
     setUpdating(true); setStatusError('');
     try { await db.tasks.update(task.id, { status, updatedAt: new Date() }); }
     catch (error) { setStatusError(error instanceof Error ? error.message : 'Не удалось обновить статус'); }
@@ -205,12 +209,13 @@ function TaskCard({ task, canManage, onEdit }: { task: Task; canManage: boolean;
           </div>
 
           {canManage && <div className="flex flex-wrap gap-2 mt-3 items-center">
-            <button type="button" onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>
+            <button type="button" disabled={serverManaged} title={serverManaged ? 'Requires connected server sync' : 'Edit task'} onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>
             <label className="text-slate-400 text-xs" htmlFor={`status-${task.id}`}>Статус</label>
-            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
+            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || serverManaged} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
               {Object.entries(STATUS_CONFIG).map(([status, config]) => <option key={status} value={status}>{config.label}</option>)}
             </select>
           </div>}
+          {serverManaged && <p className="text-amber-300 text-xs mt-2">Серверное задание: редактирование доступно после подключения синхронизации.</p>}
           {statusError && <p role="alert" className="text-red-300 text-xs mt-2">{statusError}</p>}
           {task.status === TaskStatus.IN_PROGRESS && (
             <div className="mt-3">
@@ -249,7 +254,15 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
         comments: initialTask?.comments ?? [], attachments: initialTask?.attachments ?? [],
       };
       // Local-only until an authenticated server session and enrolled device are available.
-      if (initialTask) await db.tasks.put(task);
+      if (initialTask) {
+        // Do not silently bypass the transactional outbox for server-owned tasks.
+        await db.transaction('rw', db.tasks, db.hybridTaskRevisions, db.hybridTaskOutbox, async () => {
+          const revision = await db.hybridTaskRevisions.get(initialTask.id);
+          const queued = await db.hybridTaskOutbox.where('entityId').equals(initialTask.id).count();
+          if (revision || queued) throw new Error('Server-managed tasks require an authenticated sync session');
+          await db.tasks.put(task);
+        });
+      }
       else await db.tasks.add(task);
       onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось сохранить задание'); }
