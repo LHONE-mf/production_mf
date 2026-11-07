@@ -2,12 +2,13 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { taskPayloadV1 } from './task-schema.js';
 
 const operation = z.object({
   operationId: z.string().uuid(), deviceId: z.string().uuid(),
   entityType: z.literal('task'), entityId: z.string().uuid(),
   operationType: z.enum(['upsert']), expectedRevision: z.number().int().nonnegative().nullable(),
-  payload: z.object({ title: z.string().min(1).max(300), status: z.enum(['pending','in_progress','completed']), assigneeId: z.string().uuid().nullable().optional() }).strict()
+  payload: taskPayloadV1
 }).strict();
 const pushSchema = z.object({ operations: z.array(operation).min(1).max(50) }).strict();
 const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().min(1).max(200).default(100) });
@@ -37,6 +38,12 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
           results.push(prev.organization_id === principal.organization_id && prev.entity_id === op.entityId && prev.entity_type === op.entityType && prev.device_id === op.deviceId && prev.actor_id === principal.id && JSON.stringify(prev.payload) === JSON.stringify(op.payload) ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
           continue;
         }
+        if (op.payload.assignedTo) {
+          const assignee = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2 AND active=true', [op.payload.assignedTo, principal.organization_id]);
+          if (!assignee.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_assignee' }); continue; }
+        }
+        const creator = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2', [op.payload.createdBy, principal.organization_id]);
+        if (!creator.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_creator' }); continue; }
         const current = await client.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
         const actualRevision = current.rows[0]?.revision ?? 0;
         if (op.expectedRevision !== actualRevision) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'conflict', actualRevision }); continue; }
