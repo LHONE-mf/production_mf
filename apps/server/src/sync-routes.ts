@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -19,6 +18,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/sync/push', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
+    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
     const parsed = pushSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
     const results = [];
@@ -37,7 +37,6 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
           results.push(prev.entity_id === op.entityId && prev.entity_type === op.entityType ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
           continue;
         }
-        if (principal.role === 'worker' && op.payload.assigneeId !== principal.id) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'forbidden' }); continue; }
         const current = await client.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
         const actualRevision = current.rows[0]?.revision ?? 0;
         if (op.expectedRevision !== actualRevision) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'conflict', actualRevision }); continue; }
@@ -61,6 +60,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
     const parsed = pullSchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
+    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
     const { cursor, limit } = parsed.data;
     const result = await pool.query(`SELECT sequence,operation_id,entity_type,entity_id,revision,result_payload AS payload
       FROM sync_operations WHERE organization_id=$1 AND sequence>$2 AND entity_type='task' ORDER BY sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit]);
