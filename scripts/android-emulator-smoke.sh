@@ -20,6 +20,15 @@ adb shell screencap -p /sdcard/production-mf-launch.png
 adb pull /sdcard/production-mf-launch.png artifacts/android-smoke/launch.png
 adb shell uiautomator dump /sdcard/production-mf-ui.xml || true
 adb pull /sdcard/production-mf-ui.xml artifacts/android-smoke/ui.xml || true
+# Exercise the Android activity lifecycle, not just the first launch.
+# A second cold launch detects failures in WebView/database initialization.
+adb shell am force-stop "$PACKAGE"
+adb shell am start -W -n "$ACTIVITY"
+sleep 8
+adb shell screencap -p /sdcard/production-mf-relaunch.png
+adb pull /sdcard/production-mf-relaunch.png artifacts/android-smoke/relaunch.png
+adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
+adb pull /sdcard/production-mf-relaunch-ui.xml artifacts/android-smoke/relaunch-ui.xml || true
 adb shell dumpsys window > artifacts/android-smoke/window.txt
 adb logcat -d -v time > artifacts/android-smoke/logcat.txt
 
@@ -34,4 +43,4 @@ if grep -E "FATAL EXCEPTION|Process: $PACKAGE.*|ANR in $PACKAGE" artifacts/andro
   echo "ERROR: Android crash detected. See crashes.txt" >&2
   exit 1
 fi
-echo "Emulator smoke test passed. Inspect launch.png for status-bar and layout issues."
+echo "Emulator smoke test passed after first launch and cold relaunch. Inspect launch.png and relaunch.png."
