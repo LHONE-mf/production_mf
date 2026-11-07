@@ -56,21 +56,16 @@ jobs:
           KS_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASS: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$KS_B64" ]; then
-            echo "Секрет KEYSTORE_BASE64 не задан - генерируем временный ключ"
-            keytool -genkeypair -v -keystore "$RUNNER_TEMP/release.keystore" -alias workshop -keyalg RSA -keysize 2048 -validity 10000 -storepass changeit -keypass changeit -dname "CN=Workshop, OU=Dev, O=MF, L=Moscow, ST=MS, C=RU"
-            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-            echo "storepass=changeit" >> "$GITHUB_OUTPUT"
-            echo "alias=workshop" >> "$GITHUB_OUTPUT"
-            echo "keypass=changeit" >> "$GITHUB_OUTPUT"
-          else
-            echo "Используем пользовательский ключ из Secrets"
-            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-            echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
-            echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
-            echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
-            echo "keypass=$KEY_PASS" >> "$GITHUB_OUTPUT"
+          if [ -z "$KS_B64" ] || [ -z "$KS_PASS" ] || [ -z "$KS_ALIAS" ] || [ -z "$KEY_PASS" ]; then
+            echo "::error::Permanent signing secrets are required. Refusing to publish an APK signed with a disposable key: Android cannot update an existing installation when the signing certificate changes."
+            echo "Set KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD in repository Actions secrets."
+            exit 1
           fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
+          echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
+          echo "alias=$KS_ALIAS" >> "$GITHUB_OUTPUT"
+          echo "keypass=$KEY_PASS" >> "$GITHUB_OUTPUT"
 
       - name: Настройка подписи приложения в Gradle
         working-directory: android
