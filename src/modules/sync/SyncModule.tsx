@@ -22,6 +22,9 @@ export function SyncModule() {
   const [password, setPassword] = useState('');
   const [session, setSession] = useState<HybridSession | null>(null);
   const [busy, setBusy] = useState(false);
+  const [devicePublicKey, setDevicePublicKey] = useState('');
+  const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
+  const [serverRole, setServerRole] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const pending = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('pending').count(), []);
@@ -35,12 +38,33 @@ export function SyncModule() {
         body: JSON.stringify({ organizationId: organizationId.trim(), login: login.trim(), password }),
       });
       if (!response.ok) throw new Error('Вход не выполнен: HTTP ' + response.status);
-      const data: { accessToken?: string } = await response.json();
+      const data: { accessToken?: string; user?: { role?: string } } = await response.json();
       if (!data.accessToken) throw new Error('Сервер не вернул токен доступа');
       setSession({ serverUrl, accessToken: data.accessToken });
+      setServerRole(data.user?.role ?? '');
+      setEnrolledDeviceId('');
       setPassword('');
       setMessage('Подключено. Теперь можно синхронизировать серверные задания.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка подключения'); }
+    finally { setBusy(false); }
+  }
+
+  async function enrollDevice() {
+    if (!session) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      // The server currently accepts a supplied public key; device signing is not yet implemented.
+      // Do not generate a throwaway key that would imply cryptographic device ownership.
+      const response = await fetch(serverEndpoint(session.serverUrl, '/devices'), {
+        method: 'POST', headers: { Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicKey: devicePublicKey.trim() }),
+      });
+      if (!response.ok) throw new Error('Регистрация устройства: HTTP ' + response.status);
+      const data: { id?: string } = await response.json();
+      if (!data.id) throw new Error('Сервер не вернул ID устройства');
+      setEnrolledDeviceId(data.id);
+      setMessage('Устройство зарегистрировано. Сохраните его ID и соответствующий закрытый ключ в защищённом хранилище. Автоматическая привязка пока не реализована.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка регистрации устройства'); }
     finally { setBusy(false); }
   }
 
@@ -56,7 +80,7 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
-  function disconnect() { setSession(null); setPassword(''); setMessage('Соединение отключено'); setError(''); }
+  function disconnect() { setSession(null); setServerRole(''); setEnrolledDeviceId(''); setPassword(''); setMessage('Соединение отключено'); setError(''); }
 
   return (
     <div className="space-y-6">
@@ -85,6 +109,13 @@ export function SyncModule() {
         ) : (
           <div className="space-y-3">
             <p className="text-green-300 text-sm">Подключено к {new URL(session.serverUrl).host}. Токен хранится только до закрытия экрана.</p>
+            {serverRole === 'chief' && <div className="space-y-2 rounded-xl border border-slate-600 p-3">
+              <p className="text-slate-200 text-sm font-medium">Регистрация устройства (администратор)</p>
+              <p className="text-slate-400 text-xs">Введите публичный ключ существующей пары ключей. Генерация и безопасное хранение закрытого ключа в приложении пока не реализованы.</p>
+              <textarea aria-label="Публичный ключ устройства" value={devicePublicKey} onChange={event => setDevicePublicKey(event.target.value)} placeholder="Публичный ключ устройства" className="w-full rounded-lg bg-slate-700 text-white p-2 text-sm" rows={3} />
+              <button type="button" disabled={busy || devicePublicKey.trim().length < 32} onClick={() => void enrollDevice()} className="px-3 py-2 bg-slate-700 text-white rounded-lg disabled:opacity-50">Зарегистрировать устройство</button>
+              {enrolledDeviceId && <p className="text-green-300 text-xs break-all">ID устройства: {enrolledDeviceId}</p>}
+            </div>}
             <div className="flex flex-wrap gap-2">
               <button disabled={busy} onClick={() => void synchronize()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl">
                 <RefreshCw className="w-4 h-4" /> {busy ? 'Синхронизация...' : 'Синхронизировать'}
