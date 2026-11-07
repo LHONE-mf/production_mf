@@ -1,14 +1,8 @@
 import { db } from '../db';
-import { TaskStatus, type Task } from '../types';
+import type { Task } from '../types';
+import { encodeTask } from './taskDto';
 import type { PendingTaskOperation } from './hybridOutbox';
 
-/** The server currently understands only these three statuses. Never silently collapse other states. */
-function toRemoteStatus(status: TaskStatus): PendingTaskOperation['payload']['status'] {
-  if (status === TaskStatus.CREATED || status === TaskStatus.ASSIGNED) return 'pending';
-  if (status === TaskStatus.IN_PROGRESS) return 'in_progress';
-  if (status === TaskStatus.COMPLETED) return 'completed';
-  throw new Error('Task status not supported by hybrid sync: ' + status);
-}
 function requireUuid(id: string, field: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     throw new Error(field + ' must be a UUID. Demo records cannot be synchronized.');
@@ -24,7 +18,7 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
   requireUuid(task.id, 'task.id');
   requireUuid(deviceId, 'deviceId');
   if (task.assignedTo) requireUuid(task.assignedTo, 'task.assignedTo');
-  const status = toRemoteStatus(task.status);
+  const payload = encodeTask(task);
   return db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
     const outstanding = await db.hybridTaskOutbox.where('entityId').equals(task.id).count();
     if (outstanding) throw new Error('Resolve or synchronize the previous task edit first');
@@ -33,7 +27,7 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
     const operation: PendingTaskOperation = {
       operationId, deviceId, entityType: 'task', entityId: task.id,
       operationType: 'upsert', expectedRevision: revision,
-      payload: { title: task.title, status, assigneeId: task.assignedTo || null },
+      payload,
       queuedAt: Date.now(), state: 'pending',
     };
     await db.tasks.put(task);
