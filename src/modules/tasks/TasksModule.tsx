@@ -54,6 +54,7 @@ export function TasksModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<StoredTask | null>(null);
 
   if (!currentUser) return null;
 
@@ -127,7 +128,7 @@ export function TasksModule() {
       {/* Task list */}
       <div className="space-y-3">
         {filteredTasks.map((task) => (
-          <TaskCard key={task.id} task={task} canManage={canCreate} />
+          <TaskCard key={task.id} task={task} canManage={canCreate} onEdit={() => setEditingTask(storedTasks?.find(item => item.id === task.id) ?? null)} />
         ))}
         {filteredTasks.length === 0 && (
           <div className="text-center py-12">
@@ -139,11 +140,20 @@ export function TasksModule() {
 
       {/* Create task modal */}
       {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} onClose={() => setShowCreateModal(false)} />}
+      {editingTask && <CreateTaskModal key={editingTask.id} initialTask={editingTask} creatorId={currentUser.id} users={users ?? []} onClose={() => setEditingTask(null)} />}
     </div>
   );
 }
 
-function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
+function TaskCard({ task, canManage, onEdit }: { task: Task; canManage: boolean; onEdit: () => void }) {
+  const [statusError, setStatusError] = useState('');
+  const [updating, setUpdating] = useState(false);
+  async function changeStatus(status: TaskStatus) {
+    setUpdating(true); setStatusError('');
+    try { await db.tasks.update(task.id, { status, updatedAt: new Date() }); }
+    catch (error) { setStatusError(error instanceof Error ? error.message : 'Не удалось обновить статус'); }
+    finally { setUpdating(false); }
+  }
   const statusConfig = STATUS_CONFIG[task.status];
   const priorityConfig = PRIORITY_CONFIG[task.priority];
   const StatusIcon = statusConfig.icon;
@@ -194,6 +204,14 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
             )}
           </div>
 
+          {canManage && <div className="flex flex-wrap gap-2 mt-3 items-center">
+            <button type="button" onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>
+            <label className="text-slate-400 text-xs" htmlFor={`status-${task.id}`}>Статус</label>
+            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
+              {Object.entries(STATUS_CONFIG).map(([status, config]) => <option key={status} value={status}>{config.label}</option>)}
+            </select>
+          </div>}
+          {statusError && <p role="alert" className="text-red-300 text-xs mt-2">{statusError}</p>}
           {task.status === TaskStatus.IN_PROGRESS && (
             <div className="mt-3">
               <div className="flex justify-between text-xs mb-1">
@@ -211,11 +229,11 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
   );
 }
 
-function CreateTaskModal({ onClose, creatorId, users }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}> }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
-  const [assignee, setAssignee] = useState('');
+function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}>; initialTask?: StoredTask }) {
+  const [title, setTitle] = useState(initialTask?.title ?? '');
+  const [description, setDescription] = useState(initialTask?.description ?? '');
+  const [priority, setPriority] = useState<TaskPriority>(initialTask?.priority ?? TaskPriority.MEDIUM);
+  const [assignee, setAssignee] = useState(initialTask?.assignedTo ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   async function createTask() {
@@ -224,13 +242,15 @@ function CreateTaskModal({ onClose, creatorId, users }: { onClose: () => void; c
     try {
       const now = new Date();
       const task: StoredTask = {
-        id: crypto.randomUUID(), title: title.trim(), description: description.trim(),
-        priority, status: assignee ? TaskStatus.ASSIGNED : TaskStatus.CREATED,
-        assignedTo: assignee, createdBy: creatorId, createdAt: now, updatedAt: now,
-        comments: [], attachments: [],
+        ...initialTask,
+        id: initialTask?.id ?? crypto.randomUUID(), title: title.trim(), description: description.trim(),
+        priority, status: initialTask?.status ?? (assignee ? TaskStatus.ASSIGNED : TaskStatus.CREATED),
+        assignedTo: assignee, createdBy: initialTask?.createdBy ?? creatorId, createdAt: initialTask?.createdAt ?? now, updatedAt: now,
+        comments: initialTask?.comments ?? [], attachments: initialTask?.attachments ?? [],
       };
       // Local-only until an authenticated server session and enrolled device are available.
-      await db.tasks.add(task);
+      if (initialTask) await db.tasks.put(task);
+      else await db.tasks.add(task);
       onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось сохранить задание'); }
     finally { setSaving(false); }
@@ -241,7 +261,7 @@ function CreateTaskModal({ onClose, creatorId, users }: { onClose: () => void; c
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Новое задание</h2>
+          <h2 className="text-xl font-bold text-white">{initialTask ? 'Редактировать задание' : 'Новое задание'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <XCircle className="w-6 h-6" />
           </button>
@@ -308,7 +328,7 @@ function CreateTaskModal({ onClose, creatorId, users }: { onClose: () => void; c
               disabled={saving}
               className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition shadow-lg shadow-blue-500/20"
             >
-              {saving ? 'Сохранение...' : 'Создать'}
+              {saving ? 'Сохранение...' : initialTask ? 'Сохранить' : 'Создать'}
             </button>
           </div>
         </div>
