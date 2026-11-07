@@ -37,7 +37,7 @@ adb pull /sdcard/production-mf-after-back.png artifacts/android-smoke/after-back
 adb shell dumpsys window > artifacts/android-smoke/window.txt
 adb shell pidof "$PACKAGE" > artifacts/android-smoke/pid-after-first-back.txt
 adb shell input keyevent KEYCODE_BACK
-sleep 2
+sleep 1
 adb shell dumpsys window > artifacts/android-smoke/window-after-second-back.txt
 if grep -E 'mCurrentFocus|mFocusedApp|topResumedActivity' artifacts/android-smoke/window-after-second-back.txt | grep -q "$PACKAGE"; then
   echo 'ERROR: Second Back did not exit Production MF' >&2
