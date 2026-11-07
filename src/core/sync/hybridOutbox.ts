@@ -13,6 +13,7 @@ export interface PendingTaskOperation {
   queuedAt: number;
   state: 'pending' | 'conflict';
   actualRevision?: number;
+  rejectionReason?: string;
 }
 
 class HybridOutboxDb extends Dexie {
