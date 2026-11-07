@@ -4,6 +4,7 @@ on:
   push:
     branches: [feat/hybrid-server-foundation]
     paths:
+      - '.github/test-trigger.txt'
       - 'src/**'
       - 'android/**'
       - 'scripts/android-emulator-smoke.sh'
