@@ -5,6 +5,7 @@ import { IngestPanel } from '../../transfer/IngestPanel';
 import { db } from '../../core/db';
 import { pushAtomicTasks, pullAtomicTasks } from '../../core/sync/atomicClient';
 import type { HybridSession } from '../../core/sync/hybridClient';
+import { assertSyncTenant } from '../../core/sync/tenantGuard';
 
 function serverEndpoint(origin: string, path: string) {
   const url = new URL(origin);
@@ -47,8 +48,10 @@ export function SyncModule() {
         body: JSON.stringify({ organizationId: organizationId.trim(), login: login.trim(), password }),
       });
       if (!response.ok) throw new Error('Вход не выполнен: HTTP ' + response.status);
-      const data: { accessToken?: string; user?: { role?: string } } = await response.json();
+      const data: { accessToken?: string; user?: { role?: string; organizationId?: string } } = await response.json();
       if (!data.accessToken) throw new Error('Сервер не вернул токен доступа');
+      if (data.user?.organizationId?.toLowerCase() !== organizationId.trim().toLowerCase()) throw new Error('Организация в ответе сервера не совпадает с выбранной');
+      await assertSyncTenant(serverUrl, data.user.organizationId);
       setSession({ serverUrl, accessToken: data.accessToken });
       setServerRole(data.user?.role ?? '');
       setEnrolledDeviceId('');
