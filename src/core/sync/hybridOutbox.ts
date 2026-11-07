@@ -11,7 +11,7 @@ export interface PendingTaskOperation {
   expectedRevision: number;
   payload: TaskPayloadV1;
   queuedAt: number;
-  state: 'pending' | 'conflict';
+  state: 'pending' | 'conflict' | 'rejected';
   actualRevision?: number;
   rejectionReason?: string;
 }
