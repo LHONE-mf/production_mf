@@ -6,8 +6,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
 import { 
   Plus, Search, Clock, CheckCircle, 
-  Circle, Play, XCircle, QrCode,
-  Share2, Bluetooth
+  Circle, Play, XCircle
 } from 'lucide-react';
 
 interface Task {
@@ -178,19 +177,7 @@ function TaskCard({ task, canManage, onEdit }: { task: Task; canManage: boolean;
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityConfig.color}`}>
                 {priorityConfig.label}
               </span>
-              {canManage && (
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Отправить по QR">
-                    <QrCode className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Отправить по Bluetooth">
-                    <Bluetooth className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Поделиться">
-                    <Share2 className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                </div>
-              )}
+
             </div>
           </div>
 
