@@ -50,10 +50,11 @@ public class DeviceProofKeystoreTest {
             signer.update(message);
             byte[] signature = signer.sign();
             assertEquals(64, signature.length);
-            Signature verifier = Signature.getInstance("Ed25519");
+            Signature verifier = Signature.getInstance("Ed25519", "AndroidOpenSSL");
             // A generic Ed25519 verifier cannot consume AndroidKeyStoreEdECPublicKey directly.
-            // Round-trip its RFC 8410 SPKI representation as the remote server does.
-            verifier.initVerify(KeyFactory.getInstance("Ed25519")
+            // Use the platform Conscrypt provider for public-key import and verification,
+            // not AndroidKeyStore (which supports generation but cannot import X.509 keys).
+            verifier.initVerify(KeyFactory.getInstance("Ed25519", "AndroidOpenSSL")
                     .generatePublic(new X509EncodedKeySpec(spki)));
             verifier.update(message);
             assertTrue(verifier.verify(signature));
