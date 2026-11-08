@@ -17,8 +17,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
+import java.security.KeyFactory;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
+import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 
 /** Runs the exact AndroidKeyStore Ed25519 operations used by DeviceProofPlugin on an emulator. */
@@ -49,7 +51,10 @@ public class DeviceProofKeystoreTest {
             byte[] signature = signer.sign();
             assertEquals(64, signature.length);
             Signature verifier = Signature.getInstance("Ed25519");
-            verifier.initVerify(pair.getPublic());
+            // A generic Ed25519 verifier cannot consume AndroidKeyStoreEdECPublicKey directly.
+            // Round-trip its RFC 8410 SPKI representation as the remote server does.
+            verifier.initVerify(KeyFactory.getInstance("Ed25519")
+                    .generatePublic(new X509EncodedKeySpec(spki)));
             verifier.update(message);
             assertTrue(verifier.verify(signature));
         } finally {
