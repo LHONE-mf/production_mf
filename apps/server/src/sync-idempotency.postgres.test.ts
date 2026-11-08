@@ -16,6 +16,7 @@ integration('PostgreSQL sync operation JSONB idempotency', () => {
   const headers = { authorization: 'Bearer ' + accessToken };
   let deviceId: string;
   let proofToken: string;
+  let isDisposableDatabase = false;
   const payload = {
     schemaVersion: 1, title: 'Retry test', description: '', status: 'created',
     priority: 'medium', assignedTo: null, createdBy: user,
@@ -39,6 +40,7 @@ integration('PostgreSQL sync operation JSONB idempotency', () => {
       throw new Error('Refusing a non-disposable database for integration tests');
     const database = await pool.query('SELECT current_database() AS name');
     expect(database.rows[0].name).toBe('production_mf_ci');
+    isDisposableDatabase = true;
     await pool.query('INSERT INTO organizations(id,name) VALUES($1,$2)', [org, 'Disposable sync idempotency']);
     await pool.query("INSERT INTO users(id,organization_id,login,password_hash,role) VALUES($1,$2,$3,$4,'chief')",
       [user, org, 'sync-test-' + user, 'not-a-password']);
@@ -67,14 +69,16 @@ integration('PostgreSQL sync operation JSONB idempotency', () => {
 
   afterAll(async () => {
     try {
-      await pool.query('DELETE FROM sync_operations WHERE organization_id=$1', [org]);
+      if (isDisposableDatabase) {
+        await pool.query('DELETE FROM sync_operations WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM sync_entities WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM device_proof_grants WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM device_challenges WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM sessions WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM devices WHERE organization_id=$1', [org]);
       await pool.query('DELETE FROM users WHERE organization_id=$1', [org]);
-      await pool.query('DELETE FROM organizations WHERE id=$1', [org]);
+        await pool.query('DELETE FROM organizations WHERE id=$1', [org]);
+      }
     } finally {
       await app.close();
       await pool.end();
