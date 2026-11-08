@@ -1,3 +1,9 @@
+## Current status — 2026-11-08 (M1 sync audit)
+- Reviewed `atomicTasks.ts`, `atomicClient.ts`, `hybridClient.ts`, `hybridOutbox.ts`, task/sync UI, and server sync routes.
+- Recorded prioritized P0/P1 findings and eight regression test cases in `docs/M1_TASK_SYNC_AUDIT.md` (commit `03382fb`).
+- Next: implement server-side creator immutability and authorization tests, then unify offline task writes. No application code changed in this audit step.
+- CI for this documentation change not yet verified.
+
 ## Current status — 2026-11-08 (hybrid product roadmap)
 - Architecture B (hybrid offline-first Android/Web + Fastify/PostgreSQL) selected by user.
 - Canonical product requirements and M0–M5 milestones: `docs/PRODUCT_SPECIFICATION.md` (commit `b52dd5a`).
