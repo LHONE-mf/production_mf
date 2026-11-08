@@ -61,6 +61,12 @@ const allowedStatusChanges: Record<TaskPayloadV1['status'], ReadonlySet<TaskPayl
 };
 
 export function validateTaskStatusTransition(incoming: TaskPayloadV1, existing?: TaskPayloadV1): string | null {
-  if (!existing || incoming.status === existing.status) return null;
+  if (!existing) return null;
+  // Completion freezes the full task snapshot, not just its workflow status.
+  // Retries are handled by the operation-ID ledger before this policy executes.
+  if (existing.status === 'completed') {
+    return JSON.stringify(incoming) === JSON.stringify(existing) ? null : 'completed_task_is_immutable';
+  }
+  if (incoming.status === existing.status) return null;
   return allowedStatusChanges[existing.status].has(incoming.status) ? null : 'invalid_task_status_transition';
 }
