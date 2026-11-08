@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 Ed25519 device-proof primitive)
+- Web/server CI and tests passed for `1766aad5`; Android APK build was still in progress when checked.
+- Added `apps/server/src/device-proof.ts`: strict Ed25519 signature verification over a domain-separated challenge (commit `79ad421`).
+- Added five cryptographic primitive tests, including wrong challenge/key, malformed inputs and non-Ed25519 keys (commit `bfe6720`).
+- This primitive is not yet wired into authentication or sync authorization. It does not create or consume one-time challenges, persist proof, or establish a trusted device session.
+- Next: add PostgreSQL-backed one-use challenge issuance/consumption with expiry and replay tests, bind proof to authenticated user and device, then require verified proof on sync push.
+
 ## Current status — 2026-11-08 (M1 task attachment integrity)
 - Verified web/server CI and tests passed for device-discovery progress commit `c3b16643`; APK was still running at verification time.
 - Added immutable attachment validation for task sync, preventing deletion, content replacement and duplicate attachment IDs (commits `5ac99e6`, `0352ceb`).
