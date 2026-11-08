@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTaskCreator, validateTaskComments, validateTaskAttachments } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps } from './task-authorization.js';
 import type { Principal } from './auth.js';
 import type { TaskPayloadV1 } from './task-schema.js';
 
@@ -53,5 +53,23 @@ describe('task attachment integrity', () => {
   });
   it('rejects duplicate attachment IDs', () => {
     expect(validateTaskAttachments({ ...payload, attachments: [attachment, attachment] })).toBe('duplicate_attachment_id');
+  });
+});
+
+describe('task update audit timestamps', () => {
+  it('accepts chronological creation and forward-moving updates', () => {
+    expect(validateTaskTimestamps({ ...payload, updatedAt: payload.createdAt })).toBeNull();
+    expect(validateTaskTimestamps({ ...payload, updatedAt: '2026-11-09T00:00:00.000Z' }, { ...payload, updatedAt: payload.createdAt })).toBeNull();
+  });
+  it('rejects a new task updated before its creation', () => {
+    expect(validateTaskTimestamps({ ...payload, updatedAt: '2026-11-07T00:00:00.000Z' })).toBe('invalid_task_timestamps');
+  });
+  it('rejects an existing task whose update time moves backwards', () => {
+    expect(validateTaskTimestamps({ ...payload, updatedAt: '2026-11-08T01:00:00.000Z' },
+      { ...payload, updatedAt: '2026-11-08T02:00:00.000Z' })).toBe('task_updated_at_regression');
+  });
+  it('allows idempotent equal update times', () => {
+    expect(validateTaskTimestamps({ ...payload, updatedAt: '2026-11-08T02:00:00.000Z' },
+      { ...payload, updatedAt: '2026-11-08T02:00:00.000Z' })).toBeNull();
   });
 });
