@@ -16,6 +16,9 @@ describe('device proof client', () => {
     const signer = vi.fn(async () => 'D'.repeat(86));
     const verified = await obtainDeviceProof(session, deviceId, signer);
     expect(verified.deviceProofToken).toBe(proofToken);
+    expect(verified.deviceProofDeviceId).toBe(deviceId);
+    expect(verified.deviceProofExpiresAt).toBeGreaterThan(Date.now() + 290_000);
+    expect(verified.deviceProofExpiresAt).toBeLessThanOrEqual(Date.now() + 300_000);
     expect(session).not.toHaveProperty('deviceProofToken');
     expect(signer).toHaveBeenCalledWith(challenge);
     expect(fetchMock.mock.calls[0][0].toString()).toBe('https://sync.example.com/devices/challenge');
