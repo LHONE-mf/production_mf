@@ -1,3 +1,8 @@
+## 2026-11-08 — challenge replay regression
+- Added HTTP route-level regression test that signs a genuine issued challenge, verifies once successfully, then replays the identical signature/challenge and expects HTTP 403 (`eaa645c`). The test simulates PostgreSQL conditional consumption with a stateful fake; real PostgreSQL concurrency still needs integration coverage.
+- At previous checkpoint `205b5955`, GitHub web/server CI passed; newer Android builds and the latest replay test were not yet verified when inspected.
+- Existing records unchanged; automatic sync remains disabled pending Android and PostgreSQL integration verification.
+
 ## 2026-11-08 — session logout and enrollment guard regression
 - Sync screen disconnect now POSTs `/auth/logout`, clears in-memory bearer/proof/device UI state even on network failure, and warns if remote revocation could not be confirmed (`cbb74aa`). Existing local tasks and queued changes remain untouched.
 - Added HTTP-level regression test that chief enrollment rejects an RSA SPKI public key without any device insert (`f28067e`).
