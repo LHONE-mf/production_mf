@@ -1,3 +1,7 @@
+## 2026-11-08 — isolate Android instrumentation to app module
+- Emulator run `42483797636` failed in `:capacitor-cordova-android-plugins:checkDebugAndroidTestDuplicateClasses`, due to Kotlin 1.8.22 vs legacy Kotlin JDK7/JDK8 1.6.21 test dependency collisions. The Ed25519 test itself compiled after `412a6cc4`.
+- Restricted emulator workflow instrumentation build and execution to `:app:assembleDebugAndroidTest` and `:app:connectedDebugAndroidTest` (`1f8fd9a7`) to avoid running tests of unrelated Capacitor modules. Emulator runtime result still pending.
+
 ## 2026-11-08 — Ed25519 instrumentation compile fix
 - Emulator run `42483549801` failed at `compileDebugAndroidTestJavaWithJavac` because the new instrumentation test passed a generic `Key` to `Signature.initSign`. Cast the retrieved AndroidKeyStore key to `PrivateKey` (`412a6cc4`), consistent with the production plugin. Runtime signing still awaits a completed emulator test.
 - The previous Gradle wrapper timeout fix was verified by a successful Android APK build `42483549778`; web/server and Run Tests passed at `0f8d38e5`.
