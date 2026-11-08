@@ -1,3 +1,7 @@
+## 2026-11-08 — emulator exposes incompatible AndroidKeyStore public key
+- Emulator run `42484083357` built app and instrumentation APKs but failed `:app:connectedDebugAndroidTest`. DeviceProofKeystoreTest received a 91-byte SPKI rather than the required 44-byte Ed25519 SPKI; native enrollment correctly fails closed. Do not enable automatic sync or add a software-private-key fallback.
+- Also fixed stale Capacitor sample instrumentation assertion (`com.getcapacitor.app` → `ru.liion.production`, `995bb626`) and enriched Ed25519 assertion with provider algorithm details (`f5794130`). Await follow-up emulator diagnostics before selecting a secure supported key strategy.
+
 ## 2026-11-08 — isolate Android instrumentation to app module
 - Emulator run `42483797636` failed in `:capacitor-cordova-android-plugins:checkDebugAndroidTestDuplicateClasses`, due to Kotlin 1.8.22 vs legacy Kotlin JDK7/JDK8 1.6.21 test dependency collisions. The Ed25519 test itself compiled after `412a6cc4`.
 - Restricted emulator workflow instrumentation build and execution to `:app:assembleDebugAndroidTest` and `:app:connectedDebugAndroidTest` (`1f8fd9a7`) to avoid running tests of unrelated Capacitor modules. Emulator runtime result still pending.
