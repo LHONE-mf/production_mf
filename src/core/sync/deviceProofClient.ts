@@ -30,10 +30,11 @@ export async function obtainDeviceProof(
     throw new Error('Invalid challenge response');
   const signature = await signChallenge(issued.challenge);
   if (!/^[A-Za-z0-9_-]{86}$/.test(signature)) throw new Error('Invalid device signature');
+  const verificationStartedAt = Date.now();
   const verified = await send('/devices/challenge/verify', {
     deviceId, challengeId: issued.challengeId, challenge: issued.challenge, signature,
   });
   if (!/^[A-Za-z0-9_-]{43}$/.test(verified.proofToken) || verified.deviceId !== deviceId || verified.expiresIn !== 300)
     throw new Error('Invalid device proof response');
-  return { ...session, deviceProofToken: verified.proofToken };
+  return { ...session, deviceProofToken: verified.proofToken, deviceProofDeviceId: deviceId, deviceProofExpiresAt: verificationStartedAt + verified.expiresIn * 1000 };
 }
