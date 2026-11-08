@@ -73,6 +73,22 @@ export async function pullAtomicTasks(session: HybridSession) {
     throw new Error('Invalid sync response: changes or cursor');
   }
   const changes = response.changes as RemoteTaskChange[];
+  const nextCursor = Number(response.nextCursor);
+  // The cursor is a durable checkpoint. Never advance it past changes actually
+  // delivered by the server, or a malformed response could silently skip tasks.
+  if (changes.length > 100 || typeof response.hasMore !== 'boolean' ||
+      (changes.length === 0 && nextCursor !== cursor) ||
+      (changes.length > 0 && nextCursor !== Number(changes[changes.length - 1].sequence))) {
+    throw new Error('Invalid sync response: cursor does not match delivered changes');
+  }
+  let previousSequence = cursor;
+  for (const change of changes) {
+    if (!Number.isSafeInteger(Number(change.sequence)) || Number(change.sequence) <= previousSequence ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(change.entity_id)) {
+      throw new Error('Invalid sync response: unordered changes or task ID');
+    }
+    previousSequence = Number(change.sequence);
+  }
   await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
     for (const change of changes) {
       if (change.entity_type !== 'task' || !Number.isSafeInteger(change.revision) || change.revision < 1) throw new Error('Invalid sync entity or revision');
