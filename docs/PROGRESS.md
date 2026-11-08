@@ -1,3 +1,8 @@
+## 2026-11-08 — Android device enrollment and proof UI
+- Added manual Android-only key creation and chief-authorized enrollment controls to the Sync screen, plus device selection and signed challenge verification before task pushes (`c7e22e1`). The server session and ephemeral proof remain in component memory; switching devices clears the proof. No background synchronization is enabled.
+- Verified GitHub Actions at `fc3c1615`: web/server CI and Run Tests passed; Android APK build was still running when inspected. The new UI commit has not yet passed CI.
+- **Remaining validation:** real AndroidKeyStore Ed25519 provider compatibility, emulator APK build, device-enrollment-to-push end-to-end test, proof expiry refresh, and tenant-safe device binding. Do not enable automatic sync yet.
+
 ## 2026-11-08 — enrollment key validation
 - Server now validates canonical Ed25519 SPKI PEM keys before accepting chief-authorized device enrollment (`7967eb4`, `4e98877`); RSA, malformed and noncanonical PEM are rejected with HTTP 400.
 - Added Ed25519 enrollment key validation regression tests (`0d397a7`).
