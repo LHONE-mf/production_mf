@@ -57,6 +57,18 @@ describe('sync push device proof boundary', () => {
     expect(grantQuery[0]).toContain('s.revoked_at IS NULL');
     await app.close();
   });
+  it('accepts a matching device proof and checks the bound session before task writes', async () => {
+    const db = pool(true);
+    const connect = vi.fn(async () => {
+      throw new Error('stop before mutation');
+    });
+    const app = buildApp({ ...db, connect } as any);
+    const response = await post(app, [op(device)], proof);
+    expect(response.statusCode).toBe(503);
+    expect(db.query.mock.calls[1][1]).toEqual([tokenHash(proof), org, user, device, tokenHash(session)]);
+    expect(connect).toHaveBeenCalledTimes(1);
+    await app.close();
+  });
   it('rejects mixed-device batches before checking grants', async () => {
     const db = pool(true);
     const app = buildApp(db as any);
