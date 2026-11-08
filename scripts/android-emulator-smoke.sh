@@ -5,6 +5,33 @@ mkdir -p artifacts/android-smoke
 PACKAGE="ru.liion.production"
 ACTIVITY="ru.liion.production/.MainActivity"
 
+# Android emulator boot can leave a transient launcher/system overlay on top of
+# the Activity. Retry a bounded launch, but never ignore a persistent focus failure.
+ensure_app_focus() {
+  local label="$1"
+  local evidence="$2"
+  local attempt
+  for attempt in 1 2 3; do
+    adb shell dumpsys window > "$evidence"
+    if grep 'mCurrentFocus=' "$evidence" | grep -q "$PACKAGE"; then
+      echo "Production MF focused at $label (attempt $attempt)."
+      return 0
+    fi
+    echo "Production MF not focused at $label (attempt $attempt/3):" >&2
+    grep 'mCurrentFocus=' "$evidence" >&2 || true
+    if (( attempt < 3 )); then
+      # Dismiss a transient system overlay, then explicitly relaunch the app.
+      adb shell input keyevent KEYCODE_HOME || true
+      adb shell am force-stop "$PACKAGE" || true
+      adb shell am start -W -n "$ACTIVITY"
+      sleep 6
+    fi
+  done
+  echo "ERROR: Production MF failed to gain focus at $label after 3 attempts" >&2
+  adb logcat -d -v time > "artifacts/android-smoke/logcat-focus-failure.txt" || true
+  return 1
+}
+
 adb wait-for-device
 adb shell settings put system accelerometer_rotation 0
 adb shell settings put system user_rotation 0
@@ -17,12 +44,7 @@ adb shell am start -W -n "$ACTIVITY"
 sleep 12
 # A system launcher ANR can cover the app even when ActivityManager reports it running.
 # Check the *focused window*, not the stale mFocusedApp field, before exercising Back.
-adb shell dumpsys window > artifacts/android-smoke/window-launch.txt
-if ! grep 'mCurrentFocus=' artifacts/android-smoke/window-launch.txt | grep -q "$PACKAGE"; then
-  echo 'ERROR: Production MF is not focused after launch (system dialog/launcher may be blocking it)' >&2
-  grep 'mCurrentFocus=' artifacts/android-smoke/window-launch.txt >&2 || true
-  exit 1
-fi
+ensure_app_focus "first launch" artifacts/android-smoke/window-launch.txt
 
 adb shell screencap -p /sdcard/production-mf-launch.png
 adb pull /sdcard/production-mf-launch.png artifacts/android-smoke/launch.png
@@ -33,12 +55,7 @@ adb pull /sdcard/production-mf-ui.xml artifacts/android-smoke/ui.xml || true
 adb shell am force-stop "$PACKAGE"
 adb shell am start -W -n "$ACTIVITY"
 sleep 8
-adb shell dumpsys window > artifacts/android-smoke/window-relaunch.txt
-if ! grep 'mCurrentFocus=' artifacts/android-smoke/window-relaunch.txt | grep -q "$PACKAGE"; then
-  echo 'ERROR: Production MF is not focused after cold relaunch (possible system overlay)' >&2
-  grep 'mCurrentFocus=' artifacts/android-smoke/window-relaunch.txt >&2 || true
-  exit 1
-fi
+ensure_app_focus "cold relaunch" artifacts/android-smoke/window-relaunch.txt
 adb shell screencap -p /sdcard/production-mf-relaunch.png
 adb pull /sdcard/production-mf-relaunch.png artifacts/android-smoke/relaunch.png
 adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
