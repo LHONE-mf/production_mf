@@ -16,6 +16,7 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Signature;
+import java.security.spec.ECGenParameterSpec;
 import java.util.Arrays;
 
 /**
@@ -31,6 +32,12 @@ public class DeviceProofPlugin extends Plugin {
             0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00
     };
 
+    private static boolean isEd25519Spki(byte[] encoded) {
+        return encoded != null && encoded.length == 44
+                && Arrays.equals(Arrays.copyOf(encoded, ED25519_SPKI_PREFIX.length),
+                        ED25519_SPKI_PREFIX);
+    }
+
     private KeyStore store() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
@@ -41,22 +48,34 @@ public class DeviceProofPlugin extends Plugin {
     public void getPublicKey(PluginCall call) {
         try {
             KeyStore store = store();
+            if (store.containsAlias(ALIAS)) {
+                java.security.cert.Certificate existing = store.getCertificate(ALIAS);
+                // Older builds accidentally generated a P-256 key without an explicit Ed25519 curve.
+                // Such keys could never pass server enrollment; replace only the invalid alias.
+                if (existing == null || !isEd25519Spki(existing.getPublicKey().getEncoded()))
+                    store.deleteEntry(ALIAS);
+            }
             if (!store.containsAlias(ALIAS)) {
                 KeyPairGenerator generator = KeyPairGenerator.getInstance("Ed25519", "AndroidKeyStore");
                 generator.initialize(new KeyGenParameterSpec.Builder(
                         ALIAS, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                        .setAlgorithmParameterSpec(new ECGenParameterSpec("ed25519"))
                         .setDigests(KeyProperties.DIGEST_NONE)
                         .build());
                 KeyPair generated = generator.generateKeyPair();
-                if (generated.getPublic() == null) throw new IllegalStateException("Missing public key");
+                if (generated.getPublic() == null || !isEd25519Spki(generated.getPublic().getEncoded())) {
+                    store.deleteEntry(ALIAS);
+                    throw new IllegalStateException("Provider generated a non-Ed25519 key");
+                }
+                if (generated.getPrivate() == null || generated.getPrivate().getEncoded() != null) {
+                    store.deleteEntry(ALIAS);
+                    throw new IllegalStateException("Private key must be non-exportable");
+                }
             }
             java.security.cert.Certificate certificate = store.getCertificate(ALIAS);
             if (certificate == null) throw new IllegalStateException("Ed25519 key unavailable");
-            // Android providers may report the algorithm as EdDSA rather than Ed25519.
-            // Validate the actual encoded key type instead of relying on provider naming.
             byte[] encoded = certificate.getPublicKey().getEncoded();
-            if (encoded == null || encoded.length != 44 ||
-                    !Arrays.equals(Arrays.copyOf(encoded, ED25519_SPKI_PREFIX.length), ED25519_SPKI_PREFIX))
+            if (!isEd25519Spki(encoded))
                 throw new IllegalStateException("Expected Ed25519 SPKI public key");
             String der = Base64.encodeToString(encoded, Base64.NO_WRAP);
             StringBuilder pem = new StringBuilder("-----BEGIN PUBLIC KEY-----\n");
