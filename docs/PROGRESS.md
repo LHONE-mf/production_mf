@@ -1,3 +1,8 @@
+## 2026-11-08 — force the Ed25519 curve in AndroidKeyStore
+- Diagnostic emulator workflow `42484736583` confirmed `algorithm=EC, SPKI length=91`: requesting a generator named Ed25519 without an explicit curve had produced a P-256 key, not a valid Ed25519 SPKI public key.
+- The native plugin now specifies `ECGenParameterSpec("ed25519")`, checks the generated SPKI and private-key non-exportability, and replaces only pre-existing non-Ed25519 aliases that could never have been accepted by the Ed25519-only server (`f199dbdf`). The Android instrumentation test explicitly requests the same curve (`a30b478b`). No software-key or ECDSA fallback is introduced.
+- CI and emulator verification for these changes are pending; do not mark hardware-backed Ed25519 operational or enable automatic sync until native key generation and signing pass.
+
 ## 2026-11-08 — server rejects changed-precondition operation-ID replays
 - Tightened `/sync/push` duplicate checks: an operation ID is acknowledged only when the original `operation_type` and `expected_revision` also match, in addition to organization, actor, device, entity, and payload (`3921e9e5`). This prevents a stale or altered operation from being silently treated as a successful exact retry.
 - Added regression test that expects rejection for an altered expected revision and `duplicate` for an exact retry, without committing writes (`a6409584`). Web/server CI passed; dedicated Run Tests and Android build were running at documentation time.
