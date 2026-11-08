@@ -88,9 +88,16 @@ describe('server task status transitions', () => {
   ] as const)('allows %s to %s', (before, after) => {
     expect(validateTaskStatusTransition(withStatus(after), withStatus(before))).toBeNull();
   });
+  it('freezes the entire completed task snapshot but allows identical retries', () => {
+    const finished = { ...withStatus('completed'), title: 'Finished', description: 'Approved' };
+    expect(validateTaskStatusTransition({ ...finished }, finished)).toBeNull();
+    expect(validateTaskStatusTransition({ ...finished, title: 'Rewritten' }, finished)).toBe('completed_task_is_immutable');
+    expect(validateTaskStatusTransition({ ...finished, description: 'Changed' }, finished)).toBe('completed_task_is_immutable');
+    expect(validateTaskStatusTransition({ ...finished, status: 'in_progress' }, finished)).toBe('completed_task_is_immutable');
+  });
   it.each([
     ['created', 'completed'], ['assigned', 'completed'], ['in_progress', 'completed'],
-    ['completed', 'in_progress'], ['completed', 'rejected'], ['rejected', 'completed'],
+    ['rejected', 'completed'],
     ['checked', 'created'], ['in_progress', 'assigned'],
   ] as const)('rejects %s to %s', (before, after) => {
     expect(validateTaskStatusTransition(withStatus(after), withStatus(before))).toBe('invalid_task_status_transition');
