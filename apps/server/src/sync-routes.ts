@@ -49,11 +49,11 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [principal.organization_id + ':sync-sequence']);
         const device = await client.query('SELECT id FROM devices WHERE id=$1 AND organization_id=$2 AND user_id=$3 AND revoked_at IS NULL', [op.deviceId, principal.organization_id, principal.id]);
         if (!device.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'device_not_enrolled' }); continue; }
-        const duplicate = await client.query('SELECT operation_id, organization_id, entity_id, entity_type, device_id, actor_id, operation_type, expected_revision, payload, revision, result_payload FROM sync_operations WHERE operation_id=$1', [op.operationId]);
+        const duplicate = await client.query('SELECT organization_id, entity_id, entity_type, device_id, actor_id, operation_type, expected_revision, revision, payload = $2::jsonb AS same_payload FROM sync_operations WHERE operation_id=$1', [op.operationId, JSON.stringify(op.payload)]);
         if (duplicate.rowCount) {
           const prev = duplicate.rows[0];
           await client.query('ROLLBACK');
-          results.push(prev.organization_id === principal.organization_id && prev.entity_id === op.entityId && prev.entity_type === op.entityType && prev.device_id === op.deviceId && prev.actor_id === principal.id && prev.operation_type === op.operationType && prev.expected_revision === op.expectedRevision && JSON.stringify(prev.payload) === JSON.stringify(op.payload) ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
+          results.push(prev.organization_id === principal.organization_id && prev.entity_id === op.entityId && prev.entity_type === op.entityType && prev.device_id === op.deviceId && prev.actor_id === principal.id && prev.operation_type === op.operationType && prev.expected_revision === op.expectedRevision && prev.same_payload === true ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
           continue;
         }
         if (op.payload.assignedTo) {

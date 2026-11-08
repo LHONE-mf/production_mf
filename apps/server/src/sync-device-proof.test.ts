@@ -79,7 +79,7 @@ describe('sync push device proof boundary', () => {
     const stored = {
       organization_id: org, entity_id: original.entityId, entity_type: original.entityType,
       device_id: device, actor_id: user, operation_type: original.operationType,
-      expected_revision: original.expectedRevision, payload: original.payload, revision: 1,
+      expected_revision: original.expectedRevision, same_payload: true, revision: 1,
     };
     const client = {
       query: vi.fn(async (sql: string) => {
