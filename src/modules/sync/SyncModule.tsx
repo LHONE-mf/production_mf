@@ -145,7 +145,24 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
-  function disconnect() { setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]); setPassword(''); setMessage('Соединение отключено'); setError(''); }
+  async function disconnect() {
+    if (!session) return;
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const response = await fetch(serverEndpoint(session.serverUrl, '/auth/logout'), {
+        method: 'POST', headers: { Authorization: 'Bearer ' + session.accessToken },
+      });
+      if (!response.ok) throw new Error('Сервер не подтвердил выход: HTTP ' + response.status);
+      setMessage('Серверная сессия завершена');
+    } catch (cause) {
+      // Never retain a usable bearer token merely because the network is offline.
+      setError((cause instanceof Error ? cause.message : 'Ошибка выхода') + '. Локальные учётные данные очищены, но серверная сессия может оставаться активной до истечения срока.');
+    } finally {
+      setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole('');
+      setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
+      setDevicePublicKey(''); setPassword(''); setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -201,7 +218,7 @@ export function SyncModule() {
               <button disabled={busy} onClick={() => void synchronize()} className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl">
                 <RefreshCw className="w-4 h-4" /> {busy ? 'Синхронизация...' : 'Синхронизировать'}
               </button>
-              <button disabled={busy} onClick={disconnect} className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-xl">Отключиться</button>
+              <button disabled={busy} onClick={() => void disconnect()} className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white rounded-xl">Отключиться</button>
             </div>
           </div>
         )}
