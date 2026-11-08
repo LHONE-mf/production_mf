@@ -1,3 +1,9 @@
+## 2026-11-08 — session logout and enrollment guard regression
+- Sync screen disconnect now POSTs `/auth/logout`, clears in-memory bearer/proof/device UI state even on network failure, and warns if remote revocation could not be confirmed (`cbb74aa`). Existing local tasks and queued changes remain untouched.
+- Added HTTP-level regression test that chief enrollment rejects an RSA SPKI public key without any device insert (`f28067e`).
+- GitHub Actions web/server CI passed at `205b5955`; Android APK and emulator were still in progress, and the newest changes have not yet passed CI.
+- End-to-end AndroidKeyStore signing/enrollment/sync still requires a verified device/emulator run.
+
 ## 2026-11-08 — device proof binding and expiry guard
 - Both sync adapters now require the ephemeral proof's device ID to match the pending operation's device ID and require more than five seconds of remaining lifetime before any task push (`d398f7d`, `1efe960`).
 - The challenge client records proof device ID and conservative local expiry from verification request start, without persisting token or private key (`525c319`). Added metadata assertions to client regression test (`b66cfab`).
