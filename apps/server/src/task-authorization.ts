@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { Principal } from './auth.js';
 import type { TaskPayloadV1 } from './task-schema.js';
 
@@ -65,7 +66,7 @@ export function validateTaskStatusTransition(incoming: TaskPayloadV1, existing?:
   // Completion freezes the full task snapshot, not just its workflow status.
   // Retries are handled by the operation-ID ledger before this policy executes.
   if (existing.status === 'completed') {
-    return JSON.stringify(incoming) === JSON.stringify(existing) ? null : 'completed_task_is_immutable';
+    return isDeepStrictEqual(incoming, existing) ? null : 'completed_task_is_immutable';
   }
   if (incoming.status === existing.status) return null;
   return allowedStatusChanges[existing.status].has(incoming.status) ? null : 'invalid_task_status_transition';
