@@ -105,7 +105,11 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
   });
   it('does not advance the durable pull cursor when the server skips unseen changes', async () => {
-    const session = { serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43) };
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
     await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
     for (const response of [
       { changes: [], nextCursor: 11, hasMore: false },
