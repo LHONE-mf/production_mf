@@ -8,17 +8,19 @@ function urlFor(session: HybridSession, path: string) {
   return new URL(path, origin).toString();
 }
 async function send(session: HybridSession, path: string, init?: RequestInit) {
-  const response = await fetch(urlFor(session, path), { ...init, headers: { Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json' } });
+  const response = await fetch(urlFor(session, path), { ...init, headers: { Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json', ...init?.headers } });
   if (!response.ok) throw new Error('Sync HTTP ' + response.status);
   return response.json();
 }
 
 /** Acknowledgements and revision metadata are committed atomically. */
 export async function pushAtomicTasks(session: HybridSession) {
-  const pending = (await db.hybridTaskOutbox.where('state').equals('pending').sortBy('queuedAt')).slice(0, 50);
+  const pendingAll = await db.hybridTaskOutbox.where('state').equals('pending').sortBy('queuedAt');
+  const pending = pendingAll.filter(op => op.deviceId === pendingAll[0]?.deviceId).slice(0, 50);
   if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
   const operations = pending.map(({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }) => ({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }));
-  const response = await send(session, '/sync/push', { method: 'POST', body: JSON.stringify({ operations }) });
+  if (!session.deviceProofToken) throw new Error('Device proof required before pushing tasks');
+  const response = await send(session, '/sync/push', { method: 'POST', headers: { 'x-device-proof': session.deviceProofToken }, body: JSON.stringify({ operations }) });
   let accepted = 0, conflicts = 0, rejected = 0;
   await db.transaction('rw', db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
     if (!Array.isArray(response.results)) throw new Error('Invalid sync response: missing results');
