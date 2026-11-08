@@ -73,6 +73,8 @@ describe('server-managed task offline writes', () => {
       [],
       [{ operationId, status: 'accepted', revision: 1 }, { operationId, status: 'accepted', revision: 2 }],
       [{ operationId, status: 'accepted', revision: -1 }],
+      [{ operationId, status: 'accepted', revision: 3 }],
+      [{ operationId, status: 'duplicate', revision: 2 }],
       [{ operationId, status: 'unknown' }],
     ]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
