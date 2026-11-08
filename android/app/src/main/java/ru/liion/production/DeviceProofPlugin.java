@@ -16,6 +16,7 @@ import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Signature;
+import java.util.Arrays;
 
 /**
  * Strict device proof bridge. Keys must be non-exportable AndroidKeyStore Ed25519 keys.
@@ -25,6 +26,10 @@ import java.security.Signature;
 public class DeviceProofPlugin extends Plugin {
     private static final String ALIAS = "production-mf-device-proof-v1";
     private static final String PREFIX = "production-mf:device-proof:v1:";
+    // RFC 8410 SubjectPublicKeyInfo prefix for a 32-byte Ed25519 public key.
+    private static final byte[] ED25519_SPKI_PREFIX = new byte[] {
+            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00
+    };
 
     private KeyStore store() throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
@@ -46,9 +51,14 @@ public class DeviceProofPlugin extends Plugin {
                 if (generated.getPublic() == null) throw new IllegalStateException("Missing public key");
             }
             java.security.cert.Certificate certificate = store.getCertificate(ALIAS);
-            if (certificate == null || !"Ed25519".equalsIgnoreCase(certificate.getPublicKey().getAlgorithm()))
-                throw new IllegalStateException("Ed25519 key unavailable");
-            String der = Base64.encodeToString(certificate.getPublicKey().getEncoded(), Base64.NO_WRAP);
+            if (certificate == null) throw new IllegalStateException("Ed25519 key unavailable");
+            // Android providers may report the algorithm as EdDSA rather than Ed25519.
+            // Validate the actual encoded key type instead of relying on provider naming.
+            byte[] encoded = certificate.getPublicKey().getEncoded();
+            if (encoded == null || encoded.length != 44 ||
+                    !Arrays.equals(Arrays.copyOf(encoded, ED25519_SPKI_PREFIX.length), ED25519_SPKI_PREFIX))
+                throw new IllegalStateException("Expected Ed25519 SPKI public key");
+            String der = Base64.encodeToString(encoded, Base64.NO_WRAP);
             StringBuilder pem = new StringBuilder("-----BEGIN PUBLIC KEY-----\n");
             for (int i = 0; i < der.length(); i += 64) pem.append(der, i, Math.min(i + 64, der.length())).append('\n');
             pem.append("-----END PUBLIC KEY-----\n");
