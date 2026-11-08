@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Регистрация нативного BLE-плагина (advertiser + GATT server + scanner)
         registerPlugin(BleBridgePlugin.class);
+        registerPlugin(DeviceProofPlugin.class);
         super.onCreate(savedInstanceState);
         // Keep the Android status/navigation bars visible and match the dark app chrome.
         Window window = getWindow();
