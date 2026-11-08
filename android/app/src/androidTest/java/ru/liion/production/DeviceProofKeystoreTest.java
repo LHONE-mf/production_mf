@@ -18,6 +18,7 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.Signature;
+import java.security.spec.ECGenParameterSpec;
 import java.util.Arrays;
 
 /** Runs the exact AndroidKeyStore Ed25519 operations used by DeviceProofPlugin on an emulator. */
@@ -32,6 +33,7 @@ public class DeviceProofKeystoreTest {
             KeyPairGenerator generator = KeyPairGenerator.getInstance("Ed25519", "AndroidKeyStore");
             generator.initialize(new KeyGenParameterSpec.Builder(
                     alias, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY)
+                    .setAlgorithmParameterSpec(new ECGenParameterSpec("ed25519"))
                     .setDigests(KeyProperties.DIGEST_NONE).build());
             KeyPair pair = generator.generateKeyPair();
             assertTrue("private key must not be exportable", pair.getPrivate().getEncoded() == null);
