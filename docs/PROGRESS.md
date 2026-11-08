@@ -1,3 +1,11 @@
+## 2026-11-08 — M1 device proof transport (opt-in)
+- Added `src/core/sync/deviceProofClient.ts`: HTTPS-only issue/sign/verify exchange with an injected device-key signer, returning an ephemeral `HybridSession.deviceProofToken` without persisting credentials (`cad14055`).
+- Added challenge-exchange unit tests for success, insecure origins, malformed challenge and rejected verification (`8dec9b1`).
+- Both prototype and atomic sync push adapters now require a proof token and limit each batch to a single device (changes present on branch); no outbox records are removed when proof is missing.
+- Fixed migration numbering is visible on branch: `003_sync_entities.sql`, `004_device_challenges.sql`. Earlier naming collision no longer exists.
+- GitHub Actions on commit `d40560cf`: web/server CI and Run Tests both succeeded; Android build was still in progress when checked. New proof-client changes have **not** been verified by CI yet.
+- **Not production-ready:** platform-backed non-exportable Ed25519 key generation, device enrollment and signer wiring are not implemented. UI does not invoke this helper. Never replace the signer with an exportable browser key or persist private keys in localStorage.
+
 ## 2026-11-08 — M1 client proof transport and CI repair
 - Updated both opt-in sync adapters (`hybridClient.ts`, `atomicClient.ts`) to send an in-memory `x-device-proof` header on push, reject absent proof before network upload, and split mixed-device pending queues into single-device batches. No automatic sync or credential persistence enabled.
 - Renumbered the additive device-challenge migration from duplicate `003` to `004`, preserving `003_sync_entities.sql`.
