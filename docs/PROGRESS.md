@@ -1,3 +1,7 @@
+## 2026-11-08 — Ed25519 enrollment authorization coverage
+- Added HTTP route-level tests for successful canonical Ed25519 enrollment scoped to an active user in the chief's organization, and for rejection of a user outside that organization without inserting a device (`424ebec`). Existing RSA rejection test remains.
+- CI at the previous `8917ba2e` checkpoint was still in progress when inspected. Native Ed25519 generation/signing, Android APK/emulator and real PostgreSQL concurrency remain unverified; do not enable background synchronization.
+
 ## 2026-11-08 — Android Ed25519 provider compatibility and CI stability
 - Android device proof bridge now validates the 44-byte RFC 8410 Ed25519 SPKI encoding instead of requiring the provider-reported algorithm string to equal `Ed25519` (some providers use `EdDSA`) (`e61697f`). Unsupported keys and AndroidKeyStore failures still fail closed; no software fallback.
 - Android APK and emulator workflows now use `cancel-in-progress: false` to allow long-running verification to finish despite frequent development commits (`c977dff`, `52fdbce`). Older cancelled runs remain cancelled.
