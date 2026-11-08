@@ -32,6 +32,28 @@ describe('device proof client', () => {
       .rejects.toThrow('HTTPS required');
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it('rejects server URLs containing credentials, paths, queries, or fragments', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    for (const serverUrl of [
+      'https://user:secret@sync.example.com',
+      'https://sync.example.com/redirect',
+      'https://sync.example.com?target=evil',
+      'https://sync.example.com#fragment',
+    ]) {
+      await expect(obtainDeviceProof({ ...session, serverUrl }, deviceId, vi.fn()))
+        .rejects.toThrow('server origin');
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('rejects non-UUID challenge IDs before calling the native signer', async () => {
+    const signer = vi.fn();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ challengeId: 'invalid', challenge }),
+    }));
+    await expect(obtainDeviceProof(session, deviceId, signer)).rejects.toThrow('Invalid challenge');
+    expect(signer).not.toHaveBeenCalled();
+  });
   it('rejects malformed server challenge without calling the signer', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ challengeId: deviceId, challenge: 'bad' }) }));
     const signer = vi.fn();
