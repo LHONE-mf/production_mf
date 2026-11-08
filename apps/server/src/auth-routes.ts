@@ -44,6 +44,16 @@ export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'
     await pool.query('INSERT INTO devices (id, organization_id, user_id, public_key) VALUES ($1,$2,$3,$4)', [id, principal.organization_id, userId, parsed.data.publicKey]);
     return reply.code(201).send({ id, userId });
   });
+  // Read-only discovery for the authenticated user. Never return other users' devices or public keys.
+  app.get('/devices/mine', async (request, reply) => {
+    const principal = await authenticate(pool, request.headers.authorization);
+    if (!principal) return reply.code(401).send({ error: 'unauthorized' });
+    const result = await pool.query(
+      'SELECT id FROM devices WHERE organization_id=$1 AND user_id=$2 AND revoked_at IS NULL ORDER BY id',
+      [principal.organization_id, principal.id],
+    );
+    return { devices: result.rows.map((row: { id: string }) => ({ id: row.id })) };
+  });
   app.post('/devices/:id/revoke', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
