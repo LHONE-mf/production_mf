@@ -5,6 +5,8 @@ export interface HybridSession {
   /** HTTPS origin of a trusted server. Never store bearer tokens in this module. */
   serverUrl: string;
   accessToken: string;
+  /** Short-lived proof returned after a signed device challenge. Never persist it. */
+  deviceProofToken?: string;
 }
 export interface RemoteTaskChange {
   sequence: string | number;
@@ -34,10 +36,13 @@ async function request(session: HybridSession, path: string, init?: RequestInit)
 
 /** Never removes a queued mutation until the server acknowledges it. */
 export async function pushPendingTasks(session: HybridSession) {
-  const pending = (await pendingTaskOperations()).slice(0, 50);
+  const pendingAll = await pendingTaskOperations();
+  const pending = pendingAll.filter(op => op.deviceId === pendingAll[0]?.deviceId).slice(0, 50);
   if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
+  if (!session.deviceProofToken) throw new Error('Device proof required before pushing tasks');
   const response = await request(session, '/sync/push', {
     method: 'POST',
+    headers: { 'x-device-proof': session.deviceProofToken },
     body: JSON.stringify({ operations: pending.map(({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }) => ({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload })) }),
   });
   let accepted = 0, conflicts = 0, rejected = 0;
