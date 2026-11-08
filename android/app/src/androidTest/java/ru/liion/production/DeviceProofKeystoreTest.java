@@ -42,7 +42,7 @@ public class DeviceProofKeystoreTest {
             byte[] message = ("production-mf:device-proof:v1:" + "A".repeat(43))
                     .getBytes(StandardCharsets.UTF_8);
             Signature signer = Signature.getInstance("Ed25519");
-            signer.initSign(store.getKey(alias, null));
+            signer.initSign((java.security.PrivateKey) store.getKey(alias, null));
             signer.update(message);
             byte[] signature = signer.sign();
             assertEquals(64, signature.length);
