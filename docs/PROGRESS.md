@@ -1,3 +1,8 @@
+## 2026-11-08 — atomic task push proof regression
+- Added IndexedDB-backed regression tests for `pushAtomicTasks`: missing/wrong-device/expired proof must not issue a request or delete pending local edits; valid proof must be transmitted as `x-device-proof` and a successful server acknowledgment must atomically update revision and remove its queued operation (`dff6951`).
+- GitHub web/server CI passed at `79e05416`; new tests, Android APK and native signing have not yet been verified at this checkpoint.
+- Automatic synchronization remains off. No schema changes or production data deletion.
+
 ## 2026-11-08 — strict device-proof endpoint and challenge validation
 - Device proof client rejects server URLs with embedded credentials, path, query, or fragment before issuing authenticated requests (`a0d917f`). Also requires challenge IDs to be UUIDs before invoking native signer.
 - Added regression tests for invalid server origins and malformed challenge IDs (`c110da2`).
