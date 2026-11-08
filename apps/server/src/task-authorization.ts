@@ -36,3 +36,12 @@ export function validateTaskAttachments(incoming: TaskPayloadV1, existing?: Task
   }
   return null;
 }
+
+/** Creation cannot happen after the last edit, and edits must not move the audit clock backwards. */
+export function validateTaskTimestamps(incoming: TaskPayloadV1, existing?: TaskPayloadV1): string | null {
+  const created = Date.parse(incoming.createdAt);
+  const updated = Date.parse(incoming.updatedAt);
+  if (!Number.isFinite(created) || !Number.isFinite(updated) || updated < created) return 'invalid_task_timestamps';
+  if (existing && updated < Date.parse(existing.updatedAt)) return 'task_updated_at_regression';
+  return null;
+}
