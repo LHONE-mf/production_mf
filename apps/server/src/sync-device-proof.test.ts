@@ -59,9 +59,13 @@ describe('sync push device proof boundary', () => {
   });
   it('accepts a matching device proof and checks the bound session before task writes', async () => {
     const db = pool(true);
-    const connect = vi.fn(async () => {
-      throw new Error('stop before mutation');
-    });
+    const connect = vi.fn(async () => ({
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK') return { rows: [], rowCount: 0 };
+        throw new Error('stop before mutation');
+      }),
+      release: vi.fn(),
+    }));
     const app = buildApp({ ...db, connect } as any);
     const response = await post(app, [op(device)], proof);
     expect(response.statusCode).toBe(503);
