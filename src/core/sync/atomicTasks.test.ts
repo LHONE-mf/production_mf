@@ -61,6 +61,27 @@ describe('server-managed task offline writes', () => {
     expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
   });
 
+  it('preserves pending edits when a push response is incomplete or duplicated', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    for (const results of [
+      [],
+      [{ operationId, status: 'accepted', revision: 1 }, { operationId, status: 'accepted', revision: 2 }],
+      [{ operationId, status: 'accepted', revision: -1 }],
+      [{ operationId, status: 'unknown' }],
+    ]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({ results }),
+      }));
+      await expect(pushAtomicTasks(session)).rejects.toThrow('Invalid sync response');
+      expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({ state: 'pending' });
+      expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    }
+  });
   it('sends a device-bound proof and clears the outbox only after server acknowledgment', async () => {
     const operationId = await saveServerManagedTask(task(), deviceId);
     const fetchMock = vi.fn().mockResolvedValue({
