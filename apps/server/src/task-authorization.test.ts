@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTaskCreator } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments } from './task-authorization.js';
 import type { Principal } from './auth.js';
 import type { TaskPayloadV1 } from './task-schema.js';
 
@@ -20,5 +20,22 @@ describe('task creator policy', () => {
   });
   it('rejects changing creation timestamp', () => {
     expect(validateTaskCreator(actor, { ...payload, createdAt: '2026-11-09T00:00:00.000Z' }, payload)).toBe('creator_is_immutable');
+  });
+});
+
+describe('task comment integrity', () => {
+  const comment = { id: '55555555-5555-4555-8555-555555555555', taskId: '66666666-6666-4666-8666-666666666666', authorId: actor.id, text: 'Reviewed', createdAt: '2026-11-08T00:00:00.000Z' };
+  it('allows comments authored by the authenticated actor', () => {
+    expect(validateTaskComments(actor, { ...payload, comments: [comment] })).toBeNull();
+  });
+  it('rejects spoofed comment authors', () => {
+    expect(validateTaskComments(actor, { ...payload, comments: [{ ...comment, authorId: '77777777-7777-4777-8777-777777777777' }] })).toBe('comment_author_must_match_actor');
+  });
+  it('rejects removal or editing of existing comments', () => {
+    expect(validateTaskComments(actor, { ...payload, comments: [] }, { ...payload, comments: [comment] })).toBe('comment_is_immutable');
+    expect(validateTaskComments(actor, { ...payload, comments: [{ ...comment, text: 'Changed' }] }, { ...payload, comments: [comment] })).toBe('comment_is_immutable');
+  });
+  it('rejects duplicate comment identifiers', () => {
+    expect(validateTaskComments(actor, { ...payload, comments: [comment, comment] })).toBe('duplicate_comment_id');
   });
 });
