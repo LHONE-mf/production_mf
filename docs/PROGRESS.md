@@ -1,3 +1,9 @@
+## 2026-11-08 — Android native device signing bridge
+- Added `DeviceProofPlugin.java` and registered it in `MainActivity`: attempts AndroidKeyStore-backed Ed25519 key generation, returns only the SPKI public key, and signs domain-separated challenge bytes; rejects malformed challenges and refuses exportable software-key fallback (`d609f31`, `ebdad62`).
+- Added `src/core/sync/androidDeviceProof.ts` to connect the native signer to the server's challenge exchange (`6ca7e62`). No UI flow or automatic synchronization was enabled.
+- **Device compatibility risk:** AndroidKeyStore Ed25519 support is not universal. Unsupported providers intentionally reject rather than silently generate software keys; hardware/provider testing is required before enrollment. No enrollment or recovery UI exists yet.
+- CI at prior commit `fa3504e`: web/server CI and Run Tests passed. Latest Android and emulator workflows were pending at last inspection. Do not claim current APK passed.
+
 ## 2026-11-08 — M1 device proof transport (opt-in)
 - Added `src/core/sync/deviceProofClient.ts`: HTTPS-only issue/sign/verify exchange with an injected device-key signer, returning an ephemeral `HybridSession.deviceProofToken` without persisting credentials (`cad14055`).
 - Added challenge-exchange unit tests for success, insecure origins, malformed challenge and rejected verification (`8dec9b1`).
