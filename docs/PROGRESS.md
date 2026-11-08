@@ -1,3 +1,8 @@
+## 2026-11-08 — server rejects changed-precondition operation-ID replays
+- Tightened `/sync/push` duplicate checks: an operation ID is acknowledged only when the original `operation_type` and `expected_revision` also match, in addition to organization, actor, device, entity, and payload (`3921e9e5`). This prevents a stale or altered operation from being silently treated as a successful exact retry.
+- Added regression test that expects rejection for an altered expected revision and `duplicate` for an exact retry, without committing writes (`a6409584`). Web/server CI passed; dedicated Run Tests and Android build were running at documentation time.
+- Emulator Ed25519 algorithm diagnostics are still running in workflow `42484736583`; preserve strict fail-closed handling, no automatic sync.
+
 ## 2026-11-08 — emulator exposes incompatible AndroidKeyStore public key
 - Emulator run `42484083357` built app and instrumentation APKs but failed `:app:connectedDebugAndroidTest`. DeviceProofKeystoreTest received a 91-byte SPKI rather than the required 44-byte Ed25519 SPKI; native enrollment correctly fails closed. Do not enable automatic sync or add a software-private-key fallback.
 - Also fixed stale Capacitor sample instrumentation assertion (`com.getcapacitor.app` → `ru.liion.production`, `995bb626`) and enriched Ed25519 assertion with provider algorithm details (`f5794130`). Await follow-up emulator diagnostics before selecting a secure supported key strategy.
