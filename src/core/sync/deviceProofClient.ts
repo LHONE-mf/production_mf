@@ -16,6 +16,8 @@ export async function obtainDeviceProof(
   const base = new URL(session.serverUrl);
   if (base.protocol !== 'https:' && !(base.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(base.hostname)))
     throw new Error('HTTPS required for device authentication');
+  if (base.username || base.password || base.search || base.hash || (base.pathname !== '/' && base.pathname !== ''))
+    throw new Error('Device authentication requires a server origin without credentials or path');
   const send = async (path: string, body: unknown) => {
     const response = await fetch(new URL(path, base), {
       method: 'POST',
@@ -26,7 +28,7 @@ export async function obtainDeviceProof(
     return response.json();
   };
   const issued = await send('/devices/challenge', { deviceId });
-  if (!/^[A-Za-z0-9_-]{43}$/.test(issued.challenge) || typeof issued.challengeId !== 'string')
+  if (!/^[A-Za-z0-9_-]{43}$/.test(issued.challenge) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(issued.challengeId))
     throw new Error('Invalid challenge response');
   const signature = await signChallenge(issued.challenge);
   if (!/^[A-Za-z0-9_-]{86}$/.test(signature)) throw new Error('Invalid device signature');
