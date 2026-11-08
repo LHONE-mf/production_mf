@@ -8,6 +8,7 @@ on:
       - 'src/**'
       - 'android/**'
       - 'scripts/android-emulator-smoke.sh'
+      - 'scripts/verify_android_ed25519_vector.mjs'
       - '.github/workflows/android-emulator-smoke.yml'
       - 'package.json'
       - 'package-lock.json'
@@ -67,7 +68,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             bash scripts/android-emulator-smoke.sh
-            cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon
+            (cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon)
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/ed25519-test-vectors.log
+            node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/ed25519-test-vectors.log
       - name: Verify emulator screenshots are not blank
         run: python3 scripts/check_android_screenshots.py
       - name: Upload screenshot and diagnostics (even if failed)
