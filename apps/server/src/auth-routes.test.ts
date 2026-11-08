@@ -53,6 +53,50 @@ describe('authorization guards', () => {
     expect(query).toHaveBeenCalledTimes(1);
     await app.close();
   });
+  it('enrolls a canonical Ed25519 key only for an active user in the same organization', async () => {
+    const actorId = '11111111-1111-4111-8111-111111111111';
+    const orgId = '22222222-2222-4222-8222-222222222222';
+    const publicKey = generateKeyPairSync('ed25519').publicKey.export({ format: 'pem', type: 'spki' }).toString();
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: actorId, organization_id: orgId, role: 'chief' }] })
+      .mockResolvedValueOnce({ rows: [{ id: actorId }] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+    const app = buildApp({ query } as any);
+    const response = await app.inject({
+      method: 'POST', url: '/devices',
+      headers: { authorization: 'Bearer ' + 'A'.repeat(43) },
+      payload: { publicKey },
+    });
+    expect(response.statusCode).toBe(201);
+    expect(response.json().userId).toBe(actorId);
+    expect(query.mock.calls[1][0]).toContain('organization_id = $2 AND active = true');
+    expect(query.mock.calls[1][1]).toEqual([actorId, orgId]);
+    expect(query.mock.calls[2][0]).toContain('INSERT INTO devices');
+    expect(query.mock.calls[2][1][1]).toBe(orgId);
+    expect(query.mock.calls[2][1][2]).toBe(actorId);
+    expect(query.mock.calls[2][1][3]).toBe(publicKey);
+    await app.close();
+  });
+  it('does not enroll an Ed25519 key for a user outside the organization', async () => {
+    const actorId = '11111111-1111-4111-8111-111111111111';
+    const orgId = '22222222-2222-4222-8222-222222222222';
+    const otherUserId = '33333333-3333-4333-8333-333333333333';
+    const publicKey = generateKeyPairSync('ed25519').publicKey.export({ format: 'pem', type: 'spki' }).toString();
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: actorId, organization_id: orgId, role: 'chief' }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const app = buildApp({ query } as any);
+    const response = await app.inject({
+      method: 'POST', url: '/devices',
+      headers: { authorization: 'Bearer ' + 'A'.repeat(43) },
+      payload: { userId: otherUserId, publicKey },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().error).toBe('user_not_found');
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls[1][1]).toEqual([otherUserId, orgId]);
+    await app.close();
+  });
   it('validates login payloads', async () => {
     const app = buildApp({ query: vi.fn() } as any);
     const response = await app.inject({ method: 'POST', url: '/auth/login', payload: {} });
