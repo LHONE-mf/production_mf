@@ -51,8 +51,8 @@ describe('sync push device proof boundary', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json().error).toBe('device_proof_invalid');
     const grantQuery = db.query.mock.calls[1];
-    expect(grantQuery[1]).toEqual([tokenHash(proof), org, user, device, tokenHash(session)]);
-    expect(grantQuery[0]).toContain('g.expires_at>now()');
+    expect(grantQuery![1]).toEqual([tokenHash(proof), org, user, device, tokenHash(session)]);
+    expect(grantQuery![0]).toContain('g.expires_at>now()');
     expect(grantQuery[0]).toContain('d.revoked_at IS NULL');
     expect(grantQuery[0]).toContain('s.revoked_at IS NULL');
     await app.close();
