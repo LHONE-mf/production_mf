@@ -24,3 +24,15 @@ export function validateTaskComments(principal: Principal, incoming: TaskPayload
   }
   return null;
 }
+
+/** Existing attachments are immutable; replacements must be added as new audited records. */
+export function validateTaskAttachments(incoming: TaskPayloadV1, existing?: TaskPayloadV1): string | null {
+  const previous = new Map((existing?.attachments ?? []).map(attachment => [attachment.id, attachment]));
+  const next = new Map(incoming.attachments.map(attachment => [attachment.id, attachment]));
+  if (next.size !== incoming.attachments.length) return 'duplicate_attachment_id';
+  for (const attachment of existing?.attachments ?? []) {
+    const current = next.get(attachment.id);
+    if (!current || JSON.stringify(current) !== JSON.stringify(attachment)) return 'attachment_is_immutable';
+  }
+  return null;
+}
