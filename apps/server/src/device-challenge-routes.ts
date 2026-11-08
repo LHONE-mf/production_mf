@@ -51,20 +51,22 @@ export function registerDeviceChallengeRoutes(app: FastifyInstance, pool: Pick<P
 
     // A single conditional UPDATE is atomic under PostgreSQL concurrency.
     // A revoked device or session cannot consume a challenge or obtain a grant.
-    const consumed = await pool.query(`UPDATE device_challenges c SET consumed_at=now()
+    const proofToken = newToken();
+    const consumed = await pool.query(`WITH consumed AS (
+      UPDATE device_challenges c SET consumed_at=now()
       WHERE c.id=$1 AND c.organization_id=$2 AND c.user_id=$3 AND c.device_id=$4
         AND c.session_token_hash=$5 AND c.challenge_hash=$6
         AND c.consumed_at IS NULL AND c.expires_at > now()
         AND EXISTS (SELECT 1 FROM sessions s WHERE s.token_hash=$5 AND s.revoked_at IS NULL AND s.expires_at>now())
         AND EXISTS (SELECT 1 FROM devices d WHERE d.id=c.device_id AND d.revoked_at IS NULL)
-      RETURNING c.id`,
-      [challengeId, actor.organization_id, actor.id, deviceId, sessionHash, sha256(challenge)]);
-    if (!consumed.rowCount) return reply.code(403).send({ error: 'invalid_or_expired_challenge' });
-    const proofToken = newToken();
-    await pool.query(`INSERT INTO device_proof_grants
+      RETURNING c.organization_id, c.user_id, c.device_id, c.session_token_hash
+    )
+    INSERT INTO device_proof_grants
       (token_hash, organization_id, user_id, device_id, session_token_hash, expires_at)
-      VALUES ($1,$2,$3,$4,$5,now() + interval '5 minutes')`,
-      [tokenHash(proofToken), actor.organization_id, actor.id, deviceId, sessionHash]);
+    SELECT $7, organization_id, user_id, device_id, session_token_hash, now() + interval '5 minutes'
+    FROM consumed RETURNING token_hash`,
+      [challengeId, actor.organization_id, actor.id, deviceId, sessionHash, sha256(challenge), tokenHash(proofToken)]);
+    if (!consumed.rowCount) return reply.code(403).send({ error: 'invalid_or_expired_challenge' });
     return { proofToken, tokenType: 'DeviceProof', expiresIn: 300, deviceId };
   });
 }
