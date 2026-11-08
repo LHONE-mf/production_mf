@@ -23,8 +23,22 @@ export async function pushAtomicTasks(session: HybridSession) {
     throw new Error('Fresh device proof for queued task device required before pushing tasks');
   const response = await send(session, '/sync/push', { method: 'POST', headers: { 'x-device-proof': session.deviceProofToken }, body: JSON.stringify({ operations }) });
   let accepted = 0, conflicts = 0, rejected = 0;
+  // Validate the entire acknowledgement before changing any local queue or revision state.
+  // A truncated, duplicated or malformed server reply must leave offline edits intact.
+  if (!Array.isArray(response.results) || response.results.length !== pending.length) throw new Error('Invalid sync response: incomplete results');
+  const pendingIds = new Set(pending.map(op => op.operationId));
+  const seen = new Set<string>();
+  for (const result of response.results) {
+    if (!result || typeof result.operationId !== 'string' || !pendingIds.has(result.operationId) || seen.has(result.operationId))
+      throw new Error('Invalid sync response: unexpected or duplicate operation');
+    seen.add(result.operationId);
+    if (result.status === 'accepted' || result.status === 'duplicate') {
+      if (!Number.isSafeInteger(result.revision) || result.revision < 1) throw new Error('Invalid sync response: revision');
+    } else if (result.status === 'conflict') {
+      if (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0) throw new Error('Invalid sync response: conflict revision');
+    } else if (result.status !== 'rejected') throw new Error('Invalid sync response: status');
+  }
   await db.transaction('rw', db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
-    if (!Array.isArray(response.results)) throw new Error('Invalid sync response: missing results');
     for (const result of response.results as Array<{operationId:string;status:string;revision?:number;actualRevision?:number;reason?:string}>) {
       const item = pending.find(op => op.operationId === result.operationId);
       if (!item) continue;
