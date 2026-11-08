@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate, tokenHash, type Principal } from './auth.js';
 import { taskPayloadV1 } from './task-schema.js';
-import { validateTaskCreator, validateTaskComments, validateTaskAttachments } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps } from './task-authorization.js';
 
 const operation = z.object({
   operationId: z.string().uuid(), deviceId: z.string().uuid(),
@@ -72,7 +72,8 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
         const current = await client.query('SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
         const creatorError = validateTaskCreator(principal, op.payload, current.rows[0]?.payload) 
           || validateTaskComments(principal, op.payload, current.rows[0]?.payload)
-          || validateTaskAttachments(op.payload, current.rows[0]?.payload);
+          || validateTaskAttachments(op.payload, current.rows[0]?.payload)
+          || validateTaskTimestamps(op.payload, current.rows[0]?.payload);
         if (creatorError) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: creatorError }); continue; }
         const actualRevision = current.rows[0]?.revision ?? 0;
         if (op.expectedRevision !== actualRevision) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'conflict', actualRevision }); continue; }
