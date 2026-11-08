@@ -17,7 +17,7 @@ if (!path) {
 }
 
 const log = readFileSync(path, 'utf8');
-const vectors = [...log.matchAll(/ProductionMfEd25519:\s+VECTOR spki=([A-Za-z0-9_-]+) signature=([A-Za-z0-9_-]+)/g)];
+const vectors = [...log.matchAll(/\bVECTOR spki=([A-Za-z0-9_-]+) signature=([A-Za-z0-9_-]+)/g)];
 assert.equal(vectors.length, 1, 'Expected exactly one instrumentation Ed25519 vector in logcat');
 
 const spki = Buffer.from(vectors[0][1], 'base64url');
