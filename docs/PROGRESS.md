@@ -1,3 +1,9 @@
+## 2026-11-08 — enrollment key validation
+- Server now validates canonical Ed25519 SPKI PEM keys before accepting chief-authorized device enrollment (`7967eb4`, `4e98877`); RSA, malformed and noncanonical PEM are rejected with HTTP 400.
+- Added Ed25519 enrollment key validation regression tests (`0d397a7`).
+- Verified via GitHub Actions: web/server CI passed at `3a6f98f`. The new enrollment changes and Android APK build have not yet been verified; several intermediate runs were cancelled by newer pushes.
+- Android key provider compatibility and secure enrollment/recovery UI remain outstanding. Do not enable automatic sync or deploy until end-to-end proof is verified.
+
 ## 2026-11-08 — Android native device signing bridge
 - Added `DeviceProofPlugin.java` and registered it in `MainActivity`: attempts AndroidKeyStore-backed Ed25519 key generation, returns only the SPKI public key, and signs domain-separated challenge bytes; rejects malformed challenges and refuses exportable software-key fallback (`d609f31`, `ebdad62`).
 - Added `src/core/sync/androidDeviceProof.ts` to connect the native signer to the server's challenge exchange (`6ca7e62`). No UI flow or automatic synchronization was enabled.
