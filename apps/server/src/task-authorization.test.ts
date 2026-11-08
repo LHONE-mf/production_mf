@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps, validateTaskStatusTransition } from './task-authorization.js';
 import type { Principal } from './auth.js';
 import type { TaskPayloadV1 } from './task-schema.js';
 
@@ -71,5 +71,28 @@ describe('task update audit timestamps', () => {
   it('allows idempotent equal update times', () => {
     expect(validateTaskTimestamps({ ...payload, updatedAt: '2026-11-08T02:00:00.000Z' },
       { ...payload, updatedAt: '2026-11-08T02:00:00.000Z' })).toBeNull();
+  });
+});
+
+describe('server task status transitions', () => {
+  const withStatus = (status: TaskPayloadV1['status']) => ({ ...payload, status } as TaskPayloadV1);
+  it('accepts task creation and unchanged status edits', () => {
+    expect(validateTaskStatusTransition(withStatus('created'))).toBeNull();
+    expect(validateTaskStatusTransition(withStatus('in_progress'), withStatus('in_progress'))).toBeNull();
+  });
+  it.each([
+    ['created', 'assigned'], ['created', 'rejected'],
+    ['assigned', 'created'], ['assigned', 'in_progress'],
+    ['in_progress', 'checked'], ['checked', 'in_progress'],
+    ['checked', 'completed'], ['checked', 'rejected'], ['rejected', 'assigned'],
+  ] as const)('allows %s to %s', (before, after) => {
+    expect(validateTaskStatusTransition(withStatus(after), withStatus(before))).toBeNull();
+  });
+  it.each([
+    ['created', 'completed'], ['assigned', 'completed'], ['in_progress', 'completed'],
+    ['completed', 'in_progress'], ['completed', 'rejected'], ['rejected', 'completed'],
+    ['checked', 'created'], ['in_progress', 'assigned'],
+  ] as const)('rejects %s to %s', (before, after) => {
+    expect(validateTaskStatusTransition(withStatus(after), withStatus(before))).toBe('invalid_task_status_transition');
   });
 });
