@@ -1,3 +1,8 @@
+## 2026-11-08 — AndroidKeyStore Ed25519 signs successfully; fix test verification provider mismatch
+- Emulator run `42486283232` (explicit `ECGenParameterSpec("ed25519")`) generated a canonical Ed25519 key, passed private-key non-exportability, and produced a 64-byte signature. Its only instrumentation failure was `InvalidKeyException: No installed provider supports this key: android.security.keystore2.AndroidKeyStoreEdECPublicKey` when trying to verify directly against the provider-specific public-key object.
+- The test now reconstructs a standard JCA Ed25519 public key from the 44-byte RFC 8410 SPKI encoding via `KeyFactory`/`X509EncodedKeySpec` and verifies with that (`576dc34b`), matching the remotely verifiable public-key representation. Await emulator CI before marking full native sign/verify gate green. This does not establish hardware-backed key storage on physical devices or complete device-to-server end-to-end testing.
+- No automatic sync or production data changes.
+
 ## 2026-11-08 — force the Ed25519 curve in AndroidKeyStore
 - Diagnostic emulator workflow `42484736583` confirmed `algorithm=EC, SPKI length=91`: requesting a generator named Ed25519 without an explicit curve had produced a P-256 key, not a valid Ed25519 SPKI public key.
 - The native plugin now specifies `ECGenParameterSpec("ed25519")`, checks the generated SPKI and private-key non-exportability, and replaces only pre-existing non-Ed25519 aliases that could never have been accepted by the Ed25519-only server (`f199dbdf`). The Android instrumentation test explicitly requests the same curve (`a30b478b`). No software-key or ECDSA fallback is introduced.
