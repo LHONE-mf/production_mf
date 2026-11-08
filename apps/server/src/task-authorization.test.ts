@@ -91,6 +91,7 @@ describe('server task status transitions', () => {
   it('freezes the entire completed task snapshot but allows identical retries', () => {
     const finished = { ...withStatus('completed'), title: 'Finished', description: 'Approved' };
     expect(validateTaskStatusTransition({ ...finished }, finished)).toBeNull();
+    expect(validateTaskStatusTransition(Object.fromEntries(Object.entries(finished).reverse()) as TaskPayloadV1, finished)).toBeNull();
     expect(validateTaskStatusTransition({ ...finished, title: 'Rewritten' }, finished)).toBe('completed_task_is_immutable');
     expect(validateTaskStatusTransition({ ...finished, description: 'Changed' }, finished)).toBe('completed_task_is_immutable');
     expect(validateTaskStatusTransition({ ...finished, status: 'in_progress' }, finished)).toBe('completed_task_is_immutable');
