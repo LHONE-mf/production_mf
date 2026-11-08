@@ -1,3 +1,9 @@
+## 2026-11-08 — M1 client proof transport and CI repair
+- Updated both opt-in sync adapters (`hybridClient.ts`, `atomicClient.ts`) to send an in-memory `x-device-proof` header on push, reject absent proof before network upload, and split mixed-device pending queues into single-device batches. No automatic sync or credential persistence enabled.
+- Renumbered the additive device-challenge migration from duplicate `003` to `004`, preserving `003_sync_entities.sql`.
+- Inspected GitHub Actions: run 42480989082 failed server TypeScript with TS2532 at `device-challenge-routes.test.ts` lines 58–60; frontend typecheck, unit tests and build passed in that run. Fixed strict optional mocked-call indexing in challenge and sync-proof tests. New CI runs still need verification.
+- **Still incomplete:** client challenge signing/key management and enrollment, PostgreSQL integration tests, and end-to-end Android sync. Do not enable sync in production.
+
 ## Current status — 2026-11-08 (M1 enforce device proof on push)
 - Added fail-closed `/sync/push` proof grant validation (commit `a9a38f5`): a single device per batch, required `x-device-proof` token, matching token hash, organization, user, device, login session, grant expiry, and active session/device. Checks happen before task mutations.
 - Added mocked route regressions for missing grant, invalid/expired/revoked/wrong-scope grant and mixed-device batch (commit `af99293`). These do **not** demonstrate successful push or PostgreSQL concurrency behavior.
