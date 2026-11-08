@@ -73,6 +73,42 @@ describe('sync push device proof boundary', () => {
     expect(connect).toHaveBeenCalledTimes(1);
     await app.close();
   });
+
+  it('rejects an operation-ID replay with a changed expected revision, but accepts an exact retry', async () => {
+    const original = op(device);
+    const stored = {
+      organization_id: org, entity_id: original.entityId, entity_type: original.entityType,
+      device_id: device, actor_id: user, operation_type: original.operationType,
+      expected_revision: original.expectedRevision, payload: original.payload, revision: 1,
+    };
+    const client = {
+      query: vi.fn(async (sql: string) => {
+        if (sql === 'BEGIN' || sql === 'ROLLBACK' || sql.startsWith('SELECT pg_advisory_xact_lock'))
+          return { rows: [], rowCount: 0 };
+        if (sql.startsWith('SELECT id FROM devices'))
+          return { rows: [{ id: device }], rowCount: 1 };
+        if (sql.includes('FROM sync_operations'))
+          return { rows: [stored], rowCount: 1 };
+        throw new Error('Unexpected SQL: ' + sql);
+      }),
+      release: vi.fn(),
+    };
+    const app = buildApp({ ...pool(true), connect: vi.fn(async () => client) } as any);
+    const modified = await post(app, [{ ...original, expectedRevision: 1 }], proof);
+    expect(modified.statusCode).toBe(200);
+    expect(modified.json().results).toEqual([
+      { operationId: original.operationId, status: 'rejected', reason: 'operation_id_reused' },
+    ]);
+    const exact = await post(app, [original], proof);
+    expect(exact.statusCode).toBe(200);
+    expect(exact.json().results).toEqual([
+      { operationId: original.operationId, status: 'duplicate', revision: 1 },
+    ]);
+    expect(client.query.mock.calls.filter(call => call[0] === 'ROLLBACK')).toHaveLength(2);
+    expect(client.query.mock.calls.some(call => call[0] === 'COMMIT')).toBe(false);
+    expect(client.release).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
   it('rejects mixed-device batches before checking grants', async () => {
     const db = pool(true);
     const app = buildApp(db as any);
