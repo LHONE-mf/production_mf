@@ -3,6 +3,7 @@ package ru.liion.production;
 import android.os.Bundle;
 import android.graphics.Color;
 import android.view.Window;
+import android.view.View;
 import android.os.SystemClock;
 import android.widget.Toast;
 import androidx.activity.OnBackPressedCallback;
@@ -21,6 +22,12 @@ public class MainActivity extends BridgeActivity {
         Window window = getWindow();
         window.setStatusBarColor(Color.rgb(30, 41, 59));
         window.setNavigationBarColor(Color.rgb(15, 23, 42));
+        // White system-bar icons remain readable on the app's dark chrome.
+        window.getDecorView().setSystemUiVisibility(0);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
