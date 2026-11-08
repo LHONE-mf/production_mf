@@ -11,7 +11,7 @@ const keys = generateKeyPairSync('ed25519');
 const publicKey = keys.publicKey.export({ format: 'pem', type: 'spki' }).toString();
 
 function fakePool() {
-  const query = vi.fn(async (sql: string) => {
+  const query = vi.fn(async (sql: string, _params?: unknown[]) => {
     if (sql.includes('FROM sessions s') && sql.includes('JOIN users')) return { rows: [{ id: actor, organization_id: org, role: 'master' }], rowCount: 1 };
     if (sql.includes('SELECT id FROM devices')) return { rows: [{ id: device }], rowCount: 1 };
     if (sql.includes('SELECT public_key FROM devices')) return { rows: [{ public_key: publicKey }], rowCount: 1 };
