@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 device discovery)
+- CI tests, web/server build, and Android APK passed for comment-security commit `e5484a87`; one duplicate CI workflow was still pending when checked.
+- Added authenticated `GET /devices/mine`, filtering by session organization and user and excluding revoked devices (commit `6cbde15`).
+- Added endpoint authorization/tenant-owner tests (commit `f47b691`) and display of enrolled device IDs in the sync screen (commit `3430835`).
+- This is device **discovery**, not cryptographic device proof or persisted secure session binding. Offline server-managed task editing remains disabled.
+- Next: validate new CI, implement secure device proof and session binding, then wire offline task commands.
+
 ## Current status — 2026-11-08 (M1 atomic offline tests)
 - Verified CI, tests and APK build succeeded for creator-security commit `2ea068a4` (GitHub Actions runs `42475447047`, `42475447043`, `42475442039`, `42475442071`).
 - Added `src/core/sync/atomicTasks.test.ts` with regression cases for atomic task+outbox persistence, rejection of a second pending edit without overwriting the first, and invalid device ID (commit `a7db497`).
