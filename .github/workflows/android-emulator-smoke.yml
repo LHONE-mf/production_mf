@@ -10,6 +10,7 @@ on:
       - 'scripts/android-emulator-smoke.sh'
       - 'scripts/verify_android_ed25519_vector.mjs'
       - 'apps/server/scripts/verify-emulator-device-proof.mjs'
+      - 'apps/server/scripts/verify-fresh-emulator-device-proof.mjs'
       - 'apps/server/src/**'
       - 'apps/server/migrations/**'
       - '.github/workflows/android-emulator-smoke.yml'
@@ -109,6 +110,24 @@ jobs:
             adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/ed25519-test-vectors.log
             node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/ed25519-test-vectors.log
             node apps/server/scripts/verify-emulator-device-proof.mjs artifacts/android-smoke/ed25519-test-vectors.log
+            # Gradle may uninstall the test package when its run finishes. Install
+            # both APKs once, then run two tests against the same test-only key.
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofKeystoreTest               ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner               > artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            cat artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/fresh-baseline-vector.log
+            node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/fresh-baseline-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs prepare               artifacts/android-smoke/fresh-baseline-vector.log "$RUNNER_TEMP/production-mf-fresh-proof.json"
+            challenge=$(node -e "console.log(JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).challenge)"               "$RUNNER_TEMP/production-mf-fresh-proof.json")
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofKeystoreTest               -e proofChallenge "$challenge"               ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner               > artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            cat artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/fresh-challenge-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs finish               artifacts/android-smoke/fresh-challenge-vector.log "$RUNNER_TEMP/production-mf-fresh-proof.json"
       - name: Verify emulator screenshots are not blank
         run: python3 scripts/check_android_screenshots.py
       - name: Upload screenshot and diagnostics (even if failed)
