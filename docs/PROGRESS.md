@@ -1,3 +1,8 @@
+## 2026-11-08 — Android Ed25519 provider compatibility and CI stability
+- Android device proof bridge now validates the 44-byte RFC 8410 Ed25519 SPKI encoding instead of requiring the provider-reported algorithm string to equal `Ed25519` (some providers use `EdDSA`) (`e61697f`). Unsupported keys and AndroidKeyStore failures still fail closed; no software fallback.
+- Android APK and emulator workflows now use `cancel-in-progress: false` to allow long-running verification to finish despite frequent development commits (`c977dff`, `52fdbce`). Older cancelled runs remain cancelled.
+- Latest inspected web/server success was `79e05416`; new Android build/emulator verification is not yet complete. Actual AndroidKeyStore Ed25519 generation/signing compatibility and real PostgreSQL concurrency are still open gates.
+
 ## 2026-11-08 — atomic task push proof regression
 - Added IndexedDB-backed regression tests for `pushAtomicTasks`: missing/wrong-device/expired proof must not issue a request or delete pending local edits; valid proof must be transmitted as `x-device-proof` and a successful server acknowledgment must atomically update revision and remove its queued operation (`dff6951`).
 - GitHub web/server CI passed at `79e05416`; new tests, Android APK and native signing have not yet been verified at this checkpoint.
