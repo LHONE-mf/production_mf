@@ -1,3 +1,9 @@
+## 2026-11-08 — device proof binding and expiry guard
+- Both sync adapters now require the ephemeral proof's device ID to match the pending operation's device ID and require more than five seconds of remaining lifetime before any task push (`d398f7d`, `1efe960`).
+- The challenge client records proof device ID and conservative local expiry from verification request start, without persisting token or private key (`525c319`). Added metadata assertions to client regression test (`b66cfab`).
+- Sync UI requests fresh proof when an existing grant expires and only displays verified status for the selected device (`5596c35`). No queued operations are deleted by these guards.
+- New GitHub Actions jobs were pending when inspected; AndroidKeyStore compatibility and complete device-to-server push remain unverified.
+
 ## 2026-11-08 — Android device enrollment and proof UI
 - Added manual Android-only key creation and chief-authorized enrollment controls to the Sync screen, plus device selection and signed challenge verification before task pushes (`c7e22e1`). The server session and ephemeral proof remain in component memory; switching devices clears the proof. No background synchronization is enabled.
 - Verified GitHub Actions at `fc3c1615`: web/server CI and Run Tests passed; Android APK build was still running when inspected. The new UI commit has not yet passed CI.
