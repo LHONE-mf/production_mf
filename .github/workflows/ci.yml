@@ -39,6 +39,23 @@ jobs:
     name: Fastify server
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Disposable CI database: never connect automated integration tests to production.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_ci
     defaults:
       run:
         working-directory: apps/server
@@ -52,7 +69,22 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript
         run: npm run typecheck
-      - name: Unit tests
+      - name: Migrate isolated CI PostgreSQL database
+        run: |
+          node --input-type=module <<'EOF'
+          import { Pool } from 'pg';
+          import { readFile } from 'node:fs/promises';
+          const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
+          try {
+            for (const migration of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql']) {
+              await pool.query(await readFile('migrations/' + migration, 'utf8'));
+              console.log('Applied CI migration:', migration);
+            }
+          } finally {
+            await pool.end();
+          }
+          EOF
+      - name: Unit and real-PostgreSQL integration tests
         run: npm test -- --reporter=default
       - name: Build
         run: npm run build
