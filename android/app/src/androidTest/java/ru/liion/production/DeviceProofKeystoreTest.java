@@ -52,7 +52,7 @@ public class DeviceProofKeystoreTest {
         assertTrue("public certificate unavailable", certificate != null);
         byte[] spki = certificate.getPublicKey().getEncoded();
         byte[] prefix = new byte[] { 0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00 };
-        assertEquals("AndroidKeyStore returned unexpected public key format (algorithm=" + pair.getPublic().getAlgorithm() + ", SPKI length=" + spki.length + ")", 44, spki.length);
+        assertEquals("AndroidKeyStore returned unexpected public key format (algorithm=" + certificate.getPublicKey().getAlgorithm() + ", SPKI length=" + spki.length + ")", 44, spki.length);
         assertArrayEquals(prefix, Arrays.copyOf(spki, prefix.length));
         byte[] message = ("production-mf:device-proof:v1:" + challenge)
                     .getBytes(StandardCharsets.UTF_8);
