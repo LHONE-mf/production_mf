@@ -1,3 +1,7 @@
+## 2026-11-08 — Gradle distribution download timeout
+- Android APK workflow `42483193971` failed before compilation: Gradle wrapper could not download `gradle-8.11.1-all.zip` within its configured 10-second network timeout. Increased `android/gradle/wrapper/gradle-wrapper.properties` networkTimeout to 120000 ms (`a4a30a26`). Requires a fresh CI result.
+- At `7940ebef`, Run Tests and web/server CI passed. Ed25519 emulator instrumentation remains unverified.
+
 ## 2026-11-08 — emulator smoke green; AndroidKeyStore Ed25519 runtime gate added
 - Android emulator smoke run `42482735501` passed on `6b902fdf`, after correcting double-Back dispatch. Android APK and web/server CI passed at the same commit; `43ce5d9c` also passed Run Tests and web/server CI.
 - Added Android instrumentation test for AndroidKeyStore Ed25519 generation, non-exportability, SPKI encoding, and signing/verification of the device-proof domain-separated challenge (`3f79a261`). Updated emulator workflow to run `connectedDebugAndroidTest` (`4959333f`). Results pending; test exercises key primitives, not the Capacitor JS bridge or PostgreSQL end-to-end proof.
