@@ -108,4 +108,40 @@ integration('PostgreSQL sync operation JSONB idempotency', () => {
     expect(entity.rows[0].revision).toBe(1);
     expect(entity.rows[0].payload.title).toBe(payload.title);
   });
+  it('requires a matching nonrevoked device grant for pull and task comparison', async () => {
+    const pullUrl = '/sync/pull?cursor=0&limit=100&deviceId=' + deviceId;
+    const taskUrl = '/sync/task/' + task + '?deviceId=' + deviceId;
+    const proofHeaders = { ...headers, 'x-device-proof': proofToken };
+
+    const noProof = await app.inject({ method: 'GET', url: pullUrl, headers });
+    expect(noProof.statusCode).toBe(403);
+    expect(noProof.json()).toEqual({ error: 'device_proof_required' });
+    const missingDevice = await app.inject({
+      method: 'GET', url: '/sync/pull?cursor=0', headers: proofHeaders,
+    });
+    expect(missingDevice.statusCode).toBe(400);
+    const differentDevice = await app.inject({
+      method: 'GET', url: '/sync/pull?cursor=0&deviceId=' + randomUUID(), headers: proofHeaders,
+    });
+    expect(differentDevice.statusCode).toBe(403);
+    expect(differentDevice.json()).toEqual({ error: 'device_proof_invalid' });
+
+    const pulled = await app.inject({ method: 'GET', url: pullUrl, headers: proofHeaders });
+    expect(pulled.statusCode).toBe(200);
+    expect(pulled.json().changes).toEqual([expect.objectContaining({
+      entity_id: task, revision: 1,
+    })]);
+    const exposed = await app.inject({ method: 'GET', url: taskUrl, headers });
+    expect(exposed.statusCode).toBe(403);
+    const compared = await app.inject({ method: 'GET', url: taskUrl, headers: proofHeaders });
+    expect(compared.statusCode).toBe(200);
+    expect(compared.json().revision).toBe(1);
+
+    await pool.query('UPDATE devices SET revoked_at=now() WHERE id=$1', [deviceId]);
+    const revokedPull = await app.inject({ method: 'GET', url: pullUrl, headers: proofHeaders });
+    expect(revokedPull.statusCode).toBe(403);
+    const revokedComparison = await app.inject({ method: 'GET', url: taskUrl, headers: proofHeaders });
+    expect(revokedComparison.statusCode).toBe(403);
+  });
+
 });

@@ -1,5 +1,6 @@
 import type { TaskPayloadV1 } from './taskDto';
 import { hybridOutbox, pendingTaskOperations } from './hybridOutbox';
+import { requireFreshDeviceProof } from './deviceProofClient';
 
 export interface HybridSession {
   /** HTTPS origin of a trusted server. Never store bearer tokens in this module. */
@@ -93,8 +94,11 @@ export async function pushPendingTasks(session: HybridSession) {
 
 /** Apply remote changes first; only then advance the durable cursor. */
 export async function pullTaskChanges(session: HybridSession, applyChanges: TaskChangeConsumer) {
+  const proof = requireFreshDeviceProof(session);
   const cursor = (await hybridOutbox.metadata.get('taskCursor'))?.value ?? 0;
-  const response = await request(session, `/sync/pull?cursor=${cursor}&limit=100`);
+  const response = await request(session, `/sync/pull?cursor=${cursor}&limit=100&deviceId=${encodeURIComponent(proof.deviceId)}`, {
+    headers: { 'x-device-proof': proof.token },
+  });
   if (!Array.isArray(response.changes) || response.changes.length > 100 ||
       typeof response.hasMore !== 'boolean' ||
       !Number.isSafeInteger(Number(response.nextCursor)) || Number(response.nextCursor) < cursor)

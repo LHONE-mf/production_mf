@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { androidDevicePublicKey, authenticateAndroidDevice } from '../../core/sync/androidDeviceProof';
+import { requireFreshDeviceProof } from '../../core/sync/deviceProofClient';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { RefreshCw, ShieldCheck, AlertCircle, WifiOff } from 'lucide-react';
 import { IngestPanel } from '../../transfer/IngestPanel';
@@ -120,8 +121,9 @@ export function SyncModule() {
     if (!session) { setError('Сначала подключитесь к серверу'); return; }
     setBusy(true); setError('');
     try {
-      const response = await fetch(serverEndpoint(session.serverUrl, '/sync/task/' + encodeURIComponent(taskId)), {
-        headers: { Authorization: 'Bearer ' + session.accessToken },
+      const proof = requireFreshDeviceProof(session);
+      const response = await fetch(serverEndpoint(session.serverUrl, '/sync/task/' + encodeURIComponent(taskId) + '?deviceId=' + encodeURIComponent(proof.deviceId)), {
+        headers: { Authorization: 'Bearer ' + session.accessToken, 'x-device-proof': proof.token },
       });
       if (!response.ok) throw new Error('Не удалось получить серверную версию: HTTP ' + response.status);
       const data: { revision: number; payload: { title: string; description: string; status: string; priority: string } } = await response.json();
@@ -135,8 +137,7 @@ export function SyncModule() {
     if (!session) return;
     setBusy(true); setError(''); setMessage('');
     try {
-      const pendingCount = await db.hybridTaskOutbox.where('state').equals('pending').count();
-      if (pendingCount && (!session.deviceProofToken || !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)) throw new Error('Подтвердите устройство повторно перед отправкой заданий');
+      requireFreshDeviceProof(session); // Read-only pulls also require a verified device.
       const pushed = await pushAtomicTasks(session);
       const pulled = await pullAtomicTasks(session);
       setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +

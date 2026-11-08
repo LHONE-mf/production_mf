@@ -40,3 +40,13 @@ export async function obtainDeviceProof(
     throw new Error('Invalid device proof response');
   return { ...session, deviceProofToken: verified.proofToken, deviceProofDeviceId: deviceId, deviceProofExpiresAt: verificationStartedAt + verified.expiresIn * 1000 };
 }
+
+/** An in-memory grant is required for all manual shared task reads and writes. */
+export function requireFreshDeviceProof(session: HybridSession): { deviceId: string; token: string } {
+  if (!session.deviceProofDeviceId ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(session.deviceProofDeviceId) ||
+      !session.deviceProofToken || !/^[A-Za-z0-9_-]{43}$/.test(session.deviceProofToken) ||
+      !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)
+    throw new Error('Fresh device proof is required before reading or writing shared tasks');
+  return { deviceId: session.deviceProofDeviceId, token: session.deviceProofToken };
+}

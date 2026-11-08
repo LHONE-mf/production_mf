@@ -1,6 +1,7 @@
 import { db } from '../db';
 import type { HybridSession, RemoteTaskChange } from './hybridClient';
 import { decodeTask } from './taskDto';
+import { requireFreshDeviceProof } from './deviceProofClient';
 
 function urlFor(session: HybridSession, path: string) {
   const origin = new URL(session.serverUrl);
@@ -67,8 +68,11 @@ export async function pushAtomicTasks(session: HybridSession) {
  * are never overwritten by this prototype: a conflicting local record requires migration.
  */
 export async function pullAtomicTasks(session: HybridSession) {
+  const proof = requireFreshDeviceProof(session);
   const cursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
-  const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100');
+  const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100&deviceId=' + encodeURIComponent(proof.deviceId), {
+    headers: { 'x-device-proof': proof.token },
+  });
   if (!Array.isArray(response.changes) || !Number.isSafeInteger(Number(response.nextCursor)) || Number(response.nextCursor) < cursor) {
     throw new Error('Invalid sync response: changes or cursor');
   }

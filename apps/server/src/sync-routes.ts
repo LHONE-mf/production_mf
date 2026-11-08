@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
-import { authenticate, tokenHash } from './auth.js';
+import { authenticate, tokenHash, type Principal } from './auth.js';
 import { taskPayloadV1 } from './task-schema.js';
 import { validateTaskCreator, validateTaskComments, validateTaskAttachments } from './task-authorization.js';
 
@@ -12,7 +12,22 @@ const operation = z.object({
   payload: taskPayloadV1
 }).strict();
 const pushSchema = z.object({ operations: z.array(operation).min(1).max(50) }).strict();
-const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().min(1).max(200).default(100) });
+const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().min(1).max(200).default(100), deviceId: z.string().uuid() }).strict();
+const comparisonSchema = z.object({ deviceId: z.string().uuid() }).strict();
+
+/** Every shared sync read/write requires the same short-lived, actor/session/device-bound grant. */
+async function deviceProofError(pool: Pool, principal: Principal, authorization: string, deviceId: string, proof: unknown) {
+  if (typeof proof !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(proof))
+    return 'device_proof_required';
+  const grant = await pool.query(`SELECT g.token_hash FROM device_proof_grants g
+    JOIN devices d ON d.id=g.device_id AND d.organization_id=g.organization_id AND d.user_id=g.user_id
+    JOIN sessions s ON s.token_hash=g.session_token_hash AND s.organization_id=g.organization_id AND s.user_id=g.user_id
+    WHERE g.token_hash=$1 AND g.organization_id=$2 AND g.user_id=$3 AND g.device_id=$4
+      AND g.session_token_hash=$5 AND g.expires_at>now() AND g.revoked_at IS NULL
+      AND d.revoked_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>now()`,
+    [tokenHash(proof), principal.organization_id, principal.id, deviceId, tokenHash(authorization.slice(7))]);
+  return grant.rowCount ? null : 'device_proof_invalid';
+}
 
 // The first sync slice intentionally supports only tasks, never arbitrary table writes.
 // All changes are transactional, tenant-scoped and idempotent.
@@ -27,19 +42,8 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     // Reject mixed-device batches before any transaction can mutate shared state.
     const deviceIds = new Set(parsed.data.operations.map(op => op.deviceId));
     if (deviceIds.size !== 1) return reply.code(400).send({ error: 'mixed_device_batch' });
-    const proof = request.headers['x-device-proof'];
-    if (typeof proof !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(proof))
-      return reply.code(403).send({ error: 'device_proof_required' });
-    const deviceId = parsed.data.operations[0].deviceId;
-    const sessionHash = tokenHash(request.headers.authorization!.slice(7));
-    const grant = await pool.query(`SELECT g.token_hash FROM device_proof_grants g
-      JOIN devices d ON d.id=g.device_id AND d.organization_id=g.organization_id AND d.user_id=g.user_id
-      JOIN sessions s ON s.token_hash=g.session_token_hash AND s.organization_id=g.organization_id AND s.user_id=g.user_id
-      WHERE g.token_hash=$1 AND g.organization_id=$2 AND g.user_id=$3 AND g.device_id=$4
-        AND g.session_token_hash=$5 AND g.expires_at>now() AND g.revoked_at IS NULL
-        AND d.revoked_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>now()`,
-      [tokenHash(proof), principal.organization_id, principal.id, deviceId, sessionHash]);
-    if (!grant.rowCount) return reply.code(403).send({ error: 'device_proof_invalid' });
+    const proofError = await deviceProofError(pool, principal, request.headers.authorization!, parsed.data.operations[0].deviceId, request.headers['x-device-proof']);
+    if (proofError) return reply.code(403).send({ error: proofError });
     const results = [];
     for (const op of parsed.data.operations) {
       const client = await pool.connect();
@@ -94,6 +98,10 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
     const parsed = z.string().uuid().safeParse((request.params as { id: string }).id);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_task_id' });
+    const device = comparisonSchema.safeParse(request.query);
+    if (!device.success) return reply.code(400).send({ error: 'invalid_request' });
+    const proofError = await deviceProofError(pool, principal, request.headers.authorization!, device.data.deviceId, request.headers['x-device-proof']);
+    if (proofError) return reply.code(403).send({ error: proofError });
     const result = await pool.query(
       'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3',
       [principal.organization_id, 'task', parsed.data],
@@ -107,7 +115,9 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const parsed = pullSchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
     if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
-    const { cursor, limit } = parsed.data;
+    const { cursor, limit, deviceId } = parsed.data;
+    const proofError = await deviceProofError(pool, principal, request.headers.authorization!, deviceId, request.headers['x-device-proof']);
+    if (proofError) return reply.code(403).send({ error: proofError });
     const result = await pool.query(`SELECT sequence,operation_id,entity_type,entity_id,revision,result_payload AS payload
       FROM sync_operations WHERE organization_id=$1 AND sequence>$2 AND entity_type='task' ORDER BY sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit]);
     const changes = result.rows;

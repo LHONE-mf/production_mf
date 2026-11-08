@@ -119,3 +119,37 @@ describe('sync push device proof boundary', () => {
     await app.close();
   });
 });
+
+
+describe('sync read device proof boundary', () => {
+  it('denies pull and task comparison without proof even for a valid master session', async () => {
+    const db = pool();
+    const app = buildApp(db as any);
+    const pull = await app.inject({
+      method: 'GET', url: '/sync/pull?cursor=0&deviceId=' + device,
+      headers: { authorization: 'Bearer ' + session },
+    });
+    expect(pull.statusCode).toBe(403);
+    expect(pull.json().error).toBe('device_proof_required');
+    const comparison = await app.inject({
+      method: 'GET', url: '/sync/task/' + op(device).entityId + '?deviceId=' + device,
+      headers: { authorization: 'Bearer ' + session },
+    });
+    expect(comparison.statusCode).toBe(403);
+    expect(comparison.json().error).toBe('device_proof_required');
+    expect(db.query).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+  it('denies proof bound to a different device before retrieving task payloads', async () => {
+    const db = pool(false);
+    const app = buildApp(db as any);
+    const response = await app.inject({
+      method: 'GET', url: '/sync/pull?cursor=0&deviceId=' + other,
+      headers: { authorization: 'Bearer ' + session, 'x-device-proof': proof },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().error).toBe('device_proof_invalid');
+    expect(db.query.mock.calls[1][1]).toEqual([tokenHash(proof), org, user, other, tokenHash(session)]);
+    await app.close();
+  });
+});
