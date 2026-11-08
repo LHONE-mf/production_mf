@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
-import { verifyDeviceChallenge } from './device-proof.js';
+import { isEd25519PublicKey, verifyDeviceChallenge } from './device-proof.js';
 
 const challenge = randomBytes(32).toString('base64url');
 const domainMessage = (value: string) => Buffer.from('production-mf:device-proof:v1:' + value);
@@ -28,5 +28,17 @@ describe('Ed25519 device proof primitive', () => {
   it('rejects other public-key algorithms', () => {
     const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
     expect(verifyDeviceChallenge(rsa.publicKey.export({ type: 'spki', format: 'pem' }).toString(), challenge, signature)).toBe(false);
+  });
+});
+
+describe('Ed25519 device enrollment key validation', () => {
+  it('accepts a canonical Ed25519 SPKI PEM key', () => {
+    expect(isEd25519PublicKey(publicKey)).toBe(true);
+  });
+  it('rejects malformed and other-algorithm public keys', () => {
+    expect(isEd25519PublicKey('not a key')).toBe(false);
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    expect(isEd25519PublicKey(rsa.publicKey.export({ format: 'pem', type: 'spki' }).toString())).toBe(false);
+    expect(isEd25519PublicKey(publicKey + '\nextra')).toBe(false);
   });
 });
