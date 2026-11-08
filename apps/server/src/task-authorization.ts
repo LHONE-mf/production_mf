@@ -45,3 +45,22 @@ export function validateTaskTimestamps(incoming: TaskPayloadV1, existing?: TaskP
   if (existing && updated < Date.parse(existing.updatedAt)) return 'task_updated_at_regression';
   return null;
 }
+
+/**
+ * Server-owned task workflow. A completed task is terminal; rejected work may
+ * be reassigned for correction. Unchanged status allows ordinary field edits.
+ * This policy does not grant access: device, role and task scope checks remain separate.
+ */
+const allowedStatusChanges: Record<TaskPayloadV1['status'], ReadonlySet<TaskPayloadV1['status']>> = {
+  created: new Set(['assigned', 'rejected']),
+  assigned: new Set(['created', 'in_progress', 'rejected']),
+  in_progress: new Set(['checked', 'rejected']),
+  checked: new Set(['in_progress', 'completed', 'rejected']),
+  completed: new Set(),
+  rejected: new Set(['assigned']),
+};
+
+export function validateTaskStatusTransition(incoming: TaskPayloadV1, existing?: TaskPayloadV1): string | null {
+  if (!existing || incoming.status === existing.status) return null;
+  return allowedStatusChanges[existing.status].has(incoming.status) ? null : 'invalid_task_status_transition';
+}
