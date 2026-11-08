@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 task attachment integrity)
+- Verified web/server CI and tests passed for device-discovery progress commit `c3b16643`; APK was still running at verification time.
+- Added immutable attachment validation for task sync, preventing deletion, content replacement and duplicate attachment IDs (commits `5ac99e6`, `0352ceb`).
+- Added four attachment regression tests (commit `4f80684`).
+- Device proof-of-possession, session binding and offline server-managed edits remain outstanding; no claim of those features being implemented.
+- Next: review latest CI, then design and implement challenge-response device enrollment with server-verified public-key signatures before enabling offline task writes.
+
 ## Current status — 2026-11-08 (M1 device discovery)
 - CI tests, web/server build, and Android APK passed for comment-security commit `e5484a87`; one duplicate CI workflow was still pending when checked.
 - Added authenticated `GET /devices/mine`, filtering by session organization and user and excluding revoked devices (commit `6cbde15`).
