@@ -75,6 +75,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: android-emulator-screenshot-and-logs
-          path: artifacts/android-smoke/
+          path: |
+            artifacts/android-smoke/
+            android/app/build/outputs/androidTest-results/connected/
+            android/app/build/reports/androidTests/connected/
           if-no-files-found: warn
           retention-days: 7
