@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db';
 import { saveServerManagedTask } from './atomicTasks';
-import { pushAtomicTasks } from './atomicClient';
+import { pushAtomicTasks, pullAtomicTasks } from './atomicClient';
 import { TaskPriority, TaskStatus, type Task } from '../types';
 
 const deviceId = '22222222-2222-4222-8222-222222222222';
@@ -102,6 +102,20 @@ describe('server-managed task offline writes', () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).operations[0].deviceId).toBe(deviceId);
     expect(await db.hybridTaskOutbox.count()).toBe(0);
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+  });
+  it('does not advance the durable pull cursor when the server skips unseen changes', async () => {
+    const session = { serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43) };
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+    for (const response of [
+      { changes: [], nextCursor: 11, hasMore: false },
+      { changes: [{ sequence: '11', entity_id: taskId }], nextCursor: 12, hasMore: false },
+      { changes: [{ sequence: '10', entity_id: taskId }], nextCursor: 10, hasMore: false },
+    ]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => response }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid sync response');
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+      expect(await db.tasks.get(taskId)).toBeUndefined();
+    }
   });
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
