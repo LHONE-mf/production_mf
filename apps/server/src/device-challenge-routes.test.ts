@@ -55,9 +55,9 @@ describe('device challenge routes', () => {
     expect(consume[0]).toContain('consumed_at IS NULL');
     expect(consume[0]).toContain('expires_at > now()');
     expect(consume[0]).toContain('INSERT INTO device_proof_grants');
-    expect(consume[1][1]).toBe(org);
-    expect(consume[1][2]).toBe(actor);
-    expect(consume[1][3]).toBe(device);
+    expect(consume[1]![1]).toBe(org);
+    expect(consume[1]![2]).toBe(actor);
+    expect(consume[1]![3]).toBe(device);
     await app.close();
   });
 
