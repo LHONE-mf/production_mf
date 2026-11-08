@@ -1,3 +1,9 @@
+## 2026-11-08 — strict device-proof endpoint and challenge validation
+- Device proof client rejects server URLs with embedded credentials, path, query, or fragment before issuing authenticated requests (`a0d917f`). Also requires challenge IDs to be UUIDs before invoking native signer.
+- Added regression tests for invalid server origins and malformed challenge IDs (`c110da2`).
+- GitHub web/server CI passed at `cb8ae349`. New client tests and Android APK/emulator have not yet been confirmed; Android build was still in progress when inspected.
+- No changes to production data, database schema, or automatic synchronization policy.
+
 ## 2026-11-08 — challenge replay regression
 - Added HTTP route-level regression test that signs a genuine issued challenge, verifies once successfully, then replays the identical signature/challenge and expects HTTP 403 (`eaa645c`). The test simulates PostgreSQL conditional consumption with a stateful fake; real PostgreSQL concurrency still needs integration coverage.
 - At previous checkpoint `205b5955`, GitHub web/server CI passed; newer Android builds and the latest replay test were not yet verified when inspected.
