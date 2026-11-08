@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 enforce device proof on push)
+- Added fail-closed `/sync/push` proof grant validation (commit `a9a38f5`): a single device per batch, required `x-device-proof` token, matching token hash, organization, user, device, login session, grant expiry, and active session/device. Checks happen before task mutations.
+- Added mocked route regressions for missing grant, invalid/expired/revoked/wrong-scope grant and mixed-device batch (commit `af99293`). These do **not** demonstrate successful push or PostgreSQL concurrency behavior.
+- **Compatibility limitation:** current client does not yet obtain or transmit a device proof; server-managed push now fails closed until client integration. Existing offline records and outbox are not deleted.
+- **Verification pending:** GitHub Actions page was inaccessible from this session; no server test, PostgreSQL integration, or Android APK pass can be claimed. Do not deploy this change to production before validating and updating the client.
+- Next: test with actual PostgreSQL, wire secure client proof flow, check GitHub Actions and Android build, then strengthen scoped pull authorization.
+
 ## Current status — 2026-11-08 (M1 PostgreSQL device challenges)
 - Added additive migration `003_device_challenges.sql` for session-bound, expiring single-use challenge hashes and short-lived device proof grants (commit `2ef2577`). No existing production tables or data were deleted.
 - Added authenticated challenge issuance and Ed25519 proof verification endpoints (commit `a7e8d08`), registered with Fastify (commit `9ae139e`). Verification now uses a single PostgreSQL statement to consume a challenge and insert a grant atomically; inspect current code before assuming deployment.
