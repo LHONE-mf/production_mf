@@ -1,3 +1,8 @@
+## 2026-11-08 — authenticated sync transaction boundary regression
+- Added server test proving a valid session-bound, device-bound proof passes authorization to the task-push transaction boundary and that an injected transaction query failure returns a temporary service error (`aa82c82`, `d096a89`). This is a mock test, not a real PostgreSQL integration test.
+- Web/server CI was successful at `8917ba2e`; current branch has newer unverified commits and Android builds were not confirmed successful when checked.
+- No automatic synchronization enabled and no production data modified.
+
 ## 2026-11-08 — Ed25519 enrollment authorization coverage
 - Added HTTP route-level tests for successful canonical Ed25519 enrollment scoped to an active user in the chief's organization, and for rejection of a user outside that organization without inserting a device (`424ebec`). Existing RSA rejection test remains.
 - CI at the previous `8917ba2e` checkpoint was still in progress when inspected. Native Ed25519 generation/signing, Android APK/emulator and real PostgreSQL concurrency remain unverified; do not enable background synchronization.
