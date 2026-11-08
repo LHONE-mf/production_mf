@@ -1,3 +1,15 @@
+## 2026-11-08 — Emulator focus hardening and current M1 CI status
+
+- Working branch: `feat/hybrid-server-foundation`; latest code commit `25aeb2c7`.
+- Confirmed `75440c18` web/server CI, regression tests, and signed Android APK build succeeded.
+- Previous `a8485c8a` emulator smoke run `42500431502` failed because the application did not hold `mCurrentFocus` immediately after startup; its logs show Android boot completed and the smoke script stopped before authentication instrumentation. This is not evidence of a device-proof regression.
+- `25aeb2c7` adds bounded focus recovery (three attempts, relaunch and preserved diagnostics) in `scripts/android-emulator-smoke.sh`; persistent failure remains fatal.
+- New emulator run `42502963604`, APK build `42502963587`, and web/server CI `42502963617` were started for `25aeb2c7`. Their final results were not yet available at the time of this note; do not claim the new emulator test passed until the job completes.
+- Previously verified `e3c52d4` fresh AndroidKeyStore challenge round trip with Fastify/PostgreSQL and replay rejection. The Capacitor plugin test was added in `9f7a10d`, and the later successful emulator run `42499950461` verifies that path on its then-current commit.
+- JSONB idempotency fix `5031ce4` is covered by isolated PostgreSQL integration tests; web/server CI passed on that commit.
+- Task pull and comparison now require device-bound proof (commits `89e19f40`, `a8485c8a`); CI passed on `75440c18`.
+- Production data untouched. Automatic synchronization remains disabled. Do not enable until offline conflict handling, migration safeguards, and cross-device tests are verified.
+
 ## 2026-11-08 — device-scoped task reads and reliable emulator CI
 - Investigated emulator failures `42496926273` and `42497310803` using uploaded window dumps and screenshots. The foreground was an Android system ANR dialog for `com.google.android.apps.nexuslauncher`, while `mFocusedApp` retained a stale Production MF activity. In `fe2c32a`, emulator CI switched to the AOSP system image, checks actual `mCurrentFocus` after launch/relaunch, and spaces the two Back key events without disabling the check. **Emulator run `42499950461` passed** with screenshots and device proof instrumentation.
 - In `89e19f4`, secured `GET /sync/pull` and `GET /sync/task/:id` with the same PostgreSQL-checked short-lived, enrolled, nonrevoked, actor/organization/session/device-bound grant as `POST /sync/push`. Both atomic and legacy task clients now include the device ID and proof for manual pull; UI task comparison likewise requires a fresh proof. Missing, mismatched, or revoked proof fails closed. No automatic sync enabled.
