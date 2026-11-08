@@ -1,3 +1,9 @@
+## Current status — 2026-11-08 (M1 atomic offline tests)
+- Verified CI, tests and APK build succeeded for creator-security commit `2ea068a4` (GitHub Actions runs `42475447047`, `42475447043`, `42475442039`, `42475442071`).
+- Added `src/core/sync/atomicTasks.test.ts` with regression cases for atomic task+outbox persistence, rejection of a second pending edit without overwriting the first, and invalid device ID (commit `a7db497`).
+- UI still blocks offline changes for server-managed tasks because durable enrolled device identity and a safe queue policy are not wired into task screens. Do not claim UI functionality has changed.
+- Next: verify new test CI; connect a durable, authenticated device identity to task commands and define a safe policy for multiple offline edits before enabling UI changes.
+
 ## Current status — 2026-11-08 (M1 creator security)
 - Added `apps/server/src/task-authorization.ts` to require authenticated actor as creator on new task and preserve creator/creation time on updates (commit `370b42f`).
 - Integrated validation in `apps/server/src/sync-routes.ts` before task upsert (commit `417dbb1`).
