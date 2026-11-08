@@ -14,7 +14,8 @@ permissions:
 # двух workflow, толкающих CI-коммит в refs/heads/main одновременно).
 concurrency:
   group: build-apk-${{ github.ref }}
-  cancel-in-progress: true
+  # Let long-running Android verification finish even when another development commit lands.
+  cancel-in-progress: false
 
 jobs:
   build-apk:
