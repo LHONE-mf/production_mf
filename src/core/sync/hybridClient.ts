@@ -7,6 +7,8 @@ export interface HybridSession {
   accessToken: string;
   /** Short-lived proof returned after a signed device challenge. Never persist it. */
   deviceProofToken?: string;
+  deviceProofDeviceId?: string;
+  deviceProofExpiresAt?: number;
 }
 export interface RemoteTaskChange {
   sequence: string | number;
@@ -39,7 +41,8 @@ export async function pushPendingTasks(session: HybridSession) {
   const pendingAll = await pendingTaskOperations();
   const pending = pendingAll.filter(op => op.deviceId === pendingAll[0]?.deviceId).slice(0, 50);
   if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
-  if (!session.deviceProofToken) throw new Error('Device proof required before pushing tasks');
+  if (!session.deviceProofToken || session.deviceProofDeviceId !== pending[0].deviceId || !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)
+    throw new Error('Fresh device proof for queued task device required before pushing tasks');
   const response = await request(session, '/sync/push', {
     method: 'POST',
     headers: { 'x-device-proof': session.deviceProofToken },
