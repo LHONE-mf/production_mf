@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (hybrid product roadmap)
+- Architecture B (hybrid offline-first Android/Web + Fastify/PostgreSQL) selected by user.
+- Canonical product requirements and M0–M5 milestones: `docs/PRODUCT_SPECIFICATION.md` (commit `b52dd5a`).
+- Legacy fully-offline architecture and development plan explicitly marked superseded (commits `924ed78`, `83be4fb`).
+- Next: audit task writes and server sync authorization, add regression tests for offline server-managed tasks, then implement a minimal safe fix.
+- Documentation-only changes: CI result for this series not yet verified; no claim of functional implementation.
+
 # PROGRESS.md — состояние проекта и правила работы агента
 
 > **ВАЖНО ДЛЯ АГЕНТА (обязательный протокол):**
