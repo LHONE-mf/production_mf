@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS workshops (
   PRIMARY KEY (organization_id, id)
 );
 -- Composite foreign keys prevent membership from linking a user in another tenant.
-ALTER TABLE users ADD CONSTRAINT users_org_id_unique UNIQUE (organization_id, id);
+CREATE UNIQUE INDEX IF NOT EXISTS users_org_id_unique ON users(organization_id, id);
 CREATE TABLE IF NOT EXISTS user_workshop_memberships (
   organization_id uuid NOT NULL,
   user_id uuid NOT NULL,
