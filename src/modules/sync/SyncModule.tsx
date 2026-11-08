@@ -25,6 +25,7 @@ export function SyncModule() {
   const [busy, setBusy] = useState(false);
   const [devicePublicKey, setDevicePublicKey] = useState('');
   const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
+  const [myDevices, setMyDevices] = useState<string[]>([]);
   const [serverRole, setServerRole] = useState('');
   const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; title: string; description: string; status: string; priority: string }>>({});
   const [inspectingTask, setInspectingTask] = useState<string | null>(null);
@@ -55,6 +56,14 @@ export function SyncModule() {
       setSession({ serverUrl, accessToken: data.accessToken });
       setServerRole(data.user?.role ?? '');
       setEnrolledDeviceId('');
+      setMyDevices([]);
+      const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
+        headers: { Authorization: 'Bearer ' + data.accessToken },
+      });
+      if (devicesResponse.ok) {
+        const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
+        setMyDevices((enrolled.devices ?? []).map(device => device.id));
+      }
       setPassword('');
       setMessage('Подключено. Теперь можно синхронизировать серверные задания.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка подключения'); }
@@ -75,6 +84,7 @@ export function SyncModule() {
       const data: { id?: string } = await response.json();
       if (!data.id) throw new Error('Сервер не вернул ID устройства');
       setEnrolledDeviceId(data.id);
+      setMyDevices(previous => previous.includes(data.id!) ? previous : [...previous, data.id!]);
       setMessage('Устройство зарегистрировано. Сохраните его ID и соответствующий закрытый ключ в защищённом хранилище. Автоматическая привязка пока не реализована.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка регистрации устройства'); }
     finally { setBusy(false); }
@@ -107,7 +117,7 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
-  function disconnect() { setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setEnrolledDeviceId(''); setPassword(''); setMessage('Соединение отключено'); setError(''); }
+  function disconnect() { setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setEnrolledDeviceId(''); setMyDevices([]); setPassword(''); setMessage('Соединение отключено'); setError(''); }
 
   return (
     <div className="space-y-6">
@@ -136,6 +146,11 @@ export function SyncModule() {
         ) : (
           <div className="space-y-3">
             <p className="text-green-300 text-sm">Подключено к {new URL(session.serverUrl).host}. Токен хранится только до закрытия экрана.</p>
+            <div className="rounded-xl border border-slate-600 p-3 space-y-1">
+              <p className="text-slate-200 text-sm font-medium">Устройства вашей учётной записи</p>
+              {myDevices.length ? myDevices.map(id => <p key={id} className="text-slate-300 text-xs break-all">{id}</p>) : <p className="text-amber-200 text-xs">Активные зарегистрированные устройства не обнаружены.</p>}
+              <p className="text-slate-400 text-xs">Регистрация не подтверждает владение закрытым ключом. Офлайн-редактирование серверных заданий остаётся отключено до безопасной привязки устройства.</p>
+            </div>
             {serverRole === 'chief' && <div className="space-y-2 rounded-xl border border-slate-600 p-3">
               <p className="text-slate-200 text-sm font-medium">Регистрация устройства (администратор)</p>
               <p className="text-slate-400 text-xs">Введите публичный ключ существующей пары ключей. Генерация и безопасное хранение закрытого ключа в приложении пока не реализованы.</p>
