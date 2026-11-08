@@ -136,7 +136,7 @@ export function SyncModule() {
     setBusy(true); setError(''); setMessage('');
     try {
       const pendingCount = await db.hybridTaskOutbox.where('state').equals('pending').count();
-      if (pendingCount && !session.deviceProofToken) throw new Error('Сначала подтвердите устройство перед отправкой заданий');
+      if (pendingCount && (!session.deviceProofToken || !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)) throw new Error('Подтвердите устройство повторно перед отправкой заданий');
       const pushed = await pushAtomicTasks(session);
       const pulled = await pullAtomicTasks(session);
       setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
@@ -186,7 +186,7 @@ export function SyncModule() {
                   </select>
                 </label>
                 <button type="button" disabled={busy || !selectedDeviceId} onClick={() => void proveAndroidDevice()} className="px-3 py-2 bg-blue-600 text-white rounded-lg disabled:opacity-50">Подтвердить устройство</button>
-                {session.deviceProofToken && <p className="text-green-300 text-xs">Подпись подтверждена (до 5 минут).</p>}
+                {session.deviceProofToken && session.deviceProofDeviceId === selectedDeviceId && (session.deviceProofExpiresAt ?? 0) > Date.now() + 5000 && <p className="text-green-300 text-xs">Подпись подтверждена (до 5 минут).</p>}
               </div>}
             </div>
             {serverRole === 'chief' && <div className="space-y-2 rounded-xl border border-slate-600 p-3">
