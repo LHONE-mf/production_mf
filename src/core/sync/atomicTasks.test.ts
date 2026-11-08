@@ -21,10 +21,11 @@ afterEach(() => vi.unstubAllGlobals());
 describe('server-managed task offline writes', () => {
   beforeEach(async () => {
     await db.open();
-    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
+    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
       await db.tasks.clear();
       await db.hybridTaskOutbox.clear();
       await db.hybridTaskRevisions.clear();
+      await db.hybridSyncMetadata.clear();
     });
   });
   it('atomically saves an offline task and a pending operation', async () => {
