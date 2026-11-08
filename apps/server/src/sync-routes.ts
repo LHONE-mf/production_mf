@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
-import { authenticate } from './auth.js';
+import { authenticate, tokenHash } from './auth.js';
 import { taskPayloadV1 } from './task-schema.js';
 import { validateTaskCreator, validateTaskComments, validateTaskAttachments } from './task-authorization.js';
 
@@ -23,6 +23,23 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
     const parsed = pushSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
+    // Proof tokens are short-lived and bound to this exact login session, actor and device.
+    // Reject mixed-device batches before any transaction can mutate shared state.
+    const deviceIds = new Set(parsed.data.operations.map(op => op.deviceId));
+    if (deviceIds.size !== 1) return reply.code(400).send({ error: 'mixed_device_batch' });
+    const proof = request.headers['x-device-proof'];
+    if (typeof proof !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(proof))
+      return reply.code(403).send({ error: 'device_proof_required' });
+    const deviceId = parsed.data.operations[0].deviceId;
+    const sessionHash = tokenHash(request.headers.authorization!.slice(7));
+    const grant = await pool.query(`SELECT g.token_hash FROM device_proof_grants g
+      JOIN devices d ON d.id=g.device_id AND d.organization_id=g.organization_id AND d.user_id=g.user_id
+      JOIN sessions s ON s.token_hash=g.session_token_hash AND s.organization_id=g.organization_id AND s.user_id=g.user_id
+      WHERE g.token_hash=$1 AND g.organization_id=$2 AND g.user_id=$3 AND g.device_id=$4
+        AND g.session_token_hash=$5 AND g.expires_at>now() AND g.revoked_at IS NULL
+        AND d.revoked_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>now()`,
+      [tokenHash(proof), principal.organization_id, principal.id, deviceId, sessionHash]);
+    if (!grant.rowCount) return reply.code(403).send({ error: 'device_proof_invalid' });
     const results = [];
     for (const op of parsed.data.operations) {
       const client = await pool.connect();
