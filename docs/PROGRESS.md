@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 creator security)
+- Added `apps/server/src/task-authorization.ts` to require authenticated actor as creator on new task and preserve creator/creation time on updates (commit `370b42f`).
+- Integrated validation in `apps/server/src/sync-routes.ts` before task upsert (commit `417dbb1`).
+- Added five unit regression tests in `apps/server/src/task-authorization.test.ts` (commit `c5ba961`).
+- CI for latest security commit not yet verified. Earlier documentation commit `91e6821` had green CI/tests; do not attribute those results to this change.
+- Next: verify CI, then tighten task-level authorization and implement offline task status changes with atomic outbox.
+
 ## Current status — 2026-11-08 (M1 sync audit)
 - Reviewed `atomicTasks.ts`, `atomicClient.ts`, `hybridClient.ts`, `hybridOutbox.ts`, task/sync UI, and server sync routes.
 - Recorded prioritized P0/P1 findings and eight regression test cases in `docs/M1_TASK_SYNC_AUDIT.md` (commit `03382fb`).
