@@ -1,3 +1,10 @@
+## Current status — 2026-11-08 (M1 PostgreSQL device challenges)
+- Added additive migration `003_device_challenges.sql` for session-bound, expiring single-use challenge hashes and short-lived device proof grants (commit `2ef2577`). No existing production tables or data were deleted.
+- Added authenticated challenge issuance and Ed25519 proof verification endpoints (commit `a7e8d08`), registered with Fastify (commit `9ae139e`). Verification now uses a single PostgreSQL statement to consume a challenge and insert a grant atomically; inspect current code before assuming deployment.
+- Added endpoint regression tests for authentication, malformed input, ownership, challenge hashing, invalid signatures, success and consumed/expired rejection (`device-challenge-routes.test.ts`). These are mocked database tests, **not** PostgreSQL concurrency integration tests.
+- CI and Android APK status for these commits has **not** been independently verified; do not claim green builds. Device proof grants are **not yet enforced by sync push**, and secure client key storage is not implemented. No production rollout authorized.
+- Next: verify Actions and run server tests/Android build, add real PostgreSQL concurrent replay tests, then require session/device-bound proof grants on sync push.
+
 ## Current status — 2026-11-08 (M1 Ed25519 device-proof primitive)
 - Web/server CI and tests passed for `1766aad5`; Android APK build was still in progress when checked.
 - Added `apps/server/src/device-proof.ts`: strict Ed25519 signature verification over a domain-separated challenge (commit `79ad421`).
