@@ -34,7 +34,10 @@ export async function pushAtomicTasks(session: HybridSession) {
       throw new Error('Invalid sync response: unexpected or duplicate operation');
     seen.add(result.operationId);
     if (result.status === 'accepted' || result.status === 'duplicate') {
-      if (!Number.isSafeInteger(result.revision) || result.revision < 1) throw new Error('Invalid sync response: revision');
+      const queued = pending.find(op => op.operationId === result.operationId)!;
+      if (!Number.isSafeInteger(result.revision) || result.revision < 1 ||
+          result.revision !== (queued.expectedRevision ?? 0) + 1)
+        throw new Error('Invalid sync response: revision does not match queued precondition');
     } else if (result.status === 'conflict') {
       if (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0) throw new Error('Invalid sync response: conflict revision');
     } else if (result.status !== 'rejected') throw new Error('Invalid sync response: status');
