@@ -1,3 +1,8 @@
+## 2026-11-08 — real PostgreSQL device-proof challenge integration CI passed
+- Added `apps/server/src/device-proof.postgres.test.ts` (`8f9983f8`), which performs chief-authorized Ed25519 enrollment, issues server challenges, verifies valid signatures, asserts only challenge hashes and proof-token hashes are stored, rejects incorrect signatures and expired challenges, and races two concurrent valid verifications of one challenge (exactly one 200, one 403 and one new grant).
+- Server CI now provisions an isolated PostgreSQL 16 service and applies migrations 001–004 before running Vitest (`09bcb5ff`). No production connection string is used for these tests. Both Fastify server and web jobs **passed** in GitHub Actions run `42491532396`, and dedicated Run Tests `42491536254` passed.
+- Android cross-runtime Ed25519 emulator run `42491119075` was still in progress at this checkpoint; AndroidKeyStore-to-Node verification and complete Android-to-server proof exchange remain unverified. Automatic sync remains disabled; production data unchanged.
+
 ## 2026-11-08 — cross-runtime Ed25519 verification on emulator
 - Emulator run `42490460643` reproduced `NoSuchAlgorithmException: Ed25519 for provider AndroidOpenSSL` after successful AndroidKeyStore Ed25519 key generation and signing; local Android verifier provider selection was the test issue, not the signing operation.
 - Instrumentation now emits a **test-only** AndroidKeyStore Ed25519 public SPKI and signature over the fixed domain-separated challenge (`d39955d8`), with private key non-exportability and key encoding still asserted on Android.
