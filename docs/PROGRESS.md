@@ -1,3 +1,8 @@
+## 2026-11-08 — emulator smoke green; AndroidKeyStore Ed25519 runtime gate added
+- Android emulator smoke run `42482735501` passed on `6b902fdf`, after correcting double-Back dispatch. Android APK and web/server CI passed at the same commit; `43ce5d9c` also passed Run Tests and web/server CI.
+- Added Android instrumentation test for AndroidKeyStore Ed25519 generation, non-exportability, SPKI encoding, and signing/verification of the device-proof domain-separated challenge (`3f79a261`). Updated emulator workflow to run `connectedDebugAndroidTest` (`4959333f`). Results pending; test exercises key primitives, not the Capacitor JS bridge or PostgreSQL end-to-end proof.
+- No automatic sync or production data changes.
+
 ## 2026-11-08 — Android emulator Back smoke failure and targeted fix
 - At `50859a05`, web/server CI, Run Tests and Android APK build passed. Emulator run `42482142742` installed and cold-launched the app twice, then failed its two-Back exit assertion; native Ed25519 runtime signing was not exercised.
 - Changed `scripts/android-emulator-smoke.sh` to dispatch both Back key events within one ADB shell invocation, reducing host-to-emulator latency (`6b902fdf`). Await a fresh emulator result before claiming this issue resolved.
