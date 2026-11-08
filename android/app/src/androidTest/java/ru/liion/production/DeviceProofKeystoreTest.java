@@ -6,9 +6,10 @@ import static org.junit.Assert.assertTrue;
 
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
+import android.util.Base64;
+import android.util.Log;
 
 import androidx.test.ext.junit.runners.AndroidJUnit4;
-import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,17 +18,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
-import java.security.KeyFactory;
 import java.security.Signature;
 import java.security.spec.ECGenParameterSpec;
-import java.security.spec.X509EncodedKeySpec;
 import java.util.Arrays;
 
-/** Runs the exact AndroidKeyStore Ed25519 operations used by DeviceProofPlugin on an emulator. */
+/** Produces a test-only AndroidKeyStore Ed25519 challenge signature for server-side CI verification. */
 @RunWith(AndroidJUnit4.class)
 public class DeviceProofKeystoreTest {
     @Test
-    public void generatesNonExportableEd25519KeyAndVerifiesChallenge() throws Exception {
+    public void generatesNonExportableEd25519KeyAndSignsChallenge() throws Exception {
         String alias = "production-mf-ed25519-instrumentation";
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
@@ -50,14 +49,14 @@ public class DeviceProofKeystoreTest {
             signer.update(message);
             byte[] signature = signer.sign();
             assertEquals(64, signature.length);
-            Signature verifier = Signature.getInstance("Ed25519", "AndroidOpenSSL");
-            // A generic Ed25519 verifier cannot consume AndroidKeyStoreEdECPublicKey directly.
-            // Use the platform Conscrypt provider for public-key import and verification,
-            // not AndroidKeyStore (which supports generation but cannot import X.509 keys).
-            verifier.initVerify(KeyFactory.getInstance("Ed25519", "AndroidOpenSSL")
-                    .generatePublic(new X509EncodedKeySpec(spki)));
-            verifier.update(message);
-            assertTrue(verifier.verify(signature));
+            // AndroidKeyStore public keys are provider-specific, and Android does not
+            // guarantee a separate Ed25519 verification provider. Emit a TEST-ONLY
+            // vector; CI verifies it using Node crypto, as the Fastify server does.
+            // This alias is never a production enrolled key.
+            Log.i("ProductionMfEd25519", "VECTOR spki="
+                    + Base64.encodeToString(spki, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING)
+                    + " signature="
+                    + Base64.encodeToString(signature, Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING));
         } finally {
             store.deleteEntry(alias);
         }
