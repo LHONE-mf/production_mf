@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateTaskCreator, validateTaskComments } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments, validateTaskAttachments } from './task-authorization.js';
 import type { Principal } from './auth.js';
 import type { TaskPayloadV1 } from './task-schema.js';
 
@@ -37,5 +37,21 @@ describe('task comment integrity', () => {
   });
   it('rejects duplicate comment identifiers', () => {
     expect(validateTaskComments(actor, { ...payload, comments: [comment, comment] })).toBe('duplicate_comment_id');
+  });
+});
+
+describe('task attachment integrity', () => {
+  const attachment = { id: '55555555-5555-4555-8555-555555555555', taskId: '66666666-6666-4666-8666-666666666666', fileName: 'report.txt', fileType: 'text/plain', data: 'report', createdAt: '2026-11-08T00:00:00.000Z' };
+  it('allows adding an attachment', () => {
+    expect(validateTaskAttachments({ ...payload, attachments: [attachment] })).toBeNull();
+  });
+  it('rejects deleting an existing attachment', () => {
+    expect(validateTaskAttachments({ ...payload, attachments: [] }, { ...payload, attachments: [attachment] })).toBe('attachment_is_immutable');
+  });
+  it('rejects changing existing attachment contents', () => {
+    expect(validateTaskAttachments({ ...payload, attachments: [{ ...attachment, data: 'modified' }] }, { ...payload, attachments: [attachment] })).toBe('attachment_is_immutable');
+  });
+  it('rejects duplicate attachment IDs', () => {
+    expect(validateTaskAttachments({ ...payload, attachments: [attachment, attachment] })).toBe('duplicate_attachment_id');
   });
 });
