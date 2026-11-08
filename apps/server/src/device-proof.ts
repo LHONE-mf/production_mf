@@ -18,3 +18,15 @@ export function verifyDeviceChallenge(publicKeyPem: string, challenge: string, s
     return false;
   }
 }
+
+/** Reject unsupported or malformed enrollment keys before they reach the device table. */
+export function isEd25519PublicKey(publicKeyPem: string): boolean {
+  if (!/^-----BEGIN PUBLIC KEY-----\n(?:[A-Za-z0-9+/=]+\n)+-----END PUBLIC KEY-----\n?$/.test(publicKeyPem)) return false;
+  try {
+    const key = createPublicKey(publicKeyPem);
+    return key.asymmetricKeyType === 'ed25519' &&
+      key.export({ format: 'pem', type: 'spki' }).toString().trim() === publicKeyPem.trim();
+  } catch {
+    return false;
+  }
+}
