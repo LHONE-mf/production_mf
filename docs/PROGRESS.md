@@ -1,3 +1,8 @@
+## 2026-11-08 — Android emulator Back smoke failure and targeted fix
+- At `50859a05`, web/server CI, Run Tests and Android APK build passed. Emulator run `42482142742` installed and cold-launched the app twice, then failed its two-Back exit assertion; native Ed25519 runtime signing was not exercised.
+- Changed `scripts/android-emulator-smoke.sh` to dispatch both Back key events within one ADB shell invocation, reducing host-to-emulator latency (`6b902fdf`). Await a fresh emulator result before claiming this issue resolved.
+- Automatic sync remains disabled; no production records changed.
+
 ## 2026-11-08 — authenticated sync transaction boundary regression
 - Added server test proving a valid session-bound, device-bound proof passes authorization to the task-push transaction boundary and that an injected transaction query failure returns a temporary service error (`aa82c82`, `d096a89`). This is a mock test, not a real PostgreSQL integration test.
 - Web/server CI was successful at `8917ba2e`; current branch has newer unverified commits and Android builds were not confirmed successful when checked.
