@@ -61,6 +61,37 @@ describe('device challenge routes', () => {
     await app.close();
   });
 
+  it('enforces one-time consumption when the same signed challenge is replayed', async () => {
+    const base = fakePool();
+    let consumed = false;
+    const query = vi.fn(async (sql: string, params?: unknown[]) => {
+      if (sql.includes('WITH consumed AS')) {
+        if (consumed) return { rows: [], rowCount: 0 };
+        consumed = true;
+        return { rows: [{ token_hash: 'ok' }], rowCount: 1 };
+      }
+      return base.query(sql, params);
+    });
+    const app = buildApp({ query } as any);
+    const issuedResponse = await app.inject({
+      method: 'POST', url: '/devices/challenge', headers, payload: { deviceId: device },
+    });
+    expect(issuedResponse.statusCode).toBe(200);
+    const issued = issuedResponse.json();
+    const signature = sign(null, Buffer.from('production-mf:device-proof:v1:' + issued.challenge), keys.privateKey).toString('base64url');
+    const request = {
+      method: 'POST' as const, url: '/devices/challenge/verify', headers,
+      payload: { deviceId: device, challengeId: issued.challengeId, challenge: issued.challenge, signature },
+    };
+    const first = await app.inject(request);
+    const replay = await app.inject(request);
+    expect(first.statusCode).toBe(200);
+    expect(replay.statusCode).toBe(403);
+    expect(replay.json()).toEqual({ error: 'invalid_or_expired_challenge' });
+    expect(query.mock.calls.filter(call => call[0].includes('WITH consumed AS'))).toHaveLength(2);
+    await app.close();
+  });
+
   it('rejects an incorrect signature without consuming the challenge', async () => {
     const pool = fakePool();
     const app = buildApp(pool as any);
