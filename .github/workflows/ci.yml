@@ -12,7 +12,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Preserve a complete result for each commit rather than cancelling validation mid-build.
+  cancel-in-progress: false
 
 jobs:
   web:
