@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate, newToken, tokenHash, verifyPassword } from './auth.js';
+import { isEd25519PublicKey } from './device-proof.js';
 const loginSchema = z.object({ organizationId: z.string().uuid(), login: z.string().min(1).max(128), password: z.string().min(1).max(1024) });
 const enrollSchema = z.object({ userId: z.string().uuid().optional(), publicKey: z.string().min(32).max(4096) });
 
@@ -37,6 +38,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'
     if (principal.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
     const parsed = enrollSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
+    if (!isEd25519PublicKey(parsed.data.publicKey)) return reply.code(400).send({ error: 'invalid_device_public_key' });
     const userId = parsed.data.userId ?? principal.id;
     const owner = await pool.query('SELECT id FROM users WHERE id = $1 AND organization_id = $2 AND active = true', [userId, principal.organization_id]);
     if (!owner.rows.length) return reply.code(404).send({ error: 'user_not_found' });
