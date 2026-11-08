@@ -1,3 +1,7 @@
+## 2026-11-08 — Ed25519 instrumentation compile fix
+- Emulator run `42483549801` failed at `compileDebugAndroidTestJavaWithJavac` because the new instrumentation test passed a generic `Key` to `Signature.initSign`. Cast the retrieved AndroidKeyStore key to `PrivateKey` (`412a6cc4`), consistent with the production plugin. Runtime signing still awaits a completed emulator test.
+- The previous Gradle wrapper timeout fix was verified by a successful Android APK build `42483549778`; web/server and Run Tests passed at `0f8d38e5`.
+
 ## 2026-11-08 — Gradle distribution download timeout
 - Android APK workflow `42483193971` failed before compilation: Gradle wrapper could not download `gradle-8.11.1-all.zip` within its configured 10-second network timeout. Increased `android/gradle/wrapper/gradle-wrapper.properties` networkTimeout to 120000 ms (`a4a30a26`). Requires a fresh CI result.
 - At `7940ebef`, Run Tests and web/server CI passed. Ed25519 emulator instrumentation remains unverified.
