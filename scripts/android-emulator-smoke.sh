@@ -31,9 +31,8 @@ adb shell uiautomator dump /sdcard/production-mf-relaunch-ui.xml || true
 adb pull /sdcard/production-mf-relaunch-ui.xml artifacts/android-smoke/relaunch-ui.xml || true
 # Both Back presses must occur within the app's two-second exit window.
 # Avoid screenshot pulls/dumpsys between presses: those can exceed the window.
-adb shell input keyevent KEYCODE_BACK
-adb shell input keyevent KEYCODE_BACK
-sleep 2
+adb shell 'input keyevent KEYCODE_BACK; input keyevent KEYCODE_BACK'
+sleep 3
 adb shell dumpsys window > artifacts/android-smoke/window-after-second-back.txt
 if grep -E 'mCurrentFocus|mFocusedApp|topResumedActivity' artifacts/android-smoke/window-after-second-back.txt | grep -q "$PACKAGE"; then
   echo 'ERROR: Two consecutive Back presses did not exit Production MF' >&2
