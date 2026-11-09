@@ -279,6 +279,34 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(20);
   });
 
+  it('retains a changed queued operation when its earlier snapshot is acknowledged', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let deliver!: (result: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { deliver = resolve; })));
+    const inFlight = pushAtomicTasks(session);
+    await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+    // Simulate an unexpected concurrent mutation of the durable queue.
+    // An acknowledgement of the original payload cannot confirm this edit.
+    await db.hybridTaskOutbox.update(operationId, {
+      payload: { ...((await db.hybridTaskOutbox.get(operationId))!.payload), title: 'New offline title' },
+    });
+    deliver({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'accepted', revision: 1 }],
+    }) });
+    await expect(inFlight).rejects.toThrow('Queued task operation changed during sync');
+    expect((await db.hybridTaskOutbox.get(operationId))?.state).toBe('pending');
+    expect((await db.hybridTaskOutbox.get(operationId))?.payload.title).toBe('New offline title');
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskOutbox.get(operationId))?.payload.title).toBe('New offline title');
+  });
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
