@@ -105,7 +105,19 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease
+          # Gradle distribution downloads occasionally return transient HTTP 504.
+          # Keep failures fatal after three bounded attempts.
+          for attempt in 1 2 3; do
+            if ./gradlew assembleRelease; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Gradle build failed after three attempts"
+              exit 1
+            fi
+            echo "::warning::Gradle build failed (attempt $attempt/3); retrying"
+            sleep 15
+          done
 
       - name: Публикация артефакта
         uses: actions/upload-artifact@v4
