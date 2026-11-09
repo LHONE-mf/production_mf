@@ -18,7 +18,7 @@ export function validateTaskComments(principal: Principal, incoming: TaskPayload
   if (next.size !== incoming.comments.length) return 'duplicate_comment_id';
   for (const comment of existing?.comments ?? []) {
     const current = next.get(comment.id);
-    if (!current || JSON.stringify(current) !== JSON.stringify(comment)) return 'comment_is_immutable';
+    if (!current || !isDeepStrictEqual(current, comment)) return 'comment_is_immutable';
   }
   for (const comment of incoming.comments) {
     if (!previous.has(comment.id) && comment.authorId !== principal.id) return 'comment_author_must_match_actor';
@@ -33,7 +33,7 @@ export function validateTaskAttachments(incoming: TaskPayloadV1, existing?: Task
   if (next.size !== incoming.attachments.length) return 'duplicate_attachment_id';
   for (const attachment of existing?.attachments ?? []) {
     const current = next.get(attachment.id);
-    if (!current || JSON.stringify(current) !== JSON.stringify(attachment)) return 'attachment_is_immutable';
+    if (!current || !isDeepStrictEqual(current, attachment)) return 'attachment_is_immutable';
   }
   return null;
 }
