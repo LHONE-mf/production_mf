@@ -127,15 +127,7 @@ jobs:
             (cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon)
             # Ensure the archive persistence instrumentation actually ran;
             # a green Gradle exit without this test is not sufficient evidence.
-            python3 - <<'PY'
-            from pathlib import Path
-            results = Path('android/app/build/outputs/androidTest-results/connected')
-            xmls = list(results.rglob('*.xml'))
-            matches = [path for path in xmls if 'HybridConflictArchiveWebViewTest' in path.read_text(errors='replace')]
-            if not matches:
-                raise SystemExit('Missing executed HybridConflictArchiveWebViewTest Android instrumentation result')
-            print('Verified WebView conflict archive test report:', *matches)
-            PY
+            python3 -c "from pathlib import Path; import xml.etree.ElementTree as ET; results=Path('android/app/build/outputs/androidTest-results/connected'); xmls=list(results.rglob('*.xml')); matches=[(p, c) for p in xmls for c in ET.parse(p).getroot().iter('testcase') if 'HybridConflictArchiveWebViewTest' in c.attrib.get('classname', '') and c.attrib.get('name') == 'conflictArchiveSurvivesActivityRestart' and not any(child.tag in ('failure', 'error', 'skipped') for child in c)]; assert matches, 'Missing passing HybridConflictArchiveWebViewTest instrumentation report'; print('Verified WebView conflict archive test report:', matches[0][0])"
             adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/ed25519-test-vectors.log
             node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/ed25519-test-vectors.log
             node apps/server/scripts/verify-emulator-device-proof.mjs artifacts/android-smoke/ed25519-test-vectors.log
