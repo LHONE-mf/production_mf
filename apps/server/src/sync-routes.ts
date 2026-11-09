@@ -34,7 +34,9 @@ async function deviceProofError(pool: Pool, principal: Principal, authorization:
  * or a transfer outside their membership is denied, even for exact retries. */
 async function masterTaskScopeError(client: PoolClient, principal: Principal, incoming: TaskPayloadV1, existing?: TaskPayloadV1) {
   if (principal.role === 'chief') return null;
-  const ids = [incoming.workshopId, existing?.workshopId ?? incoming.workshopId];
+  // Preserve an existing null workshop: ?? would silently replace it with the
+  // incoming assignment and let a master claim a formerly unscoped task.
+  const ids = [incoming.workshopId, existing ? existing.workshopId : incoming.workshopId];
   if (ids.some(id => !id)) return 'workshop_access_denied';
   const result = await client.query(
     'SELECT workshop_id FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id = ANY($3::text[])',
