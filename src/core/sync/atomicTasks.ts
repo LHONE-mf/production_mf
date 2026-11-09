@@ -28,6 +28,11 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
     if (outstanding.some(op => op.state !== 'pending' || op.deviceId !== deviceId))
       throw new Error('Resolve the previous task edit or device mismatch first');
     const revision = (await db.hybridTaskRevisions.get(task.id))?.revision ?? 0;
+    // A UUID alone does not establish server ownership. Never silently enroll
+    // or replace an existing local-only task that has no server revision or queue.
+    if (revision === 0 && outstanding.length === 0 && await db.tasks.get(task.id)) {
+      throw new Error('Existing local-only task cannot be enrolled automatically');
+    }
     const expectedRevision = revision + outstanding.length;
     if (!Number.isSafeInteger(expectedRevision)) throw new Error('Task revision overflow');
     const queuedAt = Math.max(Date.now(), ...outstanding.map(op => op.queuedAt + 1));
