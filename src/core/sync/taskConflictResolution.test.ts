@@ -102,6 +102,20 @@ describe('manual task conflict resolution', () => {
     expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('conflict');
     expect((await db.tasks.get(taskId))?.title).toBe('Offline changes');
   });
+  it('does not archive local edits when the inspected server snapshot predates the reported conflict', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const operationId = await saveServerManagedTask(task('Preserve this edit'), deviceId);
+    await db.hybridTaskOutbox.update(operationId, { state: 'conflict', actualRevision: 7 });
+    await expect(archiveConflictAndUseServer(taskId, 6, encodeTask(task('Old server snapshot'))))
+      .rejects.toThrow('predates the reported conflict revision');
+    expect((await db.tasks.get(taskId))?.title).toBe('Preserve this edit');
+    expect((await db.hybridTaskOutbox.get(operationId))?.state).toBe('conflict');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+    expect(await db.hybridTaskResolutions.count()).toBe(0);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskOutbox.get(operationId))?.actualRevision).toBe(7);
+  });
   it('does not discard queued edits without a conflict or when a rejected operation also exists', async () => {
     const firstId = await saveServerManagedTask(task(), deviceId);
     const secondId = await saveServerManagedTask(task('Another edit'), deviceId);
