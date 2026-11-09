@@ -266,6 +266,61 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(20);
   });
 
+  it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let deliver!: (result: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { deliver = resolve; })));
+    const inFlight = pushAtomicTasks(session);
+    // Wait until the request is actually in flight before simulating a newer
+    // durable revision written by another synchronized operation.
+    await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 5 });
+    deliver({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'accepted', revision: 4 }],
+    }) });
+    expect((await inFlight).accepted).toBe(1);
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(5);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
+  it('does not roll back a newer pull cursor when an older network response arrives late', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+    const { encodeTask } = await import('./taskDto');
+    let respondOlder!: (response: unknown) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { respondOlder = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        changes: [{ sequence: '12', entity_id: taskId, entity_type: 'task',
+          revision: 1, payload: encodeTask(task()) }],
+        nextCursor: 12, hasMore: false,
+      }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const slow = pullAtomicTasks(session);
+    await vi.waitFor(() => expect(respondOlder).toBeTypeOf('function'));
+    expect((await pullAtomicTasks(session)).received).toBe(1);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(12);
+    respondOlder({ ok: true, json: async () => ({
+      changes: [{ sequence: '11', entity_id: taskId, entity_type: 'task',
+        revision: 1, payload: encodeTask({ ...task(), title: 'Stale version' }) }],
+      nextCursor: 11, hasMore: false,
+    }) });
+    await expect(slow).rejects.toThrow('Concurrent task pull');
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(12);
+    expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+  });
+
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
     expect(await db.tasks.get(taskId)).toBeUndefined();
