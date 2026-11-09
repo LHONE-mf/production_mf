@@ -101,6 +101,8 @@ integration('two-device offline conflict and reconnection (PostgreSQL)', () => {
       expect(snapshot.statusCode).toBe(200);
       expect(snapshot.json()).toMatchObject({ revision: 1, payload: { title: 'Original task' } });
     }
+    const initialCursor = Number((await pull(0, 0)).json().nextCursor);
+    expect(initialCursor).toBeGreaterThan(0);
     const editA = task('Approved by device A', 'assigned', '2026-11-08T11:00:00.000Z');
     const editB = task('Offline changes on device B', 'assigned', '2026-11-08T12:00:00.000Z');
     const opA = randomUUID(), opB = randomUUID();
@@ -120,6 +122,10 @@ integration('two-device offline conflict and reconnection (PostgreSQL)', () => {
       [organizationId],
     )).rows[0].count).toBe(2);
 
+    const afterFirstEdit = await pull(1, initialCursor);
+    expect(afterFirstEdit.json().changes).toHaveLength(1);
+    const firstEditCursor = Number(afterFirstEdit.json().nextCursor);
+
     // Replaying an accepted operation is idempotent, not a second mutation.
     const retried = await deviceEdit(0, opA, 1, editA);
     expect(retried.json().results[0]).toMatchObject({ status: 'duplicate', revision: 2 });
@@ -130,8 +136,8 @@ integration('two-device offline conflict and reconnection (PostgreSQL)', () => {
     expect(rebased.json().results[0]).toMatchObject({ status: 'accepted', revision: 3 });
 
     // Both devices reconnect: the ledger and direct read agree on one revision.
-    const changesA = await pull(0, 2);
-    const changesB = await pull(1, 1);
+    const changesA = await pull(0, firstEditCursor);
+    const changesB = await pull(1, initialCursor);
     expect(changesA.statusCode).toBe(200);
     expect(changesB.statusCode).toBe(200);
     expect(changesA.json().changes).toEqual([expect.objectContaining({
