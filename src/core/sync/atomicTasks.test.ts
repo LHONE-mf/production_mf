@@ -66,30 +66,65 @@ describe('server-managed task offline writes', () => {
     expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
     expect(await db.hybridTaskOutbox.count()).toBe(1);
   });
-  it('sends sequential offline edits as independent operations and confirms both revisions', async () => {
+  it('sends consecutive offline edits only after each predecessor is acknowledged', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const firstId = await saveServerManagedTask(
       { ...task(), status: TaskStatus.IN_PROGRESS, updatedAt: new Date('2026-11-08T11:00:00Z') }, deviceId);
     const secondId = await saveServerManagedTask(
       { ...task(), status: TaskStatus.CHECKED, updatedAt: new Date('2026-11-08T12:00:00Z') }, deviceId);
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true, json: async () => ({ results: [
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
         { operationId: firstId, status: 'accepted', revision: 4 },
+      ] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [
         { operationId: secondId, status: 'accepted', revision: 5 },
-      ] }),
-    });
+      ] }) });
     vi.stubGlobal('fetch', fetchMock);
-    const result = await pushAtomicTasks({
+    const session = {
       serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
       deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
       deviceProofExpiresAt: Date.now() + 300_000,
-    });
-    expect(result.accepted).toBe(2);
-    const operations = JSON.parse(fetchMock.mock.calls[0][1].body).operations;
-    expect(operations.map((op: {expectedRevision: number}) => op.expectedRevision)).toEqual([3, 4]);
+    };
+    expect((await pushAtomicTasks(session)).accepted).toBe(1);
+    expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(4);
+    expect((await pushAtomicTasks(session)).accepted).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const operations = fetchMock.mock.calls.map(call => JSON.parse(call[1].body).operations);
+    expect(operations.map(batch => batch.map((op: {expectedRevision: number}) => op.expectedRevision)))
+      .toEqual([[3], [4]]);
     expect(await db.hybridTaskOutbox.count()).toBe(0);
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(5);
   });
+  it.each(['conflict', 'rejected'] as const)(
+    'retains later offline edits without sending them after a %s response',
+    async status => {
+      const firstId = await saveServerManagedTask(
+        { ...task(), status: TaskStatus.IN_PROGRESS, updatedAt: new Date('2026-11-08T11:00:00Z') }, deviceId);
+      const secondId = await saveServerManagedTask(
+        { ...task(), status: TaskStatus.CHECKED, updatedAt: new Date('2026-11-08T12:00:00Z') }, deviceId);
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({ results: [{
+          operationId: firstId, status,
+          ...(status === 'conflict' ? { actualRevision: 7 } : { reason: 'workshop_access_denied' }),
+        }] }),
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      const result = await pushAtomicTasks(session);
+      expect(result[status === 'conflict' ? 'conflicts' : 'rejected']).toBe(1);
+      expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe(status);
+      expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+      expect((await pushAtomicTasks(session)).accepted).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.CHECKED);
+      expect(await db.hybridTaskOutbox.count()).toBe(2);
+    },
+  );
   it('does not send or discard queued tasks without a matching unexpired device proof', async () => {
     await saveServerManagedTask(task(), deviceId);
     const fetchMock = vi.fn();
