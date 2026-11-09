@@ -1,22 +1,7 @@
 name: Android emulator smoke and screenshot
 
+# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
 on:
-  push:
-    branches: [feat/hybrid-server-foundation]
-    paths:
-      - '.github/test-trigger.txt'
-      - 'src/**'
-      - 'android/**'
-      - 'scripts/android-emulator-smoke.sh'
-      - 'scripts/verify_android_ed25519_vector.mjs'
-      - 'apps/server/scripts/verify-emulator-device-proof.mjs'
-      - 'apps/server/scripts/verify-fresh-emulator-device-proof.mjs'
-      - 'apps/server/src/**'
-      - 'apps/server/migrations/**'
-      - '.github/workflows/android-emulator-smoke.yml'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'capacitor.config.json'
   workflow_dispatch:
 
 permissions:
@@ -31,7 +16,7 @@ jobs:
   android-emulator:
     name: Install, launch and screenshot Android
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16
