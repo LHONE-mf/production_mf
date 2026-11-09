@@ -61,8 +61,14 @@ export async function pushAtomicTasks(session: HybridSession) {
       if (!item) continue;
       const current = await db.hybridTaskOutbox.get(item.operationId);
       if (!current) continue;
+      if (current.state !== 'pending') continue;
       if ((result.status === 'accepted' || result.status === 'duplicate') && Number.isInteger(result.revision) && result.revision! > 0) {
-        await db.hybridTaskRevisions.put({ entityId: item.entityId, revision: result.revision! });
+        // A delayed acknowledgement must never roll back a newer revision that
+        // was recorded while this request was in flight.
+        const known = (await db.hybridTaskRevisions.get(item.entityId))?.revision ?? 0;
+        if (result.revision! > known) {
+          await db.hybridTaskRevisions.put({ entityId: item.entityId, revision: result.revision! });
+        }
         await db.hybridTaskOutbox.delete(item.operationId);
         accepted++;
       } else if (result.status === 'rejected') {
@@ -110,6 +116,10 @@ export async function pullAtomicTasks(session: HybridSession) {
     previousSequence = Number(change.sequence);
   }
   await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
+    // Two manual pulls can overlap. A slow, older response must not replace
+    // the cursor (or records) committed by a newer response in the meantime.
+    const durableCursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
+    if (durableCursor !== cursor) throw new Error('Concurrent task pull: cursor advanced; retry');
     for (const change of changes) {
       if (change.entity_type !== 'task' || !Number.isSafeInteger(change.revision) || change.revision < 1) throw new Error('Invalid sync entity or revision');
       const queued = await db.hybridTaskOutbox.where('entityId').equals(change.entity_id).count();
