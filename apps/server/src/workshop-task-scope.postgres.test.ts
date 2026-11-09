@@ -196,6 +196,53 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     expect(operations.rows[0].count).toBe(1);
   });
 
+  it('converges two enrolled devices after competing offline edits without duplicate writes', async () => {
+    const id = randomUUID();
+    const initial = base(id, 'assembly');
+    const created = await push(0, id, initial, 0);
+    expect(created.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+
+    // Each separately authenticated device sees the same initial server task.
+    for (const index of [0, 1]) {
+      const snapshot = await comparison(index, id);
+      expect(snapshot.statusCode).toBe(200);
+      expect(snapshot.json()).toMatchObject({ revision: 1 });
+    }
+
+    // Two offline snapshots both expect revision 1. Device A arrives first.
+    const aOperation = randomUUID(), bOperation = randomUUID();
+    const aEdit = { ...initial, title: 'Device A offline edit', updatedAt: '2026-11-08T14:00:00.000Z' };
+    const bEdit = { ...initial, title: 'Device B offline edit', updatedAt: '2026-11-08T14:01:00.000Z' };
+    expect((await push(0, id, aEdit, 1, aOperation)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 2 });
+    const conflict = await push(1, id, bEdit, 1, bOperation);
+    expect(conflict.statusCode).toBe(200);
+    expect(conflict.json().results[0]).toMatchObject({ status: 'conflict', actualRevision: 2 });
+
+    // A retry of the accepted operation is idempotent, not a third revision.
+    expect((await push(0, id, aEdit, 1, aOperation)).json().results[0])
+      .toMatchObject({ status: 'duplicate', revision: 2 });
+    const authoritative = await comparison(1, id);
+    expect(authoritative.json()).toMatchObject({ revision: 2 });
+    expect(authoritative.json().payload.title).toBe('Device A offline edit');
+
+    // Both device identities see the same authoritative version.
+    const onA = await comparison(0, id);
+    expect(onA.json()).toEqual(authoritative.json());
+    const stored = await pool.query(
+      'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+      [org, id],
+    );
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0].revision).toBe(2);
+    expect(stored.rows[0].payload.title).toBe('Device A offline edit');
+    const operations = await pool.query(
+      'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+      [org, id],
+    );
+    expect(operations.rows[0].count).toBe(2);
+  });
+
   it('removes access immediately when a master membership is revoked', async () => {
     await pool.query('DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2',[org,master]);
     expect((await pull(1)).json().changes).toEqual([]);
