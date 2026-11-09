@@ -6,6 +6,10 @@ import { requireFreshDeviceProof } from './deviceProofClient';
 function urlFor(session: HybridSession, path: string) {
   const origin = new URL(session.serverUrl);
   if (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(origin.hostname))) throw new Error('HTTPS required');
+  // The sync URL is an origin, never an arbitrary endpoint. Reject embedded
+  // credentials, paths, query parameters and fragments before sending bearer tokens.
+  if (origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash)
+    throw new Error('Sync server URL must be an origin without credentials or path');
   return new URL(path, origin).toString();
 }
 async function send(session: HybridSession, path: string, init?: RequestInit) {
