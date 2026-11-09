@@ -66,6 +66,15 @@ export async function pushAtomicTasks(session: HybridSession) {
       const current = await db.hybridTaskOutbox.get(item.operationId);
       if (!current) continue;
       if (current.state !== 'pending') continue;
+      // The response acknowledges the exact snapshot sent over the network.
+      // If an operation was changed while in flight, retain it rather than
+      // deleting or rejecting an unacknowledged local edit.
+      if (current.deviceId !== item.deviceId || current.entityId !== item.entityId ||
+          current.entityType !== item.entityType || current.operationType !== item.operationType ||
+          current.expectedRevision !== item.expectedRevision ||
+          JSON.stringify(current.payload) !== JSON.stringify(item.payload)) {
+        throw new Error('Queued task operation changed during sync; acknowledgement not applied');
+      }
       if ((result.status === 'accepted' || result.status === 'duplicate') && Number.isInteger(result.revision) && result.revision! > 0) {
         // A delayed acknowledgement must never roll back a newer revision that
         // was recorded while this request was in flight.
