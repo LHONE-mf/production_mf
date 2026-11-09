@@ -70,7 +70,7 @@ jobs:
           import { readFile } from 'node:fs/promises';
           const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
           try {
-            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql']) {
+            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql']) {
               await pool.query(await readFile('migrations/' + name, 'utf8'));
               console.log('Migrated isolated emulator CI DB:', name);
             }
@@ -90,7 +90,18 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+          # Gradle distribution fetch can return transient GitHub CDN 504s.
+          for attempt in 1 2 3; do
+            if ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android emulator APK build failed after three attempts"
+              exit 1
+            fi
+            echo "::warning::Android Gradle build retry $attempt/3"
+            sleep 15
+          done
       - name: Enable KVM for emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
