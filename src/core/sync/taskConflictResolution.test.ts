@@ -163,6 +163,22 @@ describe('manual task conflict resolution', () => {
     expect((await db.hybridTaskOutbox.get(rejectedId))?.state).toBe('rejected');
     expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
+  it('preserves rejected edits if server snapshot predates the rejection revision', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const rejectedId = await saveServerManagedTask(task('Do not lose rejected edit'), deviceId);
+    await db.hybridTaskOutbox.update(rejectedId, {
+      state: 'rejected', actualRevision: 8, rejectionReason: 'workshop_access_denied',
+    });
+    await expect(archiveRejectedTaskAndUseServer(taskId, 7, encodeTask(task('Outdated snapshot'))))
+      .rejects.toThrow('predates the reported rejection revision');
+    expect((await db.tasks.get(taskId))?.title).toBe('Do not lose rejected edit');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+    expect(await db.hybridTaskResolutions.count()).toBe(0);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskOutbox.get(rejectedId))?.actualRevision).toBe(8);
+    expect((await db.hybridTaskOutbox.get(rejectedId))?.state).toBe('rejected');
+  });
   it('does not discard queued edits without a conflict or when a rejected operation also exists', async () => {
     const firstId = await saveServerManagedTask(task(), deviceId);
     const secondId = await saveServerManagedTask(task('Another edit'), deviceId);
