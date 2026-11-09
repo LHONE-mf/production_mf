@@ -28,11 +28,11 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     dueDate: null, techCardId: null, stage: null, workshopId,
     comments: [], attachments: [],
   });
-  const push = (index: number, id: string, payload: ReturnType<typeof base>, expectedRevision: number) =>
+  const push = (index: number, id: string, payload: ReturnType<typeof base>, expectedRevision: number, operationId = randomUUID()) =>
     app.inject({
       method: 'POST', url: '/sync/push', headers: auth(index),
       payload: { operations: [{
-        operationId: randomUUID(), deviceId: index === 0 ? chiefDevice : masterDevice,
+        operationId, deviceId: index === 0 ? chiefDevice : masterDevice,
         entityType: 'task', entityId: id, operationType: 'upsert',
         expectedRevision, payload,
       }] },
@@ -127,6 +127,40 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     expect(revoked.json().results[0]).toMatchObject({ status: 'rejected', reason: 'assignee_outside_workshop' });
     const stored = await pool.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',[org,taskA]);
     expect(stored.rows[0].revision).toBe(3);
+  });
+
+  it('rejects replay of a previously accepted operation after workshop access is revoked', async () => {
+    const replayTask = randomUUID();
+    const payload = base(replayTask, 'assembly');
+    const operationId = randomUUID();
+    const first = await push(1, replayTask, payload, 0, operationId);
+    expect(first.statusCode).toBe(200);
+    expect(first.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+    const repeat = await push(1, replayTask, payload, 0, operationId);
+    expect(repeat.json().results[0]).toMatchObject({ status: 'duplicate', revision: 1 });
+
+    await pool.query(
+      "DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id='assembly'",
+      [org, master],
+    );
+    try {
+      const denied = await push(1, replayTask, payload, 0, operationId);
+      expect(denied.statusCode).toBe(200);
+      expect(denied.json().results[0]).toMatchObject({
+        status: 'rejected', reason: 'workshop_access_denied',
+      });
+      expect((await comparison(1, replayTask)).statusCode).toBe(404);
+      const count = await pool.query(
+        'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+        [org, replayTask],
+      );
+      expect(count.rows[0].count).toBe(1);
+    } finally {
+      await pool.query(
+        "INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly') ON CONFLICT DO NOTHING",
+        [org, master],
+      );
+    }
   });
 
   it('removes access immediately when a master membership is revoked', async () => {
