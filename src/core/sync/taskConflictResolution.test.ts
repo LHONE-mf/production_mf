@@ -3,7 +3,7 @@ import { db } from '../db';
 import { TaskPriority, TaskStatus, type Task } from '../types';
 import { saveServerManagedTask } from './atomicTasks';
 import { pushAtomicTasks, pullAtomicTasks } from './atomicClient';
-import { archiveConflictAndUseServer } from './taskConflictResolution';
+import { archiveConflictAndUseServer, archiveRejectedTaskAndUseServer } from './taskConflictResolution';
 import { encodeTask } from './taskDto';
 
 const deviceId = '22222222-2222-4222-8222-222222222222';
@@ -115,6 +115,43 @@ describe('manual task conflict resolution', () => {
     db.close();
     await db.open();
     expect((await db.hybridTaskOutbox.get(operationId))?.actualRevision).toBe(7);
+  });
+  it('archives rejected and dependent edits before adopting an inspected server snapshot', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const rejectedId = await saveServerManagedTask(task('Rejected offline edit'), deviceId);
+    const pendingId = await saveServerManagedTask(task('Unsent dependent edit'), deviceId);
+    await db.hybridTaskOutbox.update(rejectedId, {
+      state: 'rejected', rejectionReason: 'workshop_access_denied',
+    });
+    const server = encodeTask(task('Authorized server task'));
+    const archiveId = await archiveRejectedTaskAndUseServer(taskId, 3, server);
+    expect((await db.tasks.get(taskId))?.title).toBe('Authorized server task');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    db.close();
+    await db.open();
+    const archive = await db.hybridTaskResolutions.get(archiveId);
+    expect(archive?.decision).toBe('reject_use_server');
+    expect(archive?.localTask.title).toBe('Unsent dependent edit');
+    expect(archive?.localOperations.map(op => op.operationId)).toEqual([rejectedId, pendingId]);
+    expect(archive?.localOperations[0].rejectionReason).toBe('workshop_access_denied');
+    expect(archive?.localOperations[1].payload.title).toBe('Unsent dependent edit');
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    const nextId = await saveServerManagedTask(task('New authorized edit'), deviceId);
+    expect((await db.hybridTaskOutbox.get(nextId))?.expectedRevision).toBe(3);
+  });
+  it('refuses rejected-task recovery with stale snapshot or mixed conflict without losing edits', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 5 });
+    const rejectedId = await saveServerManagedTask(task('Rejected'), deviceId);
+    await db.hybridTaskOutbox.update(rejectedId, { state: 'rejected' });
+    const server = encodeTask(task('Stale server'));
+    await expect(archiveRejectedTaskAndUseServer(taskId, 4, server))
+      .rejects.toThrow('older than the local revision');
+    const conflictId = await saveServerManagedTask(task('Another edit'), deviceId).catch(() => null);
+    expect(conflictId).toBeNull();
+    expect(await db.hybridTaskResolutions.count()).toBe(0);
+    expect((await db.tasks.get(taskId))?.title).toBe('Rejected');
+    expect((await db.hybridTaskOutbox.get(rejectedId))?.state).toBe('rejected');
   });
   it('does not discard queued edits without a conflict or when a rejected operation also exists', async () => {
     const firstId = await saveServerManagedTask(task(), deviceId);
