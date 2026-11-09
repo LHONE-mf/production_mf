@@ -57,7 +57,11 @@ export async function pushAtomicTasks(session: HybridSession) {
         throw new Error('Invalid sync response: revision does not match queued precondition');
     } else if (result.status === 'conflict') {
       if (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0) throw new Error('Invalid sync response: conflict revision');
-    } else if (result.status !== 'rejected') throw new Error('Invalid sync response: status');
+    } else if (result.status === 'rejected') {
+      if (result.actualRevision !== undefined &&
+          (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0))
+        throw new Error('Invalid sync response: rejection revision');
+    } else throw new Error('Invalid sync response: status');
   }
   await db.transaction('rw', db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
     for (const result of response.results as Array<{operationId:string;status:string;revision?:number;actualRevision?:number;reason?:string}>) {
@@ -87,7 +91,7 @@ export async function pushAtomicTasks(session: HybridSession) {
       } else if (result.status === 'rejected') {
         // Keep the operation for diagnosis and retry only after the cause is resolved.
         // Do not silently discard a locally saved assignment.
-        await db.hybridTaskOutbox.update(item.operationId, { state: 'rejected', actualRevision: undefined, rejectionReason: result.reason || 'server_rejected' });
+        await db.hybridTaskOutbox.update(item.operationId, { state: 'rejected', actualRevision: result.actualRevision, rejectionReason: result.reason || 'server_rejected' });
         rejected++;
       } else if (result.status === 'conflict') {
         await db.hybridTaskOutbox.update(item.operationId, { state: 'conflict', actualRevision: result.actualRevision, rejectionReason: undefined });
