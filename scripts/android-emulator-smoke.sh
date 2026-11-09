@@ -87,8 +87,11 @@ if ! grep -q "$PACKAGE" artifacts/android-smoke/focus.txt; then
   echo "ERROR: Production MF exited after a single Back press." >&2
   exit 1
 fi
-if grep -E "FATAL EXCEPTION|Process: $PACKAGE.*|ANR in $PACKAGE" artifacts/android-smoke/logcat.txt > artifacts/android-smoke/crashes.txt; then
-  echo "ERROR: Android crash detected. See crashes.txt" >&2
+# Android framework tooling (especially uiautomator) may crash independently.
+# Only fail on a stack explicitly attributed to our app process or its ANR.
+# A generic FATAL EXCEPTION from a different PID is not an app crash.
+if grep -E "Process: $PACKAGE([,[:space:]]|$)|ANR in $PACKAGE([[:space:]]|$)" artifacts/android-smoke/logcat.txt > artifacts/android-smoke/crashes.txt; then
+  echo "ERROR: Production MF process crash or ANR detected. See crashes.txt" >&2
   exit 1
 fi
 echo "Emulator smoke test passed after first launch and cold relaunch. Inspect launch.png and relaunch.png."
