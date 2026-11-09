@@ -35,6 +35,13 @@ describe('task comment integrity', () => {
     expect(validateTaskComments(actor, { ...payload, comments: [] }, { ...payload, comments: [comment] })).toBe('comment_is_immutable');
     expect(validateTaskComments(actor, { ...payload, comments: [{ ...comment, text: 'Changed' }] }, { ...payload, comments: [comment] })).toBe('comment_is_immutable');
   });
+  it('preserves existing comments when JSON field order differs', () => {
+    const reordered = Object.fromEntries(Object.entries(comment).reverse()) as typeof comment;
+    expect(validateTaskComments(actor, { ...payload, comments: [reordered] },
+      { ...payload, comments: [comment] })).toBeNull();
+    expect(validateTaskComments(actor, { ...payload, comments: [{ ...reordered, text: 'Tampered' }] },
+      { ...payload, comments: [comment] })).toBe('comment_is_immutable');
+  });
   it('rejects duplicate comment identifiers', () => {
     expect(validateTaskComments(actor, { ...payload, comments: [comment, comment] })).toBe('duplicate_comment_id');
   });
@@ -50,6 +57,13 @@ describe('task attachment integrity', () => {
   });
   it('rejects changing existing attachment contents', () => {
     expect(validateTaskAttachments({ ...payload, attachments: [{ ...attachment, data: 'modified' }] }, { ...payload, attachments: [attachment] })).toBe('attachment_is_immutable');
+  });
+  it('preserves existing attachments when JSON field order differs', () => {
+    const reordered = Object.fromEntries(Object.entries(attachment).reverse()) as typeof attachment;
+    expect(validateTaskAttachments({ ...payload, attachments: [reordered] },
+      { ...payload, attachments: [attachment] })).toBeNull();
+    expect(validateTaskAttachments({ ...payload, attachments: [{ ...reordered, data: 'Tampered' }] },
+      { ...payload, attachments: [attachment] })).toBe('attachment_is_immutable');
   });
   it('rejects duplicate attachment IDs', () => {
     expect(validateTaskAttachments({ ...payload, attachments: [attachment, attachment] })).toBe('duplicate_attachment_id');
