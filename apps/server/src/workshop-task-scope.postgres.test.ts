@@ -133,18 +133,21 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     const replayTask = randomUUID();
     const payload = base(replayTask, 'assembly');
     const operationId = randomUUID();
-    const first = await push(1, replayTask, payload, 0, operationId);
+    const created = await push(0, replayTask, payload, 0);
+    expect(created.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+    const updatedPayload = { ...payload, status: 'assigned', updatedAt: '2026-11-08T11:00:00.000Z' };
+    const first = await push(1, replayTask, updatedPayload, 1, operationId);
     expect(first.statusCode).toBe(200);
-    expect(first.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
-    const repeat = await push(1, replayTask, payload, 0, operationId);
-    expect(repeat.json().results[0]).toMatchObject({ status: 'duplicate', revision: 1 });
+    expect(first.json().results[0]).toMatchObject({ status: 'accepted', revision: 2 });
+    const repeat = await push(1, replayTask, updatedPayload, 1, operationId);
+    expect(repeat.json().results[0]).toMatchObject({ status: 'duplicate', revision: 2 });
 
     await pool.query(
       "DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id='assembly'",
       [org, master],
     );
     try {
-      const denied = await push(1, replayTask, payload, 0, operationId);
+      const denied = await push(1, replayTask, updatedPayload, 1, operationId);
       expect(denied.statusCode).toBe(200);
       expect(denied.json().results[0]).toMatchObject({
         status: 'rejected', reason: 'workshop_access_denied',
@@ -154,7 +157,7 @@ integration('master workshop task authorization (PostgreSQL)', () => {
         'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
         [org, replayTask],
       );
-      expect(count.rows[0].count).toBe(1);
+      expect(count.rows[0].count).toBe(2);
     } finally {
       await pool.query(
         "INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly') ON CONFLICT DO NOTHING",
