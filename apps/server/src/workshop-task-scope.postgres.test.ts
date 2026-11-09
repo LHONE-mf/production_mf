@@ -21,7 +21,7 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     authorization: 'Bearer ' + credentials[index].token,
     'x-device-proof': credentials[index].proof,
   });
-  const base = (id: string, workshopId: string) => ({
+  const base = (id: string, workshopId: string | null) => ({
     schemaVersion: 1, title: 'Workshop task', description: '', status: 'created',
     priority: 'medium', assignedTo: null as string | null, createdBy: chief,
     createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
