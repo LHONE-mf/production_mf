@@ -248,6 +248,36 @@ describe('server-managed task offline writes', () => {
       expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
     }
   });
+  it('rejects a partially valid multi-task acknowledgement without confirming either edit', async () => {
+    const secondTaskId = '55555555-5555-4555-8555-555555555555';
+    const firstId = await saveServerManagedTask(task(), deviceId);
+    const secondId = await saveServerManagedTask({
+      ...task(), id: secondTaskId, title: 'Independent offline task',
+    }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        results: [
+          { operationId: firstId, status: 'accepted', revision: 1 },
+          { operationId: secondId, status: 'accepted', revision: 99 },
+        ],
+      }),
+    }));
+    await expect(pushAtomicTasks(session)).rejects.toThrow('Invalid sync response');
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+    expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(secondTaskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
+    expect((await db.tasks.get(secondTaskId))?.title).toBe('Independent offline task');
+  });
+
   it('sends a device-bound proof and clears the outbox only after server acknowledgment', async () => {
     const operationId = await saveServerManagedTask(task(), deviceId);
     const fetchMock = vi.fn().mockResolvedValue({
