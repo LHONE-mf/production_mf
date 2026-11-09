@@ -198,4 +198,49 @@ integration('two-device offline conflict and reconnection (PostgreSQL)', () => {
     expect(ledger.rows[0].count).toBe(2);
   });
 
+  it('binds idempotent operation IDs to the originating device and immutable payload', async () => {
+    const isolatedTaskId = randomUUID();
+    const operationId = randomUUID();
+    const original = task('Authenticated device A operation', 'created', '2026-11-08T10:00:00.000Z');
+    const attempt = (deviceIndex: number, payload: ReturnType<typeof task>) => app.inject({
+      method: 'POST', url: '/sync/push', headers: headers(deviceIndex),
+      payload: { operations: [{
+        operationId, deviceId: devices[deviceIndex].id, entityType: 'task',
+        entityId: isolatedTaskId, operationType: 'upsert', expectedRevision: 0, payload,
+      }] },
+    });
+    const accepted = await attempt(0, original);
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+
+    // A lost acknowledgement is safe to retry from the same enrolled device.
+    const retried = await attempt(0, original);
+    expect(retried.json().results[0]).toMatchObject({ status: 'duplicate', revision: 1 });
+
+    // Even the same signed-in actor cannot transfer an operation to another device.
+    const otherDevice = await attempt(1, original);
+    expect(otherDevice.json().results[0]).toMatchObject({
+      status: 'rejected', reason: 'operation_id_reused',
+    });
+
+    // Nor can the original device reuse an operation ID with modified content.
+    const altered = await attempt(0, { ...original, title: 'Altered retry' });
+    expect(altered.json().results[0]).toMatchObject({
+      status: 'rejected', reason: 'operation_id_reused',
+    });
+
+    const stored = await pool.query(
+      'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+      [organizationId, isolatedTaskId],
+    );
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0].revision).toBe(1);
+    expect(stored.rows[0].payload.title).toBe(original.title);
+    const operations = await pool.query(
+      'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+      [organizationId, isolatedTaskId],
+    );
+    expect(operations.rows[0].count).toBe(1);
+  });
+
 });
