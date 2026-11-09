@@ -43,6 +43,7 @@ export function SyncModule() {
   const rejectedOperations = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('rejected').toArray(), []);
   const rejected = rejectedOperations?.length;
   const archivedConflicts = useLiveQuery(() => db.hybridTaskResolutions.count(), []);
+  const archiveHistory = useLiveQuery(() => db.hybridTaskResolutions.orderBy('archivedAt').reverse().limit(10).toArray(), []);
   const conflictingTasks = useLiveQuery(async () => {
     const operations = await db.hybridTaskOutbox.where('state').anyOf('conflict', 'rejected').toArray();
     return Promise.all(operations.map(async operation => ({ operation, task: await db.tasks.get(operation.entityId) })));
@@ -273,6 +274,27 @@ export function SyncModule() {
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты</p></div>
         </div>
         <p className="text-slate-400 text-sm">Отклонено сервером: {rejected ?? '—'} · Архив конфликтов (сохранено на устройстве): {archivedConflicts ?? '—'}</p>
+        {(archiveHistory?.length ?? 0) > 0 && (
+          <div className="rounded-xl border border-slate-700 p-3 space-y-2">
+            <h3 className="text-white text-sm font-semibold">Архив разрешённых конфликтов (только на устройстве)</h3>
+            {archiveHistory?.map(record => (
+              <details key={record.id} className="rounded-lg bg-slate-900/50 p-3 text-sm">
+                <summary className="cursor-pointer text-amber-200">{record.localTask.title} · {new Date(record.archivedAt).toLocaleString()} · {record.localOperations.length} изменений</summary>
+                <p className="text-slate-400 text-xs mt-2">Версия сервера: {record.serverRevision} · локальные изменения сохранены, но не отправлены</p>
+                <p className="text-slate-300 text-xs mt-2">Локальная версия: {record.localTask.title} · {record.localTask.status}</p>
+                <p className="text-slate-400 text-xs whitespace-pre-wrap">{record.localTask.description}</p>
+                {record.localOperations.map(operation => (
+                  <div key={operation.operationId} className="mt-2 border-l border-slate-600 pl-2">
+                    <p className="text-slate-300 text-xs">Локальная правка: {operation.payload.title} · {operation.payload.status}</p>
+                    <p className="text-slate-400 text-xs whitespace-pre-wrap">{operation.payload.description}</p>
+                  </div>
+                ))}
+                <p className="text-green-300 text-xs mt-2">Принято с сервера: {record.serverPayload.title} · {record.serverPayload.status}</p>
+                <p className="text-slate-400 text-xs whitespace-pre-wrap">{record.serverPayload.description}</p>
+              </details>
+            ))}
+          </div>
+        )}
         {(conflictingTasks?.length ?? 0) > 0 && (
           <div className="space-y-2">
             <h3 className="text-white font-semibold text-sm">Задания, требующие внимания</h3>
