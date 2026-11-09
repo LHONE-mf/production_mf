@@ -84,6 +84,12 @@ export async function archiveRejectedTaskAndUseServer(
       }
       const knownRevision = (await db.hybridTaskRevisions.get(entityId))?.revision ?? 0;
       if (revision < knownRevision) throw new Error('Server snapshot is older than the local revision');
+      // Rejections may also report the server's actual revision. A stale
+      // snapshot must never clear those edits, even if our local cursor lags.
+      if (queued.some(op => op.state === 'rejected' &&
+          Number.isSafeInteger(op.actualRevision) && op.actualRevision! > revision)) {
+        throw new Error('Server snapshot predates the reported rejection revision');
+      }
       const id = crypto.randomUUID();
       await db.hybridTaskResolutions.add({
         id, entityId, archivedAt: Date.now(), decision: 'reject_use_server',
