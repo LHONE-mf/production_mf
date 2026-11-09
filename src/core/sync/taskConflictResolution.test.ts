@@ -147,11 +147,21 @@ describe('manual task conflict resolution', () => {
     const server = encodeTask(task('Stale server'));
     await expect(archiveRejectedTaskAndUseServer(taskId, 4, server))
       .rejects.toThrow('older than the local revision');
-    const conflictId = await saveServerManagedTask(task('Another edit'), deviceId).catch(() => null);
-    expect(conflictId).toBeNull();
+    // Even a valid snapshot cannot clear a queue that mixes conflicts and rejections.
+    await db.hybridTaskOutbox.update(rejectedId, { state: 'conflict', actualRevision: 6 });
+    const secondId = await saveServerManagedTask(task('Another edit'), deviceId).catch(() => null);
+    expect(secondId).toBeNull();
+    await db.hybridTaskOutbox.update(rejectedId, { state: 'rejected' });
+    await db.hybridTaskOutbox.add({
+      ...(await db.hybridTaskOutbox.get(rejectedId))!,
+      operationId: crypto.randomUUID(), state: 'conflict', actualRevision: 6,
+    });
+    await expect(archiveRejectedTaskAndUseServer(taskId, 6, encodeTask(task('Server'))))
+      .rejects.toThrow('Resolve task conflicts separately');
     expect(await db.hybridTaskResolutions.count()).toBe(0);
     expect((await db.tasks.get(taskId))?.title).toBe('Rejected');
     expect((await db.hybridTaskOutbox.get(rejectedId))?.state).toBe('rejected');
+    expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
   it('does not discard queued edits without a conflict or when a rejected operation also exists', async () => {
     const firstId = await saveServerManagedTask(task(), deviceId);
