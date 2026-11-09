@@ -321,6 +321,44 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
   });
 
+  it.each(['invalid_creation_date', 'reversed_audit_clock', 'foreign_comment', 'invalid_attachment_date'] as const)(
+    'rolls back remote task and cursor for malformed %s',
+    async failure => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      const { encodeTask } = await import('./taskDto');
+      const payload = encodeTask(task());
+      if (failure === 'invalid_creation_date') payload.createdAt = 'not-a-date';
+      if (failure === 'reversed_audit_clock') payload.updatedAt = '2026-11-07T10:00:00.000Z';
+      if (failure === 'foreign_comment') payload.comments = [{
+        id: '66666666-6666-4666-8666-666666666666',
+        taskId: '77777777-7777-4777-8777-777777777777',
+        authorId: '44444444-4444-4444-8444-444444444444',
+        text: 'Misattached', createdAt: '2026-11-08T10:00:00.000Z',
+      }];
+      if (failure === 'invalid_attachment_date') payload.attachments = [{
+        id: '88888888-8888-4888-8888-888888888888',
+        taskId, fileName: 'report.txt', fileType: 'text/plain',
+        data: 'test', createdAt: 'invalid',
+      }];
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 20 });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({
+          changes: [{ sequence: '21', entity_id: taskId, entity_type: 'task',
+            revision: 1, payload }],
+          nextCursor: 21, hasMore: false,
+        }),
+      }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow();
+      expect(await db.tasks.get(taskId)).toBeUndefined();
+      expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(20);
+    },
+  );
+
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
     expect(await db.tasks.get(taskId)).toBeUndefined();
