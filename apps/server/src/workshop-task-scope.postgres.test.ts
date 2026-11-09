@@ -9,7 +9,7 @@ const integration = process.env.POSTGRES_TEST_URL ? describe : describe.skip;
 integration('master workshop task authorization (PostgreSQL)', () => {
   const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
   const app = buildApp(pool);
-  const org = randomUUID(), chief = randomUUID(), master = randomUUID();
+  const org = randomUUID(), chief = randomUUID(), master = randomUUID(), worker = randomUUID();
   const chiefDevice = randomUUID(), masterDevice = randomUUID();
   const taskA = randomUUID(), taskB = randomUUID();
   const credentials = [chief, master].map(user => ({
@@ -23,7 +23,7 @@ integration('master workshop task authorization (PostgreSQL)', () => {
   });
   const base = (id: string, workshopId: string) => ({
     schemaVersion: 1, title: 'Workshop task', description: '', status: 'created',
-    priority: 'medium', assignedTo: null, createdBy: chief,
+    priority: 'medium', assignedTo: null as string | null, createdBy: chief,
     createdAt: '2026-11-08T10:00:00.000Z', updatedAt: '2026-11-08T10:00:00.000Z',
     dueDate: null, techCardId: null, stage: null, workshopId,
     comments: [], attachments: [],
@@ -67,6 +67,8 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     }
     await pool.query("INSERT INTO workshops(organization_id,id,name) VALUES($1,'assembly','Assembly'),($1,'coating','Coating')",[org]);
     await pool.query("INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly')",[org,master]);
+    await pool.query("INSERT INTO users(id,organization_id,login,password_hash,role) VALUES($1,$2,$3,'test-only','worker')",[worker,org,'scope-test-'+worker]);
+    await pool.query("INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly')",[org,worker]);
   });
 
   afterAll(async () => {
@@ -106,6 +108,25 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     const stored = await pool.query('SELECT revision,payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',[org,taskA]);
     expect(stored.rows[0].revision).toBe(2);
     expect(stored.rows[0].payload.workshopId).toBe('assembly');
+  });
+
+  it('rejects out-of-workshop assignees for chiefs and masters, without changing stored revisions', async () => {
+    const invalid = await push(0,taskB,{ ...base(taskB,'coating'), assignedTo: worker, updatedAt: '2026-11-08T12:00:00.000Z' },1);
+    expect(invalid.statusCode).toBe(200);
+    expect(invalid.json().results[0]).toMatchObject({ status: 'rejected', reason: 'assignee_outside_workshop' });
+
+    const valid = await push(1,taskA,{ ...base(taskA,'assembly'), assignedTo: worker, status: 'assigned', updatedAt: '2026-11-08T12:00:00.000Z' },2);
+    expect(valid.json().results[0]).toMatchObject({ status: 'accepted', revision: 3 });
+
+    await pool.query("INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'coating')",[org,worker]);
+    const allowed = await push(0,taskB,{ ...base(taskB,'coating'), assignedTo: worker, status: 'assigned', updatedAt: '2026-11-08T12:00:00.000Z' },1);
+    expect(allowed.json().results[0]).toMatchObject({ status: 'accepted', revision: 2 });
+
+    await pool.query("DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id='assembly'",[org,worker]);
+    const revoked = await push(1,taskA,{ ...base(taskA,'assembly'), assignedTo: worker, status: 'in_progress', updatedAt: '2026-11-08T13:00:00.000Z' },3);
+    expect(revoked.json().results[0]).toMatchObject({ status: 'rejected', reason: 'assignee_outside_workshop' });
+    const stored = await pool.query('SELECT revision FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',[org,taskA]);
+    expect(stored.rows[0].revision).toBe(3);
   });
 
   it('removes access immediately when a master membership is revoked', async () => {
