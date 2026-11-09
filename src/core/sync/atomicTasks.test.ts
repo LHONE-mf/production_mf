@@ -407,6 +407,42 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskOutbox.get(operationId))?.payload.title).toBe('New offline title');
   });
 
+  it('atomically rolls back a batch if one queued edit changes during push', async () => {
+    const secondTaskId = '55555555-5555-4555-8555-555555555555';
+    const firstId = await saveServerManagedTask(task(), deviceId);
+    const secondId = await saveServerManagedTask(
+      { ...task(), id: secondTaskId, title: 'Second offline task' }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let deliver!: (result: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { deliver = resolve; })));
+    const inFlight = pushAtomicTasks(session);
+    await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+    await db.hybridTaskOutbox.update(secondId, {
+      payload: { ...((await db.hybridTaskOutbox.get(secondId))!.payload), title: 'Changed while pushing' },
+    });
+    deliver({ ok: true, json: async () => ({
+      results: [
+        { operationId: firstId, status: 'accepted', revision: 1 },
+        { operationId: secondId, status: 'accepted', revision: 1 },
+      ],
+    }) });
+    await expect(inFlight).rejects.toThrow('Queued task operation changed during sync');
+    // No partial acknowledgement: the first task must remain queued as well.
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+    expect((await db.hybridTaskOutbox.get(secondId))?.payload.title).toBe('Changed while pushing');
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(secondTaskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+    expect((await db.hybridTaskOutbox.get(secondId))?.payload.title).toBe('Changed while pushing');
+  });
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
