@@ -162,4 +162,40 @@ integration('two-device offline conflict and reconnection (PostgreSQL)', () => {
     );
     expect(committed.rows.map(row => row.revision)).toEqual([1, 2, 3]);
   });
+  it('serializes truly simultaneous device submissions and commits only one revision', async () => {
+    const concurrentTaskId = randomUUID();
+    const send = (index: number, expectedRevision: number, payload: ReturnType<typeof task>) =>
+      app.inject({
+        method: 'POST', url: '/sync/push', headers: headers(index),
+        payload: { operations: [{
+          operationId: randomUUID(), deviceId: devices[index].id,
+          entityType: 'task', entityId: concurrentTaskId,
+          operationType: 'upsert', expectedRevision, payload,
+        }] },
+      });
+    const created = await send(0, 0, create);
+    expect(created.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+    const results = await Promise.all([
+      send(0, 1, task('Concurrent A', 'assigned', '2026-11-08T11:00:00.000Z')),
+      send(1, 1, task('Concurrent B', 'assigned', '2026-11-08T12:00:00.000Z')),
+    ]);
+    expect(results.map(result => result.statusCode)).toEqual([200, 200]);
+    const acknowledgements = results.map(result => result.json().results[0]);
+    expect(acknowledgements.map(result => result.status).sort()).toEqual(['accepted', 'conflict']);
+    expect(acknowledgements.find(result => result.status === 'accepted').revision).toBe(2);
+    expect(acknowledgements.find(result => result.status === 'conflict').actualRevision).toBe(2);
+    const state = await pool.query(
+      'SELECT revision,payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+      [organizationId, concurrentTaskId],
+    );
+    expect(state.rows).toHaveLength(1);
+    expect(state.rows[0].revision).toBe(2);
+    expect(['Concurrent A', 'Concurrent B']).toContain(state.rows[0].payload.title);
+    const ledger = await pool.query(
+      'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+      [organizationId, concurrentTaskId],
+    );
+    expect(ledger.rows[0].count).toBe(2);
+  });
+
 });
