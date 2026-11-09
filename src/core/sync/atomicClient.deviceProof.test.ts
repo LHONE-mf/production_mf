@@ -21,6 +21,25 @@ describe('atomic client device-scoped pull', () => {
       .rejects.toThrow('Fresh device proof');
     expect(fetchMock).not.toHaveBeenCalled();
   });
+  it.each([
+    'https://admin:secret@sync.example.com',
+    'https://sync.example.com/api',
+    'https://sync.example.com/?token=embedded',
+    'https://sync.example.com/#fragment',
+  ])('never sends bearer credentials to malformed server origin %s', async serverUrl => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(pullAtomicTasks({ ...session, serverUrl }))
+      .rejects.toThrow('Sync server URL must be an origin');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('rejects cleartext remote server addresses before a request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(pullAtomicTasks({ ...session, serverUrl: 'http://sync.example.com' }))
+      .rejects.toThrow('HTTPS required');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('validates proof device binding and expiry without persisting the grant', () => {
     expect(requireFreshDeviceProof(session)).toEqual({ deviceId, token: 'B'.repeat(43) });
     expect(() => requireFreshDeviceProof({ ...session, deviceProofDeviceId: 'invalid' })).toThrow();
