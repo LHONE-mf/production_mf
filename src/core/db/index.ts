@@ -2,6 +2,7 @@ import Dexie, { Table } from 'dexie';
 import { v4 as uuidv4 } from 'uuid';
 import { migratePasswords } from '../security';
 import type { PendingTaskOperation } from '../sync/hybridOutbox';
+import type { ArchivedTaskConflict } from '../sync/taskConflictResolution';
 import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
@@ -9,6 +10,7 @@ export class AppDatabase extends Dexie {
   tasks!: Table<Task, string>;
   hybridTaskOutbox!: Table<PendingTaskOperation, string>;
   hybridTaskRevisions!: Table<{ entityId: string; revision: number }, string>;
+  hybridTaskResolutions!: Table<ArchivedTaskConflict, string>;
   hybridSyncMetadata!: Table<{ key: string; value: number }, string>;
   techCards!: Table<TechCard, string>;
   syncDevices!: Table<SyncDevice, string>;
@@ -139,6 +141,11 @@ export class AppDatabase extends Dexie {
       hybridTaskOutbox: 'operationId, entityId, state, queuedAt',
       hybridTaskRevisions: 'entityId',
       hybridSyncMetadata: 'key',
+    });
+
+    // v17: append-only local conflict archive, no change to previous stores.
+    this.version(17).stores({
+      hybridTaskResolutions: 'id, entityId, archivedAt',
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
