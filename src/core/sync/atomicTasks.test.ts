@@ -443,6 +443,36 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskOutbox.get(secondId))?.payload.title).toBe('Changed while pushing');
   });
 
+  it('does not partially acknowledge a batch if an in-flight operation disappears', async () => {
+    const secondTaskId = '55555555-5555-4555-8555-555555555555';
+    const firstId = await saveServerManagedTask(task(), deviceId);
+    const secondId = await saveServerManagedTask(
+      { ...task(), id: secondTaskId, title: 'Another task' }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let deliver!: (result: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { deliver = resolve; })));
+    const inFlight = pushAtomicTasks(session);
+    await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+    await db.hybridTaskOutbox.delete(secondId);
+    deliver({ ok: true, json: async () => ({
+      results: [
+        { operationId: firstId, status: 'accepted', revision: 1 },
+        { operationId: secondId, status: 'accepted', revision: 1 },
+      ],
+    }) });
+    await expect(inFlight).rejects.toThrow('disappeared or changed state during sync');
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(secondTaskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+  });
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
