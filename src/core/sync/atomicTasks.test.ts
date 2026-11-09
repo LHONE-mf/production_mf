@@ -38,12 +38,57 @@ describe('server-managed task offline writes', () => {
       payload: { status: TaskStatus.IN_PROGRESS },
     });
   });
-  it('rolls back a task update if a previous edit is still pending', async () => {
-    await db.tasks.put(task());
-    await saveServerManagedTask({ ...task(), status: TaskStatus.IN_PROGRESS }, deviceId);
-    await expect(saveServerManagedTask({ ...task(), status: TaskStatus.COMPLETED }, deviceId)).rejects.toThrow('previous task edit');
-    expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.IN_PROGRESS);
+  it('preserves repeated offline edits as distinct, ordered revision-checked operations', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const first = { ...task(), status: TaskStatus.IN_PROGRESS, updatedAt: new Date('2026-11-08T11:00:00Z') };
+    const second = { ...task(), status: TaskStatus.CHECKED, updatedAt: new Date('2026-11-08T12:00:00Z') };
+    const firstId = await saveServerManagedTask(first, deviceId);
+    const secondId = await saveServerManagedTask(second, deviceId);
+    expect(firstId).not.toBe(secondId);
+    expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.CHECKED);
+    const operations = await db.hybridTaskOutbox.where('entityId').equals(taskId).sortBy('queuedAt');
+    expect(operations.map(op => op.expectedRevision)).toEqual([3, 4]);
+    expect(operations.map(op => op.payload.status)).toEqual([TaskStatus.IN_PROGRESS, TaskStatus.CHECKED]);
+    expect(operations[1].queuedAt).toBeGreaterThan(operations[0].queuedAt);
+    expect(operations.every(op => op.state === 'pending')).toBe(true);
+    // Both operations survive closing and reopening IndexedDB.
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
+  });
+  it('does not create new edits over conflicts, rejected operations or another device queue', async () => {
+    const firstId = await saveServerManagedTask(task(), deviceId);
+    await expect(saveServerManagedTask(task(), '55555555-5555-4555-8555-555555555555'))
+      .rejects.toThrow('device mismatch');
+    await db.hybridTaskOutbox.update(firstId, { state: 'conflict', actualRevision: 7 });
+    await expect(saveServerManagedTask({ ...task(), title: 'Do not overwrite conflict' }, deviceId))
+      .rejects.toThrow('Resolve the previous task edit');
+    expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
     expect(await db.hybridTaskOutbox.count()).toBe(1);
+  });
+  it('sends sequential offline edits as independent operations and confirms both revisions', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const firstId = await saveServerManagedTask(
+      { ...task(), status: TaskStatus.IN_PROGRESS, updatedAt: new Date('2026-11-08T11:00:00Z') }, deviceId);
+    const secondId = await saveServerManagedTask(
+      { ...task(), status: TaskStatus.CHECKED, updatedAt: new Date('2026-11-08T12:00:00Z') }, deviceId);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ results: [
+        { operationId: firstId, status: 'accepted', revision: 4 },
+        { operationId: secondId, status: 'accepted', revision: 5 },
+      ] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await pushAtomicTasks({
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    });
+    expect(result.accepted).toBe(2);
+    const operations = JSON.parse(fetchMock.mock.calls[0][1].body).operations;
+    expect(operations.map((op: {expectedRevision: number}) => op.expectedRevision)).toEqual([3, 4]);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(5);
   });
   it('does not send or discard queued tasks without a matching unexpired device proof', async () => {
     await saveServerManagedTask(task(), deviceId);
