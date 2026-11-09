@@ -1,10 +1,7 @@
 name: Android emulator smoke test
 
+# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
 on:
-  push:
-    branches: [main, feat/hybrid-server-foundation]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -18,7 +15,7 @@ jobs:
   emulator:
     name: Android emulator — launch app
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
