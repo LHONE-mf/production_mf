@@ -547,6 +547,36 @@ describe('server-managed task offline writes', () => {
     },
   );
 
+  it('handles overlapping pushes of the same operation without duplicate local writes', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let respondFirst!: (result: unknown) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise(resolve => { respondFirst = resolve; }))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        results: [{ operationId, status: 'duplicate', revision: 1 }],
+      }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const slow = pushAtomicTasks(session);
+    await vi.waitFor(() => expect(respondFirst).toBeTypeOf('function'));
+    expect((await pushAtomicTasks(session)).accepted).toBe(1);
+    respondFirst({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'accepted', revision: 1 }],
+    }) });
+    expect((await slow).accepted).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+  });
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
