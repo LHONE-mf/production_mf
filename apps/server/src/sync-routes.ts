@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { authenticate, tokenHash, type Principal } from './auth.js';
-import { taskPayloadV1 } from './task-schema.js';
+import { taskPayloadV1, type TaskPayloadV1 } from './task-schema.js';
 import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps, validateTaskStatusTransition } from './task-authorization.js';
 
 const operation = z.object({
@@ -29,6 +29,21 @@ async function deviceProofError(pool: Pool, principal: Principal, authorization:
   return grant.rowCount ? null : 'device_proof_invalid';
 }
 
+
+/** Masters may access only tasks in their enrolled workshops. A null workshop
+ * or a transfer outside their membership is denied, even for exact retries. */
+async function masterTaskScopeError(client: PoolClient, principal: Principal, incoming: TaskPayloadV1, existing?: TaskPayloadV1) {
+  if (principal.role === 'chief') return null;
+  const ids = [incoming.workshopId, existing?.workshopId ?? incoming.workshopId];
+  if (ids.some(id => !id)) return 'workshop_access_denied';
+  const result = await client.query(
+    'SELECT workshop_id FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id = ANY($3::text[])',
+    [principal.organization_id, principal.id, ids],
+  );
+  return new Set(result.rows.map(row => row.workshop_id)).size === new Set(ids).size
+    ? null : 'workshop_access_denied';
+}
+
 // The first sync slice intentionally supports only tasks, never arbitrary table writes.
 // All changes are transactional, tenant-scoped and idempotent.
 export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
@@ -53,6 +68,9 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [principal.organization_id + ':sync-sequence']);
         const device = await client.query('SELECT id FROM devices WHERE id=$1 AND organization_id=$2 AND user_id=$3 AND revoked_at IS NULL', [op.deviceId, principal.organization_id, principal.id]);
         if (!device.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'device_not_enrolled' }); continue; }
+        const current = await client.query('SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
+        const scopeError = await masterTaskScopeError(client, principal, op.payload, current.rows[0]?.payload);
+        if (scopeError) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: scopeError }); continue; }
         const duplicate = await client.query('SELECT organization_id, entity_id, entity_type, device_id, actor_id, operation_type, expected_revision, revision, payload = $2::jsonb AS same_payload FROM sync_operations WHERE operation_id=$1', [op.operationId, JSON.stringify(op.payload)]);
         if (duplicate.rowCount) {
           const prev = duplicate.rows[0];
@@ -69,7 +87,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
         }
         const creator = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2', [op.payload.createdBy, principal.organization_id]);
         if (!creator.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_creator' }); continue; }
-        const current = await client.query('SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3', [principal.organization_id, op.entityType, op.entityId]);
+
         const creatorError = validateTaskCreator(principal, op.payload, current.rows[0]?.payload) 
           || validateTaskComments(principal, op.payload, current.rows[0]?.payload)
           || validateTaskAttachments(op.payload, current.rows[0]?.payload)
@@ -105,8 +123,13 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const proofError = await deviceProofError(pool, principal, request.headers.authorization!, device.data.deviceId, request.headers['x-device-proof']);
     if (proofError) return reply.code(403).send({ error: proofError });
     const result = await pool.query(
-      'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_type=$2 AND entity_id=$3',
-      [principal.organization_id, 'task', parsed.data],
+      `SELECT e.revision, e.payload FROM sync_entities e
+        WHERE e.organization_id=$1 AND e.entity_type=$2 AND e.entity_id=$3
+        AND ($4::boolean OR EXISTS (
+          SELECT 1 FROM user_workshop_memberships m
+          WHERE m.organization_id=e.organization_id AND m.user_id=$5
+          AND m.workshop_id=e.payload->>'workshopId'))`,
+      [principal.organization_id, 'task', parsed.data, principal.role === 'chief', principal.id],
     );
     if (!result.rows.length) return reply.code(404).send({ error: 'task_not_found' });
     return { revision: result.rows[0].revision, payload: result.rows[0].payload };
@@ -120,8 +143,16 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const { cursor, limit, deviceId } = parsed.data;
     const proofError = await deviceProofError(pool, principal, request.headers.authorization!, deviceId, request.headers['x-device-proof']);
     if (proofError) return reply.code(403).send({ error: proofError });
-    const result = await pool.query(`SELECT sequence,operation_id,entity_type,entity_id,revision,result_payload AS payload
-      FROM sync_operations WHERE organization_id=$1 AND sequence>$2 AND entity_type='task' ORDER BY sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit]);
+    const result = await pool.query(`SELECT o.sequence,o.operation_id,o.entity_type,o.entity_id,o.revision,o.result_payload AS payload
+      FROM sync_operations o
+      JOIN sync_entities e ON e.organization_id=o.organization_id AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
+      WHERE o.organization_id=$1 AND o.sequence>$2 AND o.entity_type='task'
+      AND ($4::boolean OR EXISTS (
+        SELECT 1 FROM user_workshop_memberships m
+        WHERE m.organization_id=o.organization_id AND m.user_id=$5
+          AND m.workshop_id=o.result_payload->>'workshopId'
+          AND m.workshop_id=e.payload->>'workshopId'))
+      ORDER BY o.sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit,principal.role === 'chief',principal.id]);
     const changes = result.rows;
     return { changes, nextCursor: changes.length ? Number(changes[changes.length - 1].sequence) : cursor, hasMore: changes.length === limit };
   });
