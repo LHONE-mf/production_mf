@@ -9,7 +9,7 @@ export interface ArchivedTaskConflict {
   id: string;
   entityId: string;
   archivedAt: number;
-  decision: 'use_server';
+  decision: 'use_server' | 'reject_use_server';
   localTask: Task;
   localOperations: PendingTaskOperation[];
   serverRevision: number;
@@ -51,6 +51,42 @@ export async function archiveConflictAndUseServer(
       const id = crypto.randomUUID();
       await db.hybridTaskResolutions.add({
         id, entityId, archivedAt: Date.now(), decision: 'use_server',
+        localTask, localOperations: queued, serverRevision: revision, serverPayload: payload,
+      });
+      await db.tasks.put(serverTask);
+      await db.hybridTaskRevisions.put({ entityId, revision });
+      await db.hybridTaskOutbox.bulkDelete(queued.map(op => op.operationId));
+      return id;
+    },
+  );
+}
+
+/** Explicitly discard a rejected queue only after archiving every local edit.
+ * A rejected operation may be a permissions failure, so no automatic retry occurs.
+ * The UI must fetch and confirm a fresh authorized server snapshot first. */
+export async function archiveRejectedTaskAndUseServer(
+  entityId: string, revision: number, payload: TaskPayloadV1,
+): Promise<string> {
+  if (!Number.isSafeInteger(revision) || revision < 1) throw new Error('Invalid server task revision');
+  const serverTask = decodeTask(entityId, payload);
+  if (!Number.isFinite(serverTask.updatedAt.getTime()) ||
+      !Number.isFinite(serverTask.createdAt.getTime())) throw new Error('Invalid server task dates');
+  return db.transaction('rw',
+    db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridTaskResolutions,
+    async () => {
+      const localTask = await db.tasks.get(entityId);
+      const queued = await db.hybridTaskOutbox.where('entityId').equals(entityId).sortBy('queuedAt');
+      if (!localTask || !queued.some(op => op.state === 'rejected')) {
+        throw new Error('No rejected task operation remains');
+      }
+      if (queued.some(op => op.state === 'conflict')) {
+        throw new Error('Resolve task conflicts separately');
+      }
+      const knownRevision = (await db.hybridTaskRevisions.get(entityId))?.revision ?? 0;
+      if (revision < knownRevision) throw new Error('Server snapshot is older than the local revision');
+      const id = crypto.randomUUID();
+      await db.hybridTaskResolutions.add({
+        id, entityId, archivedAt: Date.now(), decision: 'reject_use_server',
         localTask, localOperations: queued, serverRevision: revision, serverPayload: payload,
       });
       await db.tasks.put(serverTask);
