@@ -118,6 +118,17 @@ jobs:
           script: |
             bash scripts/android-emulator-smoke.sh
             (cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon)
+            # Ensure the archive persistence instrumentation actually ran;
+            # a green Gradle exit without this test is not sufficient evidence.
+            python3 - <<'PY'
+            from pathlib import Path
+            results = Path('android/app/build/outputs/androidTest-results/connected')
+            xmls = list(results.rglob('*.xml'))
+            matches = [path for path in xmls if 'HybridConflictArchiveWebViewTest' in path.read_text(errors='replace')]
+            if not matches:
+                raise SystemExit('Missing executed HybridConflictArchiveWebViewTest Android instrumentation result')
+            print('Verified WebView conflict archive test report:', *matches)
+            PY
             adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/ed25519-test-vectors.log
             node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/ed25519-test-vectors.log
             node apps/server/scripts/verify-emulator-device-proof.mjs artifacts/android-smoke/ed25519-test-vectors.log
