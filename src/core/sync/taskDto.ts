@@ -39,21 +39,45 @@ export function encodeTask(task: Task): TaskPayloadV1 {
     attachments: task.attachments.map(a => ({...a, createdAt: date(a.createdAt,'attachment.createdAt')})),
   };
 }
+function parseRemoteDate(value: string, field: string): Date {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Invalid remote task date: ' + field);
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) throw new Error('Invalid remote task date: ' + field);
+  return parsed;
+}
 export function decodeTask(id: string, payload: TaskPayloadV1): Task {
   uuid(id, 'task.id');
   if (payload.schemaVersion !== 1) throw new Error('Unsupported task payload version');
   const statuses = Object.values(TaskStatus);
   const priorities = Object.values(TaskPriority);
   if (!statuses.includes(payload.status) || !priorities.includes(payload.priority)) throw new Error('Invalid task status/priority');
+  const createdAt = parseRemoteDate(payload.createdAt, 'createdAt');
+  const updatedAt = parseRemoteDate(payload.updatedAt, 'updatedAt');
+  if (updatedAt.getTime() < createdAt.getTime()) throw new Error('Invalid remote task date order');
+  const dueDate = payload.dueDate ? parseRemoteDate(payload.dueDate, 'dueDate') : undefined;
+  uuid(payload.createdBy, 'task.createdBy');
+  if (payload.assignedTo) uuid(payload.assignedTo, 'task.assignedTo');
+  if (payload.techCardId) uuid(payload.techCardId, 'task.techCardId');
+  for (const comment of payload.comments) {
+    uuid(comment.id, 'comment.id');
+    uuid(comment.taskId, 'comment.taskId');
+    uuid(comment.authorId, 'comment.authorId');
+    if (comment.taskId !== id) throw new Error('Remote comment task mismatch');
+  }
+  for (const attachment of payload.attachments) {
+    uuid(attachment.id, 'attachment.id');
+    uuid(attachment.taskId, 'attachment.taskId');
+    if (attachment.taskId !== id) throw new Error('Remote attachment task mismatch');
+  }
   return {
     id, title: payload.title, description: payload.description,
     status: payload.status, priority: payload.priority, assignedTo: payload.assignedTo || '',
-    createdBy: payload.createdBy, createdAt: new Date(payload.createdAt), updatedAt: new Date(payload.updatedAt),
-    ...(payload.dueDate ? {dueDate:new Date(payload.dueDate)} : {}),
+    createdBy: payload.createdBy, createdAt, updatedAt,
+    ...(dueDate ? { dueDate } : {}),
     ...(payload.techCardId ? {techCardId:payload.techCardId} : {}),
     ...(payload.stage ? {stage:payload.stage} : {}),
     ...(payload.workshopId ? {workshopId:payload.workshopId} : {}),
-    comments: payload.comments.map(c => ({...c,createdAt:new Date(c.createdAt)})),
-    attachments: payload.attachments.map(a => ({...a,createdAt:new Date(a.createdAt)})),
+    comments: payload.comments.map(c => ({...c,createdAt:parseRemoteDate(c.createdAt, 'comment.createdAt')})),
+    attachments: payload.attachments.map(a => ({...a,createdAt:parseRemoteDate(a.createdAt, 'attachment.createdAt')})),
   };
 }
