@@ -139,6 +139,15 @@ export function SyncModule() {
     try {
       requireFreshDeviceProof(session); // Read-only pulls also require a verified device.
       const pushed = await pushAtomicTasks(session);
+      const outstanding = await db.hybridTaskOutbox.count();
+      if (outstanding > 0) {
+        // A pull cannot safely overwrite tasks with local queued edits. Finish
+        // acknowledged revisions first, or inspect conflicts and rejections.
+        setMessage('Отправлено: ' + pushed.accepted + ', конфликты: ' + pushed.conflicts +
+          ', отклонено сервером: ' + pushed.rejected + '. Осталось локальных изменений: ' +
+          outstanding + '. Получение с сервера отложено: повторите ручную синхронизацию или разрешите конфликт.');
+        return;
+      }
       const pulled = await pullAtomicTasks(session);
       setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
         (pulled.hasMore ? '. Есть дополнительные изменения — повторите синхронизацию.' : '.'));
