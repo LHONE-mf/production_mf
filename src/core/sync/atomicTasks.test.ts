@@ -473,6 +473,37 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
   });
 
+  it('preserves a newly queued dependent edit while its predecessor is in flight', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const firstId = await saveServerManagedTask(
+      { ...task(), title: 'First edit' }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    let deliver!: (result: unknown) => void;
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { deliver = resolve; })));
+    const inFlight = pushAtomicTasks(session);
+    await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+    const secondId = await saveServerManagedTask(
+      { ...task(), title: 'Second edit saved during upload' }, deviceId);
+    expect((await db.hybridTaskOutbox.get(secondId))?.expectedRevision).toBe(4);
+    deliver({ ok: true, json: async () => ({
+      results: [{ operationId: firstId, status: 'accepted', revision: 4 }],
+    }) });
+    expect((await inFlight).accepted).toBe(1);
+    expect(await db.hybridTaskOutbox.get(firstId)).toBeUndefined();
+    expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+    expect((await db.tasks.get(taskId))?.title).toBe('Second edit saved during upload');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(4);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskOutbox.get(secondId))?.payload.title)
+      .toBe('Second edit saved during upload');
+    expect((await db.tasks.get(taskId))?.title).toBe('Second edit saved during upload');
+  });
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
