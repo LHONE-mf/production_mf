@@ -504,6 +504,49 @@ describe('server-managed task offline writes', () => {
     expect((await db.tasks.get(taskId))?.title).toBe('Second edit saved during upload');
   });
 
+  it.each(['conflict', 'rejected'] as const)(
+    'retains a dependent edit saved during upload when predecessor becomes %s',
+    async status => {
+      await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+      const firstId = await saveServerManagedTask(
+        { ...task(), title: 'First edit in flight' }, deviceId);
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      let deliver!: (result: unknown) => void;
+      const fetchMock = vi.fn(() => new Promise(resolve => { deliver = resolve; }));
+      vi.stubGlobal('fetch', fetchMock);
+      const inFlight = pushAtomicTasks(session);
+      await vi.waitFor(() => expect(deliver).toBeTypeOf('function'));
+      const secondId = await saveServerManagedTask(
+        { ...task(), title: 'Dependent edit must survive' }, deviceId);
+      deliver({ ok: true, json: async () => ({
+        results: [{
+          operationId: firstId, status,
+          ...(status === 'conflict'
+            ? { actualRevision: 5 }
+            : { actualRevision: 5, reason: 'workshop_access_denied' }),
+        }],
+      }) });
+      const result = await inFlight;
+      expect(result[status === 'conflict' ? 'conflicts' : 'rejected']).toBe(1);
+      expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe(status);
+      expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+      expect((await db.tasks.get(taskId))?.title).toBe('Dependent edit must survive');
+      expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+      expect((await pushAtomicTasks(session)).accepted).toBe(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      db.close();
+      await db.open();
+      expect((await db.hybridTaskOutbox.get(firstId))?.actualRevision).toBe(5);
+      expect((await db.hybridTaskOutbox.get(secondId))?.payload.title)
+        .toBe('Dependent edit must survive');
+      expect((await db.tasks.get(taskId))?.title).toBe('Dependent edit must survive');
+    },
+  );
+
   it('does not downgrade a task revision when an old push acknowledgement arrives late', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const operationId = await saveServerManagedTask(task(), deviceId);
