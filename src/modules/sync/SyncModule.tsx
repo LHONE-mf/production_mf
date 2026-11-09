@@ -7,6 +7,8 @@ import { RefreshCw, ShieldCheck, AlertCircle, WifiOff } from 'lucide-react';
 import { IngestPanel } from '../../transfer/IngestPanel';
 import { db } from '../../core/db';
 import { pushAtomicTasks, pullAtomicTasks } from '../../core/sync/atomicClient';
+import { archiveConflictAndUseServer } from '../../core/sync/taskConflictResolution';
+import type { TaskPayloadV1 } from '../../core/sync/taskDto';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import { assertSyncTenant } from '../../core/sync/tenantGuard';
 
@@ -31,7 +33,7 @@ export function SyncModule() {
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [myDevices, setMyDevices] = useState<string[]>([]);
   const [serverRole, setServerRole] = useState('');
-  const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; title: string; description: string; status: string; priority: string }>>({});
+  const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; payload: TaskPayloadV1 }>>({});
   const [inspectingTask, setInspectingTask] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -40,6 +42,7 @@ export function SyncModule() {
   const conflicts = conflictOperations?.length;
   const rejectedOperations = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('rejected').toArray(), []);
   const rejected = rejectedOperations?.length;
+  const archivedConflicts = useLiveQuery(() => db.hybridTaskResolutions.count(), []);
   const conflictingTasks = useLiveQuery(async () => {
     const operations = await db.hybridTaskOutbox.where('state').anyOf('conflict', 'rejected').toArray();
     return Promise.all(operations.map(async operation => ({ operation, task: await db.tasks.get(operation.entityId) })));
@@ -126,10 +129,41 @@ export function SyncModule() {
         headers: { Authorization: 'Bearer ' + session.accessToken, 'x-device-proof': proof.token },
       });
       if (!response.ok) throw new Error('Не удалось получить серверную версию: HTTP ' + response.status);
-      const data: { revision: number; payload: { title: string; description: string; status: string; priority: string } } = await response.json();
-      setRemoteTasks(previous => ({ ...previous, [taskId]: { revision: data.revision, ...data.payload } }));
+      const data: { revision: number; payload: TaskPayloadV1 } = await response.json();
+      if (!Number.isSafeInteger(data.revision) || data.revision < 1 || !data.payload) throw new Error('Некорректная серверная версия задания');
+      setRemoteTasks(previous => ({ ...previous, [taskId]: data }));
       setInspectingTask(taskId);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка получения задания'); }
+    finally { setBusy(false); }
+  }
+
+  async function chooseServerVersion(taskId: string) {
+    const inspected = remoteTasks[taskId];
+    if (!session || !inspected) { setError('Сначала сравните изменения с сервером'); return; }
+    setBusy(true); setError(''); setMessage('');
+    try {
+      const proof = requireFreshDeviceProof(session);
+      // Fetch the authoritative snapshot again: never accept a stale preview.
+      const response = await fetch(serverEndpoint(session.serverUrl, '/sync/task/' +
+        encodeURIComponent(taskId) + '?deviceId=' + encodeURIComponent(proof.deviceId)), {
+        headers: { Authorization: 'Bearer ' + session.accessToken, 'x-device-proof': proof.token },
+      });
+      if (!response.ok) throw new Error('Серверная версия недоступна: HTTP ' + response.status);
+      const fresh: { revision: number; payload: TaskPayloadV1 } = await response.json();
+      if (fresh.revision !== inspected.revision ||
+          JSON.stringify(fresh.payload) !== JSON.stringify(inspected.payload)) {
+        setRemoteTasks(previous => ({ ...previous, [taskId]: fresh }));
+        throw new Error('Задание на сервере изменилось. Сравните версии заново.');
+      }
+      await archiveConflictAndUseServer(taskId, fresh.revision, fresh.payload);
+      setInspectingTask(null);
+      setRemoteTasks(previous => {
+        const next = { ...previous };
+        delete next[taskId];
+        return next;
+      });
+      setMessage('Серверная версия принята. Локальные правки и все операции сохранены в архиве конфликтов на этом устройстве.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка разрешения конфликта'); }
     finally { setBusy(false); }
   }
 
@@ -238,7 +272,7 @@ export function SyncModule() {
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{pending ?? '—'}</p><p className="text-slate-400 text-xs">Ожидают отправки</p></div>
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты</p></div>
         </div>
-        <p className="text-slate-400 text-sm">Отклонено сервером: {rejected ?? '—'}</p>
+        <p className="text-slate-400 text-sm">Отклонено сервером: {rejected ?? '—'} · Архив конфликтов (сохранено на устройстве): {archivedConflicts ?? '—'}</p>
         {(conflictingTasks?.length ?? 0) > 0 && (
           <div className="space-y-2">
             <h3 className="text-white font-semibold text-sm">Задания, требующие внимания</h3>
@@ -253,7 +287,12 @@ export function SyncModule() {
                 {inspectingTask === operation.entityId && remoteTasks[operation.entityId] && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                     <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-blue-300 text-xs font-semibold">На устройстве</p><p className="text-white text-sm">{task?.title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{task?.description}</p><p className="text-slate-400 text-xs">{task?.status} · {task?.priority}</p></div>
-                    <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-green-300 text-xs font-semibold">На сервере · версия {remoteTasks[operation.entityId].revision}</p><p className="text-white text-sm">{remoteTasks[operation.entityId].title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{remoteTasks[operation.entityId].description}</p><p className="text-slate-400 text-xs">{remoteTasks[operation.entityId].status} · {remoteTasks[operation.entityId].priority}</p></div>
+                    <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-green-300 text-xs font-semibold">На сервере · версия {remoteTasks[operation.entityId].revision}</p><p className="text-white text-sm">{remoteTasks[operation.entityId].payload.title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{remoteTasks[operation.entityId].payload.description}</p><p className="text-slate-400 text-xs">{remoteTasks[operation.entityId].payload.status} · {remoteTasks[operation.entityId].payload.priority}</p></div>
+                    {operation.state === 'conflict' && <button
+                      type="button" disabled={busy}
+                      onClick={() => void chooseServerVersion(operation.entityId)}
+                      className="rounded-lg border border-amber-400 px-3 py-2 text-xs text-amber-100 disabled:opacity-50"
+                    >Принять серверную версию (сохранить все локальные правки в архиве)</button>}
                   </div>
                 )}
               </div>
