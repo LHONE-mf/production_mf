@@ -5,6 +5,22 @@ on:
   push:
     branches: [main, feat/hybrid-server-foundation]
     tags: ['v*']
+    # Server-only changes do not require rebuilding the Android APK.
+    # Tag builds remain available for releases; manual builds remain available on demand.
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'android/**'
+      - 'plugins/**'
+      - 'scripts/generate_android_icons.py'
+      - 'scripts/configure_signing.py'
+      - 'scripts/dev-signing/**'
+      - 'index.html'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'vite.config.*'
+      - 'capacitor.config.*'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch: {} # ручной запуск с вкладки Actions
 
 permissions:
