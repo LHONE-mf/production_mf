@@ -204,6 +204,68 @@ describe('server-managed task offline writes', () => {
       expect(await db.tasks.get(taskId)).toBeUndefined();
     }
   });
+  it.each(['pending', 'conflict', 'rejected'] as const)(
+    'never overwrites %s offline edits or advances cursor when a remote update arrives',
+    async state => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+      const operationId = await saveServerManagedTask(task(), deviceId);
+      if (state !== 'pending') await db.hybridTaskOutbox.update(operationId, { state });
+      const server = { ...task(), title: 'Remote conflicting edit' };
+      const { encodeTask } = await import('./taskDto');
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({
+          changes: [{ sequence: '11', entity_id: taskId, entity_type: 'task',
+            revision: 2, payload: encodeTask(server) }],
+          nextCursor: 11, hasMore: false,
+        }),
+      }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Pending local edit blocks remote task');
+      expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+      expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({ state });
+      expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+      db.close();
+      await db.open();
+      expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({ state });
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+    },
+  );
+
+  it('rolls back earlier remote tasks and cursor when a later entity has a revision gap', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const secondId = '55555555-5555-4555-8555-555555555555';
+    const { encodeTask } = await import('./taskDto');
+    await db.hybridTaskRevisions.put({ entityId: secondId, revision: 1 });
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 20 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        changes: [
+          { sequence: '21', entity_id: taskId, entity_type: 'task',
+            revision: 1, payload: encodeTask(task()) },
+          { sequence: '22', entity_id: secondId, entity_type: 'task',
+            revision: 4, payload: encodeTask({ ...task(), id: secondId }) },
+        ],
+        nextCursor: 22, hasMore: false,
+      }),
+    }));
+    await expect(pullAtomicTasks(session)).rejects.toThrow('Revision gap');
+    expect(await db.tasks.get(taskId)).toBeUndefined();
+    expect(await db.tasks.get(secondId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect((await db.hybridTaskRevisions.get(secondId))?.revision).toBe(1);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(20);
+  });
+
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
     expect(await db.tasks.get(taskId)).toBeUndefined();
