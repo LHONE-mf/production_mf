@@ -96,6 +96,14 @@ jobs:
           } >> gradle.properties
           python3 ../scripts/configure_signing.py
 
+      # Share the downloaded Gradle wrapper distribution with Android emulator CI.
+      # Prevents repeated upstream GitHub release CDN 504s on fresh runners.
+      - name: Cache Gradle wrapper distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-linux-8.11.1-bin-v1
+
       - name: Generate Production MF launcher icons
         run: |
           python3 -m pip install --quiet cairosvg Pillow
