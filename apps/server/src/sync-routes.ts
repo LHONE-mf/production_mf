@@ -81,6 +81,20 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
         if (op.payload.assignedTo) {
           const assignee = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2 AND active=true', [op.payload.assignedTo, principal.organization_id]);
           if (!assignee.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_assignee' }); continue; }
+          // A scoped task must not be assigned to someone outside its workshop.
+          // The check applies to chiefs as well as masters; reassignment cannot
+          // bypass the workshop membership policy.
+          if (op.payload.workshopId) {
+            const membership = await client.query(
+              'SELECT 1 FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id=$3',
+              [principal.organization_id, op.payload.assignedTo, op.payload.workshopId],
+            );
+            if (!membership.rowCount) {
+              await client.query('ROLLBACK');
+              results.push({ operationId: op.operationId, status: 'rejected', reason: 'assignee_outside_workshop' });
+              continue;
+            }
+          }
         }
         if (op.payload.comments.some(c => c.taskId !== op.entityId) || op.payload.attachments.some(a => a.taskId !== op.entityId)) {
           await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_task_children' }); continue;
