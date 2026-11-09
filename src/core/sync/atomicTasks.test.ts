@@ -174,6 +174,40 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(2);
   });
 
+  it('retains a server-reported rejection revision across restart for safe recovery', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const operationId = await saveServerManagedTask({ ...task(), title: 'Keep this edit' }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'rejected', actualRevision: 8, reason: 'workshop_access_denied' }],
+    }) }));
+    expect((await pushAtomicTasks(session)).rejected).toBe(1);
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({
+      state: 'rejected', actualRevision: 8, rejectionReason: 'workshop_access_denied',
+    });
+    expect((await db.tasks.get(taskId))?.title).toBe('Keep this edit');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+  });
+  it('rejects a malformed rejection revision without touching offline edits', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'rejected', actualRevision: -1 }],
+    }) }));
+    await expect(pushAtomicTasks(session)).rejects.toThrow('Invalid sync response: rejection revision');
+    expect((await db.hybridTaskOutbox.get(operationId))?.state).toBe('pending');
+    expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+  });
   it('does not send or discard queued tasks without a matching unexpired device proof', async () => {
     await saveServerManagedTask(task(), deviceId);
     const fetchMock = vi.fn();
