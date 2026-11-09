@@ -75,7 +75,7 @@ describe('sync push device proof boundary', () => {
   });
 
   it('rejects an operation-ID replay with a changed expected revision, but accepts an exact retry', async () => {
-    const original = op(device);
+    const original = { ...op(device), payload: { ...payload, workshopId: 'assembly' } };
     const stored = {
       organization_id: org, entity_id: original.entityId, entity_type: original.entityType,
       device_id: device, actor_id: user, operation_type: original.operationType,
@@ -87,6 +87,10 @@ describe('sync push device proof boundary', () => {
           return { rows: [], rowCount: 0 };
         if (sql.startsWith('SELECT id FROM devices'))
           return { rows: [{ id: device }], rowCount: 1 };
+        if (sql.includes('FROM sync_entities'))
+          return { rows: [{ revision: 1, payload: original.payload }], rowCount: 1 };
+        if (sql.includes('FROM user_workshop_memberships'))
+          return { rows: [{ workshop_id: 'assembly' }], rowCount: 1 };
         if (sql.includes('FROM sync_operations'))
           return { rows: [stored], rowCount: 1 };
         throw new Error('Unexpected SQL: ' + sql);
