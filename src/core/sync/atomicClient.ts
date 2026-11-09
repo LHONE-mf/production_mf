@@ -66,10 +66,13 @@ export async function pushAtomicTasks(session: HybridSession) {
   await db.transaction('rw', db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
     for (const result of response.results as Array<{operationId:string;status:string;revision?:number;actualRevision?:number;reason?:string}>) {
       const item = pending.find(op => op.operationId === result.operationId);
-      if (!item) continue;
+      if (!item) throw new Error('Queued task operation missing from validated batch');
       const current = await db.hybridTaskOutbox.get(item.operationId);
-      if (!current) continue;
-      if (current.state !== 'pending') continue;
+      // Never partially acknowledge a batch if an operation disappeared or
+      // changed state while the HTTP request was in flight.
+      if (!current || current.state !== 'pending') {
+        throw new Error('Queued task operation disappeared or changed state during sync');
+      }
       // The response acknowledges the exact snapshot sent over the network.
       // If an operation was changed while in flight, retain it rather than
       // deleting or rejecting an unacknowledged local edit.
