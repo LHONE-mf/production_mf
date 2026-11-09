@@ -16,8 +16,21 @@ async function send(session: HybridSession, path: string, init?: RequestInit) {
 
 /** Acknowledgements and revision metadata are committed atomically. */
 export async function pushAtomicTasks(session: HybridSession) {
-  const pendingAll = await db.hybridTaskOutbox.where('state').equals('pending').sortBy('queuedAt');
-  const pending = pendingAll.filter(op => op.deviceId === pendingAll[0]?.deviceId).slice(0, 50);
+  const queued = await db.hybridTaskOutbox.toArray();
+  const blockedTasks = new Set(
+    queued.filter(op => op.state === 'conflict' || op.state === 'rejected').map(op => op.entityId),
+  );
+  // At most one in-flight operation per task. Later offline edits depend on
+  // its acknowledgement and must never race past a conflict or rejection.
+  const pendingAll = queued.filter(op => op.state === 'pending' && !blockedTasks.has(op.entityId))
+    .sort((a, b) => a.queuedAt - b.queuedAt || a.operationId.localeCompare(b.operationId));
+  const firstDevice = pendingAll[0]?.deviceId;
+  const seenTasks = new Set<string>();
+  const pending = pendingAll.filter(op => {
+    if (op.deviceId !== firstDevice || seenTasks.has(op.entityId)) return false;
+    seenTasks.add(op.entityId);
+    return true;
+  }).slice(0, 50);
   if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
   const operations = pending.map(({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }) => ({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }));
   if (!session.deviceProofToken || session.deviceProofDeviceId !== pending[0].deviceId || !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)
