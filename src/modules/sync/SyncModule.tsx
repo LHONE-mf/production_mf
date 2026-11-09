@@ -7,7 +7,7 @@ import { RefreshCw, ShieldCheck, AlertCircle, WifiOff } from 'lucide-react';
 import { IngestPanel } from '../../transfer/IngestPanel';
 import { db } from '../../core/db';
 import { pushAtomicTasks, pullAtomicTasks } from '../../core/sync/atomicClient';
-import { archiveConflictAndUseServer } from '../../core/sync/taskConflictResolution';
+import { archiveConflictAndUseServer, archiveRejectedTaskAndUseServer } from '../../core/sync/taskConflictResolution';
 import type { TaskPayloadV1 } from '../../core/sync/taskDto';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import { assertSyncTenant } from '../../core/sync/tenantGuard';
@@ -138,7 +138,7 @@ export function SyncModule() {
     finally { setBusy(false); }
   }
 
-  async function chooseServerVersion(taskId: string) {
+  async function chooseServerVersion(taskId: string, recovery: 'conflict' | 'rejected' = 'conflict') {
     const inspected = remoteTasks[taskId];
     if (!session || !inspected) { setError('Сначала сравните изменения с сервером'); return; }
     setBusy(true); setError(''); setMessage('');
@@ -156,7 +156,8 @@ export function SyncModule() {
         setRemoteTasks(previous => ({ ...previous, [taskId]: fresh }));
         throw new Error('Задание на сервере изменилось. Сравните версии заново.');
       }
-      await archiveConflictAndUseServer(taskId, fresh.revision, fresh.payload);
+      if (recovery === 'rejected') await archiveRejectedTaskAndUseServer(taskId, fresh.revision, fresh.payload);
+      else await archiveConflictAndUseServer(taskId, fresh.revision, fresh.payload);
       setInspectingTask(null);
       setRemoteTasks(previous => {
         const next = { ...previous };
@@ -276,7 +277,7 @@ export function SyncModule() {
         <p className="text-slate-400 text-sm">Отклонено сервером: {rejected ?? '—'} · Архив конфликтов (сохранено на устройстве): {archivedConflicts ?? '—'}</p>
         {(archiveHistory?.length ?? 0) > 0 && (
           <div className="rounded-xl border border-slate-700 p-3 space-y-2">
-            <h3 className="text-white text-sm font-semibold">Архив разрешённых конфликтов (только на устройстве)</h3>
+            <h3 className="text-white text-sm font-semibold">Архив локальных изменений (только на устройстве)</h3>
             {archiveHistory?.map(record => (
               <details key={record.id} className="rounded-lg bg-slate-900/50 p-3 text-sm">
                 <summary className="cursor-pointer text-amber-200">{record.localTask.title} · {new Date(record.archivedAt).toLocaleString()} · {record.localOperations.length} изменений</summary>
@@ -310,6 +311,11 @@ export function SyncModule() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
                     <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-blue-300 text-xs font-semibold">На устройстве</p><p className="text-white text-sm">{task?.title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{task?.description}</p><p className="text-slate-400 text-xs">{task?.status} · {task?.priority}</p></div>
                     <div className="rounded-lg bg-slate-900/60 p-3 space-y-1"><p className="text-green-300 text-xs font-semibold">На сервере · версия {remoteTasks[operation.entityId].revision}</p><p className="text-white text-sm">{remoteTasks[operation.entityId].payload.title}</p><p className="text-slate-300 text-xs whitespace-pre-wrap">{remoteTasks[operation.entityId].payload.description}</p><p className="text-slate-400 text-xs">{remoteTasks[operation.entityId].payload.status} · {remoteTasks[operation.entityId].payload.priority}</p></div>
+                    {operation.state === 'rejected' && <button
+                      type="button" disabled={busy}
+                      onClick={() => void chooseServerVersion(operation.entityId, 'rejected')}
+                      className="rounded-lg border border-amber-400 px-3 py-2 text-xs text-amber-100 disabled:opacity-50"
+                    >Архивировать отклонённые правки и принять серверную версию</button>}
                     {operation.state === 'conflict' && <button
                       type="button" disabled={busy}
                       onClick={() => void chooseServerVersion(operation.entityId)}
