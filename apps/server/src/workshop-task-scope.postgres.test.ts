@@ -166,6 +166,36 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     }
   });
 
+  it('does not let a master claim a chief-owned task that has no workshop', async () => {
+    const unscopedTask = randomUUID();
+    const original = base(unscopedTask, 'assembly');
+    const created = await push(0, unscopedTask, { ...original, workshopId: null }, 0);
+    expect(created.statusCode).toBe(200);
+    expect(created.json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+
+    // A master is enrolled in assembly, but must not gain ownership by changing
+    // an unscoped task's workshop to one where that master has membership.
+    const attemptedClaim = await push(1, unscopedTask, {
+      ...original, status: 'assigned', updatedAt: '2026-11-08T11:00:00.000Z',
+    }, 1);
+    expect(attemptedClaim.statusCode).toBe(200);
+    expect(attemptedClaim.json().results[0]).toMatchObject({
+      status: 'rejected', reason: 'workshop_access_denied',
+    });
+    expect((await comparison(1, unscopedTask)).statusCode).toBe(404);
+    const persisted = await pool.query(
+      'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+      [org, unscopedTask],
+    );
+    expect(persisted.rows[0].revision).toBe(1);
+    expect(persisted.rows[0].payload.workshopId).toBeNull();
+    const operations = await pool.query(
+      'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+      [org, unscopedTask],
+    );
+    expect(operations.rows[0].count).toBe(1);
+  });
+
   it('removes access immediately when a master membership is revoked', async () => {
     await pool.query('DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2',[org,master]);
     expect((await pull(1)).json().changes).toEqual([]);
