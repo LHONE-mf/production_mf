@@ -1,7 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db';
 import { TaskPriority, TaskStatus, type Task } from '../types';
 import { saveServerManagedTask } from './atomicTasks';
+import { pushAtomicTasks, pullAtomicTasks } from './atomicClient';
 import { archiveConflictAndUseServer } from './taskConflictResolution';
 import { encodeTask } from './taskDto';
 
@@ -19,14 +20,17 @@ function task(title = 'Offline changes'): Task {
   };
 }
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('manual task conflict resolution', () => {
   beforeEach(async () => {
     await db.open();
-    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridTaskResolutions, async () => {
+    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridTaskResolutions, db.hybridSyncMetadata, async () => {
       await db.tasks.clear();
       await db.hybridTaskOutbox.clear();
       await db.hybridTaskRevisions.clear();
       await db.hybridTaskResolutions.clear();
+      await db.hybridSyncMetadata.clear();
     });
   });
   it('archives every local operation and the complete original task before adopting the server snapshot', async () => {
@@ -51,6 +55,42 @@ describe('manual task conflict resolution', () => {
     expect((await db.hybridTaskResolutions.get(archiveId))?.localOperations).toHaveLength(2);
     const nextId = await saveServerManagedTask(task('Future edit'), deviceId);
     expect((await db.hybridTaskOutbox.get(nextId))?.expectedRevision).toBe(5);
+  });
+  it('reconnects and advances the pull cursor after a device conflict is archived', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
+    const localId = await saveServerManagedTask(task('Device B offline edit'), deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const server = encodeTask(task('Accepted from device A'));
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        results: [{ operationId: localId, status: 'conflict', actualRevision: 2 }],
+      }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        changes: [{ sequence: '11', entity_id: taskId, entity_type: 'task',
+          revision: 2, payload: server }],
+        nextCursor: 11, hasMore: false,
+      }) });
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await pushAtomicTasks(session)).conflicts).toBe(1);
+    expect((await db.hybridTaskOutbox.get(localId))?.state).toBe('conflict');
+
+    const archiveId = await archiveConflictAndUseServer(taskId, 2, server);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskResolutions.get(archiveId))?.localTask.title)
+      .toBe('Device B offline edit');
+
+    expect((await pullAtomicTasks(session)).received).toBe(1);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(11);
+    expect((await db.tasks.get(taskId))?.title).toBe('Accepted from device A');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(2);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect(await db.hybridTaskResolutions.count()).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it('refuses resolution if server revision is stale and preserves every local edit', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
