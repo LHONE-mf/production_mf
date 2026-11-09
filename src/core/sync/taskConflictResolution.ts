@@ -38,6 +38,13 @@ export async function archiveConflictAndUseServer(
       if (queued.some(op => op.state === 'rejected')) {
         throw new Error('Resolve rejected task operations separately');
       }
+      // Never resolve against a snapshot older than the revision reported by
+      // the server when the conflict was detected. Such a snapshot could
+      // discard local edits while leaving the task behind the server.
+      if (queued.some(op => op.state === 'conflict' &&
+          Number.isSafeInteger(op.actualRevision) && op.actualRevision! > revision)) {
+        throw new Error('Server snapshot predates the reported conflict revision');
+      }
       const knownRevision = (await db.hybridTaskRevisions.get(entityId))?.revision ?? 0;
       if (revision <= knownRevision) throw new Error('Server revision is not newer than the local revision');
       const id = crypto.randomUUID();
