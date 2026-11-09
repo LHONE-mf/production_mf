@@ -12,6 +12,8 @@ function requireUuid(id: string, field: string) {
 /**
  * Opt-in write path for server-managed tasks only.
  * One transaction guarantees that a local task edit cannot be committed without its outbox entry.
+ * Repeated edits create consecutive, immutable revision-checked operations. Never
+ * rewrite an existing operation: it may have reached the server already.
  * Existing demo/local tasks are deliberately not enrolled automatically.
  */
 export async function saveServerManagedTask(task: Task, deviceId: string): Promise<string> {
@@ -20,15 +22,21 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
   if (task.assignedTo) requireUuid(task.assignedTo, 'task.assignedTo');
   const payload = encodeTask(task);
   return db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
-    const outstanding = await db.hybridTaskOutbox.where('entityId').equals(task.id).count();
-    if (outstanding) throw new Error('Resolve or synchronize the previous task edit first');
+    const outstanding = await db.hybridTaskOutbox.where('entityId').equals(task.id).toArray();
+    // Keep every edit as a distinct immutable operation. An in-flight request may
+    // already contain an earlier snapshot, so overwriting its payload/ID is unsafe.
+    if (outstanding.some(op => op.state !== 'pending' || op.deviceId !== deviceId))
+      throw new Error('Resolve the previous task edit or device mismatch first');
     const revision = (await db.hybridTaskRevisions.get(task.id))?.revision ?? 0;
+    const expectedRevision = revision + outstanding.length;
+    if (!Number.isSafeInteger(expectedRevision)) throw new Error('Task revision overflow');
+    const queuedAt = Math.max(Date.now(), ...outstanding.map(op => op.queuedAt + 1));
     const operationId = crypto.randomUUID();
     const operation: PendingTaskOperation = {
       operationId, deviceId, entityType: 'task', entityId: task.id,
-      operationType: 'upsert', expectedRevision: revision,
+      operationType: 'upsert', expectedRevision,
       payload,
-      queuedAt: Date.now(), state: 'pending',
+      queuedAt, state: 'pending',
     };
     await db.tasks.put(task);
     await db.hybridTaskOutbox.add(operation);
