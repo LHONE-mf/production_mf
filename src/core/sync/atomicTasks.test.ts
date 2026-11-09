@@ -28,6 +28,19 @@ describe('server-managed task offline writes', () => {
       await db.hybridSyncMetadata.clear();
     });
   });
+  it('refuses to enroll an existing local-only UUID task without overwriting it', async () => {
+    const original = { ...task(), title: 'Local-only workshop note' };
+    await db.tasks.put(original);
+    await expect(saveServerManagedTask({ ...original, title: 'Remote enrollment attempt' }, deviceId))
+      .rejects.toThrow('Existing local-only task cannot be enrolled automatically');
+    expect((await db.tasks.get(taskId))?.title).toBe('Local-only workshop note');
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect((await db.tasks.get(taskId))?.title).toBe('Local-only workshop note');
+  });
+
   it('atomically saves an offline task and a pending operation', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const changed = { ...task(), status: TaskStatus.IN_PROGRESS, updatedAt: new Date('2026-11-08T11:00:00Z') };
