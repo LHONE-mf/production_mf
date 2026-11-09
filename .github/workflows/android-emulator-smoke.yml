@@ -86,6 +86,13 @@ jobs:
         run: |
           python3 -m pip install --quiet cairosvg Pillow
           python3 scripts/generate_android_icons.py
+      # Restore the exact Gradle wrapper distribution used by signed APK CI.
+      # Cache is shared across workflows on the same branch.
+      - name: Cache Gradle wrapper distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-linux-8.11.1-bin-v1
       - name: Build Android debug APK
         working-directory: android
         run: |
