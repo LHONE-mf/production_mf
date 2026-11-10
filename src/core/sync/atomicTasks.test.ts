@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db';
-import { saveServerManagedTask, editServerManagedTask } from './atomicTasks';
+import { saveServerManagedTask, editServerManagedTask, createServerManagedTask } from './atomicTasks';
 import { provisionOfflineTaskEditLease, requireOfflineTaskEditLease } from './offlineTaskLease';
 import { pushAtomicTasks, pullAtomicTasks } from './atomicClient';
 import { TaskPriority, TaskStatus, type Task } from '../types';
@@ -104,6 +104,50 @@ describe('server-managed task offline writes', () => {
     await expect(editServerManagedTask(taskId, { status: TaskStatus.IN_PROGRESS }))
       .rejects.toThrow('Подтвердите устройство');
     expect(await db.hybridTaskOutbox.count()).toBe(2);
+  });
+
+  it('creates a server-owned assigned task and safely edits it before the first upload', async () => {
+    await authorizeTaskEditing('master');
+    const firstOperationId = await createServerManagedTask({
+      title: 'New production assignment', description: 'Coating setup',
+      priority: TaskPriority.HIGH, assignedTo: task().assignedTo, workshopId: 'assembly',
+    });
+    const queued = await db.hybridTaskOutbox.get(firstOperationId);
+    expect(queued).toMatchObject({
+      deviceId, expectedRevision: 0, state: 'pending',
+      payload: { title: 'New production assignment', createdBy: task().createdBy, status: TaskStatus.ASSIGNED },
+    });
+    const newTaskId = queued!.entityId;
+    expect((await db.tasks.get(newTaskId))?.createdBy).toBe(task().createdBy);
+    expect(await db.hybridTaskRevisions.get(newTaskId)).toBeUndefined();
+    await editServerManagedTask(newTaskId, { title: 'Edited before initial sync' });
+    expect((await db.tasks.get(newTaskId))?.title).toBe('Edited before initial sync');
+    const operations = await db.hybridTaskOutbox.where('entityId').equals(newTaskId).sortBy('queuedAt');
+    expect(operations.map(op => op.expectedRevision)).toEqual([0, 1]);
+    expect(operations.map(op => op.payload.title)).toEqual([
+      'New production assignment', 'Edited before initial sync',
+    ]);
+    db.close();
+    await db.open();
+    expect((await db.tasks.get(newTaskId))?.title).toBe('Edited before initial sync');
+    expect(await db.hybridTaskOutbox.where('entityId').equals(newTaskId).count()).toBe(2);
+  });
+
+  it('never creates a shared task for a worker or an unproven device', async () => {
+    const fields = { title: 'Not authorized', description: '', priority: TaskPriority.MEDIUM, workshopId: 'assembly' };
+    await expect(createServerManagedTask(fields)).rejects.toThrow('Подтвердите устройство');
+    await authorizeTaskEditing('worker');
+    await expect(createServerManagedTask(fields)).rejects.toThrow('Workers cannot create server tasks');
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect(await db.tasks.count()).toBe(0);
+  });
+
+  it('requires a valid workshop for shared assignments without touching local-only tasks', async () => {
+    await authorizeTaskEditing('master');
+    await expect(createServerManagedTask({
+      title: 'Needs workshop', description: '', priority: TaskPriority.MEDIUM, assignedTo: task().assignedTo,
+    })).rejects.toThrow('Invalid server task fields or missing workshop');
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 
   it('refuses to enroll an existing local-only UUID task without overwriting it', async () => {
