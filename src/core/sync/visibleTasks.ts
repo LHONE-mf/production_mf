@@ -1,6 +1,6 @@
 import { db } from '../db';
 import type { Task } from '../types';
-import { requireOfflineTaskEditLease } from './offlineTaskLease';
+import { requireOfflineTaskEditLease, type OfflineTaskEditLease } from './offlineTaskLease';
 
 /**
  * Shared tasks can remain in IndexedDB after server access is revoked. All
@@ -40,4 +40,18 @@ export async function listVisibleTasks(): Promise<Task[]> {
       });
     },
   );
+}
+
+/** Local conflict archives retain sensitive task content even after server
+ * access is revoked. Only reveal a task under a currently valid server-issued
+ * access snapshot, or its unsent creation by the same authenticated actor. */
+export function canInspectTaskRecovery(
+  lease: OfflineTaskEditLease | null | undefined,
+  entityId: string,
+  creation?: { expectedRevision: number | null; createdBy: string },
+  now = Date.now(),
+): boolean {
+  return Boolean(lease && lease.expiresAt > now &&
+    (lease.authorizedTaskIds.includes(entityId) ||
+      (creation?.expectedRevision === 0 && creation.createdBy === lease.actorId)));
 }
