@@ -197,6 +197,76 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
     expect(stored.rows[0].count).toBe(1);
   });
 
+  it('pages all declarations without gaps at equal or sub-millisecond timestamps', async () => {
+    const target = await createBatch(orderId,'cell');
+    const source = await createBatch(orderId,'cathode');
+    await complete(source);
+    const ids = Array.from({length:4}, () => randomUUID());
+    await pool.query(`INSERT INTO production_batch_links
+      (organization_id,id,order_id,source_batch_id,target_batch_id,link_kind,
+        source_quantity,source_unit,target_quantity,target_unit,actor_id,occurred_at)
+      SELECT $1,id,$3,$4,$5,'assembly',12.500001,'kg',100,'cells',$6,
+        '2026-11-10T10:00:00.123456Z'::timestamptz +
+          ((n-1)/2) * interval '1 microsecond'
+      FROM unnest($2::uuid[]) WITH ORDINALITY AS entries(id,n)`,
+      [org,ids,orderId,source,target,chief]);
+    const expected = (await pool.query(`SELECT id FROM production_batch_links
+      WHERE organization_id=$1 AND target_batch_id=$2 ORDER BY occurred_at,id`,
+      [org,target])).rows.map(row => row.id);
+    const seen: string[] = [];
+    let after: string | null = null;
+    for (let i=0;i<4;i++) {
+      const page = await app.inject({method:'GET',headers:headers(0),
+        url:'/planning/batches/'+target+'/links?limit=1'+(after ? '&after='+after : '')});
+      expect(page.statusCode).toBe(200);
+      const body: {batchId:string;links:Array<{id:string;sourceQuantity:string}>;
+        hasMore:boolean;nextAfter:string|null} = page.json();
+      expect(body.batchId).toBe(target);
+      expect(body.links).toHaveLength(1);
+      expect(body.links[0].sourceQuantity).toBe('12.500001');
+      expect(body.hasMore).toBe(i<3);
+      expect(body.nextAfter).toBe(i<3 ? body.links[0].id : null);
+      seen.push(body.links[0].id);
+      after = body.nextAfter;
+    }
+    expect(seen).toEqual(expected);
+    const end = await app.inject({method:'GET',headers:headers(0),
+      url:'/planning/batches/'+target+'/links?after='+expected[3]});
+    expect(end.json()).toMatchObject({links:[],hasMore:false,nextAfter:null});
+    // A cursor belongs to this batch and tenant; UUID knowledge grants no access.
+    for (const query of ['limit=0','limit=501','limit=1.5','after=bad',
+      'after='+randomUUID(),'after='+expected[0]+'&unknown=1']) {
+      expect((await app.inject({method:'GET',headers:headers(0),
+        url:'/planning/batches/'+target+'/links?'+query})).statusCode).toBe(400);
+    }
+    expect((await app.inject({method:'GET',headers:headers(0),
+      url:'/planning/batches/'+cellId+'/links?after='+expected[0]})).statusCode).toBe(400);
+    expect((await app.inject({method:'GET',headers:headers(2),
+      url:'/planning/batches/'+target+'/links?after='+expected[0]})).statusCode).toBe(404);
+    expect((await app.inject({method:'GET',headers:headers(1),
+      url:'/planning/batches/'+target+'/links?limit=1'})).statusCode).toBe(403);
+  });
+
+  it('exposes the default 500-link ceiling and lets the client fetch the remainder', async () => {
+    const target = await createBatch(orderId,'cell');
+    const source = await createBatch(orderId,'cathode');
+    await complete(source);
+    await pool.query(`INSERT INTO production_batch_links
+      (organization_id,id,order_id,source_batch_id,target_batch_id,link_kind,
+        source_quantity,source_unit,target_quantity,target_unit,actor_id)
+      SELECT $1,gen_random_uuid(),$2,$3,$4,'assembly',1,'kg',1,'cells',$5
+      FROM generate_series(1,501)`,[org,orderId,source,target,chief]);
+    const first = (await getLinks(target)).json();
+    expect(first.links).toHaveLength(500);
+    expect(first.hasMore).toBe(true);
+    expect(first.nextAfter).toBe(first.links[499].id);
+    const last = (await app.inject({method:'GET',headers:headers(0),
+      url:'/planning/batches/'+target+'/links?after='+first.nextAfter})).json();
+    expect(last).toMatchObject({hasMore:false,nextAfter:null});
+    expect(last.links).toHaveLength(1);
+    expect(new Set([...first.links,...last.links].map(link => link.id)).size).toBe(501);
+  });
+
   it('enforces positive quantities, allowed states, and immutable provenance in PostgreSQL', async () => {
     const invalid = await app.inject({method:'POST',url:'/planning/batches/'+secondCellId+'/links',
       headers:headers(0),payload:{sourceBatchId:cathodeId,kind:'assembly',

@@ -6,6 +6,10 @@ import { authenticate } from './auth.js';
 
 const uuid = z.string().uuid();
 const paramsSchema = z.object({ id: uuid }).strict();
+const pageSchema = z.object({
+  after: uuid.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(500),
+}).strict();
 const positiveDecimal = z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/);
 const unit = z.enum(['cells', 'pieces', 'kg', 'm', 'm2']);
 const linkSchema = z.object({
@@ -142,9 +146,18 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
     if (actor.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
     const params = paramsSchema.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: 'invalid_batch_id' });
+    const page = pageSchema.safeParse(request.query);
+    if (!page.success) return reply.code(400).send({ error: 'invalid_genealogy_page' });
     const batch = await pool.query(`SELECT id FROM production_batches
       WHERE organization_id=$1 AND id=$2`, [actor.organization_id,params.data.id]);
     if (!batch.rowCount) return reply.code(404).send({ error: 'batch_not_found' });
+    if (page.data.after) {
+      const cursor = await pool.query(`SELECT id FROM production_batch_links
+        WHERE organization_id=$1 AND id=$3 AND (source_batch_id=$2 OR target_batch_id=$2)`,
+        [actor.organization_id,params.data.id,page.data.after]);
+      if (!cursor.rowCount)
+        return reply.code(400).send({ error: 'invalid_genealogy_page' });
+    }
     const links = await pool.query(`SELECT l.id,l.source_batch_id,l.target_batch_id,
         l.link_kind,l.source_quantity::text,l.source_unit,
         l.target_quantity::text,l.target_unit,l.actor_id,l.note,l.occurred_at,
@@ -155,9 +168,19 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
       JOIN production_batches target ON target.organization_id=l.organization_id
         AND target.id=l.target_batch_id
       WHERE l.organization_id=$1 AND (l.source_batch_id=$2 OR l.target_batch_id=$2)
-      ORDER BY l.occurred_at,l.id LIMIT 500`,
-      [actor.organization_id,params.data.id]);
-    return { batchId:params.data.id, links:links.rows.map(row => ({
+        AND ($3::uuid IS NULL OR (l.occurred_at,l.id) > (
+          SELECT occurred_at,id FROM production_batch_links
+          WHERE organization_id=$1 AND id=$3
+        ))
+      ORDER BY l.occurred_at,l.id LIMIT $4`,
+      [actor.organization_id,params.data.id,page.data.after ?? null,page.data.limit+1]);
+    // Resolve the cursor's exact database timestamp rather than round it through
+    // JavaScript Date, which would skip links separated by microseconds.
+    const rows = links.rows.slice(0,page.data.limit);
+    const hasMore = links.rows.length > page.data.limit;
+    return { batchId:params.data.id, hasMore,
+      nextAfter:hasMore ? rows[rows.length-1].id : null,
+      links:rows.map(row => ({
       id:row.id,sourceBatchId:row.source_batch_id,targetBatchId:row.target_batch_id,
       sourceCode:row.source_code,targetCode:row.target_code,kind:row.link_kind,
       sourceQuantity:row.source_quantity,sourceUnit:row.source_unit,

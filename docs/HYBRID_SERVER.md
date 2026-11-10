@@ -1,5 +1,21 @@
 # Hybrid MES: server foundation
 
+## M2 genealogy pagination (2026-11-10)
+
+`GET /planning/batches/:id/links` remains chief-only and organization-scoped.
+It accepts optional `limit` (1–500, default 500) and `after` (the last link UUID
+from the previous page). The existing `batchId` and `links` fields are preserved;
+`hasMore` and `nextAfter` explicitly expose further pages. `nextAfter` is null
+on the final page. Cursors must belong to the requested batch and organization.
+Ordering is by the exact PostgreSQL `(occurred_at, id)` pair; the cursor never
+round-trips timestamps through JavaScript milliseconds. Invalid pagination
+returns 400, unauthorized roles 403, and inaccessible batches 404. This is a
+read-only view of provenance declarations, not inventory reconciliation.
+
+The historical foundation notes below describe earlier increments; current
+product and acceptance status is in `PRODUCT_SPECIFICATION.md` and
+`M1_RELEASE_CHECKLIST.md`.
+
 This branch adds a separate backend without changing the existing offline-first Android app.
 
 ## Local development
