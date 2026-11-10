@@ -4,6 +4,8 @@
 
 The independent server project now commits `package-lock.json`; use `npm ci`
 for development, CI, the emulator bridge and both Docker install stages.
+Frontend and server tests use Vitest 5.1.0; development/test hosts require
+Node 22.12+ or Node 24 (CI uses Node 22 and Docker uses Node 22 Alpine).
 The Zod runtime validator is upgraded to 4.6.7 to address oversized-collection
 validation memory exhaustion (GHSA-mrhx-c7xc-m3w5). UUID fields use `z.guid()`
 to retain the prior hexadecimal UUID spelling contract; this does not change
