@@ -174,7 +174,17 @@ export function SyncModule() {
     setBusy(true); setError(''); setMessage('');
     try {
       requireFreshDeviceProof(session); // Read-only pulls also require a verified device.
-      const pushed = await pushAtomicTasks(session);
+      // One manual tap should drain dependent edits in order, rather than
+      // requiring a separate tap for every revision of the same task.
+      // Bound network requests to avoid an indefinitely busy screen.
+      const pushed = { accepted: 0, conflicts: 0, rejected: 0 };
+      for (let batch = 0; batch < 20; batch++) {
+        const result = await pushAtomicTasks(session);
+        pushed.accepted += result.accepted;
+        pushed.conflicts += result.conflicts;
+        pushed.rejected += result.rejected;
+        if (result.accepted === 0) break;
+      }
       const outstanding = await db.hybridTaskOutbox.count();
       if (outstanding > 0) {
         // A pull cannot safely overwrite tasks with local queued edits. Finish
