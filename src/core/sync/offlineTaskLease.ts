@@ -5,7 +5,7 @@ export interface OfflineTaskEditLease {
   deviceId: string;
   actorId: string;
   organizationId: string;
-  role: 'chief' | 'master';
+  role: 'chief' | 'master' | 'worker';
   /** Never valid longer than the server-issued device proof. */
   expiresAt: number;
 }
@@ -19,7 +19,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
  */
 export async function provisionOfflineTaskEditLease(input: Omit<OfflineTaskEditLease, 'id'>) {
   if (!uuid.test(input.deviceId) || !uuid.test(input.actorId) || !uuid.test(input.organizationId) ||
-      (input.role !== 'chief' && input.role !== 'master') ||
+      (!['chief', 'master', 'worker'].includes(input.role)) ||
       !Number.isSafeInteger(input.expiresAt) ||
       input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 300_000) {
     throw new Error('Invalid offline task edit authorization');
@@ -31,7 +31,7 @@ export async function requireOfflineTaskEditLease(): Promise<OfflineTaskEditLeas
   const lease = await db.hybridTaskEditLeases.get('active');
   if (!lease || !uuid.test(lease.deviceId) || !uuid.test(lease.actorId) ||
       !uuid.test(lease.organizationId) ||
-      (lease.role !== 'chief' && lease.role !== 'master') ||
+      (!['chief', 'master', 'worker'].includes(lease.role)) ||
       !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= Date.now()) {
     throw new Error('Подтвердите устройство в разделе синхронизации, чтобы редактировать серверные задания');
   }
