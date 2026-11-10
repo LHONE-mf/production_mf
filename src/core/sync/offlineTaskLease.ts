@@ -8,6 +8,8 @@ export interface OfflineTaskEditLease {
   role: 'chief' | 'master' | 'worker';
   /** Never valid longer than the server-issued device proof. */
   expiresAt: number;
+  /** Current server-authorized task IDs; refreshed after proof/sync. */
+  authorizedTaskIds: string[];
 }
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -21,7 +23,10 @@ export async function provisionOfflineTaskEditLease(input: Omit<OfflineTaskEditL
   if (!uuid.test(input.deviceId) || !uuid.test(input.actorId) || !uuid.test(input.organizationId) ||
       (!['chief', 'master', 'worker'].includes(input.role)) ||
       !Number.isSafeInteger(input.expiresAt) ||
-      input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 28_800_000) {
+      input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 28_800_000 ||
+      !Array.isArray(input.authorizedTaskIds) || input.authorizedTaskIds.length > 5000 ||
+      !input.authorizedTaskIds.every(id => typeof id === 'string' && uuid.test(id)) ||
+      new Set(input.authorizedTaskIds).size !== input.authorizedTaskIds.length) {
     throw new Error('Invalid offline task edit authorization');
   }
   await db.hybridTaskEditLeases.put({ ...input, id: 'active' });
@@ -32,7 +37,10 @@ export async function requireOfflineTaskEditLease(): Promise<OfflineTaskEditLeas
   if (!lease || !uuid.test(lease.deviceId) || !uuid.test(lease.actorId) ||
       !uuid.test(lease.organizationId) ||
       (!['chief', 'master', 'worker'].includes(lease.role)) ||
-      !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= Date.now()) {
+      !Number.isSafeInteger(lease.expiresAt) || lease.expiresAt <= Date.now() ||
+      !Array.isArray(lease.authorizedTaskIds) || lease.authorizedTaskIds.length > 5000 ||
+      !lease.authorizedTaskIds.every(id => typeof id === 'string' && uuid.test(id)) ||
+      new Set(lease.authorizedTaskIds).size !== lease.authorizedTaskIds.length) {
     throw new Error('Подтвердите устройство в разделе синхронизации, чтобы редактировать серверные задания');
   }
   return lease;
