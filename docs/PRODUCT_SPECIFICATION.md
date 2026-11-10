@@ -126,13 +126,28 @@ Automated backend, API-client and rendered UI role-gating tests have passed
 on commit `8410646` (CI `42818123387`); Android APK packaging is
 tracked separately.
 
-**Remaining for M2:** workshop-scoped
+**M2 access and provenance checkpoint (2026-11-10):**
+A master now sees only approved route summaries whose entire ordered step
+list is within the master's current workshop memberships. Revocation is
+covered by PostgreSQL tests (commit `e0ce32b`, CI `42820531741`).
+The additive `008_m2_batch_genealogy.sql` migration and authenticated,
+chief-only batch-link API provide append-only, tenant/order-scoped batch
+provenance declarations: source and target identities, separate quantities
+and units, link kind, actor, note and server timestamp. The API restricts
+links to completed sources and available targets, disallows invalid branch
+pairings and prevents graph cycles under a per-order advisory lock.
+PostgreSQL tests verify immutable history, cross-tenant/order protection
+and cycle rejection (commit `bf20694`, CI `42821484472`).
+These declarations **do not** move inventory, guarantee mass balance,
+automatically update batch statuses or constitute a validated physical
+handover. No real manufacturing records are modified.
 
-permissions for non-chief batch actions, detailed route handovers, batch
-genealogy (split/merge/scrap), quantities consumed/produced, and a complete
-pilot route. No deployed-server or physical production test has been done.
-M1 shared synchronization still applies to tasks only; M1 physical acceptance
-is deferred, **not** passed.
+**Remaining for M2:** workshop-scoped permissions for non-chief batch actions,
+handover and genealogy UI, true split/merge workflows and reconciled input/output
+quantities, complete pilot route, and tested server deployment. M1 shared
+synchronization still applies to tasks only; physical acceptance is deferred,
+**not** passed.
+
 ### M3 — Stage operations (P1)
 - [ ] Shared operation-run service and validation against specification versions.
 - [ ] Integrate existing stage journals incrementally without losing records.
