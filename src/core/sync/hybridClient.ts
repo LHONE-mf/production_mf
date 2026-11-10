@@ -10,6 +10,8 @@ export interface HybridSession {
   deviceProofToken?: string;
   deviceProofDeviceId?: string;
   deviceProofExpiresAt?: number;
+  /** Server-provisioned bounded offline editing window. Never a network proof. */
+  offlineEditExpiresAt?: number;
 }
 export interface RemoteTaskChange {
   sequence: string | number;
