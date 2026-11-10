@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
   CutRun, CuttingIncoming, ElectrodeShape, StageId, SyncPacket, UserRole,
 } from '../../core/types';
@@ -41,7 +42,7 @@ export function CuttingModule() {
   }, []);
 
   const tasks = useLiveQuery(async () => {
-    const all = await db.tasks.toArray();
+    const all = await listVisibleTasks();
     return all.filter((t) => t.stage === StageId.CUTTING || t.stage === StageId.CALENDARING);
   }, []);
 
