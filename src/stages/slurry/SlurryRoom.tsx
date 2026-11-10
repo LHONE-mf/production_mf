@@ -24,7 +24,7 @@ export function SlurryModule() {
 
   const tasks = useLiveQuery(
     async () => (await listVisibleTasks()).filter(task => task.stage === StageId.SLURRY)
-      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [],
   );
 
