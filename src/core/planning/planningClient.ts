@@ -95,6 +95,11 @@ export type InspectionObservation = {
   note: string | null; recordedBy: string; recordedAt: string;
   latestReview?: InspectionReview | null;
   reviewHistory?: InspectionReview[];
+  referenceComparison?: 'no_reference' | 'below_reference' |
+    'above_reference' | 'within_reference';
+  referenceCriterionId?: string | null;
+  referenceLowerLimit?: string | null;
+  referenceUpperLimit?: string | null;
 };
 export type InspectionInput =
   | { observationId: string; kind: 'measurement'; characteristic: string;

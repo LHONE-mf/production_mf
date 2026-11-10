@@ -324,6 +324,17 @@ approval by an independent quality authority remains future work.
 Isolated PostgreSQL authorization, immutability, numeric and branch tests
 cover the new reference registry.
 
+**M2 advisory measurement-to-criterion comparison (2026-11-10):**
+The inspection history API now joins each exact-decimal measurement to a
+frozen route-version reference criterion only when the step, normalized
+characteristic name and unit all match. PostgreSQL computes inclusive
+within/below/above-reference comparisons without JavaScript floating-point
+rounding. Missing criteria, different units and visual findings produce
+`no_reference`; all comparisons are informational. The Planning UI labels
+the reference boundaries and clearly states that this is **not a formal QA
+pass/fail, batch release, or automatic hold**. No production state or
+inventory changes are made. Server and UI tests cover the behavior.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

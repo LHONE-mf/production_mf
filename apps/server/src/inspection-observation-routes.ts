@@ -127,7 +127,19 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
        last_review.review_number,last_review.outcome AS review_outcome,
        last_review.reason AS review_reason,
        last_review.reviewed_by,last_review.reviewed_at,
-       COALESCE(review_history.events,'[]'::jsonb) AS review_history
+       COALESCE(review_history.events,'[]'::jsonb) AS review_history,
+       criterion.id AS criterion_id,
+       criterion.lower_limit::text AS reference_lower,
+       criterion.upper_limit::text AS reference_upper,
+       CASE
+         WHEN i.kind<>'measurement' OR criterion.id IS NULL
+           THEN 'no_reference'
+         WHEN criterion.lower_limit IS NOT NULL
+           AND i.observed_value<criterion.lower_limit THEN 'below_reference'
+         WHEN criterion.upper_limit IS NOT NULL
+           AND i.observed_value>criterion.upper_limit THEN 'above_reference'
+         ELSE 'within_reference'
+       END AS reference_comparison
       FROM production_inspection_observations i
       LEFT JOIN LATERAL (
         SELECT review_number,outcome,reason,reviewed_by,reviewed_at
@@ -146,6 +158,16 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
         WHERE r.organization_id=i.organization_id
           AND r.batch_id=i.batch_id AND r.observation_id=i.id
       ) review_history ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT c.id,c.lower_limit,c.upper_limit
+        FROM production_inspection_criteria c
+        WHERE c.organization_id=i.organization_id
+          AND c.route_id=i.route_id AND c.route_version=i.route_version
+          AND c.step_number=i.step_number
+          AND lower(c.characteristic)=lower(i.characteristic)
+          AND c.unit=i.observed_unit
+        LIMIT 1
+      ) criterion ON TRUE
       WHERE i.organization_id=$1 AND i.batch_id=$2
       ORDER BY i.recorded_at,i.id LIMIT 300`,
       [actor.organization_id,batchId]);
@@ -156,6 +178,10 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
       attentionRequired:row.attention_required,
       note:row.note,recordedBy:row.recorded_by,recordedAt:row.recorded_at,
       reviewHistory:row.review_history,
+      referenceComparison:row.reference_comparison,
+      referenceCriterionId:row.criterion_id,
+      referenceLowerLimit:row.reference_lower,
+      referenceUpperLimit:row.reference_upper,
       latestReview:row.review_number===null ? null : {
         number:row.review_number,outcome:row.review_outcome,
         reason:row.review_reason,reviewedBy:row.reviewed_by,

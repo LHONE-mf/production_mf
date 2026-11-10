@@ -152,7 +152,9 @@ export function InspectionObservationPanel({connection,batch}:Props){
     </div>
     <p className="text-xs text-amber-200">
       Наблюдения — не протокол официальной приёмки и не разрешение выпускать партию.
-      Нет автоматического сравнения с допусками. Помеченные замечания блокируют
+      Сравнение измерений со справочными пределами носит информационный характер,
+      не является решением ОТК и само по себе не меняет статус партии.
+      Помеченные замечания блокируют
       завершение партии до документированной не блокирующей проверки;
       решение «Требуются дальнейшие действия» оставляет блокировку.
       При критическом замечании отдельно переведите партию в статус «Приостановлена».
@@ -181,6 +183,21 @@ export function InspectionObservationPanel({connection,batch}:Props){
           {' · '}{new Date(r.recordedAt).toLocaleString('ru-RU')}
         </div>
         {r.note&&<p className="whitespace-pre-wrap text-slate-400">{r.note}</p>}
+        {r.kind==='measurement'&&r.referenceComparison&&
+          <p className="mt-1 text-slate-300">
+            {r.referenceComparison==='no_reference'
+              ? 'Справочный предел для параметра и единицы не найден'
+              : <>
+                Сравнение со справочным пределом:
+                {' '}{r.referenceComparison==='below_reference'
+                  ? 'ниже нижней границы'
+                  : r.referenceComparison==='above_reference'
+                    ? 'выше верхней границы'
+                    : 'в пределах указанных границ'}
+                {' · '}допуск от {r.referenceLowerLimit??'—'} до
+                {' '}{r.referenceUpperLimit??'—'} {r.observedUnit}
+              </>}
+          </p>}
         {r.latestReview&&<div className="mt-1 border-t border-slate-700 pt-1 text-slate-300">
           Последняя проверка №{r.latestReview.number} ·
           {' '}{r.latestReview.outcome==='reviewed_no_block'
