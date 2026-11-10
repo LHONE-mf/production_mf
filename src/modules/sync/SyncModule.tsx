@@ -61,18 +61,24 @@ export function SyncModule() {
       if (!data.accessToken) throw new Error('Сервер не вернул токен доступа');
       if (data.user?.organizationId?.toLowerCase() !== organizationId.trim().toLowerCase()) throw new Error('Организация в ответе сервера не совпадает с выбранной');
       await assertSyncTenant(serverUrl, data.user.organizationId);
+      const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
+        headers: { Authorization: 'Bearer ' + data.accessToken },
+      });
+      let deviceIds: string[] = [];
+      if (devicesResponse.ok) {
+        const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
+        if (!Array.isArray(enrolled.devices) || !enrolled.devices.every(device => typeof device?.id === 'string')) {
+          throw new Error('Сервер вернул некорректный список устройств');
+        }
+        deviceIds = enrolled.devices.map(device => device.id);
+      }
+      // Commit the UI session only after all required login checks succeed.
+      // A failed device-list response must not leave a half-initialized session.
       setSession({ serverUrl, accessToken: data.accessToken });
       setServerRole(data.user?.role ?? '');
       setEnrolledDeviceId('');
       setSelectedDeviceId('');
-      setMyDevices([]);
-      const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
-        headers: { Authorization: 'Bearer ' + data.accessToken },
-      });
-      if (devicesResponse.ok) {
-        const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
-        setMyDevices((enrolled.devices ?? []).map(device => device.id));
-      }
+      setMyDevices(deviceIds);
       setPassword('');
       setMessage('Подключено. Теперь можно синхронизировать серверные задания.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка подключения'); }
