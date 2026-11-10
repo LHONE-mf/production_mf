@@ -524,7 +524,7 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(12);
   });
 
-  it('rolls back earlier remote tasks and cursor when a later entity has a revision gap', async () => {
+  it('applies both complete task snapshots when later entity skips hidden revisions', async () => {
     const session = {
       serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
       deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
@@ -545,12 +545,16 @@ describe('server-managed task offline writes', () => {
         nextCursor: 22, hasMore: false,
       }),
     }));
-    await expect(pullAtomicTasks(session)).rejects.toThrow('Revision gap');
-    expect(await db.tasks.get(taskId)).toBeUndefined();
-    expect(await db.tasks.get(secondId)).toBeUndefined();
-    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
-    expect((await db.hybridTaskRevisions.get(secondId))?.revision).toBe(1);
-    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(20);
+    expect((await pullAtomicTasks(session)).received).toBe(2);
+    expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+    expect((await db.tasks.get(secondId))?.title).toBe('Offline task');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
+    expect((await db.hybridTaskRevisions.get(secondId))?.revision).toBe(4);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(22);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskRevisions.get(secondId))?.revision).toBe(4);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(22);
   });
 
   it('retains a changed queued operation when its earlier snapshot is acknowledged', async () => {
