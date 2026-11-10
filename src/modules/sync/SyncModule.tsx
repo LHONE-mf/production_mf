@@ -14,6 +14,7 @@ import { assertSyncTenant } from '../../core/sync/tenantGuard';
 import { provisionOfflineTaskEditLease, clearOfflineTaskEditLease, requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
 import { canInspectTaskRecovery } from '../../core/sync/visibleTasks';
 import { fetchAuthorizedTaskIds } from '../../core/sync/taskAccessClient';
+import { getServerConnection, setServerConnection } from '../../core/sync/serverConnection';
 
 function serverEndpoint(origin: string, path: string) {
   const url = new URL(origin);
@@ -24,43 +25,31 @@ function serverEndpoint(origin: string, path: string) {
   return new URL(path, url).toString();
 }
 
-interface VolatileSyncConnection {
-  session: HybridSession;
-  serverUrl: string;
-  organizationId: string;
-  serverRole: string;
-  serverActorId: string;
-  selectedDeviceId: string;
-  enrolledDeviceId: string;
-  myDevices: string[];
-}
-
-// Navigation must not force a second login after offline edits. Keep the
-// bearer token and proof ONLY in JavaScript memory, never on disk or Dexie.
-let volatileConnection: VolatileSyncConnection | null = null;
-
+// Server bearer token and device proof are memory-only, shared with the
+// online planning screen; never persisted to local demo auth or Dexie.
 export function SyncModule() {
-  const [serverUrl, setServerUrl] = useState(volatileConnection?.serverUrl ?? '');
-  const [organizationId, setOrganizationId] = useState(volatileConnection?.organizationId ?? '');
+  const initialConnection = getServerConnection();
+  const [serverUrl, setServerUrl] = useState(initialConnection?.serverUrl ?? '');
+  const [organizationId, setOrganizationId] = useState(initialConnection?.organizationId ?? '');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [session, setSession] = useState<HybridSession | null>(volatileConnection?.session ?? null);
+  const [session, setSession] = useState<HybridSession | null>(initialConnection?.session ?? null);
   const [busy, setBusy] = useState(false);
   const [devicePublicKey, setDevicePublicKey] = useState('');
   const [localDevicePublicKey, setLocalDevicePublicKey] = useState('');
   const [deviceOwnerId, setDeviceOwnerId] = useState('');
-  const [enrolledDeviceId, setEnrolledDeviceId] = useState(volatileConnection?.enrolledDeviceId ?? '');
-  const [selectedDeviceId, setSelectedDeviceId] = useState(volatileConnection?.selectedDeviceId ?? '');
-  const [myDevices, setMyDevices] = useState<string[]>(volatileConnection?.myDevices ?? []);
-  const [serverRole, setServerRole] = useState(volatileConnection?.serverRole ?? '');
-  const [serverActorId, setServerActorId] = useState(volatileConnection?.serverActorId ?? '');
+  const [enrolledDeviceId, setEnrolledDeviceId] = useState(initialConnection?.enrolledDeviceId ?? '');
+  const [selectedDeviceId, setSelectedDeviceId] = useState(initialConnection?.selectedDeviceId ?? '');
+  const [myDevices, setMyDevices] = useState<string[]>(initialConnection?.myDevices ?? []);
+  const [serverRole, setServerRole] = useState(initialConnection?.serverRole ?? '');
+  const [serverActorId, setServerActorId] = useState(initialConnection?.serverActorId ?? '');
   const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; payload: TaskPayloadV1 }>>({});
   const [inspectingTask, setInspectingTask] = useState<string | null>(null);
   useEffect(() => {
-    volatileConnection = session
+    setServerConnection(session
       ? { session, serverUrl, organizationId, serverRole, serverActorId,
           selectedDeviceId, enrolledDeviceId, myDevices }
-      : null;
+      : null);
   }, [session, serverUrl, organizationId, serverRole, serverActorId,
     selectedDeviceId, enrolledDeviceId, myDevices]);
   const [message, setMessage] = useState('');
@@ -331,7 +320,7 @@ export function SyncModule() {
       setError((cause instanceof Error ? cause.message : 'Ошибка выхода') + '. Локальные учётные данные очищены, но серверная сессия может оставаться активной до истечения срока.');
     } finally {
       await clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить локальное разрешение на редактирование'));
-      volatileConnection = null;
+      setServerConnection(null);
       setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setServerActorId('');
       setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
       setDevicePublicKey(''); setLocalDevicePublicKey(''); setDeviceOwnerId(''); setPassword(''); setBusy(false);
