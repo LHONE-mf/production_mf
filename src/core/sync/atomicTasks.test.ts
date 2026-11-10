@@ -17,6 +17,13 @@ function task(): Task {
     comments: [], attachments: [],
   };
 }
+async function authorizeTaskEditing(role: 'chief' | 'master' | 'worker' = 'master') {
+  await provisionOfflineTaskEditLease({
+    deviceId, actorId: role === 'worker' ? task().assignedTo : task().createdBy,
+    organizationId: '66666666-6666-4666-8666-666666666666',
+    role, expiresAt: Date.now() + 120_000,
+  });
+}
 afterEach(() => vi.unstubAllGlobals());
 
 describe('server-managed task offline writes', () => {
@@ -50,10 +57,11 @@ describe('server-managed task offline writes', () => {
   });
 
   it('edits the latest server task and queues consecutive status/field edits atomically', async () => {
+    await authorizeTaskEditing();
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     await db.tasks.put(task());
-    await editServerManagedTask(taskId, deviceId, { title: 'Updated offline', priority: TaskPriority.HIGH });
-    await editServerManagedTask(taskId, deviceId, { status: TaskStatus.IN_PROGRESS });
+    await editServerManagedTask(taskId, { title: 'Updated offline', priority: TaskPriority.HIGH });
+    await editServerManagedTask(taskId, { status: TaskStatus.IN_PROGRESS });
     const stored = await db.tasks.get(taskId);
     expect(stored).toMatchObject({ title: 'Updated offline', priority: TaskPriority.HIGH, status: TaskStatus.IN_PROGRESS });
     expect(stored?.createdBy).toBe(task().createdBy);
@@ -67,12 +75,35 @@ describe('server-managed task offline writes', () => {
   });
 
   it('refuses forbidden status jumps without changing tasks or queued operations', async () => {
+    await authorizeTaskEditing();
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
     await db.tasks.put(task());
-    await expect(editServerManagedTask(taskId, deviceId, { status: TaskStatus.COMPLETED }))
+    await expect(editServerManagedTask(taskId, { status: TaskStatus.COMPLETED }))
       .rejects.toThrow('Invalid server task status transition');
     expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.ASSIGNED);
     expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
+  it('enforces worker-only status edits inside the durable write layer', async () => {
+    await authorizeTaskEditing('worker');
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
+    await db.tasks.put(task());
+    await expect(editServerManagedTask(taskId, { title: 'Forbidden task rewrite' }))
+      .rejects.toThrow('Workers may only update assigned task progress');
+    await expect(editServerManagedTask(taskId, { status: TaskStatus.COMPLETED }))
+      .rejects.toThrow('Workers may only update assigned task progress');
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    await editServerManagedTask(taskId, { status: TaskStatus.IN_PROGRESS });
+    await editServerManagedTask(taskId, { status: TaskStatus.CHECKED });
+    expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.CHECKED);
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
+    await db.hybridTaskEditLeases.update('active', { expiresAt: Date.now() - 1 });
+    await expect(editServerManagedTask(taskId, { status: TaskStatus.IN_PROGRESS }))
+      .rejects.toThrow('Подтвердите устройство');
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
   });
 
   it('refuses to enroll an existing local-only UUID task without overwriting it', async () => {
