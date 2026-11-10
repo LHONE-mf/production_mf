@@ -3,6 +3,8 @@ import { StepEvidencePanel } from './StepEvidencePanel';
 import { QuantityFlowPanel } from './QuantityFlowPanel';
 import { LocalJournalLinkPanel } from './LocalJournalLinkPanel';
 import { InspectionObservationPanel } from './InspectionObservationPanel';
+import { RouteInspectionCriteriaPanel, BatchInspectionCriteriaPanel }
+  from './InspectionCriteriaPanel';
 import { ClipboardList, Factory, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { StageId, STAGE_LABELS } from '../../core/types';
 import { clearServerConnection, getServerConnection, useServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
@@ -412,6 +414,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
           <ol className="space-y-1 text-sm text-slate-300 list-decimal list-inside">
             {routeSteps.map((s, i) => <li key={i}>{s.name} · {STAGE_LABELS[s.stage as StageId] || s.stage}</li>)}
           </ol>}
+        <RouteInspectionCriteriaPanel
+          key={routePreview.id + ':' + routePreview.version}
+          connection={connection} route={routePreview} steps={routeSteps} />
         <div className="flex flex-wrap gap-2">
           {isChief && routePreview.state === 'draft' &&
             <button className={buttonClass} disabled={busy}
@@ -530,6 +535,8 @@ function PlanningWorkspace({ connection, onOpenSync }: {
           <StepEvidencePanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
           <QuantityFlowPanel key={selectedBatchRow.id} connection={connection} batchId={selectedBatchRow.id} />
           <LocalJournalLinkPanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
+          <BatchInspectionCriteriaPanel key={selectedBatchRow.id}
+            connection={connection} batchId={selectedBatchRow.id} />
           <InspectionObservationPanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
           <div className="space-y-3 rounded-lg border border-slate-700 p-3">
             <h4 className="font-medium text-white">Происхождение партии</h4>
