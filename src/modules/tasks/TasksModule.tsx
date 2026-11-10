@@ -189,8 +189,10 @@ function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, c
 }) {
   const [statusError, setStatusError] = useState('');
   const [updating, setUpdating] = useState(false);
-  const managedRevision = useLiveQuery(() => db.hybridTaskRevisions.get(task.id), [task.id]);
+  const managedRevision = useLiveQuery(async () => Boolean(await db.hybridTaskRevisions.get(task.id)), [task.id]);
   const queuedEdits = useLiveQuery(() => db.hybridTaskOutbox.where('entityId').equals(task.id).count(), [task.id]);
+  // Undefined means the ownership query is still loading, not local-only.
+  const ownershipKnown = managedRevision !== undefined && queuedEdits !== undefined;
   const serverManaged = Boolean(managedRevision) || Boolean(queuedEdits);
   async function changeStatus(status: TaskStatus) {
     setUpdating(true); setStatusError('');
@@ -198,7 +200,14 @@ function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, c
       if (serverManaged) {
         await editServerManagedTask(task.id, { status });
       } else {
-        await db.tasks.update(task.id, { status, updatedAt: new Date() });
+        await db.transaction('rw', [db.tasks, db.hybridTaskRevisions, db.hybridTaskOutbox], async () => {
+          // Ownership may have changed after React rendered the card. Never
+          // change a server task without the transactional sync outbox.
+          const revision = await db.hybridTaskRevisions.get(task.id);
+          const queued = await db.hybridTaskOutbox.where('entityId').equals(task.id).count();
+          if (revision || queued) throw new Error('Задание стало серверным. Повторите действие после обновления экрана.');
+          await db.tasks.update(task.id, { status, updatedAt: new Date() });
+        });
       }
     }
     catch (error) { setStatusError(error instanceof Error ? error.message : 'Не удалось обновить статус'); }
@@ -245,7 +254,7 @@ function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, c
           {(canManage || canEditLocalStatus || (serverManaged && canEditSharedStatus)) && <div className="flex flex-wrap gap-2 mt-3 items-center">
             {canManage && <button type="button" disabled={serverManaged && !canEditSharedFields} title={serverManaged && !canEditSharedFields ? 'Сначала подтвердите устройство начальника или мастера' : 'Edit task'} onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>}
             <label className="text-slate-400 text-xs" htmlFor={`status-${task.id}`}>Статус</label>
-            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || (serverManaged && !canEditSharedStatus)} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
+            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || !ownershipKnown || (serverManaged && !canEditSharedStatus)} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
               {Object.entries(STATUS_CONFIG).map(([status, config]) => <option key={status} value={status}>{config.label}</option>)}
             </select>
           </div>}
