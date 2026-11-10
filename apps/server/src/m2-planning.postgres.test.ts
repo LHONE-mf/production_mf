@@ -10,7 +10,6 @@ integration('M2 planning schema and tenant boundaries (real PostgreSQL)', () => 
   const chiefA = randomUUID(), chiefB = randomUUID();
   const routeA = randomUUID(), routeB = randomUUID();
   const orderA = randomUUID();
-  let disposable = false;
 
   beforeAll(async () => {
     const target = new URL(process.env.POSTGRES_TEST_URL!);
@@ -20,7 +19,6 @@ integration('M2 planning schema and tenant boundaries (real PostgreSQL)', () => 
     }
     const db = await pool.query('SELECT current_database() AS name');
     expect(db.rows[0].name).toBe('production_mf_ci');
-    disposable = true;
     await pool.query('INSERT INTO organizations(id,name) VALUES($1,$2),($3,$4)',
       [orgA, 'M2 test tenant A', orgB, 'M2 test tenant B']);
     await pool.query(`INSERT INTO users(id,organization_id,login,password_hash,role)
@@ -42,16 +40,11 @@ integration('M2 planning schema and tenant boundaries (real PostgreSQL)', () => 
   });
 
   afterAll(async () => {
-    try {
-      if (disposable) {
-        for (const table of ['production_batches', 'production_orders',
-          'process_route_steps', 'process_route_versions', 'process_routes',
-          'user_workshop_memberships', 'workshops', 'users']) {
-          await pool.query('DELETE FROM ' + table + ' WHERE organization_id IN ($1,$2)', [orgA,orgB]);
-        }
-        await pool.query('DELETE FROM organizations WHERE id IN ($1,$2)', [orgA,orgB]);
-      }
-    } finally { await pool.end(); }
+    // Approved route versions and their steps must never be deleted, including
+    // by test cleanup. This test refuses all non-disposable databases, and the
+    // entire isolated CI database is destroyed when the PostgreSQL job ends.
+    // Leave randomized fixtures intact rather than bypassing immutability.
+    await pool.end();
   });
 
   it('keeps route codes tenant-local and versions independent', async () => {
