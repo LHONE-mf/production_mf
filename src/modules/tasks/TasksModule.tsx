@@ -47,11 +47,17 @@ export function TasksModule() {
   const storedTasks = useLiveQuery(() => db.tasks.toArray(), []);
   const users = useLiveQuery(() => db.users.toArray(), []);
   const editLease = useLiveQuery(() => db.hybridTaskEditLeases.get('active'), []);
-  const sharedTaskIds = useLiveQuery(async () => {
+  const sharedTaskVisibility = useLiveQuery(async () => {
     const revisions = await db.hybridTaskRevisions.toArray();
     const queued = await db.hybridTaskOutbox.toArray();
-    return new Set([...revisions.map(row => row.entityId), ...queued.map(row => row.entityId)]);
+    return {
+      ids: new Set([...revisions.map(row => row.entityId), ...queued.map(row => row.entityId)]),
+      locallyCreated: new Set(queued.filter(op => op.expectedRevision === 0)
+        .map(op => op.entityId)),
+    };
   }, []);
+  const sharedTaskIds = sharedTaskVisibility?.ids;
+  const authorizedIds = new Set(editLease?.authorizedTaskIds ?? []);
   const hasEditLease = Boolean(editLease && editLease.expiresAt > Date.now());
   const tasks: Task[] = (storedTasks ?? []).map(task => ({
     ...task,
@@ -75,6 +81,8 @@ export function TasksModule() {
     // the verified server identity, independently of the local demo role.
     if (sharedTaskIds?.has(task.id) ?? true) {
       if (!hasEditLease) return false;
+      if (!authorizedIds.has(task.id) &&
+          !(sharedTaskVisibility?.locallyCreated.has(task.id) && task.createdBy === editLease?.actorId)) return false;
       if (editLease?.role === 'worker' && task.assignedTo !== editLease.actorId) return false;
     } else if (!canViewAll && task.assignedTo !== currentUser.id) {
       return false;
