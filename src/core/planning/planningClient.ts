@@ -85,6 +85,7 @@ export type InspectionObservation = {
   observedUnit: InspectionUnit | null; attentionRequired: boolean;
   note: string | null; recordedBy: string; recordedAt: string;
   latestReview?: InspectionReview | null;
+  reviewHistory?: InspectionReview[];
 };
 export type InspectionInput =
   | { observationId: string; kind: 'measurement'; characteristic: string;

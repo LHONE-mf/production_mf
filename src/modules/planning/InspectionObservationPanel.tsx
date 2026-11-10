@@ -187,6 +187,23 @@ export function InspectionObservationPanel({connection,batch}:Props){
             ? 'Не блокирует завершение' : 'Требуются дальнейшие действия'}
           <p className="whitespace-pre-wrap">{r.latestReview.reason}</p>
         </div>}
+        {r.reviewHistory&&r.reviewHistory.length>0&&
+          <details className="mt-2 border-t border-slate-700 pt-1">
+            <summary className="cursor-pointer text-slate-300">
+              История проверок ({r.reviewHistory.length})
+            </summary>
+            <ol className="mt-2 space-y-1 pl-3">
+              {r.reviewHistory.map(review=><li key={review.number}
+                className="rounded border border-slate-700 p-2 text-slate-300">
+                <div>№{review.number} ·
+                  {' '}{review.outcome==='reviewed_no_block'
+                    ? 'Не блокирует завершение' : 'Требуются дальнейшие действия'}
+                  {' · '}{new Date(review.reviewedAt).toLocaleString('ru-RU')}
+                </div>
+                <p className="whitespace-pre-wrap">{review.reason}</p>
+              </li>)}
+            </ol>
+          </details>}
       </li>)}
     </ol>
     {writable&&flagged.length>0&&<form onSubmit={event=>void submitReview(event)}

@@ -126,7 +126,8 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
        i.recorded_by,i.recorded_at,
        last_review.review_number,last_review.outcome AS review_outcome,
        last_review.reason AS review_reason,
-       last_review.reviewed_by,last_review.reviewed_at
+       last_review.reviewed_by,last_review.reviewed_at,
+       COALESCE(review_history.events,'[]'::jsonb) AS review_history
       FROM production_inspection_observations i
       LEFT JOIN LATERAL (
         SELECT review_number,outcome,reason,reviewed_by,reviewed_at
@@ -135,6 +136,16 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
           AND r.batch_id=i.batch_id AND r.observation_id=i.id
         ORDER BY review_number DESC LIMIT 1
       ) last_review ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT jsonb_agg(jsonb_build_object(
+          'number',r.review_number,'outcome',r.outcome,
+          'reason',r.reason,'reviewedBy',r.reviewed_by,
+          'reviewedAt',r.reviewed_at
+        ) ORDER BY r.review_number) AS events
+        FROM production_inspection_reviews r
+        WHERE r.organization_id=i.organization_id
+          AND r.batch_id=i.batch_id AND r.observation_id=i.id
+      ) review_history ON TRUE
       WHERE i.organization_id=$1 AND i.batch_id=$2
       ORDER BY i.recorded_at,i.id LIMIT 300`,
       [actor.organization_id,batchId]);
@@ -144,6 +155,7 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
       observedUnit:row.observed_unit,
       attentionRequired:row.attention_required,
       note:row.note,recordedBy:row.recorded_by,recordedAt:row.recorded_at,
+      reviewHistory:row.review_history,
       latestReview:row.review_number===null ? null : {
         number:row.review_number,outcome:row.review_outcome,
         reason:row.review_reason,reviewedBy:row.reviewed_by,

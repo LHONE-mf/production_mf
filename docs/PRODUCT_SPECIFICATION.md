@@ -299,6 +299,14 @@ specification compliance, product release, or automatic batch hold. Chief
 triage does not certify fitness-for-use, and a formal QA release workflow
 remains planned for M4.
 
+**M2 inspection review audit visibility (2026-11-10):**
+The batch inspection history now includes **all** append-only chief triage
+reviews for each observation, in chronological review-number order, alongside
+the existing latest-review summary. The Planning screen offers an expandable
+per-observation review history showing outcome, rationale and timestamp.
+This avoids hiding earlier follow-up decisions when a later review changes the
+technical completion guard. It does not grant formal QA acceptance authority.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

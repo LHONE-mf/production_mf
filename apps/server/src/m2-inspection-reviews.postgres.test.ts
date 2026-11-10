@@ -125,7 +125,8 @@ integration('M2 flagged quality observations and completion triage (PostgreSQL)'
       .toMatchObject({error:'observation_review_not_required'});
     expect((await reviews()).json().observations).toEqual(expect.arrayContaining([
       expect.objectContaining({id:obsId,attentionRequired:true,latestReview:null}),
-      expect.objectContaining({id:ordinaryId,attentionRequired:false,latestReview:null}),
+      expect.objectContaining({id:ordinaryId,attentionRequired:false,
+        latestReview:null,reviewHistory:[]}),
     ]));
   });
 
@@ -152,6 +153,12 @@ integration('M2 flagged quality observations and completion triage (PostgreSQL)'
     expect(history.find((r:{id:string})=>r.id===obsId)).toMatchObject({
       latestReview:{number:2,outcome:'reviewed_no_block',
         reason:nonblocking.reason,reviewedBy:actors[0]},
+      reviewHistory:[
+        {number:1,outcome:'follow_up_required',
+          reason:followup.reason,reviewedBy:actors[0]},
+        {number:2,outcome:'reviewed_no_block',
+          reason:nonblocking.reason,reviewedBy:actors[0]},
+      ],
     });
     expect(history.find((r:{id:string})=>r.id===secondFlagId)).toMatchObject({
       latestReview:{number:1,outcome:'reviewed_no_block'},
@@ -166,6 +173,11 @@ integration('M2 flagged quality observations and completion triage (PostgreSQL)'
       'reviewed_no_block','Follow-up performed, no blocking condition'))).json())
       .toMatchObject({reviewNumber:4});
     expect((await close()).json()).toMatchObject({error:'batch_route_step_incomplete'});
+    const completeHistory=(await reviews()).json().observations
+      .find((r:{id:string})=>r.id===obsId);
+    expect(completeHistory.reviewHistory.map((r:{number:number})=>r.number))
+      .toEqual([1,2,3,4]);
+    expect(completeHistory.latestReview.number).toBe(4);
     const count=await pool.query(`SELECT count(*)::int AS n FROM production_inspection_reviews
       WHERE organization_id=$1 AND batch_id=$2`,[org,batch]);
     expect(count.rows[0].n).toBe(5);
