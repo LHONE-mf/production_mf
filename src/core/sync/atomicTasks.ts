@@ -107,6 +107,11 @@ export async function editServerManagedTask(
     const revision = await db.hybridTaskRevisions.get(taskId);
     const queued = await db.hybridTaskOutbox.where('entityId').equals(taskId).count();
     if (!current || (!revision && queued === 0)) throw new Error('Server task not found or not queued');
+    const locallyCreated = (await db.hybridTaskOutbox.where('entityId').equals(taskId).toArray())
+      .some(op => op.expectedRevision === 0 && op.payload.createdBy === lease.actorId);
+    if (!lease.authorizedTaskIds.includes(taskId) && !locallyCreated) {
+      throw new Error('Task is not in the server-authorized scope');
+    }
     if (current.status === TaskStatus.COMPLETED) throw new Error('Completed server tasks cannot be modified');
     if (lease.role === 'worker') {
       const workerTransitions: Partial<Record<TaskStatus, TaskStatus>> = {
