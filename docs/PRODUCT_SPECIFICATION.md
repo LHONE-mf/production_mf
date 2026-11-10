@@ -210,6 +210,19 @@ separate read-only quantity-flow panel with refresh and explicit warnings
 against treating the difference as verified waste. No migration or existing
 journals changed.
 
+**M2 manual local journal reference checkpoint (2026-11-10):**
+The additive `011_m2_local_journal_links.sql` migration adds a chief-attested,
+append-only server reference to an existing generic `db.journal` record.
+Explicit UI selection transfers only a source UUID, stage, original timestamp,
+summary and optional defect note; it does not migrate, edit, auto-sync or
+delete the local record. The server validates the approved route branch/step
+and stage, scopes all reads/writes to an authenticated organization and actor,
+enforces unique source IDs per organization, and supports exact idempotent
+retries. Demo-style non-UUID identifiers are rejected. These pointers are
+**claims by an authorized supervisor**, not authenticated operator logs,
+equipment measurements, verified yield, or valid completion evidence.
+Other legacy manufacturing-run tables are not yet integrated.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

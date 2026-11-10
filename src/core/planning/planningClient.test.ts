@@ -179,6 +179,34 @@ describe('authenticated M2 planning client', () => {
     );
   });
 
+  it('uses verified session and stable UUID for an explicit local journal reference', async () => {
+    const calls: Array<{ url:string; options:RequestInit }> = [];
+    vi.stubGlobal('fetch',vi.fn(async (url:string, options:RequestInit) => {
+      calls.push({url,options});
+      return {ok:true,json:async () => ({links:[],alreadyLinked:false})};
+    }));
+    await planningApi.journalLinks(session,'batch-1');
+    const data = {
+      linkId:'a3d83e98-4028-484e-91cf-b3ce87fd3dcb',
+      sourceEntryId:'9273b35b-e517-4361-8a51-7ac8112e42a5',
+      sourceStage:'coating',sourceCreatedAt:'2026-11-10T10:15:00.000Z',
+      summary:'Coated test roll',defects:'Pinholes',
+    };
+    await planningApi.attachLocalJournal(session,'batch-1',1,data);
+    await planningApi.attachLocalJournal(session,'batch-1',1,data);
+    expect(calls.map(c=>c.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/journal-links',
+      'https://mes.example.org/planning/batches/batch-1/steps/1/journal-links',
+      'https://mes.example.org/planning/batches/batch-1/steps/1/journal-links',
+    ]);
+    expect(calls.map(c=>c.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(c=>(c.options.headers as Record<string,string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(c=>c.options.redirect==='error')).toBe(true);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(data);
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {

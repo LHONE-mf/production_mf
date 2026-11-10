@@ -57,6 +57,11 @@ export type BatchStepRecord = {
   evidence: StepEvidence | null;
 };
 export type StepDetail = RouteStep & { number: number };
+export type LocalJournalLink = {
+  id: string; stepNumber: number; sourceStage: string; sourceEntryId: string;
+  sourceCreatedAt: string; summary: string; defects: string | null;
+  linkedBy: string; linkedAt: string;
+};
 export type QuantityFlowStep = {
   number: number; name: string; workshopId: string; nextStep: number | null;
   output: { quantity: string; unit: QuantityUnit } | null;
@@ -181,6 +186,15 @@ export const planningApi = {
   stepEvidence: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; steps: BatchStepRecord[] }>(
       c, '/planning/batches/' + id(batchId) + '/steps', { signal }),
+  journalLinks: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; links: LocalJournalLink[] }>(
+      c, '/planning/batches/' + id(batchId) + '/journal-links', { signal }),
+  attachLocalJournal: (c: PlanningSession, batchId: string, stepNumber: number, input: {
+    linkId: string; sourceEntryId: string; sourceStage: string;
+    sourceCreatedAt: string; summary: string; defects?: string;
+  }) => planningRequest<{ id: string; alreadyLinked: boolean }>(
+    c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/journal-links',
+    { method: 'POST', body: input }),
   quantityFlow: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; steps: QuantityFlowStep[] }>(
       c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal }),
