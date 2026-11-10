@@ -50,6 +50,7 @@ describe('device challenge routes', () => {
       payload: { deviceId: device, challengeId: issued.challengeId, challenge: issued.challenge, signature } });
     expect(response.statusCode).toBe(200);
     expect(response.json().expiresIn).toBe(300);
+    expect(response.json().offlineEditExpiresIn).toBe(28_800);
     expect(response.json().proofToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
     const consume = pool.query.mock.calls.find(call => call[0].includes('WITH consumed AS'))!;
     expect(consume[0]).toContain('consumed_at IS NULL');
