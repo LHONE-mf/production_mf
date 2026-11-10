@@ -1002,6 +1002,33 @@ describe('server-managed task offline writes', () => {
     },
   );
 
+  it('applies a newer full snapshot despite a workshop-scoped revision gap and survives restart', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const { encodeTask } = await import('./taskDto');
+    await db.tasks.put(task());
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 2 });
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        changes: [{ sequence: '15', entity_id: taskId, entity_type: 'task',
+          revision: 5, payload: encodeTask({ ...task(), title: 'Authoritative scoped snapshot' }) }],
+        nextCursor: 15, hasMore: false,
+      }),
+    }));
+    expect((await pullAtomicTasks(session)).received).toBe(1);
+    expect((await db.tasks.get(taskId))?.title).toBe('Authoritative scoped snapshot');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(5);
+    db.close();
+    await db.open();
+    expect((await db.tasks.get(taskId))?.title).toBe('Authoritative scoped snapshot');
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(5);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(15);
+  });
+
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
     expect(await db.tasks.get(taskId)).toBeUndefined();
