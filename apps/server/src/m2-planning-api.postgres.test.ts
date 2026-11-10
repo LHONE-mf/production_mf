@@ -161,6 +161,73 @@ integration('M2 planning routes and orders API (PostgreSQL)', () => {
       [org,routeId])).rejects.toThrow('approved route steps are immutable');
   });
 
+  it('forks a released route without changing v1 or its existing production orders', async () => {
+    const forkUrl = '/planning/routes/' + routeId + '/versions';
+    expect((await app.inject({ method: 'POST', url: forkUrl,
+      headers: authorization(2) })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST',
+      url: '/planning/routes/' + randomUUID() + '/versions',
+      headers: authorization(1) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'POST', url: forkUrl,
+      headers: authorization(3) })).statusCode).toBe(404);
+
+    const created = await app.inject({ method: 'POST', url: forkUrl,
+      headers: authorization(1) });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ id: routeId, version: 2, state: 'draft', steps: 3 });
+    expect((await app.inject({ method: 'POST', url: forkUrl,
+      headers: authorization(1) })).json()).toMatchObject({
+        error: 'latest_route_version_not_approved',
+      });
+
+    const v1Url = forkUrl + '/1/steps';
+    const v2Url = forkUrl + '/2/steps';
+    const original = (await app.inject({ method: 'GET', url: v1Url,
+      headers: authorization(0) })).json();
+    const draftSteps = (await app.inject({ method: 'GET', url: v2Url,
+      headers: authorization(1) })).json();
+    expect(draftSteps.steps).toEqual(original.steps);
+    expect((await app.inject({ method: 'GET', url: v2Url,
+      headers: authorization(2) })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'PUT', url: v1Url, headers: authorization(1),
+      payload: { steps: draft.steps } })).json()).toMatchObject({
+        error: 'approved_route_is_immutable',
+      });
+
+    const updatedSteps = [
+      { ...draft.steps[0], name: 'Second-version cathode coating' },
+      { ...draft.steps[2], name: 'Second-version assembly' },
+    ];
+    const wrongWorkshop = await app.inject({
+      method: 'PUT', url: v2Url, headers: authorization(1),
+      payload: { steps: [...updatedSteps, { ...draft.steps[1], workshopId: 'missing' }] },
+    });
+    expect(wrongWorkshop.statusCode).toBe(400);
+    expect(wrongWorkshop.json()).toMatchObject({ error: 'unknown_route_workshop' });
+    expect((await app.inject({ method: 'GET', url: v2Url,
+      headers: authorization(0) })).json().steps).toEqual(original.steps);
+
+    const saved = await app.inject({ method: 'PUT', url: v2Url,
+      headers: authorization(1), payload: { steps: updatedSteps } });
+    expect(saved.json()).toMatchObject({ id: routeId, version: 2, steps: 2 });
+    const changed = (await app.inject({ method: 'GET', url: v2Url,
+      headers: authorization(0) })).json();
+    expect(changed.steps).toHaveLength(2);
+    expect(changed.steps[0]).toMatchObject({ number: 1, name: 'Second-version cathode coating' });
+    expect((await app.inject({ method: 'GET', url: v1Url,
+      headers: authorization(0) })).json()).toEqual(original);
+
+    const approved = await app.inject({ method: 'POST',
+      url: forkUrl + '/2/approve', headers: authorization(0) });
+    expect(approved.json()).toMatchObject({ id: routeId, version: 2, state: 'approved' });
+    expect((await app.inject({ method: 'PUT', url: v2Url,
+      headers: authorization(1), payload: { steps: draft.steps } })).statusCode).toBe(409);
+    const pinned = await pool.query(`SELECT route_version, count(*)::int AS count
+      FROM production_orders WHERE organization_id=$1 AND route_id=$2
+      GROUP BY route_version`, [org, routeId]);
+    expect(pinned.rows).toEqual([{ route_version: 1, count: 1 }]);
+  });
+
   it('rejects invalid amounts and unknown route versions without storing orders', async () => {
     for (const amount of ['0', '-1', '1.1234567', '1e6', '1000000000000']) {
       const response = await app.inject({
