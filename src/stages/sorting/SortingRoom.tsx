@@ -10,6 +10,7 @@ import React, { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
   CutRun, DefectEntry, ElectrodeShape, SortBucket, SortCategory, SortRun,
   SortSpec, StageId, SyncPacket, UserRole,
@@ -56,7 +57,7 @@ export function SortingModule() {
   }, []);
 
   const tasks = useLiveQuery(async () => {
-    const all = await db.tasks.toArray();
+    const all = await listVisibleTasks();
     return all.filter((t) => t.stage === StageId.SORTING);
   }, []);
 
