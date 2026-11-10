@@ -28,6 +28,16 @@ export type BatchEvent = {
   number: number; fromStatus: BatchStatus | null; toStatus: BatchStatus;
   actorId: string; reason: string | null; occurredAt: string;
 };
+export type HandoffInboxItem = {
+  id: string; batchId: string; batchCode: string;
+  fromStep: number; toStep: number;
+  fromWorkshopId: string; toWorkshopId: string;
+  quantity: string; quantityUnit: QuantityUnit;
+  sentBy: string; sentAt: string; note: string | null;
+};
+export type BatchHandoff = Omit<HandoffInboxItem, 'batchId' | 'batchCode'> & {
+  receivedBy: string | null; receivedAt: string | null; receiptNote: string | null;
+};
 export type StepDetail = RouteStep & { number: number };
 
 function endpoint(origin: string, path: string): string {
@@ -120,4 +130,18 @@ export const planningApi = {
   batchEvents: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ id: string; status: BatchStatus; events: BatchEvent[] }>(
       c, '/planning/batches/' + id(batchId) + '/events', { signal }),
+  handoffInbox: (c: PlanningSession, signal?: AbortSignal) =>
+    planningRequest<{ handoffs: HandoffInboxItem[] }>(c, '/planning/handoffs/inbox', { signal }),
+  batchHandoffs: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; handoffs: BatchHandoff[] }>(
+      c, '/planning/batches/' + id(batchId) + '/handoffs', { signal }),
+  sendHandoff: (c: PlanningSession, batchId: string, input: {
+    handoffId: string; fromStep: number; toStep: number;
+    quantity: string; quantityUnit: QuantityUnit; note?: string;
+  }) => planningRequest<{ id: string; status: 'sent' | 'already_sent' }>(
+    c, '/planning/batches/' + id(batchId) + '/handoffs', { method: 'POST', body: input }),
+  receiveHandoff: (c: PlanningSession, handoffId: string, note?: string) =>
+    planningRequest<{ id: string; status: 'received' }>(
+      c, '/planning/handoffs/' + id(handoffId) + '/receive',
+      { method: 'POST', body: note?.trim() ? { note: note.trim() } : {} }),
 };
