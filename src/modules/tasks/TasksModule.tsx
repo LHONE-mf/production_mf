@@ -169,8 +169,7 @@ function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, c
     setUpdating(true); setStatusError('');
     try {
       if (serverManaged) {
-        const lease = await requireOfflineTaskEditLease();
-        await editServerManagedTask(task.id, lease.deviceId, { status });
+        await editServerManagedTask(task.id, { status });
       } else {
         await db.tasks.update(task.id, { status, updatedAt: new Date() });
       }
@@ -267,7 +266,7 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
         // editing a shared assignment needs a separate server-user picker.
         const lease = await requireOfflineTaskEditLease();
         if (lease.role === 'worker') throw new Error('Работник может менять только статус назначенного задания');
-        await editServerManagedTask(initialTask.id, lease.deviceId, {
+        await editServerManagedTask(initialTask.id, {
           title: title.trim(), description: description.trim(), priority,
         });
       } else if (initialTask) {
