@@ -45,6 +45,42 @@ afterEach(async()=>{
 });
 
 describe('M2 quality inspection observation panel',()=>{
+  it('shows every previous review, not only the current nonblocking decision',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?{
+        steps:[{number:1,name:'Coating',stage:'coating',workshopId:'coating',
+          evidence:null}],
+      }:{
+        batchId:'batch-1',observations:[{
+          id:'obs-history',stepNumber:1,kind:'visual',
+          characteristic:'Coating edge',observedValue:null,observedUnit:null,
+          attentionRequired:true,note:'Check edge',recordedBy:'chief',
+          recordedAt:'2026-11-10T11:00:00Z',
+          latestReview:{number:2,outcome:'reviewed_no_block',
+            reason:'Second inspection was acceptable',reviewedBy:'chief',
+            reviewedAt:'2026-11-10T12:30:00Z'},
+          reviewHistory:[
+            {number:1,outcome:'follow_up_required',
+              reason:'Initial finding required another check',
+              reviewedBy:'chief',reviewedAt:'2026-11-10T12:00:00Z'},
+            {number:2,outcome:'reviewed_no_block',
+              reason:'Second inspection was acceptable',
+              reviewedBy:'chief',reviewedAt:'2026-11-10T12:30:00Z'},
+          ],
+        }],
+      },
+    })));
+    setServerConnection(connection);
+    const page=await mount();
+    const history=page.querySelector('details');
+    expect(history).not.toBeNull();
+    expect(history?.querySelector('summary')?.textContent)
+      .toContain('История проверок (2)');
+    expect(history?.textContent).toContain('Initial finding required another check');
+    expect(history?.textContent).toContain('Second inspection was acceptable');
+    expect(history?.querySelectorAll('ol > li')).toHaveLength(2);
+  });
+
   it('displays recorded measurements and flagged visual findings without QA approval',async()=>{
     const calls:Array<{url:string;options:RequestInit}>=[];
     vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
