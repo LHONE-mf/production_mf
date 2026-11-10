@@ -1,7 +1,11 @@
 name: Android emulator smoke and screenshot
 
-# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
+# One targeted M1 verification run on this workflow change; restore manual-only afterward.
 on:
+  push:
+    branches: [feat/hybrid-server-foundation]
+    paths:
+      - '.github/workflows/android-emulator-smoke.yml'
   workflow_dispatch:
 
 permissions:
