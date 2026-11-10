@@ -407,6 +407,33 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskOutbox.get(operationId))?.payload.title).toBe('New offline title');
   });
 
+  it('rejects a partially malformed multi-task acknowledgement without clearing any offline edits', async () => {
+    const secondTaskId = '55555555-5555-4555-8555-555555555555';
+    const firstId = await saveServerManagedTask(task(), deviceId);
+    const secondId = await saveServerManagedTask(
+      { ...task(), id: secondTaskId, title: 'Other offline task' }, deviceId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [
+        { operationId: firstId, status: 'accepted', revision: 1 },
+        { operationId: secondId, status: 'accepted', revision: 9 },
+      ],
+    }) }));
+    await expect(pushAtomicTasks(session)).rejects.toThrow('revision does not match queued precondition');
+    expect((await db.hybridTaskOutbox.get(firstId))?.state).toBe('pending');
+    expect((await db.hybridTaskOutbox.get(secondId))?.state).toBe('pending');
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(secondTaskId)).toBeUndefined();
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.count()).toBe(2);
+    expect((await db.tasks.get(secondTaskId))?.title).toBe('Other offline task');
+  });
+
   it('atomically rolls back a batch if one queued edit changes during push', async () => {
     const secondTaskId = '55555555-5555-4555-8555-555555555555';
     const firstId = await saveServerManagedTask(task(), deviceId);
