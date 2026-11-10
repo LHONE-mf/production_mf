@@ -9,11 +9,13 @@ const stepParam = z.object({ id:uuid,stepNumber:z.coerce.number().int().positive
 const sourceValue = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)
   .refine(value=>Number(value)>0);
 const sourceMeasureSchema = z.object({
-  kind:z.enum(['dry_solids_kg','coated_side_a_m']),value:sourceValue,
+  kind:z.enum(['dry_solids_kg','coated_side_a_m',
+    'calendered_length_m','cut_good_pieces']),value:sourceValue,
 }).strict();
 const bodySchema = z.object({
   linkId:uuid, sourceEntryId:uuid,
-  sourceKind:z.enum(['journal','mix_batch','coat_run']).default('journal'),
+  sourceKind:z.enum(['journal','mix_batch','coat_run',
+    'calender_run','cut_run']).default('journal'),
   sourceMeasure:sourceMeasureSchema.optional(),
   sourceStage:z.enum(['storage','slurry','coating','calendaring','cutting',
     'sorting','assembly','electrolyte','electrolyte-705','walzing','formation']),
@@ -21,14 +23,23 @@ const bodySchema = z.object({
   summary:z.string().trim().min(1).max(2000),
   defects:z.string().trim().min(1).max(2000).optional(),
 }).strict().superRefine((data,ctx)=>{
-  const stage = data.sourceKind==='mix_batch' ? 'slurry'
-    : data.sourceKind==='coat_run' ? 'coating' : null;
-  const metric = data.sourceKind==='mix_batch' ? 'dry_solids_kg'
-    : data.sourceKind==='coat_run' ? 'coated_side_a_m' : null;
+  const sourceStage:Record<string,string> = {
+    mix_batch:'slurry',coat_run:'coating',
+    calender_run:'calendaring',cut_run:'cutting',
+  };
+  const sourceMetric:Record<string,string> = {
+    mix_batch:'dry_solids_kg',coat_run:'coated_side_a_m',
+    calender_run:'calendered_length_m',cut_run:'cut_good_pieces',
+  };
+  const stage = sourceStage[data.sourceKind];
+  const metric = sourceMetric[data.sourceKind];
   if (stage && data.sourceStage!==stage)
     ctx.addIssue({code:'custom',path:['sourceStage'],message:'source stage mismatch'});
   if (data.sourceMeasure && data.sourceMeasure.kind!==metric)
     ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'source metric mismatch'});
+  if (data.sourceMeasure?.kind==='cut_good_pieces' &&
+      !/^\d+$/.test(data.sourceMeasure.value))
+    ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'count must be an integer'});
 });
 
 function sqlCode(error: unknown) {

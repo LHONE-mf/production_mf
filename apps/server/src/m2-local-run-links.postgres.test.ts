@@ -33,6 +33,16 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
     sourceStage:'coating',sourceCreatedAt:at,summary:'Al coating run',
     defects:'Pinholes',sourceMeasure:{kind:'coated_side_a_m',value:'210.000000'},
   };
+  const calender = {
+    linkId:randomUUID(),sourceKind:'calender_run',sourceEntryId:randomUUID(),
+    sourceStage:'calendaring',sourceCreatedAt:at,summary:'Calendered roll',
+    sourceMeasure:{kind:'calendered_length_m',value:'189.500000'},
+  };
+  const cutting = {
+    linkId:randomUUID(),sourceKind:'cut_run',sourceEntryId:randomUUID(),
+    sourceStage:'cutting',sourceCreatedAt:at,summary:'Cut electrode output',
+    sourceMeasure:{kind:'cut_good_pieces',value:'154'},
+  };
 
   beforeAll(async () => {
     const url = new URL(process.env.POSTGRES_TEST_URL!);
@@ -53,12 +63,15 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
         [randomUUID(),tenant,user,tokenHash(credentials[i])]);
     }
     await pool.query(`INSERT INTO workshops(organization_id,id,name)
-      VALUES($1,'slurry','Slurry'),($1,'coating','Coating')`,[org]);
+      VALUES($1,'slurry','Slurry'),($1,'coating','Coating'),
+      ($1,'calendaring','Calendering'),($1,'cutting','Cutting')`,[org]);
     const route=await post('/planning/routes',{
       code:'TYPED-'+randomUUID().slice(0,8),name:'Cathode slurry and coating',
       steps:[
         {name:'Slurry',stage:'slurry',workshopId:'slurry',electrodeLine:'cathode'},
         {name:'Coating',stage:'coating',workshopId:'coating',electrodeLine:'cathode'},
+        {name:'Calendering',stage:'calendaring',workshopId:'calendaring',electrodeLine:'cathode'},
+        {name:'Cutting',stage:'cutting',workshopId:'cutting',electrodeLine:'cathode'},
       ],
     });
     expect(route.statusCode).toBe(201);
@@ -94,6 +107,12 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
       expect((await post(path(1),{...mix,sourceMeasure:{kind:'dry_solids_kg',value}}))
         .statusCode).toBe(400);
     }
+    expect((await post(path(3),calender)).json()).toMatchObject({error:'batch_not_active'});
+    expect((await post(path(4),{...cutting,sourceStage:'calendaring'})).statusCode).toBe(400);
+    expect((await post(path(4),{...cutting,
+      sourceMeasure:{kind:'cut_good_pieces',value:'154.5'}})).statusCode).toBe(400);
+    expect((await post(path(4),{...cutting,
+      sourceMeasure:{kind:'calendered_length_m',value:'154'}})).statusCode).toBe(400);
     expect((await post(path(1),mix)).json()).toMatchObject({error:'batch_not_active'});
   });
 
@@ -105,6 +124,8 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
     expect((await post(path(1),mix)).json())
       .toMatchObject({id:mixLink,alreadyLinked:true});
     expect((await post(path(2),coat)).statusCode).toBe(201);
+    expect((await post(path(3),calender)).statusCode).toBe(201);
+    expect((await post(path(4),cutting)).statusCode).toBe(201);
     expect((await post(path(1),{...mix,sourceMeasure:{kind:'dry_solids_kg',value:'12'}})).json())
       .toMatchObject({error:'journal_link_id_reused'});
     expect((await post(path(1),{...mix,linkId:randomUUID()})).json())
@@ -118,8 +139,12 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
         sourceMeasure:{kind:'dry_solids_kg',value:'11.123456'}}),
       expect.objectContaining({sourceKind:'coat_run',sourceEntryId:coatId,
         sourceMeasure:{kind:'coated_side_a_m',value:'210.000000'}}),
+      expect.objectContaining({sourceKind:'calender_run',sourceEntryId:calender.sourceEntryId,
+        sourceMeasure:{kind:'calendered_length_m',value:'189.500000'}}),
+      expect.objectContaining({sourceKind:'cut_run',sourceEntryId:cutting.sourceEntryId,
+        sourceMeasure:{kind:'cut_good_pieces',value:'154'}}),
     ]));
-    expect(history.json().links).toHaveLength(3);
+    expect(history.json().links).toHaveLength(5);
     const evidence=await pool.query(`SELECT count(*)::int AS n FROM production_step_evidence
       WHERE organization_id=$1 AND batch_id=$2`,[org,batchId]);
     expect(evidence.rows[0].n).toBe(0);
