@@ -9,6 +9,8 @@ const paramsSchema = z.object({ id: uuid }).strict();
 const positiveDecimal = z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/);
 const unit = z.enum(['cells', 'pieces', 'kg', 'm', 'm2']);
 const linkSchema = z.object({
+  // Stable client-generated identity for safe retry when the HTTP reply is lost.
+  declarationId: uuid.optional(),
   sourceBatchId: uuid,
   kind: z.enum(['assembly', 'split', 'merge', 'consumption']),
   sourceQuantity: positiveDecimal,
@@ -57,6 +59,30 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'batch_order_mismatch' });
       }
+      // The two batch row locks serialize competing declarations for the same
+      // endpoints. A retry of a confirmed declaration must return its prior
+      // result even if the destination has subsequently left the editable state.
+      const linkId = data.declarationId ?? randomUUID();
+      if (data.declarationId) {
+        const existing = await client.query(`SELECT
+          source_batch_id=$3 AND target_batch_id=$4 AND link_kind=$5
+          AND source_quantity=$6::numeric AND source_unit=$7
+          AND target_quantity=$8::numeric AND target_unit=$9
+          AND actor_id=$10 AND note IS NOT DISTINCT FROM $11::text
+          AS same_declaration
+          FROM production_batch_links
+          WHERE organization_id=$1 AND id=$2`,
+          [actor.organization_id,linkId,data.sourceBatchId,targetId,data.kind,
+            data.sourceQuantity,data.sourceUnit,data.targetQuantity,data.targetUnit,
+            actor.id,data.note ?? null]);
+        if (existing.rowCount) {
+          await client.query('ROLLBACK');
+          if (!existing.rows[0].same_declaration)
+            return reply.code(409).send({ error: 'declaration_id_reused' });
+          return { id:linkId,sourceBatchId:data.sourceBatchId,targetBatchId:targetId,
+            kind:data.kind,alreadyRecorded:true };
+        }
+      }
       if (!['released','in_progress'].includes(source.order_status) ||
           source.status !== 'completed' ||
           !['created','in_progress'].includes(target.status)) {
@@ -89,7 +115,6 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'batch_genealogy_cycle' });
       }
-      const linkId = randomUUID();
       await client.query(`INSERT INTO production_batch_links
         (organization_id,id,order_id,source_batch_id,target_batch_id,
           link_kind,source_quantity,source_unit,target_quantity,target_unit,actor_id,note)
