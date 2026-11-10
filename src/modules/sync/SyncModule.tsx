@@ -30,6 +30,7 @@ export function SyncModule() {
   const [session, setSession] = useState<HybridSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [devicePublicKey, setDevicePublicKey] = useState('');
+  const [localDevicePublicKey, setLocalDevicePublicKey] = useState('');
   const [deviceOwnerId, setDeviceOwnerId] = useState('');
   const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -128,7 +129,7 @@ export function SyncModule() {
     setBusy(true); setError(''); setMessage('');
     try {
       if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') throw new Error('Доступно только в Android-приложении');
-      setDevicePublicKey(await androidDevicePublicKey());
+      setLocalDevicePublicKey(await androidDevicePublicKey());
       setMessage('Публичный ключ получен. Закрытый ключ остаётся в AndroidKeyStore. Администратор может зарегистрировать устройство.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'AndroidKeyStore недоступен'); }
     finally { setBusy(false); }
@@ -266,7 +267,7 @@ export function SyncModule() {
       await clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить локальное разрешение на редактирование'));
       setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setServerActorId('');
       setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
-      setDevicePublicKey(''); setDeviceOwnerId(''); setPassword(''); setBusy(false);
+      setDevicePublicKey(''); setLocalDevicePublicKey(''); setDeviceOwnerId(''); setPassword(''); setBusy(false);
     }
   }
 
@@ -297,10 +298,25 @@ export function SyncModule() {
         ) : (
           <div className="space-y-3">
             <p className="text-green-300 text-sm">Подключено к {new URL(session.serverUrl).host}. Токен хранится только до закрытия экрана.</p>
+            <p className="text-slate-400 text-xs">ID вашей серверной учётной записи: <span className="font-mono break-all text-slate-200">{serverActorId}</span></p>
             <div className="rounded-xl border border-slate-600 p-3 space-y-1">
               <p className="text-slate-200 text-sm font-medium">Устройства вашей учётной записи</p>
               {myDevices.length ? myDevices.map(id => <p key={id} className="text-slate-300 text-xs break-all">{id}</p>) : <p className="text-amber-200 text-xs">Активные зарегистрированные устройства не обнаружены.</p>}
               <p className="text-slate-400 text-xs">Регистрация не подтверждает владение закрытым ключом. Перед отправкой заданий требуется отдельная проверка подписи.</p>
+              {Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && <div className="space-y-2 pt-2">
+                <button type="button" disabled={busy} onClick={() => void prepareAndroidKey()}
+                  className="px-3 py-2 bg-slate-700 text-white rounded-lg disabled:opacity-50">
+                  Получить публичный ключ этого Android-устройства
+                </button>
+                {localDevicePublicKey && <label className="block text-slate-300 text-xs">
+                  Отправьте этот открытый ключ начальнику для регистрации устройства
+                  <textarea readOnly value={localDevicePublicKey} rows={3}
+                    aria-label="Публичный ключ этого Android-устройства"
+                    onFocus={event => event.target.select()}
+                    className="w-full mt-1 rounded-lg bg-slate-700 text-white p-2 text-xs" />
+                  <span className="text-slate-400">Закрытый ключ остаётся в AndroidKeyStore, пересылать его не нужно.</span>
+                </label>}
+              </div>}
               {Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && myDevices.length > 0 && <div className="space-y-2 pt-2">
                 <label className="block text-slate-300 text-xs">Устройство для подтверждения
                   <select aria-label="Устройство для подтверждения" value={selectedDeviceId} onChange={event => { setSelectedDeviceId(event.target.value); setSession(previous => previous ? { serverUrl: previous.serverUrl, accessToken: previous.accessToken } : null); void clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить разрешение предыдущего устройства')); }} className="mt-1 w-full bg-slate-700 text-white rounded-lg p-2">
@@ -315,7 +331,10 @@ export function SyncModule() {
             {serverRole === 'chief' && <div className="space-y-2 rounded-xl border border-slate-600 p-3">
               <p className="text-slate-200 text-sm font-medium">Регистрация устройства (администратор)</p>
               <p className="text-slate-400 text-xs">Зарегистрируйте публичный ключ устройства. Android-приложение может создать ключ в AndroidKeyStore, если провайдер поддерживает Ed25519.</p>
-              {Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && <button type="button" disabled={busy} onClick={() => void prepareAndroidKey()} className="px-3 py-2 bg-slate-700 text-white rounded-lg disabled:opacity-50">Получить ключ Android</button>}
+              {localDevicePublicKey && <button type="button" onClick={() => setDevicePublicKey(localDevicePublicKey)}
+                className="px-3 py-2 bg-slate-700 text-white rounded-lg">
+                Использовать ключ этого устройства
+              </button>}
               <label className="block text-slate-300 text-xs">ID владельца (UUID; пусто = ваш аккаунт)
                 <input value={deviceOwnerId} onChange={event => setDeviceOwnerId(event.target.value)}
                   placeholder="ID другого пользователя" className="w-full mt-1 rounded-lg bg-slate-700 text-white p-2 text-sm" />
