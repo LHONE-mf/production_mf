@@ -143,8 +143,8 @@ export async function pullAtomicTasks(session: HybridSession) {
     }
     previousSequence = Number(change.sequence);
   }
-  await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions,
-    db.hybridSyncMetadata, db.hybridTaskDeferred, async () => {
+  await db.transaction('rw', [db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions,
+    db.hybridSyncMetadata, db.hybridTaskDeferred], async () => {
       // A previous pull may have checkpointed changes to blocked tasks. Replay
       // those first, in server sequence order, whenever their queue is clear.
       // Store newly blocked changes in the SAME transaction as the cursor so
