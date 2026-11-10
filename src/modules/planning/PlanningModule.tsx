@@ -97,7 +97,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       planningApi.workshops(connection, signal),
       planningApi.routes(connection, signal),
       isChief ? planningApi.orders(connection, signal) : Promise.resolve({ orders: [] as ProductionOrder[] }),
-      planningApi.handoffInbox(connection, signal),
+      isChief || connection.serverRole === 'master'
+        ? planningApi.handoffInbox(connection, signal)
+        : Promise.resolve({ handoffs: [] as HandoffInboxItem[] }),
     ]);
     if (signal?.aborted || getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
     if (!Array.isArray(w.workshops) || !Array.isArray(r.routes) || !Array.isArray(o.orders) ||
