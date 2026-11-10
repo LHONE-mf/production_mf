@@ -157,6 +157,47 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     }
   });
 
+  it('revokes worker pull, comparison and access when workshop membership is removed', async () => {
+    const id = randomUUID();
+    const assigned = { ...base(id, 'assembly'), assignedTo: worker, status: 'assigned' };
+    expect((await push(0, id, assigned, 0)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 1 });
+    expect((await access(2)).json().ids).toContain(id);
+    expect((await comparison(2, id)).statusCode).toBe(200);
+    expect((await pull(2)).json().changes.map((change: { entity_id: string }) => change.entity_id))
+      .toContain(id);
+
+    await pool.query(
+      "DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2 AND workshop_id='assembly'",
+      [org, worker],
+    );
+    try {
+      // The same still-valid device/session grant cannot override a revoked
+      // workshop permission, even when the task remains assigned to this worker.
+      expect((await access(2)).json().ids).not.toContain(id);
+      expect((await comparison(2, id)).statusCode).toBe(404);
+      expect((await pull(2)).json().changes.map((change: { entity_id: string }) => change.entity_id))
+        .not.toContain(id);
+      const denied = await push(2, id, {
+        ...assigned, status: 'in_progress', updatedAt: '2026-11-08T13:00:00.000Z',
+      }, 1);
+      expect(denied.json().results[0])
+        .toMatchObject({ status: 'rejected', reason: 'workshop_access_denied' });
+      const stored = await pool.query(
+        'SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+        [org, id],
+      );
+      expect(stored.rows[0]).toMatchObject({ revision: 1, payload: { status: 'assigned' } });
+    } finally {
+      await pool.query(
+        "INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly') ON CONFLICT DO NOTHING",
+        [org, worker],
+      );
+    }
+    expect((await access(2)).json().ids).toContain(id);
+    expect((await comparison(2, id)).statusCode).toBe(200);
+  });
+
   it('allows a master to update an authorized task but rejects foreign workshop writes', async () => {
     const accepted = await push(1,taskA,{ ...base(taskA,'assembly'), status: 'assigned', updatedAt: '2026-11-08T11:00:00.000Z' },1);
     expect(accepted.json().results[0]).toMatchObject({ status:'accepted', revision:2 });
