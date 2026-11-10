@@ -99,13 +99,28 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
       // A transfer cannot be declared before the sending operation has
       // produced its immutable completion evidence. Without this check,
       // a batch could be physically advanced while its route step is open.
-      const finished = await client.query(`SELECT 1 FROM production_step_evidence
+      const finished = await client.query(`SELECT quantity::text,quantity_unit
+        FROM production_step_evidence
         WHERE organization_id=$1 AND batch_id=$2 AND step_number=$3
           AND kind='completed' LIMIT 1`,
         [actor.organization_id,batchId,data.fromStep]);
       if (!finished.rowCount) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'source_step_not_completed' });
+      }
+      // Never declare more transferred material than the sending operation
+      // recorded as output. The units must match; conversion is not inferred.
+      const actualOutput = finished.rows[0];
+      if (actualOutput.quantity_unit !== data.quantityUnit) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'handoff_output_unit_mismatch' });
+      }
+      const withinOutput = await client.query(
+        'SELECT $1::numeric <= $2::numeric AS valid',
+        [data.quantity,actualOutput.quantity]);
+      if (!withinOutput.rows[0].valid) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'handoff_exceeds_recorded_output' });
       }
       const latest = await client.query(`SELECT h.to_step,
           (r.handoff_id IS NOT NULL) AS received
