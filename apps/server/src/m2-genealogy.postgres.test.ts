@@ -144,6 +144,40 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
       WHERE organization_id=$1 AND order_id=$2`,[org,orderId])).rows[0].count).toBe(2);
   });
 
+  it('treats identical genealogy request IDs as safe retries but rejects changed payloads', async () => {
+    const source = await createBatch(orderId, 'cathode');
+    const target = await createBatch(orderId, 'cell');
+    await complete(source);
+    const declarationId = randomUUID();
+    const payload = {
+      declarationId, sourceBatchId: source, kind: 'assembly',
+      sourceQuantity: '5.000000', sourceUnit: 'kg',
+      targetQuantity: '100', targetUnit: 'cells',
+      note: 'Receipt cross-check',
+    };
+    const submit = (body: object) => app.inject({
+      method: 'POST', url: '/planning/batches/' + target + '/links',
+      headers: headers(0), payload: body,
+    });
+    const first = await submit(payload);
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({ id: declarationId, sourceBatchId: source });
+    const retried = await submit(payload);
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json()).toMatchObject({ id: declarationId, alreadyRecorded: true });
+    expect((await submit({ ...payload, targetQuantity: '101' })).json())
+      .toMatchObject({ error: 'declaration_id_reused' });
+    expect((await submit({ ...payload, sourceBatchId: cathodeId })).json())
+      .toMatchObject({ error: 'declaration_id_reused' });
+    const list = (await getLinks(target)).json().links;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: declarationId,
+      sourceQuantity: '5.000000', targetQuantity: '100.000000' });
+    const stored = await pool.query(`SELECT count(*)::int AS count FROM production_batch_links
+      WHERE organization_id=$1 AND id=$2`, [org,declarationId]);
+    expect(stored.rows[0].count).toBe(1);
+  });
+
   it('enforces positive quantities, allowed states, and immutable provenance in PostgreSQL', async () => {
     const invalid = await app.inject({method:'POST',url:'/planning/batches/'+secondCellId+'/links',
       headers:headers(0),payload:{sourceBatchId:cathodeId,kind:'assembly',
