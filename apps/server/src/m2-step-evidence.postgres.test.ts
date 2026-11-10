@@ -163,8 +163,8 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
       .rejects.toThrow('append-only');
     await expect(pool.query(`INSERT INTO production_step_evidence
       (organization_id,id,batch_id,order_id,route_id,route_version,
-        step_number,workshop_id,kind,actor_id)
-      VALUES($1,$2,$3,$4,$5,1,1,'cutting','started',$6)`,
+        step_number,workshop_id,kind,actor_id,note)
+      VALUES($1,$2,$3,$4,$5,1,1,'cutting','deviation',$6,'Mismatched route workshop')`,
       [org,randomUUID(),batchId,orderId,routeId,chief]))
       .rejects.toMatchObject({code:'23503'});
     expect((await read()).json().steps.filter(
