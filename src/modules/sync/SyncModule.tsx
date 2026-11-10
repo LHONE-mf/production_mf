@@ -79,6 +79,10 @@ export function SyncModule() {
       // Commit the UI session only after all required login checks succeed.
       // A failed device-list response must not leave a half-initialized session.
       setSession({ serverUrl, accessToken: data.accessToken });
+      // Conflict previews belong to the previous authenticated session and
+      // must never remain actionable after a new login.
+      setRemoteTasks({});
+      setInspectingTask(null);
       setServerRole(data.user?.role ?? '');
       setEnrolledDeviceId('');
       setSelectedDeviceId('');
