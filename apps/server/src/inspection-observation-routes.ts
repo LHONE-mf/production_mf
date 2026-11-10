@@ -13,11 +13,7 @@ const units=z.enum(['um','mm','g','mg','mOhm','V','mAh','pct','C']);
 const common={observationId:uuid,characteristic,attentionRequired:z.boolean()};
 const inputSchema=z.discriminatedUnion('kind',[
   z.object({...common,kind:z.literal('measurement'),
-    observedValue:measured,observedUnit:units,note:note.optional()}).strict()
-    .superRefine((v,ctx)=>{
-      if(v.attentionRequired&&!v.note)
-        ctx.addIssue({code:'custom',path:['note'],message:'attention flag requires explanation'});
-    }),
+    observedValue:measured,observedUnit:units,note:note.optional()}).strict(),
   z.object({...common,kind:z.literal('visual'),note}).strict(),
 ]);
 
@@ -39,6 +35,9 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
       const parsed=inputSchema.safeParse(request.body);
       if(!params.success||!parsed.success)
         return reply.code(400).send({error:'invalid_inspection_observation'});
+      if(parsed.data.kind==='measurement' &&
+          parsed.data.attentionRequired && !parsed.data.note)
+        return reply.code(400).send({error:'inspection_note_required'});
       const {id:batchId,stepNumber}=params.data;
       const data=parsed.data;
       const value=data.kind==='measurement'?data.observedValue:null;
