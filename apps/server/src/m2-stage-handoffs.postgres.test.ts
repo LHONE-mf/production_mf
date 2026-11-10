@@ -29,6 +29,13 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
   const inbox = (index = 1) => app.inject({
     method:'GET',url:'/planning/handoffs/inbox',headers:auth(index),
   });
+  const evidence = (step: number, kind: 'started' | 'completed') => app.inject({
+    method:'POST',
+    url:'/planning/batches/'+batchId+'/steps/'+step+'/evidence',
+    headers:auth(0),
+    payload:kind === 'started' ? { eventId:randomUUID(),kind } :
+      { eventId:randomUUID(),kind,quantity:'20',quantityUnit:'kg' },
+  });
   const history = (index = 0) => app.inject({
     method:'GET',url:'/planning/batches/'+batchId+'/handoffs',headers:auth(index),
   });
@@ -99,6 +106,12 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
       .toMatchObject({error:'handoff_quantity_exceeds_batch'});
     expect((await send(randomUUID(),1,2,0,'20','cells')).json())
       .toMatchObject({error:'handoff_quantity_exceeds_batch'});
+    expect((await send(randomUUID(),1,2)).json())
+      .toMatchObject({error:'source_step_not_completed'});
+    expect((await evidence(1,'started')).statusCode).toBe(201);
+    expect((await send(randomUUID(),1,2)).json())
+      .toMatchObject({error:'source_step_not_completed'});
+    expect((await evidence(1,'completed')).statusCode).toBe(201);
   });
 
   it('sends an append-only transfer, blocks self receipt, and scopes the master inbox', async () => {
@@ -135,6 +148,10 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
   });
 
   it('only advances through a received transfer and blocks work while a batch is held', async () => {
+    expect((await send(secondId,2,3)).json())
+      .toMatchObject({error:'source_step_not_completed'});
+    expect((await evidence(2,'started')).statusCode).toBe(201);
+    expect((await evidence(2,'completed')).statusCode).toBe(201);
     expect((await send(secondId,2,3)).statusCode).toBe(201);
     expect((await inbox()).json().handoffs).toEqual(expect.arrayContaining([
       expect.objectContaining({id:secondId,toWorkshopId:'sorting'}),
