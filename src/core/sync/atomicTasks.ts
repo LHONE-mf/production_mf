@@ -2,6 +2,7 @@ import { db } from '../db';
 import { TaskStatus, type Task } from '../types';
 import { encodeTask } from './taskDto';
 import type { PendingTaskOperation } from './hybridOutbox';
+import { requireOfflineTaskEditLease } from './offlineTaskLease';
 
 function requireUuid(id: string, field: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
@@ -58,7 +59,6 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
  */
 export async function editServerManagedTask(
   taskId: string,
-  deviceId: string,
   fields: Partial<Pick<Task, 'title' | 'description' | 'priority' | 'status'>>,
 ): Promise<string> {
   const transitions: Record<TaskStatus, ReadonlyArray<TaskStatus>> = {
@@ -69,18 +69,33 @@ export async function editServerManagedTask(
     [TaskStatus.COMPLETED]: [],
     [TaskStatus.REJECTED]: [TaskStatus.ASSIGNED],
   };
-  return db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
+  return db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridTaskEditLeases, async () => {
+    const lease = await requireOfflineTaskEditLease();
+    if (Object.keys(fields).some(key => !['title', 'description', 'priority', 'status'].includes(key))) {
+      throw new Error('Unsupported server task edit field');
+    }
     const current = await db.tasks.get(taskId);
     const revision = await db.hybridTaskRevisions.get(taskId);
     if (!current || !revision || revision.revision < 1) throw new Error('Server task not found or not synchronized');
     if (current.status === TaskStatus.COMPLETED) throw new Error('Completed server tasks cannot be modified');
+    if (lease.role === 'worker') {
+      const workerTransitions: Partial<Record<TaskStatus, TaskStatus>> = {
+        [TaskStatus.ASSIGNED]: TaskStatus.IN_PROGRESS,
+        [TaskStatus.IN_PROGRESS]: TaskStatus.CHECKED,
+        [TaskStatus.CHECKED]: TaskStatus.IN_PROGRESS,
+      };
+      if (current.assignedTo !== lease.actorId || Object.keys(fields).length !== 1 ||
+          fields.status !== workerTransitions[current.status]) {
+        throw new Error('Workers may only update assigned task progress');
+      }
+    }
     if (fields.status && fields.status !== current.status &&
         !transitions[current.status].includes(fields.status)) {
       throw new Error('Invalid server task status transition');
     }
     const updated = { ...current, ...fields,
       updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime())) };
-    return saveServerManagedTask(updated, deviceId);
+    return saveServerManagedTask(updated, lease.deviceId);
   });
 }
 
