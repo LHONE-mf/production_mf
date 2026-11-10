@@ -10,6 +10,7 @@ import {
 } from '../../core/planning/planningClient';
 
 const fieldClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2.5 text-sm text-white';
+const validGenealogyQuantity = /^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/;
 const buttonClass = 'rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white disabled:opacity-40';
 const secondaryClass = 'rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 disabled:opacity-40';
 const statusNames: Record<BatchStatus, string> = {
@@ -102,6 +103,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [linkSourceQuantity, setLinkSourceQuantity] = useState('');
   const [linkTargetQuantity, setLinkTargetQuantity] = useState('');
   const [linkNote, setLinkNote] = useState('');
+  // The ID stays stable across a lost HTTP response so a retry cannot create
+  // a duplicate, irreversible provenance declaration.
+  const [linkDeclarationId, setLinkDeclarationId] = useState(() => crypto.randomUUID());
 
   async function refresh(signal?: AbortSignal) {
     const [w, r, o, h] = await Promise.all([
@@ -162,6 +166,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       setBatches([]);
       setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
       setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
+      setLinkDeclarationId(crypto.randomUUID());
     }
     try {
       const response = await planningApi.batches(connection, orderId);
@@ -172,6 +177,10 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   }
 
   async function loadEvents(batchId: string) {
+    if (selectedBatch !== batchId) {
+      setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
+      setLinkKind('assembly'); setLinkDeclarationId(crypto.randomUUID());
+    }
     setSelectedBatch(batchId);
     setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
     try {
@@ -538,6 +547,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                   if (!chosenGenealogySource) return;
                   void run(async () => {
                     await planningApi.declareGenealogy(connection, selectedBatchRow.id, {
+                      declarationId: linkDeclarationId,
                       sourceBatchId: chosenGenealogySource.id, kind: linkKind,
                       sourceQuantity: linkSourceQuantity.trim(),
                       sourceUnit: chosenGenealogySource.quantityUnit,
@@ -549,13 +559,16 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                     setLinkSourceQuantity('');
                     setLinkTargetQuantity('');
                     setLinkNote('');
+                    setLinkDeclarationId(crypto.randomUUID());
                   }, 'Связь происхождения записана на сервере');
                 }}>
                 <h5 className="font-medium text-slate-200 text-sm">Добавить связь происхождения</h5>
                 <label className="block text-xs text-slate-400">Тип связи
                   <select aria-label="Тип связи партии" className={fieldClass + ' mt-1'}
                     value={linkKind} onChange={event => {
-                      setLinkKind(event.target.value as GenealogyKind); setLinkSourceId('');
+                      setLinkKind(event.target.value as GenealogyKind);
+                      setLinkSourceId(''); setLinkSourceQuantity('');
+                      setLinkDeclarationId(crypto.randomUUID());
                     }}>
                     {Object.entries(genealogyKinds).map(([kind, title]) =>
                       <option key={kind} value={kind}>{title}</option>)}
@@ -564,7 +577,11 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                 <label className="block text-xs text-slate-400">Исходная завершённая партия
                   <select aria-label="Исходная партия" className={fieldClass + ' mt-1'}
                     value={genealogySources.some(source => source.id === linkSourceId) ? linkSourceId : ''}
-                    onChange={event => setLinkSourceId(event.target.value)} required>
+                    onChange={event => {
+                      setLinkSourceId(event.target.value);
+                      setLinkSourceQuantity('');
+                      setLinkDeclarationId(crypto.randomUUID());
+                    }} required>
                     <option value="">Выберите партию</option>
                     {genealogySources.map(source => <option key={source.id} value={source.id}>
                       {source.batchCode} · {lineNames[source.materialLine]}
@@ -580,25 +597,35 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                     Количество из источника ({chosenGenealogySource?.quantityUnit ?? '—'})
                     <input aria-label="Количество из источника" className={fieldClass + ' mt-1'}
                       inputMode="decimal" required value={linkSourceQuantity}
-                      onChange={event => setLinkSourceQuantity(event.target.value)}
+                      onChange={event => {
+                        setLinkSourceQuantity(event.target.value);
+                        setLinkDeclarationId(crypto.randomUUID());
+                      }}
                       placeholder="Например, 12.5" />
                   </label>
                   <label className="block text-xs text-slate-400">
                     Количество результата ({selectedBatchRow.quantityUnit})
                     <input aria-label="Количество результата" className={fieldClass + ' mt-1'}
                       inputMode="decimal" required value={linkTargetQuantity}
-                      onChange={event => setLinkTargetQuantity(event.target.value)}
+                      onChange={event => {
+                        setLinkTargetQuantity(event.target.value);
+                        setLinkDeclarationId(crypto.randomUUID());
+                      }}
                       placeholder="Например, 100" />
                   </label>
                 </div>
                 <label className="block text-xs text-slate-400">Основание / примечание
                   <textarea aria-label="Примечание о происхождении" className={fieldClass + ' mt-1'}
                     rows={2} maxLength={2000} value={linkNote}
-                    onChange={event => setLinkNote(event.target.value)} />
+                    onChange={event => {
+                      setLinkNote(event.target.value);
+                      setLinkDeclarationId(crypto.randomUUID());
+                    }} />
                 </label>
                 <button type="submit" className={buttonClass}
                   disabled={busy || !chosenGenealogySource ||
-                    !linkSourceQuantity.trim() || !linkTargetQuantity.trim()}>
+                    !validGenealogyQuantity.test(linkSourceQuantity.trim()) ||
+                    !validGenealogyQuantity.test(linkTargetQuantity.trim())}>
                   Записать связь
                 </button>
               </form>}
