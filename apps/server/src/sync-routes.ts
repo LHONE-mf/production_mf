@@ -3,7 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { authenticate, tokenHash, type Principal } from './auth.js';
 import { taskPayloadV1, type TaskPayloadV1 } from './task-schema.js';
-import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps, validateTaskStatusTransition } from './task-authorization.js';
+import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps, validateTaskStatusTransition, validateWorkerTaskEdit } from './task-authorization.js';
 
 const operation = z.object({
   operationId: z.string().uuid(), deviceId: z.string().uuid(),
@@ -52,7 +52,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/sync/push', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
-    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
+    if (!['chief', 'master', 'worker'].includes(principal.role)) return reply.code(403).send({ error: 'forbidden' });
     const parsed = pushSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
     // Proof tokens are short-lived and bound to this exact login session, actor and device.
@@ -80,6 +80,8 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
           results.push(prev.organization_id === principal.organization_id && prev.entity_id === op.entityId && prev.entity_type === op.entityType && prev.device_id === op.deviceId && prev.actor_id === principal.id && prev.operation_type === op.operationType && prev.expected_revision === op.expectedRevision && prev.same_payload === true ? { operationId: op.operationId, status: 'duplicate', revision: prev.revision } : { operationId: op.operationId, status: 'rejected', reason: 'operation_id_reused' });
           continue;
         }
+        const workerError = validateWorkerTaskEdit(principal, op.payload, current.rows[0]?.payload);
+        if (workerError) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: workerError }); continue; }
         if (op.payload.assignedTo) {
           const assignee = await client.query('SELECT id FROM users WHERE id=$1 AND organization_id=$2 AND active=true', [op.payload.assignedTo, principal.organization_id]);
           if (!assignee.rowCount) { await client.query('ROLLBACK'); results.push({ operationId: op.operationId, status: 'rejected', reason: 'invalid_assignee' }); continue; }
@@ -131,7 +133,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
   app.get('/sync/task/:id', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
-    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
+    if (!['chief', 'master', 'worker'].includes(principal.role)) return reply.code(403).send({ error: 'forbidden' });
     const parsed = z.string().uuid().safeParse((request.params as { id: string }).id);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_task_id' });
     const device = comparisonSchema.safeParse(request.query);
@@ -141,11 +143,13 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const result = await pool.query(
       `SELECT e.revision, e.payload FROM sync_entities e
         WHERE e.organization_id=$1 AND e.entity_type=$2 AND e.entity_id=$3
-        AND ($4::boolean OR EXISTS (
-          SELECT 1 FROM user_workshop_memberships m
-          WHERE m.organization_id=e.organization_id AND m.user_id=$5
-          AND m.workshop_id=e.payload->>'workshopId'))`,
-      [principal.organization_id, 'task', parsed.data, principal.role === 'chief', principal.id],
+        AND ($4::boolean
+          OR ($6::boolean AND e.payload->>'assignedTo'=$5)
+          OR (NOT $6::boolean AND EXISTS (
+            SELECT 1 FROM user_workshop_memberships m
+            WHERE m.organization_id=e.organization_id AND m.user_id=$5
+              AND m.workshop_id=e.payload->>'workshopId')))`,
+      [principal.organization_id, 'task', parsed.data, principal.role === 'chief', principal.id, principal.role === 'worker'],
     );
     if (!result.rows.length) return reply.code(404).send({ error: 'task_not_found' });
     return { revision: result.rows[0].revision, payload: result.rows[0].payload };
@@ -155,7 +159,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
     const parsed = pullSchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_request' });
-    if (principal.role !== 'chief' && principal.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
+    if (!['chief', 'master', 'worker'].includes(principal.role)) return reply.code(403).send({ error: 'forbidden' });
     const { cursor, limit, deviceId } = parsed.data;
     const proofError = await deviceProofError(pool, principal, request.headers.authorization!, deviceId, request.headers['x-device-proof']);
     if (proofError) return reply.code(403).send({ error: proofError });
@@ -163,12 +167,14 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       FROM sync_operations o
       JOIN sync_entities e ON e.organization_id=o.organization_id AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
       WHERE o.organization_id=$1 AND o.sequence>$2 AND o.entity_type='task'
-      AND ($4::boolean OR EXISTS (
-        SELECT 1 FROM user_workshop_memberships m
-        WHERE m.organization_id=o.organization_id AND m.user_id=$5
-          AND m.workshop_id=o.result_payload->>'workshopId'
-          AND m.workshop_id=e.payload->>'workshopId'))
-      ORDER BY o.sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit,principal.role === 'chief',principal.id]);
+      AND ($4::boolean
+        OR ($6::boolean AND o.result_payload->>'assignedTo'=$5 AND e.payload->>'assignedTo'=$5)
+        OR (NOT $6::boolean AND EXISTS (
+          SELECT 1 FROM user_workshop_memberships m
+          WHERE m.organization_id=o.organization_id AND m.user_id=$5
+            AND m.workshop_id=o.result_payload->>'workshopId'
+            AND m.workshop_id=e.payload->>'workshopId')))
+      ORDER BY o.sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit,principal.role === 'chief',principal.id,principal.role === 'worker']);
     const changes = result.rows;
     return { changes, nextCursor: changes.length ? Number(changes[changes.length - 1].sequence) : cursor, hasMore: changes.length === limit };
   });
