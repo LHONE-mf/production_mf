@@ -65,7 +65,8 @@ export function TasksModule() {
   const canViewAll = currentUser.role !== UserRole.WORKER;
 
   const filteredTasks = tasks.filter((task) => {
-    if (!canViewAll && task.assignedTo !== currentUser.id) return false;
+    if (!canViewAll && task.assignedTo !== currentUser.id &&
+        !(hasEditLease && editLease?.role === 'worker' && task.assignedTo === editLease.actorId)) return false;
     if (statusFilter !== 'all' && task.status !== statusFilter) return false;
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -131,7 +132,14 @@ export function TasksModule() {
       {/* Task list */}
       <div className="space-y-3">
         {filteredTasks.map((task) => (
-          <TaskCard key={task.id} task={task} canManage={canCreate} canEditShared={hasEditLease} onEdit={() => setEditingTask(storedTasks?.find(item => item.id === task.id) ?? null)} />
+          <TaskCard key={task.id} task={task} canManage={canCreate}
+            canEditSharedFields={hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master')}
+            canEditSharedStatus={hasEditLease && (
+              editLease?.role === 'chief' || editLease?.role === 'master' ||
+              (editLease?.role === 'worker' && task.assignedTo === editLease.actorId)
+            )}
+            canEditLocalStatus={currentUser.role === UserRole.WORKER && task.assignedTo === currentUser.id}
+            onEdit={() => setEditingTask(storedTasks?.find(item => item.id === task.id) ?? null)} />
         ))}
         {filteredTasks.length === 0 && (
           <div className="text-center py-12">
@@ -148,7 +156,10 @@ export function TasksModule() {
   );
 }
 
-function TaskCard({ task, canManage, canEditShared, onEdit }: { task: Task; canManage: boolean; canEditShared: boolean; onEdit: () => void }) {
+function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, canEditLocalStatus, onEdit }: {
+  task: Task; canManage: boolean; canEditSharedFields: boolean; canEditSharedStatus: boolean;
+  canEditLocalStatus: boolean; onEdit: () => void;
+}) {
   const [statusError, setStatusError] = useState('');
   const [updating, setUpdating] = useState(false);
   const managedRevision = useLiveQuery(() => db.hybridTaskRevisions.get(task.id), [task.id]);
@@ -205,14 +216,14 @@ function TaskCard({ task, canManage, canEditShared, onEdit }: { task: Task; canM
             )}
           </div>
 
-          {canManage && <div className="flex flex-wrap gap-2 mt-3 items-center">
-            <button type="button" disabled={serverManaged && !canEditShared} title={serverManaged && !canEditShared ? 'Сначала подтвердите устройство в разделе синхронизации' : 'Edit task'} onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>
+          {(canManage || canEditLocalStatus || (serverManaged && canEditSharedStatus)) && <div className="flex flex-wrap gap-2 mt-3 items-center">
+            {canManage && <button type="button" disabled={serverManaged && !canEditSharedFields} title={serverManaged && !canEditSharedFields ? 'Сначала подтвердите устройство начальника или мастера' : 'Edit task'} onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>}
             <label className="text-slate-400 text-xs" htmlFor={`status-${task.id}`}>Статус</label>
-            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || (serverManaged && !canEditShared)} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
+            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || (serverManaged && !canEditSharedStatus)} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
               {Object.entries(STATUS_CONFIG).map(([status, config]) => <option key={status} value={status}>{config.label}</option>)}
             </select>
           </div>}
-          {serverManaged && <p className="text-amber-300 text-xs mt-2">{canEditShared ? 'Серверное задание: изменения сохраняются офлайн и будут отправлены при ручной синхронизации.' : 'Серверное задание: для редактирования подтвердите Android-устройство в разделе синхронизации.'}</p>}
+          {serverManaged && <p className="text-amber-300 text-xs mt-2">{canEditSharedStatus ? 'Серверное задание: изменения сохраняются офлайн и будут отправлены при ручной синхронизации.' : 'Серверное задание: для редактирования подтвердите Android-устройство в разделе синхронизации.'}</p>}
           {statusError && <p role="alert" className="text-red-300 text-xs mt-2">{statusError}</p>}
           {task.status === TaskStatus.IN_PROGRESS && (
             <div className="mt-3">
@@ -255,6 +266,7 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
         // Never send locally seeded demo assignee IDs to the shared server:
         // editing a shared assignment needs a separate server-user picker.
         const lease = await requireOfflineTaskEditLease();
+        if (lease.role === 'worker') throw new Error('Работник может менять только статус назначенного задания');
         await editServerManagedTask(initialTask.id, lease.deviceId, {
           title: title.trim(), description: description.trim(), priority,
         });
