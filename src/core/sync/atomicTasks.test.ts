@@ -678,6 +678,29 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
   });
 
+  it.each(['1e1', ' 10', '010', '+10', '10.0'] as const)(
+    'rejects noncanonical remote sequence %s without advancing the cursor',
+    async sequence => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      const { encodeTask } = await import('./taskDto');
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 9 });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({
+          changes: [{ sequence, entity_id: taskId, entity_type: 'task',
+            revision: 1, payload: encodeTask(task()) }],
+          nextCursor: 10, hasMore: false,
+        }),
+      }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow('unordered changes or task ID');
+      expect(await db.tasks.get(taskId)).toBeUndefined();
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(9);
+    },
+  );
+
   it('rolls back earlier remote tasks when a later change in the same pull is malformed', async () => {
     const secondTaskId = '55555555-5555-4555-8555-555555555555';
     const session = {
