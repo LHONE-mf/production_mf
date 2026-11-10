@@ -96,6 +96,31 @@ Gate: validated workshop pilot, not just a demo.
 
 Effort estimates are provisional; implement in small PRs with automated tests and reviewed database migrations.
 
+## M1 implementation checkpoint — 2026-11-10
+
+This checkpoint records implementation evidence, not M1 release approval. The
+original milestone checkboxes above remain open until the acceptance gate is
+verified on two independently enrolled physical devices.
+
+- Implemented and CI-tested: transactional Dexie task/outbox writes, sequential
+  offline edits, acknowledgement validation, strict pull cursor/sequence
+  validation, explicit local archive before accepting a server version, and
+  rejection/conflict preservation across IndexedDB restart.
+- Implemented and CI-tested: server-bound device proof for task reads/writes,
+  PostgreSQL workshop-scoped authorization tests, and a simulated competing-edit
+  scenario with two authenticated users, duplicate push, and convergence checks.
+- Manual sync now drains up to 20 upload batches and 20 download pages per tap,
+  with progress messages. Automatic background synchronization remains disabled.
+- AndroidKeyStore and server proof exchanges have passed earlier emulator
+  instrumentation, but emulator workflows are manual-only to avoid long runs
+  for ordinary changes.
+- **Remaining release gate:** validate two *separately enrolled physical Android
+  devices* end to end, including offline edit conflicts, restart, device
+  revocation, and recovery of archived edits. Validate Android upgrades and
+  backup/restore without losing existing production records.
+- **Not yet production-ready:** no verified live two-device pilot, and the
+  broader M0 upgrade/restore gate is still open. M2–M5 remain future milestones.
+
 ## Next sprint: concrete work
 1. Audit `TasksModule.tsx`, `atomicTasks.ts`, `hybridOutbox.ts`, and server sync handlers for inconsistent writes and permissions.
 2. Add failing regression tests for offline edits of server-managed tasks and atomic outbox persistence.
