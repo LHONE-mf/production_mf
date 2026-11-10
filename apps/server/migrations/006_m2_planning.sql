@@ -66,14 +66,25 @@ BEGIN
     END IF;
     RETURN COALESCE(NEW, OLD);
   END IF;
-  SELECT state = 'approved' INTO is_approved
-    FROM process_route_versions
-    WHERE organization_id = COALESCE(NEW.organization_id, OLD.organization_id)
-      AND route_id = COALESCE(NEW.route_id, OLD.route_id)
-      AND version = COALESCE(NEW.route_version, OLD.route_version)
-    FOR UPDATE;
-  IF COALESCE(is_approved, false) THEN
-    RAISE EXCEPTION 'approved route steps are immutable';
+  IF TG_OP <> 'INSERT' THEN
+    SELECT state = 'approved' INTO is_approved
+      FROM process_route_versions
+      WHERE organization_id = OLD.organization_id AND route_id = OLD.route_id
+        AND version = OLD.route_version
+      FOR UPDATE;
+    IF COALESCE(is_approved, false) THEN
+      RAISE EXCEPTION 'approved route steps are immutable';
+    END IF;
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    SELECT state = 'approved' INTO is_approved
+      FROM process_route_versions
+      WHERE organization_id = NEW.organization_id AND route_id = NEW.route_id
+        AND version = NEW.route_version
+      FOR UPDATE;
+    IF COALESCE(is_approved, false) THEN
+      RAISE EXCEPTION 'approved route steps are immutable';
+    END IF;
   END IF;
   RETURN COALESCE(NEW, OLD);
 END
