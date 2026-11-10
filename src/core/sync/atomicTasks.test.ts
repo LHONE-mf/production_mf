@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../db';
-import { saveServerManagedTask } from './atomicTasks';
+import { saveServerManagedTask, editServerManagedTask } from './atomicTasks';
+import { provisionOfflineTaskEditLease, requireOfflineTaskEditLease } from './offlineTaskLease';
 import { pushAtomicTasks, pullAtomicTasks } from './atomicClient';
 import { TaskPriority, TaskStatus, type Task } from '../types';
 
@@ -21,13 +22,58 @@ afterEach(() => vi.unstubAllGlobals());
 describe('server-managed task offline writes', () => {
   beforeEach(async () => {
     await db.open();
-    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
+    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, db.hybridTaskEditLeases, async () => {
       await db.tasks.clear();
       await db.hybridTaskOutbox.clear();
       await db.hybridTaskRevisions.clear();
       await db.hybridSyncMetadata.clear();
+      await db.hybridTaskEditLeases.clear();
     });
   });
+  it('provisions a five-minute verified edit lease that survives an IndexedDB restart', async () => {
+    const actorId = '44444444-4444-4444-8444-444444444444';
+    await provisionOfflineTaskEditLease({
+      deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
+      role: 'master', expiresAt: Date.now() + 120_000,
+    });
+    expect((await requireOfflineTaskEditLease()).deviceId).toBe(deviceId);
+    db.close();
+    await db.open();
+    expect((await requireOfflineTaskEditLease()).actorId).toBe(actorId);
+    await db.hybridTaskEditLeases.update('active', { expiresAt: Date.now() - 1 });
+    await expect(requireOfflineTaskEditLease()).rejects.toThrow('Подтвердите устройство');
+    await expect(provisionOfflineTaskEditLease({
+      deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
+      role: 'master', expiresAt: Date.now() + 3_600_000,
+    })).rejects.toThrow('Invalid offline task edit authorization');
+  });
+
+  it('edits the latest server task and queues consecutive status/field edits atomically', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    await db.tasks.put(task());
+    await editServerManagedTask(taskId, deviceId, { title: 'Updated offline', priority: TaskPriority.HIGH });
+    await editServerManagedTask(taskId, deviceId, { status: TaskStatus.IN_PROGRESS });
+    const stored = await db.tasks.get(taskId);
+    expect(stored).toMatchObject({ title: 'Updated offline', priority: TaskPriority.HIGH, status: TaskStatus.IN_PROGRESS });
+    expect(stored?.createdBy).toBe(task().createdBy);
+    const operations = await db.hybridTaskOutbox.where('entityId').equals(taskId).sortBy('queuedAt');
+    expect(operations.map(op => op.expectedRevision)).toEqual([3, 4]);
+    expect(operations.map(op => op.payload.title)).toEqual(['Updated offline', 'Updated offline']);
+    db.close();
+    await db.open();
+    expect((await db.tasks.get(taskId))?.title).toBe('Updated offline');
+    expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
+  });
+
+  it('refuses forbidden status jumps without changing tasks or queued operations', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
+    await db.tasks.put(task());
+    await expect(editServerManagedTask(taskId, deviceId, { status: TaskStatus.COMPLETED }))
+      .rejects.toThrow('Invalid server task status transition');
+    expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.ASSIGNED);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
   it('refuses to enroll an existing local-only UUID task without overwriting it', async () => {
     const original = { ...task(), title: 'Local-only workshop note' };
     await db.tasks.put(original);
