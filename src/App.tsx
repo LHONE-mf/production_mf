@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/UsersModule';
 import { CommunicationModule } from './modules/communication/CommunicationModule';
 import { ChatModule } from './chat/ChatModule';
 import { SyncModule } from './modules/sync/SyncModule';
+import { PlanningModule } from './modules/planning/PlanningModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
 import { renderStageIfActive } from './stages/StageRouter';
 import { ErrorBoundary } from './shared/ErrorBoundary';
@@ -77,6 +78,8 @@ function App() {
         return <ChatModule />;
       case 'communication':
         return <CommunicationModule />;
+      case 'planning':
+        return <PlanningModule onOpenSync={() => setActiveTab('sync')} />;
       case 'sync':
         return <SyncModule />;
       case 'reports':
