@@ -129,6 +129,32 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     }
     return { results };
   });
+  // Snapshot of currently authorized shared task IDs. Clients use this to
+  // hide stale cached assignments after revocation without deleting production
+  // audit records. Device-bound proof is mandatory, exactly as for task reads.
+  app.get('/sync/task-access', async (request, reply) => {
+    const principal = await authenticate(pool, request.headers.authorization);
+    if (!principal) return reply.code(401).send({ error: 'unauthorized' });
+    if (!['chief', 'master', 'worker'].includes(principal.role)) return reply.code(403).send({ error: 'forbidden' });
+    const device = comparisonSchema.safeParse(request.query);
+    if (!device.success) return reply.code(400).send({ error: 'invalid_request' });
+    const proofError = await deviceProofError(pool, principal, request.headers.authorization!, device.data.deviceId, request.headers['x-device-proof']);
+    if (proofError) return reply.code(403).send({ error: proofError });
+    const result = await pool.query(
+      `SELECT e.entity_id FROM sync_entities e
+       WHERE e.organization_id=$1 AND e.entity_type='task'
+       AND ($2::boolean OR ($3::boolean AND e.payload->>'assignedTo'=$4::text)
+         OR (NOT $3::boolean AND EXISTS (
+           SELECT 1 FROM user_workshop_memberships m
+           WHERE m.organization_id=e.organization_id AND m.user_id=$4::uuid
+             AND m.workshop_id=e.payload->>'workshopId')))
+       ORDER BY e.entity_id LIMIT 5001`,
+      [principal.organization_id, principal.role === 'chief', principal.role === 'worker', principal.id],
+    );
+    if (result.rows.length > 5000) return reply.code(413).send({ error: 'task_access_snapshot_too_large' });
+    return { ids: result.rows.map((row: { entity_id: string }) => row.entity_id) };
+  });
+
   // Read-only comparison endpoint. Never resolves conflicts or changes server data.
   app.get('/sync/task/:id', async (request, reply) => {
     const principal = await authenticate(pool, request.headers.authorization);
