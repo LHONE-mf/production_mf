@@ -56,6 +56,29 @@ integration('M2 planning routes and orders API (PostgreSQL)', () => {
     await pool.end();
   });
 
+  it('manages workshops through verified tenant roles without leaking other organizations', async () => {
+    const code = 'pilot-' + randomUUID().slice(0, 8);
+    const forbidden = await app.inject({ method: 'POST', url: '/planning/workshops',
+      headers: authorization(1), payload: { id: code, name: 'Pilot room' } });
+    expect(forbidden.statusCode).toBe(403);
+    expect((await app.inject({ method: 'GET', url: '/planning/workshops',
+      headers: authorization(2) })).statusCode).toBe(403);
+    const created = await app.inject({ method: 'POST', url: '/planning/workshops',
+      headers: authorization(0), payload: { id: code, name: 'Pilot room' } });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toEqual({ id: code, name: 'Pilot room' });
+    expect((await app.inject({ method: 'POST', url: '/planning/workshops',
+      headers: authorization(0), payload: { id: code, name: 'Duplicate' } })).statusCode).toBe(409);
+    const own = (await app.inject({ method: 'GET', url: '/planning/workshops',
+      headers: authorization(1) })).json().workshops;
+    expect(own).toEqual(expect.arrayContaining([expect.objectContaining({ id: code })]));
+    const foreign = (await app.inject({ method: 'GET', url: '/planning/workshops',
+      headers: authorization(3) })).json().workshops;
+    expect(foreign).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: code })]));
+    expect((await app.inject({ method: 'POST', url: '/planning/workshops',
+      headers: authorization(0), payload: { id: '../bad', name: 'Invalid' } })).statusCode).toBe(400);
+  });
+
   it('creates an ordered, tenant-scoped draft route only for authorized planners', async () => {
     expect((await app.inject({ method:'POST', url:'/planning/routes', payload:draft })).statusCode).toBe(401);
     expect((await app.inject({
