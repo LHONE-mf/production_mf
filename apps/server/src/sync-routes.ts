@@ -144,10 +144,10 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       `SELECT e.revision, e.payload FROM sync_entities e
         WHERE e.organization_id=$1 AND e.entity_type=$2 AND e.entity_id=$3
         AND ($4::boolean
-          OR ($6::boolean AND e.payload->>'assignedTo'=$5)
+          OR ($6::boolean AND e.payload->>'assignedTo'=$5::text)
           OR (NOT $6::boolean AND EXISTS (
             SELECT 1 FROM user_workshop_memberships m
-            WHERE m.organization_id=e.organization_id AND m.user_id=$5
+            WHERE m.organization_id=e.organization_id AND m.user_id=$5::uuid
               AND m.workshop_id=e.payload->>'workshopId')))`,
       [principal.organization_id, 'task', parsed.data, principal.role === 'chief', principal.id, principal.role === 'worker'],
     );
@@ -168,10 +168,10 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       JOIN sync_entities e ON e.organization_id=o.organization_id AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
       WHERE o.organization_id=$1 AND o.sequence>$2 AND o.entity_type='task'
       AND ($4::boolean
-        OR ($6::boolean AND o.result_payload->>'assignedTo'=$5 AND e.payload->>'assignedTo'=$5)
+        OR ($6::boolean AND o.result_payload->>'assignedTo'=$5::text AND e.payload->>'assignedTo'=$5::text)
         OR (NOT $6::boolean AND EXISTS (
           SELECT 1 FROM user_workshop_memberships m
-          WHERE m.organization_id=o.organization_id AND m.user_id=$5
+          WHERE m.organization_id=o.organization_id AND m.user_id=$5::uuid
             AND m.workshop_id=o.result_payload->>'workshopId'
             AND m.workshop_id=e.payload->>'workshopId')))
       ORDER BY o.sequence ASC LIMIT $3`, [principal.organization_id,cursor,limit,principal.role === 'chief',principal.id,principal.role === 'worker']);
