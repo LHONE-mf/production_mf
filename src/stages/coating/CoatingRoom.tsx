@@ -43,7 +43,7 @@ export function CoatingModule() {
   const users = useLiveQuery(() => db.users.toArray(), []);
   const tasks = useLiveQuery(
     async () => (await listVisibleTasks()).filter(task => task.stage === StageId.COATING)
-      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [],
   );
 
