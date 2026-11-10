@@ -50,6 +50,10 @@ describe('M2 manual link of existing local journal',()=>{
     const validId='7cf31394-36cb-4aa0-a9f1-949a70863621';
     journal.entries=[
       {id:'jr-001',stage:'coating',summary:'DEMO',createdAt:new Date('2026-11-10')},
+      {id:'10b5328d-f30e-4df4-96e0-d823c7691462',stage:'coating',
+        createdAt:new Date('2026-11-10')}, // Older row without a summary
+      {id:'7a6b5e0c-d6f7-4e39-9dc2-d305ad4de777',stage:'coating',
+        summary:'Malformed defects',defects:42,createdAt:new Date('2026-11-10')},
       {id:validId,stage:'coating',summary:'Cathode coating run',
         defects:'Pinholes',createdAt:new Date('2026-11-10T10:15:00.000Z')},
       {id:'b94476e6-80b1-4429-9d4b-f59680c59f50',stage:'assembly',
@@ -99,7 +103,7 @@ describe('M2 manual link of existing local journal',()=>{
       sourceCreatedAt:'2026-11-10T10:15:00.000Z',
       summary:'Cathode coating run',defects:'Pinholes',
     });
-    expect(journal.entries).toHaveLength(3);
+    expect(journal.entries).toHaveLength(5);
     expect(screen.textContent).toContain('Исходный локальный журнал не изменён');
   });
 

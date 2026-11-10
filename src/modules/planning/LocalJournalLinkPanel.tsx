@@ -9,12 +9,20 @@ const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-
 const inputClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2 text-sm text-white';
 
 function linkable(entry: JournalEntry): boolean {
-  // The shipped demo rows have non-UUID IDs: never send them to the server.
-  // This is an eligibility check, NOT proof of real-world authenticity.
-  return uuid.test(entry.id) && entry.summary.trim().length > 0 &&
-    entry.summary.trim().length <= 2000 &&
+  // Imported/old records may have incomplete fields despite their TS type.
+  // The shipped demo rows have non-UUID IDs; this is NOT authenticity proof.
+  if (!entry || typeof entry.id !== 'string' ||
+      typeof entry.stage !== 'string' || typeof entry.summary !== 'string' ||
+      (entry.defects != null && typeof entry.defects !== 'string')) return false;
+  const timestamp: unknown = entry.createdAt;
+  if (!(timestamp instanceof Date) && typeof timestamp !== 'string' &&
+      typeof timestamp !== 'number') return false;
+  const date = timestamp instanceof Date ? timestamp.getTime()
+    : new Date(timestamp).getTime();
+  const summaryLength = entry.summary.trim().length;
+  return uuid.test(entry.id) && summaryLength > 0 && summaryLength <= 2000 &&
     (entry.defects?.trim().length ?? 0) <= 2000 &&
-    Number.isFinite(new Date(entry.createdAt).getTime());
+    Number.isFinite(date);
 }
 
 /** Manual online association of a local journal snapshot with one route step.
