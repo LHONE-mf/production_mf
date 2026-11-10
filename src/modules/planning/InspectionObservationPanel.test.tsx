@@ -45,6 +45,35 @@ afterEach(async()=>{
 });
 
 describe('M2 quality inspection observation panel',()=>{
+  it('labels comparisons as advisory without treating a reference match as QA approval',async()=>{
+    vi.stubGlobal('fetch',vi.fn(async(url:string)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?{
+        steps:[{number:1,name:'Coating',stage:'coating',
+          workshopId:'coating',evidence:null}],
+      }:{batchId:'batch-1',observations:[
+        {id:'obs-below',stepNumber:1,kind:'measurement',
+          characteristic:'Coating thickness',observedValue:'11.999999',
+          observedUnit:'um',attentionRequired:false,note:null,
+          recordedBy:'chief',recordedAt:'2026-11-10T11:00:00Z',
+          referenceComparison:'below_reference',
+          referenceLowerLimit:'12.000001',referenceUpperLimit:'14.000001'},
+        {id:'obs-missing',stepNumber:1,kind:'measurement',
+          characteristic:'Unknown thickness',observedValue:'15.000000',
+          observedUnit:'mm',attentionRequired:false,note:null,
+          recordedBy:'chief',recordedAt:'2026-11-10T11:00:00Z',
+          referenceComparison:'no_reference',
+          referenceLowerLimit:null,referenceUpperLimit:null},
+      ]},
+    })));
+    setServerConnection(connection);
+    const page=await mount();
+    expect(page.textContent).toContain('ниже нижней границы');
+    expect(page.textContent).toContain('12.000001');
+    expect(page.textContent).toContain('14.000001');
+    expect(page.textContent).toContain('Справочный предел для параметра и единицы не найден');
+    expect(page.textContent).toContain('не является решением ОТК');
+  });
+
   it('shows every previous review, not only the current nonblocking decision',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(url:string)=>({
       ok:true,json:async()=>url.endsWith('/steps')?{
