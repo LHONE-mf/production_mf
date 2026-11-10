@@ -1,4 +1,4 @@
-import type { CoatRun, JournalEntry, MixBatch } from '../types';
+import type { CalenderRun, CoatRun, CutRun, JournalEntry, MixBatch } from '../types';
 import type { LocalSourceKind, LocalSourceMeasure } from './planningClient';
 
 export type LocalSourceCandidate = {
@@ -42,6 +42,7 @@ function reported(kind:LocalSourceMeasure['kind'],value:unknown):
  */
 export function localSourceCandidates(
   journal:JournalEntry[],mixes:MixBatch[],coatings:CoatRun[],
+  calenders:CalenderRun[] = [], cuts:CutRun[] = [],
 ): LocalSourceCandidate[] {
   const items:LocalSourceCandidate[] = [];
   for (const e of journal) {
@@ -85,14 +86,51 @@ export function localSourceCandidates(
       ...(measure?{sourceMeasure:measure}:{}),
     });
   }
+  for (const c of calenders) {
+    if (!c || !isUuid(c.id)) continue;
+    const at=time(c.createdAt);
+    const roll=typeof c.rollId==='string' && c.rollId.trim()
+      ? c.rollId.trim().slice(0,200) : 'не указан';
+    const summary=bounded('Каландрирование: рулон '+roll);
+    if (!at || !summary || (c.defects!=null && typeof c.defects!=='string') ||
+      (c.defects?.trim().length ?? 0)>2000) continue;
+    const measure=reported('calendered_length_m',c.totalLengthM);
+    items.push({
+      key:'calender_run:'+c.id,sourceKind:'calender_run',sourceEntryId:c.id,
+      sourceStage:'calendaring',sourceCreatedAt:at,summary,
+      ...(c.defects?.trim()?{defects:c.defects.trim()}:{}),
+      ...(measure?{sourceMeasure:measure}:{}),
+    });
+  }
+  for (const c of cuts) {
+    if (!c || !isUuid(c.id)) continue;
+    const at=time(c.createdAt);
+    const shape=typeof c.electrodeType==='string'
+      ? c.electrodeType.slice(0,80) : 'не указан';
+    const summary=bounded('Нарезка электродов: '+shape);
+    if (!at || !summary || (c.defects!=null && typeof c.defects!=='string') ||
+      (c.defects?.trim().length ?? 0)>2000) continue;
+    // A reported count must not silently round a fractional/invalid value.
+    const measure=Number.isSafeInteger(c.goodCount)
+      ? reported('cut_good_pieces',c.goodCount) : undefined;
+    items.push({
+      key:'cut_run:'+c.id,sourceKind:'cut_run',sourceEntryId:c.id,
+      sourceStage:'cutting',sourceCreatedAt:at,summary,
+      ...(c.defects?.trim()?{defects:c.defects.trim()}:{}),
+      ...(measure?{sourceMeasure:measure}:{}),
+    });
+  }
   return items.sort((a,b)=>b.sourceCreatedAt.localeCompare(a.sourceCreatedAt));
 }
 
 export const localKindLabels:Record<LocalSourceKind,string> = {
   journal:'Журнал работ', mix_batch:'Журнал замесов',
   coat_run:'Журнал нанесения',
+  calender_run:'Журнал каландрирования',cut_run:'Журнал нарезки',
 };
 export const metricLabels:Record<LocalSourceMeasure['kind'],string> = {
   dry_solids_kg:'Заявленная масса сухих веществ, кг',
   coated_side_a_m:'Заявленная длина покрытия, сторона A, м',
+  calendered_length_m:'Заявленная прокатанная длина, м',
+  cut_good_pieces:'Заявлено годных после нарезки, шт',
 };

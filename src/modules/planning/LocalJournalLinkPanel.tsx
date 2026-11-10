@@ -28,12 +28,14 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     return getServerConnection()?.session.accessToken === connection.session.accessToken;
   }
   async function load(signal?: AbortSignal) {
-    const [route, history, entries, mixes, coatings] = await Promise.all([
+    const [route, history, entries, mixes, coatings, calenders, cuts] = await Promise.all([
       planningApi.stepEvidence(connection, batch.id, signal),
       planningApi.journalLinks(connection, batch.id, signal),
       db.journal.orderBy('createdAt').reverse().limit(150).toArray(),
       db.mixBatches.orderBy('createdAt').reverse().limit(150).toArray(),
       db.coatRuns.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.calenderRuns.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.cuttingRuns.orderBy('createdAt').reverse().limit(150).toArray(),
     ]);
     if (!Array.isArray(route.steps) || !Array.isArray(history.links))
       throw new Error('Сервер вернул неверную историю журнала');
@@ -41,7 +43,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       setSteps(route.steps.filter((row,index,list) =>
         list.findIndex(other => other.number === row.number) === index));
       setLinks(history.links);
-      setLocal(localSourceCandidates(entries,mixes,coatings));
+      setLocal(localSourceCandidates(entries,mixes,coatings,calenders,cuts));
     }
   }
 
@@ -114,8 +116,8 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       </button>
     </div>
     <p className="text-xs text-slate-400">
-      Выберите запись журнала работ, фактического замеса или нанесения покрытия
-      с этого устройства и явно привяжите её к этапу маршрута.
+      Выберите запись работ, замеса, нанесения покрытия, каландрирования
+      или нарезки с этого устройства и явно привяжите её к этапу маршрута.
       Передаются только краткое описание, дата, замечания и обозначенный
       заявленный параметр, если он есть. Это не доказательство выполнения,
       измерение сервера, приёмка качества или списание материалов.
@@ -147,7 +149,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
             {step.number}. {step.name} ({step.stage})</option>)}
         </select>
       </label>
-      <label className="block text-xs text-slate-400">Локальная запись (до 150 из каждого журнала)
+      <label className="block text-xs text-slate-400">Локальная запись (до 150 из каждого журнала операций)
         <select aria-label="Локальная запись" className={inputClass + ' mt-1'}
           value={entryChoice} onChange={event => {
             setEntryChoice(event.target.value);

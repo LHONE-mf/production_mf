@@ -9,6 +9,8 @@ const journal = vi.hoisted(() => ({
   entries: [] as Array<Record<string,unknown>>,
   mixes: [] as Array<Record<string,unknown>>,
   coatings: [] as Array<Record<string,unknown>>,
+  calenders: [] as Array<Record<string,unknown>>,
+  cuts: [] as Array<Record<string,unknown>>,
   reads: 0,
 }));
 vi.mock('../../core/db', () => ({
@@ -21,6 +23,12 @@ vi.mock('../../core/db', () => ({
     })})},
     coatRuns:{orderBy:() => ({reverse:() => ({
       limit:() => ({toArray:async () => journal.coatings}),
+    })})},
+    calenderRuns:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.calenders}),
+    })})},
+    cuttingRuns:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.cuts}),
     })})},
   },
 }));
@@ -51,7 +59,8 @@ async function mount(status:Batch['status']='in_progress') {
 afterEach(async()=>{
   if(root)await act(async()=>root!.unmount());
   root=undefined;container?.remove();container=undefined;
-  journal.entries=[];journal.mixes=[];journal.coatings=[];journal.reads=0;
+  journal.entries=[];journal.mixes=[];journal.coatings=[];
+  journal.calenders=[];journal.cuts=[];journal.reads=0;
   clearServerConnection();vi.unstubAllGlobals();
 });
 
@@ -151,6 +160,40 @@ describe('M2 manual link of existing local journal',()=>{
       sourceMeasure:{kind:'dry_solids_kg',value:'12.125000'},
     });
     expect(journal.mixes).toHaveLength(1);
+  });
+
+  it('manually attaches a cutting record with an integer count, not a confirmed yield',async()=>{
+    const cutId='f89bd1dc-8d10-42a7-b17b-f96160beb55a';
+    journal.cuts=[{id:cutId,goodCount:87,electrodeType:'strip',createdAt:1794312000000}];
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?
+        {steps:[{number:1,name:'Cutting',stage:'cutting',workshopId:'cutting',evidence:null}]}:
+        options.method==='GET'?{links:[]}:{id:'linked',alreadyLinked:false},
+    }));
+    vi.stubGlobal('fetch',fetchMock);
+    setServerConnection(connection);
+    const screen=await mount();
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    expect(select.textContent).toContain('Журнал нарезки');
+    await act(async()=>{
+      select.value='cut_run:'+cutId;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    expect(screen.textContent).toContain('Заявлено годных после нарезки, шт');
+    const checkbox=screen.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(async()=>{ checkbox.click(); });
+    const form=screen.querySelector('button[type="submit"]')!.closest('form')!;
+    await act(async()=>{
+      form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      await Promise.resolve();
+    });
+    const sent=fetchMock.mock.calls.filter(call=>call[1].method==='POST');
+    expect(sent).toHaveLength(1);
+    expect(JSON.parse(String(sent[0][1].body))).toMatchObject({
+      sourceKind:'cut_run',sourceStage:'cutting',sourceEntryId:cutId,
+      sourceMeasure:{kind:'cut_good_pieces',value:'87.000000'},
+    });
+    expect(journal.cuts).toHaveLength(1);
   });
 
   it('never offers link writes for held batches',async()=>{

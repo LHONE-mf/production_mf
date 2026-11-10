@@ -237,6 +237,17 @@ controls are introduced. The API validates source kind/stage and metric
 compatibility; PostgreSQL and UI tests cover these boundaries. Full stage-run
 coverage, quality checks, and physical pilot validation remain future work.
 
+**M2 calendering/cutting references checkpoint (2026-11-10):**
+The additive `013_m2_calender_cut_sources.sql` migration extends the
+chief-attested manual source ledger to support local calendering and cutting
+run records, with operator-reported calendered length (m) and whole good-cut
+electrode count (pieces). Source type, approved route stage, and metric kind
+are validated at API and database boundaries; the mobile Planning selector
+shows these only for the matching step. A non-integer count is never silently
+rounded. Existing local records and already linked records are unchanged;
+nothing is auto-uploaded or promoted to verified batch yield, QA approval or
+inventory. Isolated PostgreSQL and UI tests exercise the new source types.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { JournalEntry, MixBatch, CoatRun } from '../types';
+import type { JournalEntry, MixBatch, CoatRun, CalenderRun, CutRun } from '../types';
 import { localSourceCandidates } from './localSourceCandidates';
 
 describe('selectable offline production source snapshots',()=>{
@@ -21,6 +21,35 @@ describe('selectable offline production source snapshots',()=>{
       expect.objectContaining({key:'coat_run:'+id,sourceStage:'coating',
         sourceMeasure:{kind:'coated_side_a_m',value:'124.500000'},defects:'Pinholes'}),
     ]));
+  });
+  it('labels calendered lengths and whole good-cut counts without auto-calculating yield',()=>{
+    const calendar='99d0fd6d-2b3f-4db2-bd52-523bf8b6147e';
+    const cut='314b31cc-29d7-44fa-8a19-d13d6007c20b';
+    const cals=[{id:calendar,rollId:'ROLL-7',createdAt:1794312000000,
+      totalLengthM:87.375,defects:'Edge tear'} as CalenderRun];
+    const cuts=[{id:cut,incomingId:'ROLL-7',electrodeType:'strip',
+      goodCount:154,createdAt:1794315600000} as CutRun];
+    const result=localSourceCandidates([],[],[],cals,cuts);
+    expect(result).toHaveLength(2);
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({sourceKind:'calender_run',sourceStage:'calendaring',
+        sourceEntryId:calendar,sourceMeasure:{kind:'calendered_length_m',value:'87.375000'},
+        defects:'Edge tear'}),
+      expect.objectContaining({sourceKind:'cut_run',sourceStage:'cutting',
+        sourceEntryId:cut,sourceMeasure:{kind:'cut_good_pieces',value:'154.000000'}}),
+    ]));
+    expect(cals[0].totalLengthM).toBe(87.375);
+    expect(cuts[0].goodCount).toBe(154);
+  });
+  it('does not round fractional or implausible cutting counts to whole pieces',()=>{
+    const id='314b31cc-29d7-44fa-8a19-d13d6007c20b';
+    const items=localSourceCandidates([],[],[],[],[
+      {id,goodCount:14.4,electrodeType:'strip',createdAt:1794312000000} as CutRun,
+      {id:'e86e8832-92a9-4db7-9b0e-57b2b56fb513',goodCount:Infinity,
+        electrodeType:'strip',createdAt:1794312000000} as CutRun,
+    ]);
+    expect(items).toHaveLength(2);
+    for(const item of items)expect(item).not.toHaveProperty('sourceMeasure');
   });
   it('excludes demo IDs, malformed legacy rows and unsafe values without mutation',()=>{
     const journal=[

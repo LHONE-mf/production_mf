@@ -57,9 +57,11 @@ export type BatchStepRecord = {
   evidence: StepEvidence | null;
 };
 export type StepDetail = RouteStep & { number: number };
-export type LocalSourceKind = 'journal' | 'mix_batch' | 'coat_run';
+export type LocalSourceKind =
+  'journal' | 'mix_batch' | 'coat_run' | 'calender_run' | 'cut_run';
 export type LocalSourceMeasure = {
-  kind: 'dry_solids_kg' | 'coated_side_a_m'; value: string;
+  kind: 'dry_solids_kg' | 'coated_side_a_m' |
+    'calendered_length_m' | 'cut_good_pieces'; value: string;
 };
 export type LocalJournalLink = {
   id: string; stepNumber: number; sourceStage: string; sourceEntryId: string;
