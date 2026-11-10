@@ -67,6 +67,11 @@ export function registerDeviceChallengeRoutes(app: FastifyInstance, pool: Pick<P
     FROM consumed RETURNING token_hash`,
       [challengeId, actor.organization_id, actor.id, deviceId, sessionHash, sha256(challenge), tokenHash(proofToken)]);
     if (!consumed.rowCount) return reply.code(403).send({ error: 'invalid_or_expired_challenge' });
-    return { proofToken, tokenType: 'DeviceProof', expiresIn: 300, deviceId };
+    // Network proof remains valid for five minutes. A separate, explicitly
+    // provisioned shift-length offline permission may be used on this device
+    // while disconnected. All pending writes still undergo authorization,
+    // revision and device-revocation checks when uploaded.
+    const offlineEditExpiresIn = ['chief', 'master', 'worker'].includes(actor.role) ? 28_800 : 0;
+    return { proofToken, tokenType: 'DeviceProof', expiresIn: 300, offlineEditExpiresIn, deviceId };
   });
 }
