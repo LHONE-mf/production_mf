@@ -10,12 +10,13 @@ const sourceValue = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)
   .refine(value=>Number(value)>0);
 const sourceMeasureSchema = z.object({
   kind:z.enum(['dry_solids_kg','coated_side_a_m',
-    'calendered_length_m','cut_good_pieces']),value:sourceValue,
+    'calendered_length_m','cut_good_pieces',
+    'sort_input_good_pieces','assembled_cells_out']),value:sourceValue,
 }).strict();
 const bodySchema = z.object({
   linkId:uuid, sourceEntryId:uuid,
   sourceKind:z.enum(['journal','mix_batch','coat_run',
-    'calender_run','cut_run']).default('journal'),
+    'calender_run','cut_run','sort_run','assembly_run']).default('journal'),
   sourceMeasure:sourceMeasureSchema.optional(),
   sourceStage:z.enum(['storage','slurry','coating','calendaring','cutting',
     'sorting','assembly','electrolyte','electrolyte-705','walzing','formation']),
@@ -26,10 +27,12 @@ const bodySchema = z.object({
   const sourceStage:Record<string,string> = {
     mix_batch:'slurry',coat_run:'coating',
     calender_run:'calendaring',cut_run:'cutting',
+    sort_run:'sorting',assembly_run:'assembly',
   };
   const sourceMetric:Record<string,string> = {
     mix_batch:'dry_solids_kg',coat_run:'coated_side_a_m',
     calender_run:'calendered_length_m',cut_run:'cut_good_pieces',
+    sort_run:'sort_input_good_pieces',assembly_run:'assembled_cells_out',
   };
   const stage = sourceStage[data.sourceKind];
   const metric = sourceMetric[data.sourceKind];
@@ -37,7 +40,9 @@ const bodySchema = z.object({
     ctx.addIssue({code:'custom',path:['sourceStage'],message:'source stage mismatch'});
   if (data.sourceMeasure && data.sourceMeasure.kind!==metric)
     ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'source metric mismatch'});
-  if (data.sourceMeasure?.kind==='cut_good_pieces' &&
+  if (data.sourceMeasure &&
+      ['cut_good_pieces','sort_input_good_pieces','assembled_cells_out']
+        .includes(data.sourceMeasure.kind) &&
       !/^\d+$/.test(data.sourceMeasure.value))
     ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'count must be an integer'});
 });
