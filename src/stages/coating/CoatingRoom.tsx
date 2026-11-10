@@ -6,6 +6,7 @@ import React, { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { CoatingMixSnapshot, CoatRun, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -41,7 +42,8 @@ export function CoatingModule() {
 
   const users = useLiveQuery(() => db.users.toArray(), []);
   const tasks = useLiveQuery(
-    () => db.tasks.where('stage').equals(StageId.COATING).reverse().sortBy('updatedAt'),
+    async () => (await listVisibleTasks()).filter(task => task.stage === StageId.COATING)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
     [],
   );
 
