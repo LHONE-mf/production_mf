@@ -148,7 +148,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     setSelectedOrder(orderId);
     setSelectedBatch(null);
     setBatches([]);
-    setEvents([]);
+    setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
     try {
       const response = await planningApi.batches(connection, orderId);
       if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
@@ -239,6 +239,16 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const chosenRoute = approved.find(route => route.id + ':' + route.version === routeChoice);
   const selectedOrderRow = orders.find(order => order.id === selectedOrder);
   const selectedBatchRow = batches.find(batch => batch.id === selectedBatch);
+  const applicableSteps = handoffRoute.filter(step => step.electrodeLine ===
+    (selectedBatchRow?.materialLine === 'cell' ? 'common' : selectedBatchRow?.materialLine));
+  const latestTransfer = handoffHistory[handoffHistory.length - 1];
+  const originNumber = latestTransfer?.toStep ?? applicableSteps[0]?.number;
+  const originIndex = applicableSteps.findIndex(step => step.number === originNumber);
+  const proposedHandoff = selectedBatchRow?.status === 'in_progress' &&
+    originIndex >= 0 && originIndex + 1 < applicableSteps.length &&
+    (!latestTransfer || Boolean(latestTransfer.receivedBy))
+      ? { fromStep: applicableSteps[originIndex], toStep: applicableSteps[originIndex + 1] }
+      : null;
 
   return <section className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -266,6 +276,36 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     {loading && <p className="text-slate-300" role="status">Загружаем данные с сервера…</p>}
     {error && <p role="alert" className="rounded-lg border border-red-600/40 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
     {message && <p role="status" className="rounded-lg border border-green-600/40 bg-green-950/40 p-3 text-sm text-green-200">{message}</p>}
+
+    {tab === 'handoffs' && <div className="space-y-3">
+      <h2 className="text-white font-semibold">Передачи на приёмку ({incoming.length})</h2>
+      <p className="text-slate-400 text-sm">
+        Здесь показаны только передачи в доступные вам цеха. Приёмку должен подтвердить
+        другой сотрудник, не тот, кто отправил партию. Это журнал передачи, а не движение склада.
+      </p>
+      {!incoming.length && <p className="text-slate-400 text-sm">Нет передач, ожидающих приёмки.</p>}
+      {incoming.map(ticket => <div key={ticket.id}
+        className="rounded-xl border border-slate-700 bg-slate-800/70 p-4 space-y-2">
+        <h3 className="font-medium text-white">{ticket.batchCode}</h3>
+        <p className="text-sm text-slate-300">
+          Этап {ticket.fromStep} → {ticket.toStep} · {ticket.fromWorkshopId} → {ticket.toWorkshopId}
+        </p>
+        <p className="text-sm text-slate-300">Передано: {ticket.quantity} {ticket.quantityUnit}</p>
+        {ticket.note && <p className="text-slate-400 text-sm whitespace-pre-wrap">{ticket.note}</p>}
+        <label className="block text-xs text-slate-400">Примечание принимающего
+          <textarea className={fieldClass + ' mt-1'} value={receiptNote} maxLength={2000}
+            onChange={event => setReceiptNote(event.target.value)} rows={2} />
+        </label>
+        <button type="button" className={buttonClass} disabled={busy ||
+          ticket.sentBy === connection.serverActorId}
+          onClick={() => void run(async () => {
+            await planningApi.receiveHandoff(connection, ticket.id, receiptNote);
+            setReceiptNote('');
+          }, 'Приёмка записана на сервере')}>
+          {ticket.sentBy === connection.serverActorId ? 'Нужен другой принимающий' : 'Подтвердить приёмку'}
+        </button>
+      </div>)}
+    </div>}
 
     {tab === 'routes' && <div className="space-y-5">
       {isChief && <form className="rounded-xl border border-slate-700 bg-slate-800/70 p-4 space-y-3"
@@ -438,6 +478,52 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         </div>)}
         {selectedBatchRow && <div className="rounded-lg border border-slate-600 p-3 space-y-3">
           <h3 className="text-white font-medium">{selectedBatchRow.batchCode} · История</h3>
+          <div className="space-y-2 rounded-lg border border-slate-700 p-3">
+            <h4 className="font-medium text-white">Передачи между этапами</h4>
+            {!handoffHistory.length && <p className="text-slate-400 text-sm">Передач пока нет.</p>}
+            {handoffHistory.map(ticket => <div key={ticket.id}
+              className="rounded-md border-l-2 border-blue-500 bg-slate-950/50 p-2 text-sm text-slate-200">
+              Этап {ticket.fromStep} → {ticket.toStep} · {ticket.quantity} {ticket.quantityUnit}
+              <p className="text-slate-400 text-xs">
+                {ticket.receivedBy ? 'Получено' : 'Ожидает подтверждения приёмки'}
+              </p>
+              {ticket.note && <p className="text-slate-400 text-xs whitespace-pre-wrap">{ticket.note}</p>}
+            </div>)}
+            {proposedHandoff ? <form className="space-y-2" onSubmit={event => {
+              event.preventDefault();
+              const ticketId = crypto.randomUUID();
+              void run(async () => {
+                await planningApi.sendHandoff(connection, selectedBatchRow.id, {
+                  handoffId: ticketId,
+                  fromStep: proposedHandoff.fromStep.number,
+                  toStep: proposedHandoff.toStep.number,
+                  quantity: handoffQuantity.trim(),
+                  quantityUnit: selectedBatchRow.quantityUnit,
+                  ...(handoffNote.trim() ? { note: handoffNote.trim() } : {}),
+                });
+                setHandoffQuantity(''); setHandoffNote('');
+              }, 'Передача отправлена. Получатель должен подтвердить приёмку.');
+            }}>
+              <p className="text-sky-200 text-sm">
+                Следующая передача: {proposedHandoff.fromStep.name} → {proposedHandoff.toStep.name}
+              </p>
+              <label className="block text-xs text-slate-400">Передаваемое количество ({selectedBatchRow.quantityUnit})
+                <input className={fieldClass + ' mt-1'} required inputMode="decimal"
+                  value={handoffQuantity} onChange={event => setHandoffQuantity(event.target.value)}
+                  placeholder="Количество" />
+              </label>
+              <label className="block text-xs text-slate-400">Примечание к передаче
+                <textarea className={fieldClass + ' mt-1'} maxLength={2000} rows={2}
+                  value={handoffNote} onChange={event => setHandoffNote(event.target.value)} />
+              </label>
+              <button className={buttonClass} disabled={busy || !handoffQuantity.trim()}>
+                Передать на следующий этап
+              </button>
+            </form> : <p className="text-slate-400 text-xs">
+              Новая передача доступна только для активной партии с подходящим следующим
+              шагом, после подтверждения предыдущей передачи.
+            </p>}
+          </div>
           {transitions[selectedBatchRow.status].length > 0 && <form className="space-y-2"
             onSubmit={event => { event.preventDefault(); void run(async () => {
               await planningApi.changeBatchStatus(connection, selectedBatchRow.id, {
