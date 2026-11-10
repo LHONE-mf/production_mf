@@ -120,7 +120,7 @@ describe('M2 online planning screen', () => {
         button.closest('div.rounded-lg')?.textContent?.includes('CELL-LOT'));
     // Use last matching batch button (cathode is listed first, cell second).
     const detailButton = openBatch ?? Array.from(screen.querySelectorAll('button'))
-      .filter(button => button.textContent === 'История и статус').at(-1);
+      .filter(button => button.textContent === 'История и статус').slice(-1)[0];
     expect(detailButton).toBeTruthy();
     await act(async () => { detailButton!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     expect(screen.textContent).toContain('Происхождение партии');
