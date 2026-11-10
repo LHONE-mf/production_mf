@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { clearServerConnection, getServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import { planningApi, type QuantityFlowStep } from '../../core/planning/planningClient';
 import { metricLabels } from '../../core/planning/localSourceCandidates';
@@ -10,31 +10,37 @@ export function QuantityFlowPanel({ connection, batchId }: Props) {
   const [steps, setSteps] = useState<QuantityFlowStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const activeRead = useRef<AbortController|null>(null);
 
-  async function refresh(signal?: AbortSignal) {
+  async function refresh() {
+    activeRead.current?.abort();
+    const controller = new AbortController();
+    activeRead.current = controller;
     setLoading(true);
     setError('');
     try {
-      const result = await planningApi.quantityFlow(connection, batchId, signal);
+      const result = await planningApi.quantityFlow(connection, batchId, controller.signal);
       if (!Array.isArray(result.steps)) throw new Error('Сервер вернул неверную сверку количеств');
-      if (!signal?.aborted &&
+      if (!controller.signal.aborted &&
           getServerConnection()?.session.accessToken === connection.session.accessToken)
         setSteps(result.steps);
     } catch (cause) {
-      if (signal?.aborted) return;
+      if (controller.signal.aborted ||
+          getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
       const message = cause instanceof Error ? cause.message : 'Не удалось получить сверку';
       setError(message);
       if (message.startsWith('HTTP 401')) clearServerConnection();
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
+      if (activeRead.current===controller) activeRead.current=null;
     }
   }
 
   useEffect(() => {
-    const controller = new AbortController();
     setSteps([]);
-    void refresh(controller.signal);
-    return () => controller.abort();
+    void refresh();
+    // Includes a manually started refresh, not just the initial effect read.
+    return () => activeRead.current?.abort();
   }, [batchId, connection.session.accessToken]);
 
   return <section className="rounded-lg border border-slate-700 p-3 space-y-2">

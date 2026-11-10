@@ -1,3 +1,16 @@
+## 2026-11-10 — Quantity comparison refresh isolation
+
+- Reproduced and fixed two manual-refresh races in the quantity panel: a late
+  previous-batch result overwrote a newer view, and an old 401 response cleared
+  a newer server login. Initial and manual reads now share cancellation on
+  navigation/unmount, and obsolete failures cannot modify the current session.
+- Both regressions failed before the fix. All **201 frontend tests**, typecheck
+  and PWA build passed. Real Chromium phone/desktop source comparison, manual
+  refresh and genealogy navigation passed again against isolated PostgreSQL.
+- The comparison feature commit `b64b622` passed exact-head GitHub web/server
+  CI `42898171052` and Run Tests `42898171135`. This is automated engineering
+  evidence, not an Android physical-device or production acceptance pass.
+
 ## 2026-11-10 — M2 linked local source/output quantity comparison
 
 - Continued from verified remote head `0b2ca08`; its exact-head web/server CI,

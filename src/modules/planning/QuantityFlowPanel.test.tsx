@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearServerConnection, setServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
+import { clearServerConnection, getServerConnection, setServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import { QuantityFlowPanel } from './QuantityFlowPanel';
 
 const connection: ServerConnection = {
@@ -34,6 +34,44 @@ afterEach(async () => {
 });
 
 describe('M2 online quantity flow', () => {
+  it('ignores a manual refresh response after selecting a different batch',async () => {
+    const response=(batchId:string,name:string) => ({ok:true,json:async () => ({batchId,steps:[{
+      number:1,name,workshopId:'cut',nextStep:null,output:null,handoff:null,difference:null,
+    }]})});
+    let finish:(body:ReturnType<typeof response>)=>void=()=>{};
+    vi.stubGlobal('fetch',vi.fn()
+      .mockResolvedValueOnce(response('batch-1','INITIAL'))
+      .mockImplementationOnce(()=>new Promise<ReturnType<typeof response>>(resolve=>{finish=resolve;}))
+      .mockResolvedValueOnce(response('batch-2','CURRENT BATCH')));
+    setServerConnection(connection);
+    const screen=await mount();
+    await act(async () => {screen.querySelector('button')!.click();});
+    await act(async () => {root!.render(<QuantityFlowPanel connection={connection} batchId="batch-2" />);});
+    expect(screen.textContent).toContain('CURRENT BATCH');
+    await act(async () => {finish(response('batch-1','OBSOLETE BATCH'));});
+    expect(screen.textContent).toContain('CURRENT BATCH');
+    expect(screen.textContent).not.toContain('OBSOLETE BATCH');
+  });
+
+  it('does not clear a newer server login when an old manual refresh returns 401',async () => {
+    let finish:(body:unknown)=>void=()=>{};
+    vi.stubGlobal('fetch',vi.fn()
+      .mockResolvedValueOnce({ok:true,json:async()=>({batchId:'batch-1',steps:[]})})
+      .mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}))
+      .mockResolvedValueOnce({ok:true,json:async()=>({batchId:'batch-2',steps:[]})}));
+    setServerConnection(connection);
+    const screen=await mount();
+    await act(async () => {screen.querySelector('button')!.click();});
+    const next={...connection,session:{...connection.session,accessToken:'new-actor-token'}};
+    await act(async () => {
+      setServerConnection(next);
+      root!.render(<QuantityFlowPanel connection={next} batchId="batch-2" />);
+    });
+    await act(async () => {finish({ok:false,status:401,json:async()=>({error:'unauthorized'})});});
+    expect(getServerConnection()?.session.accessToken).toBe('new-actor-token');
+    expect(screen.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it('shows a traceable local reference and exact difference without declaring reconciliation or QA acceptance',async () => {
     const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async () => ({batchId:'batch-1',steps:[{
       number:1,name:'Calendering',workshopId:'calender',nextStep:null,
