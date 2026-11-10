@@ -57,14 +57,14 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
       // Retried requests are safe even after the batch has advanced, but never
       // let the same UUID mean a different physical transfer.
       const previousId = await client.query(`SELECT id,batch_id,from_step,to_step,
-          quantity::text,quantity_unit,note,sent_by
+          quantity_unit,note,sent_by,(quantity=$3::numeric) AS same_quantity
         FROM production_stage_handoffs WHERE organization_id=$1 AND id=$2`,
-        [actor.organization_id,data.handoffId]);
+        [actor.organization_id,data.handoffId,data.quantity]);
       if (previousId.rowCount) {
         const prev = previousId.rows[0];
         await client.query('ROLLBACK');
         if (prev.batch_id === batchId && prev.from_step === data.fromStep &&
-            prev.to_step === data.toStep && Number(prev.quantity) === Number(data.quantity) &&
+            prev.to_step === data.toStep && prev.same_quantity === true &&
             prev.quantity_unit === data.quantityUnit &&
             prev.note === (data.note ?? null) && prev.sent_by === actor.id) {
           return { id: data.handoffId, batchId, status: 'already_sent' };
