@@ -79,6 +79,120 @@ export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
     }
   });
 
+
+  // Editing an approved specification in place would rewrite the meaning of
+  // already released production orders. Fork a new, numbered draft instead.
+  app.post('/planning/routes/:id/versions', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    if (!['chief', 'technologist'].includes(actor.role)) return reply.code(403).send({ error: 'forbidden' });
+    const params = z.object({ id: z.string().uuid() }).strict().safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: 'invalid_route' });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Lock the route identity, not only the latest version: concurrent fork
+      // requests must not allocate the same next version.
+      const route = await client.query(`SELECT id FROM process_routes
+        WHERE organization_id=$1 AND id=$2 FOR UPDATE`, [actor.organization_id, params.data.id]);
+      if (!route.rowCount) {
+        await client.query('ROLLBACK');
+        return reply.code(404).send({ error: 'route_not_found' });
+      }
+      const latest = await client.query(`SELECT version,state FROM process_route_versions
+        WHERE organization_id=$1 AND route_id=$2 ORDER BY version DESC LIMIT 1`,
+        [actor.organization_id, params.data.id]);
+      if (!latest.rowCount || latest.rows[0].state !== 'approved') {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'latest_route_version_not_approved' });
+      }
+      const version = Number(latest.rows[0].version) + 1;
+      if (!Number.isSafeInteger(version)) throw new Error('Route version overflow');
+      await client.query(`INSERT INTO process_route_versions(organization_id,route_id,version)
+        VALUES($1,$2,$3)`, [actor.organization_id, params.data.id, version]);
+      const copied = await client.query(`INSERT INTO process_route_steps
+        (organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line)
+        SELECT organization_id,route_id,$3,step_number,name,stage,workshop_id,electrode_line
+        FROM process_route_steps WHERE organization_id=$1 AND route_id=$2 AND route_version=$4
+        RETURNING step_number`,
+        [actor.organization_id, params.data.id, version, latest.rows[0].version]);
+      await client.query('COMMIT');
+      return reply.code(201).send({ id: params.data.id, version, state: 'draft',
+        steps: copied.rowCount });
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (postgresCode(error) === '23505') return reply.code(409).send({ error: 'route_version_exists' });
+      throw error;
+    } finally { client.release(); }
+  });
+
+  // Replace the complete ordered step list while the version is a draft.
+  // On validation or FK failure, the transaction restores all previous steps.
+  app.put('/planning/routes/:id/versions/:version/steps', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    if (!['chief', 'technologist'].includes(actor.role)) return reply.code(403).send({ error: 'forbidden' });
+    const params = approvalParams.safeParse(request.params);
+    const body = routeSchema.shape.steps.safeParse((request.body as { steps?: unknown })?.steps);
+    if (!params.success || !body.success ||
+        !request.body || typeof request.body !== 'object' ||
+        Object.keys(request.body as object).some(key => key !== 'steps')) {
+      return reply.code(400).send({ error: 'invalid_route_steps' });
+    }
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const version = await client.query(`SELECT state FROM process_route_versions
+        WHERE organization_id=$1 AND route_id=$2 AND version=$3 FOR UPDATE`,
+        [actor.organization_id, params.data.id, params.data.version]);
+      if (!version.rowCount) {
+        await client.query('ROLLBACK');
+        return reply.code(404).send({ error: 'route_version_not_found' });
+      }
+      if (version.rows[0].state !== 'draft') {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'approved_route_is_immutable' });
+      }
+      await client.query(`DELETE FROM process_route_steps
+        WHERE organization_id=$1 AND route_id=$2 AND route_version=$3`,
+        [actor.organization_id, params.data.id, params.data.version]);
+      for (const [index, step] of body.data.entries()) {
+        await client.query(`INSERT INTO process_route_steps
+          (organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [actor.organization_id, params.data.id, params.data.version,
+            index + 1, step.name, step.stage, step.workshopId, step.electrodeLine]);
+      }
+      await client.query('COMMIT');
+      return { id: params.data.id, version: params.data.version, steps: body.data.length };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      if (postgresCode(error) === '23503') return reply.code(400).send({ error: 'unknown_route_workshop' });
+      throw error;
+    } finally { client.release(); }
+  });
+
+  app.get('/planning/routes/:id/versions/:version/steps', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    // Keep draft specifications private to planners until workshop-level
+    // per-route read permissions are defined.
+    if (!['chief', 'technologist'].includes(actor.role)) return reply.code(403).send({ error: 'forbidden' });
+    const params = approvalParams.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error: 'invalid_route_version' });
+    const version = await pool.query(`SELECT state FROM process_route_versions
+      WHERE organization_id=$1 AND route_id=$2 AND version=$3`,
+      [actor.organization_id, params.data.id, params.data.version]);
+    if (!version.rowCount) return reply.code(404).send({ error: 'route_version_not_found' });
+    const result = await pool.query(`SELECT step_number,name,stage,workshop_id,electrode_line
+      FROM process_route_steps
+      WHERE organization_id=$1 AND route_id=$2 AND route_version=$3 ORDER BY step_number`,
+      [actor.organization_id, params.data.id, params.data.version]);
+    return { id: params.data.id, version: params.data.version, state: version.rows[0].state,
+      steps: result.rows.map(row => ({ number: row.step_number, name: row.name,
+        stage: row.stage, workshopId: row.workshop_id, electrodeLine: row.electrode_line })) };
+  });
+
   app.post('/planning/routes/:id/versions/:version/approve', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
