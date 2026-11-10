@@ -43,6 +43,7 @@ function formatProblem(error: unknown): string {
   const explanations: Record<string, string> = {
     batch_route_steps_missing: 'Нельзя завершить партию: для её линии в маршруте нет этапов.',
     batch_route_step_incomplete: 'Нельзя завершить партию: сначала подтвердите выполнение всех этапов маршрута.',
+    inspection_review_pending: 'Нельзя завершить партию: есть наблюдения качества, требующие проверки. Откройте журнал контроля качества и зафиксируйте решение по каждому замечанию.',
     handoff_receipt_pending: 'Нельзя завершить партию: одна из передач ещё не подтверждена получателем.',
   };
   const errorCode = /^HTTP 409: ([a-z_]+)$/.exec(message)?.[1];

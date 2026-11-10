@@ -3,6 +3,7 @@ import { clearServerConnection, getServerConnection, type ServerConnection } fro
 import {
   planningApi, type Batch, type BatchStepRecord, type InspectionKind,
   type InspectionObservation, type InspectionUnit, type InspectionInput,
+  type InspectionReviewOutcome,
 } from '../../core/planning/planningClient';
 
 type Props={connection:ServerConnection;batch:Batch};
@@ -25,6 +26,10 @@ export function InspectionObservationPanel({connection,batch}:Props){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [message,setMessage]=useState('');
+  const [reviewTarget,setReviewTarget]=useState('');
+  const [reviewOutcome,setReviewOutcome]=useState<InspectionReviewOutcome>('follow_up_required');
+  const [reviewReason,setReviewReason]=useState('');
+  const [reviewId,setReviewId]=useState(()=>crypto.randomUUID());
 
   const sameSession=()=>getServerConnection()?.session.accessToken===
     connection.session.accessToken;
@@ -60,6 +65,39 @@ export function InspectionObservationPanel({connection,batch}:Props){
   const selected=step!==null&&steps.some(s=>s.number===step)
     ? step : steps[0]?.number;
   const writable=['in_progress','hold'].includes(batch.status);
+  const flagged=records.filter(r=>r.attentionRequired);
+  const selectedReview=flagged.some(r=>r.id===reviewTarget)
+    ? reviewTarget : flagged[0]?.id;
+  const reviewPossible=writable&&!busy&&!!selectedReview&&
+    reviewReason.trim().length>0;
+  function reviewChanged(){
+    setReviewId(crypto.randomUUID());
+    setMessage('');
+  }
+  async function submitReview(event:React.FormEvent){
+    event.preventDefault();
+    if(!reviewPossible||!selectedReview||!sameSession())return;
+    setBusy(true);setError('');setMessage('');
+    try{
+      await planningApi.reviewInspection(connection,batch.id,selectedReview,{
+        reviewId,outcome:reviewOutcome,reason:reviewReason.trim(),
+      });
+      if(!sameSession())return;
+      setReviewId(crypto.randomUUID());
+      setReviewReason('');
+      setReviewOutcome('follow_up_required');
+      setMessage('Решение о проверке записано; официальная приёмка качества не выполнена.');
+      try{await reload();}
+      catch(cause){
+        setError('Решение сохранено, но обновление списка не удалось: '+
+          (cause instanceof Error?cause.message:'ошибка связи'));
+      }
+    }catch(cause){
+      const msg=cause instanceof Error?cause.message:'Не удалось записать проверку';
+      setError(msg);
+      if(msg.startsWith('HTTP 401'))clearServerConnection();
+    }finally{setBusy(false);}
+  }
   const canSubmit=writable&&!busy&&selected!==undefined&&
     characteristic.trim().length>0 &&
     (kind==='measurement'?value.trim().length>0:note.trim().length>0) &&
@@ -114,8 +152,11 @@ export function InspectionObservationPanel({connection,batch}:Props){
     </div>
     <p className="text-xs text-amber-200">
       Наблюдения — не протокол официальной приёмки и не разрешение выпускать партию.
-      Нет автоматического сравнения с допусками. При критическом замечании
-      отдельно переведите партию в статус «Приостановлена».
+      Нет автоматического сравнения с допусками. Помеченные замечания блокируют
+      завершение партии до документированной не блокирующей проверки;
+      решение «Требуются дальнейшие действия» оставляет блокировку.
+      При критическом замечании отдельно переведите партию в статус «Приостановлена».
+      Проверка начальником производства — не независимая приёмка ОТК.
       Если ответ сервера потерян, сперва обновите историю, не создавайте новую запись.
     </p>
     {loading&&<p role="status" className="text-sm text-slate-400">Загрузка инспекций…</p>}
@@ -127,7 +168,11 @@ export function InspectionObservationPanel({connection,batch}:Props){
       {records.map(r=><li key={r.id} className="rounded border border-slate-700 bg-slate-950/40 p-2 text-xs text-slate-200">
         <div className="font-medium">
           Этап {r.stepNumber} · {r.characteristic} ·
-          {' '}{r.attentionRequired?'Требуется проверка':'Наблюдение'}
+          {' '}{r.attentionRequired
+            ? (r.latestReview?.outcome==='reviewed_no_block'
+              ? 'Проверено: не блокирует завершение'
+              : 'Требуется проверка перед завершением')
+            : 'Наблюдение'}
         </div>
         <div className="text-slate-300">
           {r.kind==='measurement'?'Измерение':'Визуальное наблюдение'}
@@ -136,8 +181,55 @@ export function InspectionObservationPanel({connection,batch}:Props){
           {' · '}{new Date(r.recordedAt).toLocaleString('ru-RU')}
         </div>
         {r.note&&<p className="whitespace-pre-wrap text-slate-400">{r.note}</p>}
+        {r.latestReview&&<div className="mt-1 border-t border-slate-700 pt-1 text-slate-300">
+          Последняя проверка №{r.latestReview.number} ·
+          {' '}{r.latestReview.outcome==='reviewed_no_block'
+            ? 'Не блокирует завершение' : 'Требуются дальнейшие действия'}
+          <p className="whitespace-pre-wrap">{r.latestReview.reason}</p>
+        </div>}
       </li>)}
     </ol>
+    {writable&&flagged.length>0&&<form onSubmit={event=>void submitReview(event)}
+      className="space-y-2 rounded-md border border-amber-800/70 p-3">
+      <h5 className="text-sm font-medium text-amber-100">
+        Документировать проверку отмеченного замечания
+      </h5>
+      <p className="text-xs text-slate-400">
+        Вывод «Не блокирует завершение» снимает только техническую блокировку
+        закрытия партии по этому замечанию. Это не разрешение ОТК.
+      </p>
+      <label className="block text-xs text-slate-300">Наблюдение
+        <select aria-label="Наблюдение для проверки" className={field+' mt-1'}
+          value={selectedReview??''} disabled={busy}
+          onChange={event=>{setReviewTarget(event.target.value);reviewChanged();}}>
+          {flagged.map(r=><option value={r.id} key={r.id}>
+            Этап {r.stepNumber}: {r.characteristic}
+          </option>)}
+        </select>
+      </label>
+      <label className="block text-xs text-slate-300">Результат проверки
+        <select aria-label="Результат проверки" className={field+' mt-1'}
+          value={reviewOutcome} disabled={busy}
+          onChange={event=>{
+            setReviewOutcome(event.target.value as InspectionReviewOutcome);
+            reviewChanged();
+          }}>
+          <option value="follow_up_required">Требуются дальнейшие действия</option>
+          <option value="reviewed_no_block">Не блокирует завершение</option>
+        </select>
+      </label>
+      <label className="block text-xs text-slate-300">Обоснование (обязательно)
+        <textarea aria-label="Обоснование проверки" className={field+' mt-1'}
+          maxLength={2000} required disabled={busy}
+          value={reviewReason}
+          onChange={event=>{setReviewReason(event.target.value);reviewChanged();}}
+          rows={2}/>
+      </label>
+      <button type="submit" disabled={!reviewPossible}
+        className="rounded bg-amber-700 px-3 py-2 text-sm text-white disabled:opacity-40">
+        Сохранить проверку
+      </button>
+    </form>}
     {writable&&steps.length>0&&<form onSubmit={event=>void submit(event)}
       className="space-y-2 border-t border-slate-700 pt-3">
       <label className="block text-xs text-slate-300">Этап маршрута

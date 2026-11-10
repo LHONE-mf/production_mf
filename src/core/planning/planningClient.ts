@@ -74,11 +74,17 @@ export type LocalJournalLink = {
 export type InspectionKind = 'measurement' | 'visual';
 export type InspectionUnit = 'um' | 'mm' | 'g' | 'mg' | 'mOhm' |
   'V' | 'mAh' | 'pct' | 'C';
+export type InspectionReviewOutcome = 'follow_up_required' | 'reviewed_no_block';
+export type InspectionReview = {
+  number: number; outcome: InspectionReviewOutcome; reason: string;
+  reviewedBy: string; reviewedAt: string;
+};
 export type InspectionObservation = {
   id: string; stepNumber: number; kind: InspectionKind;
   characteristic: string; observedValue: string | null;
   observedUnit: InspectionUnit | null; attentionRequired: boolean;
   note: string | null; recordedBy: string; recordedAt: string;
+  latestReview?: InspectionReview | null;
 };
 export type InspectionInput =
   | { observationId: string; kind: 'measurement'; characteristic: string;
@@ -229,6 +235,11 @@ export const planningApi = {
       alreadyRecorded: boolean }>(
       c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/inspections',
       { method: 'POST', body: input }),
+  reviewInspection: (c: PlanningSession,batchId:string,observationId:string,
+    input:{reviewId:string;outcome:InspectionReviewOutcome;reason:string}) =>
+    planningRequest<{id:string;reviewNumber:number;alreadyRecorded:boolean}>(
+      c, '/planning/batches/'+id(batchId)+'/inspections/'+id(observationId)+'/reviews',
+      {method:'POST',body:input}),
   quantityFlow: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; steps: QuantityFlowStep[] }>(
       c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal }),

@@ -35,6 +35,30 @@ describe('authenticated M2 planning client', () => {
     expect(JSON.parse(String(calls[1].options.body))).toEqual(observation);
   });
 
+  it('uses the same exact request body and verified token for inspection review retries',async()=>{
+    const calls:Array<{url:string;options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({reviewNumber:1,alreadyRecorded:false})};
+    }));
+    const payload={
+      reviewId:'d0c0af28-1085-43cb-a8b7-c4a6d0cdf427',
+      outcome:'follow_up_required' as const,
+      reason:'Awaiting documented measurement repeat',
+    };
+    await planningApi.reviewInspection(session,'batch-1','obs-1',payload);
+    await planningApi.reviewInspection(session,'batch-1','obs-1',payload);
+    expect(calls.map(x=>x.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/inspections/obs-1/reviews',
+      'https://mes.example.org/planning/batches/batch-1/inspections/obs-1/reviews',
+    ]);
+    expect(calls.every(x=>x.options.method==='POST'&&
+      (x.options.headers as Record<string,string>).Authorization==='Bearer server-session-only'
+      &&x.options.redirect==='error'&&x.options.credentials==='omit')).toBe(true);
+    expect(calls[0].options.body).toBe(calls[1].options.body);
+    expect(JSON.parse(String(calls[0].options.body))).toEqual(payload);
+  });
+
   it('reads workshop and route data using the verified memory-only server token', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({ workshops: [{ id: 'coating', name: 'Coating' }] }),

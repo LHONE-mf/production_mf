@@ -284,6 +284,21 @@ CI PostgreSQL tests assert actor and tenant isolation, route integrity,
 immutability, idempotency, and that inspection notes do not become route
 completion evidence. M4 formal quality release remains outstanding.
 
+**M2 flagged-inspection review gate (2026-11-10):**
+The additive `016_m2_inspection_reviews.sql` migration adds chief-attested
+append-only review events for flagged inspection observations. Latest review
+outcomes are `follow_up_required` or `reviewed_no_block` and each requires
+a written rationale. They are sequenced under a locked batch row with
+idempotent UUID retries and cannot be overwritten. The completion endpoint
+now returns `inspection_review_pending` while any flagged observation lacks
+a latest `reviewed_no_block` triage; a later follow-up record reopens this
+guard. Unflagged observations require no triage. The Planning panel shows the
+latest result, lets the chief document a review, and explains the block.
+This is **not** independent QA disposition, inspection-plan validation,
+specification compliance, product release, or automatic batch hold. Chief
+triage does not certify fitness-for-use, and a formal QA release workflow
+remains planned for M4.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level
