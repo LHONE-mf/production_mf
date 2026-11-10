@@ -193,6 +193,7 @@ export function SyncModule() {
         pushed.accepted += result.accepted;
         pushed.conflicts += result.conflicts;
         pushed.rejected += result.rejected;
+        if (result.accepted > 0) setMessage('Синхронизация: отправлено ' + pushed.accepted + ' изменений...');
         if (result.accepted === 0) break;
       }
       const outstanding = await db.hybridTaskOutbox.count();
@@ -210,6 +211,8 @@ export function SyncModule() {
         const pulled = await pullAtomicTasks(session);
         received += pulled.received;
         hasMore = pulled.hasMore;
+        if (hasMore) setMessage('Синхронизация: отправлено ' + pushed.accepted +
+          ', получено ' + received + '. Загружаем следующую страницу...');
         if (!hasMore) break;
         if (pulled.received === 0) {
           throw new Error('Сервер сообщил о дополнительных изменениях, но не вернул ни одного задания');
