@@ -26,7 +26,7 @@ export function StageRoom({ stage, title, icon, tool }: Props) {
 
   const tasks = useLiveQuery(
     async () => (await listVisibleTasks()).filter(task => task.stage === stage)
-      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [stage],
   );
 
