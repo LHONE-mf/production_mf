@@ -3,6 +3,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus } from '../../core/types';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { ROLE_LABELS } from '../../core/permissions';
 import { 
   ClipboardList, Users, CheckCircle, Clock, AlertTriangle, 
@@ -76,7 +77,7 @@ function StatCard({ icon, label, value, color, trend }: { icon: React.ReactNode;
 
 function ChiefStats() {
   const users = useLiveQuery(() => db.users.count(), []);
-  const tasks = useLiveQuery(() => db.tasks.toArray(), []);
+  const tasks = useLiveQuery(() => listVisibleTasks(), []);
   const today = new Date().toDateString();
   const active = tasks?.filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.REJECTED).length ?? 0;
   const completed = tasks?.filter(t => t.status === TaskStatus.COMPLETED && t.updatedAt && new Date(t.updatedAt).toDateString() === today).length ?? 0;
@@ -125,7 +126,8 @@ function WorkerStats() {
 }
 
 function ChiefDashboard() {
-  const tasks = useLiveQuery(() => db.tasks.orderBy('updatedAt').reverse().limit(5).toArray(), []);
+  const tasks = useLiveQuery(async () => (await listVisibleTasks())
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 5), []);
   return (
     <section className="lg:col-span-2 bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
       <h3 className="text-white font-semibold mb-3">Последние задания</h3>
