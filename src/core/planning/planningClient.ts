@@ -59,6 +59,10 @@ export async function planningRequest<T>(
     ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
     signal: options.signal,
     cache: 'no-store',
+    // Never follow a redirect carrying a planning session's bearer token.
+    // Redirects to login/other hosts must be surfaced as an error instead.
+    redirect: 'error',
+    credentials: 'omit',
   });
   if (!response.ok) {
     const failure: unknown = await response.json().catch(() => null);
