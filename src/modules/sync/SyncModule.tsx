@@ -58,14 +58,18 @@ export function SyncModule() {
       });
       if (!response.ok) throw new Error('Вход не выполнен: HTTP ' + response.status);
       const data: { accessToken?: string; user?: { role?: string; organizationId?: string } } = await response.json();
-      if (!data.accessToken) throw new Error('Сервер не вернул токен доступа');
-      if (data.user?.organizationId?.toLowerCase() !== organizationId.trim().toLowerCase()) throw new Error('Организация в ответе сервера не совпадает с выбранной');
+      if (typeof data.accessToken !== 'string' || !data.accessToken.trim()) throw new Error('Сервер не вернул корректный токен доступа');
+      if (typeof data.user?.organizationId !== 'string' ||
+          data.user.organizationId.toLowerCase() !== organizationId.trim().toLowerCase()) {
+        throw new Error('Организация в ответе сервера не совпадает с выбранной');
+      }
       await assertSyncTenant(serverUrl, data.user.organizationId);
       const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
         headers: { Authorization: 'Bearer ' + data.accessToken },
       });
       let deviceIds: string[] = [];
-      if (devicesResponse.ok) {
+      if (!devicesResponse.ok) throw new Error('Не удалось получить устройства: HTTP ' + devicesResponse.status);
+      {
         const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
         if (!Array.isArray(enrolled.devices) || !enrolled.devices.every(device => typeof device?.id === 'string')) {
           throw new Error('Сервер вернул некорректный список устройств');
