@@ -36,7 +36,14 @@ const emptyStep = (): RouteStep => ({
 });
 
 function formatProblem(error: unknown): string {
-  return error instanceof Error ? error.message : 'Операция не выполнена';
+  const message = error instanceof Error ? error.message : 'Операция не выполнена';
+  const explanations: Record<string, string> = {
+    batch_route_steps_missing: 'Нельзя завершить партию: для её линии в маршруте нет этапов.',
+    batch_route_step_incomplete: 'Нельзя завершить партию: сначала подтвердите выполнение всех этапов маршрута.',
+    handoff_receipt_pending: 'Нельзя завершить партию: одна из передач ещё не подтверждена получателем.',
+  };
+  const errorCode = /^HTTP 409: ([a-z_]+)$/.exec(message)?.[1];
+  return errorCode && explanations[errorCode] ? explanations[errorCode] : message;
 }
 
 export function PlanningModule({ onOpenSync }: { onOpenSync: () => void }) {
@@ -692,6 +699,10 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                 {transitions[selectedBatchRow.status].map(s => <option key={s} value={s}>{statusNames[s]}</option>)}
               </select>
             </label>
+            {selectedBatchRow.status === 'in_progress' && <p className="text-xs text-sky-200">
+              Перед завершением партии подтвердите выполнение всех этапов маршрута
+              и приёмку каждой отправленной передачи. Проверка проводится сервером.
+            </p>}
             <label className="block text-xs text-slate-400">Причина (обязательно при остановке/списании)
               <textarea className={fieldClass + ' mt-1'} rows={2} maxLength={2000}
                 value={statusReason} onChange={event => setStatusReason(event.target.value)} />

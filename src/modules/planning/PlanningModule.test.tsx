@@ -93,7 +93,7 @@ describe('M2 online planning screen', () => {
           { id: 'cathode-1', batchCode: 'CATHODE-LOT', materialLine: 'cathode',
             status: 'completed', plannedQuantity: '20.000000', quantityUnit: 'kg' },
           { id: 'cell-1', batchCode: 'CELL-LOT', materialLine: 'cell',
-            status: 'created', plannedQuantity: '100.000000', quantityUnit: 'cells' },
+            status: 'in_progress', plannedQuantity: '100.000000', quantityUnit: 'cells' },
         ] };
         if (url.endsWith('/planning/batches/cell-1/links')) return { links: [link] };
         if (url.endsWith('/planning/batches/cell-1/events')) return { events: [] };
@@ -124,6 +124,7 @@ describe('M2 online planning screen', () => {
     expect(detailButton).toBeTruthy();
     await act(async () => { detailButton!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     expect(screen.textContent).toContain('Происхождение партии');
+    expect(screen.textContent).toContain('Перед завершением партии');
     expect(screen.textContent).toContain('CATHODE-LOT → CELL-LOT');
     expect(screen.textContent).toContain('12.500000 kg');
     expect(screen.textContent).toContain('Добавить связь происхождения');
