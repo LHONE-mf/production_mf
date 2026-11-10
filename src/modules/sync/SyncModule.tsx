@@ -17,7 +17,7 @@ function serverEndpoint(origin: string, path: string) {
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname))) {
     throw new Error('Для сервера требуется HTTPS (кроме localhost)');
   }
-  if (url.username || url.password || url.search || url.hash) throw new Error('Введите только адрес сервера');
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) throw new Error('Введите только адрес сервера без пути и параметров');
   return new URL(path, url).toString();
 }
 
