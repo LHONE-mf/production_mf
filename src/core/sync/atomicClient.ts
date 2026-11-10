@@ -129,7 +129,8 @@ export async function pullAtomicTasks(session: HybridSession) {
   }
   let previousSequence = cursor;
   for (const change of changes) {
-    if (!Number.isSafeInteger(Number(change.sequence)) || Number(change.sequence) <= previousSequence ||
+    if (!(typeof change.sequence === 'string' && /^(0|[1-9][0-9]*)$/.test(change.sequence)) ||
+        !Number.isSafeInteger(Number(change.sequence)) || Number(change.sequence) <= previousSequence ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(change.entity_id)) {
       throw new Error('Invalid sync response: unordered changes or task ID');
     }
