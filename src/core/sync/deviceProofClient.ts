@@ -38,7 +38,21 @@ export async function obtainDeviceProof(
   });
   if (!/^[A-Za-z0-9_-]{43}$/.test(verified.proofToken) || verified.deviceId !== deviceId || verified.expiresIn !== 300)
     throw new Error('Invalid device proof response');
-  return { ...session, deviceProofToken: verified.proofToken, deviceProofDeviceId: deviceId, deviceProofExpiresAt: verificationStartedAt + verified.expiresIn * 1000 };
+  if (verified.offlineEditExpiresIn !== undefined &&
+      (!Number.isSafeInteger(verified.offlineEditExpiresIn) ||
+       verified.offlineEditExpiresIn < 0 || verified.offlineEditExpiresIn > 28_800)) {
+    throw new Error('Invalid offline edit grant response');
+  }
+  // Old servers without an explicit offline grant retain the safe five-minute
+  // bound. A new server may grant up to one shift independently of proof TTL.
+  const offlineEditExpiresIn = verified.offlineEditExpiresIn ?? verified.expiresIn;
+  return {
+    ...session,
+    deviceProofToken: verified.proofToken,
+    deviceProofDeviceId: deviceId,
+    deviceProofExpiresAt: verificationStartedAt + verified.expiresIn * 1000,
+    offlineEditExpiresAt: verificationStartedAt + offlineEditExpiresIn * 1000,
+  };
 }
 
 /** An in-memory grant is required for all manual shared task reads and writes. */
