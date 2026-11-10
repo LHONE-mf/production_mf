@@ -22,12 +22,13 @@ afterEach(() => vi.unstubAllGlobals());
 describe('server-managed task offline writes', () => {
   beforeEach(async () => {
     await db.open();
-    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, db.hybridTaskEditLeases, async () => {
+    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, db.hybridTaskEditLeases, db.hybridTaskDeferred, async () => {
       await db.tasks.clear();
       await db.hybridTaskOutbox.clear();
       await db.hybridTaskRevisions.clear();
       await db.hybridSyncMetadata.clear();
       await db.hybridTaskEditLeases.clear();
+      await db.hybridTaskDeferred.clear();
     });
   });
   it('provisions a five-minute verified edit lease that survives an IndexedDB restart', async () => {
@@ -364,7 +365,7 @@ describe('server-managed task offline writes', () => {
     }
   });
   it.each(['pending', 'conflict', 'rejected'] as const)(
-    'never overwrites %s offline edits or advances cursor when a remote update arrives',
+    'never overwrites %s offline edits and durably defers the remote change',
     async state => {
       const session = {
         serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
@@ -384,17 +385,62 @@ describe('server-managed task offline writes', () => {
           nextCursor: 11, hasMore: false,
         }),
       }));
-      await expect(pullAtomicTasks(session)).rejects.toThrow('Pending local edit blocks remote task');
+      expect((await pullAtomicTasks(session)).received).toBe(1);
       expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
       expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({ state });
       expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
-      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(11);
+      expect((await db.hybridTaskDeferred.get(11))?.entityId).toBe(taskId);
       db.close();
       await db.open();
       expect(await db.hybridTaskOutbox.get(operationId)).toMatchObject({ state });
-      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(11);
+      expect((await db.hybridTaskDeferred.get(11))?.change.revision).toBe(2);
     },
   );
+
+  it('pulls unaffected tasks past a conflict and replays deferred changes after archive', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const secondId = '55555555-5555-4555-8555-555555555555';
+    const { encodeTask } = await import('./taskDto');
+    const { archiveConflictAndUseServer } = await import('./taskConflictResolution');
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+    const localOp = await saveServerManagedTask(task(), deviceId);
+    await db.hybridTaskOutbox.update(localOp, { state: 'conflict', actualRevision: 2 });
+    const serverPayload = encodeTask({ ...task(), title: 'Server conflict winner' });
+    const otherPayload = encodeTask({ ...task(), id: secondId, title: 'Unrelated task' });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        changes: [
+          { sequence: '11', entity_id: taskId, entity_type: 'task', revision: 2, payload: serverPayload },
+          { sequence: '12', entity_id: secondId, entity_type: 'task', revision: 1, payload: otherPayload },
+        ], nextCursor: 12, hasMore: false,
+      }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        changes: [], nextCursor: 12, hasMore: false,
+      }) });
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await pullAtomicTasks(session)).received).toBe(2);
+    expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+    expect((await db.tasks.get(secondId))?.title).toBe('Unrelated task');
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(12);
+    expect((await db.hybridTaskDeferred.get(11))?.change.revision).toBe(2);
+    db.close();
+    await db.open();
+    expect((await db.hybridTaskDeferred.get(11))?.entityId).toBe(taskId);
+    await archiveConflictAndUseServer(taskId, 2, serverPayload);
+    expect((await db.tasks.get(taskId))?.title).toBe('Server conflict winner');
+    expect(await db.hybridTaskResolutions.count()).toBeGreaterThan(0);
+    expect((await pullAtomicTasks(session)).received).toBe(0);
+    expect(await db.hybridTaskDeferred.count()).toBe(0);
+    expect((await db.tasks.get(secondId))?.title).toBe('Unrelated task');
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(12);
+  });
 
   it('rolls back earlier remote tasks and cursor when a later entity has a revision gap', async () => {
     const session = {
