@@ -67,15 +67,12 @@ export function SyncModule() {
       const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
         headers: { Authorization: 'Bearer ' + data.accessToken },
       });
-      let deviceIds: string[] = [];
       if (!devicesResponse.ok) throw new Error('Не удалось получить устройства: HTTP ' + devicesResponse.status);
-      {
-        const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
-        if (!Array.isArray(enrolled.devices) || !enrolled.devices.every(device => typeof device?.id === 'string')) {
-          throw new Error('Сервер вернул некорректный список устройств');
-        }
-        deviceIds = enrolled.devices.map(device => device.id);
+      const enrolled: { devices?: Array<{ id: string }> } = await devicesResponse.json();
+      if (!Array.isArray(enrolled.devices) || !enrolled.devices.every(device => typeof device?.id === 'string' && device.id.length > 0)) {
+        throw new Error('Сервер вернул некорректный список устройств');
       }
+      const deviceIds = enrolled.devices.map(device => device.id);
       // Commit the UI session only after all required login checks succeed.
       // A failed device-list response must not leave a half-initialized session.
       setSession({ serverUrl, accessToken: data.accessToken });
