@@ -124,6 +124,7 @@ export async function pullAtomicTasks(session: HybridSession) {
   // The cursor is a durable checkpoint. Never advance it past changes actually
   // delivered by the server, or a malformed response could silently skip tasks.
   if (changes.length > 100 || typeof response.hasMore !== 'boolean' ||
+      (changes.length === 0 && response.hasMore) ||
       (changes.length === 0 && nextCursor !== cursor) ||
       (changes.length > 0 && nextCursor !== Number(changes[changes.length - 1].sequence))) {
     throw new Error('Invalid sync response: cursor does not match delivered changes');
