@@ -3,7 +3,7 @@ import { db } from '../db';
 import { TaskPriority, TaskStatus, type Task } from '../types';
 import { encodeTask } from './taskDto';
 import { provisionOfflineTaskEditLease } from './offlineTaskLease';
-import { listVisibleTasks } from './visibleTasks';
+import { listVisibleTasks, canInspectTaskRecovery } from './visibleTasks';
 
 const deviceId = '22222222-2222-4222-8222-222222222222';
 const actorId = '33333333-3333-4333-8333-333333333333';
@@ -31,6 +31,26 @@ beforeEach(async () => {
     await db.hybridTaskRevisions.clear();
     await db.hybridTaskOutbox.clear();
     await db.hybridTaskEditLeases.clear();
+  });
+});
+
+describe('sensitive offline conflict history visibility', () => {
+  it('hides archived task content without a valid current scope, including after revocation', async () => {
+    const now = Date.now();
+    const lease = {
+      id: 'active' as const, deviceId, actorId, organizationId: orgId,
+      role: 'chief' as const, expiresAt: now + 120_000,
+      authorizedTaskIds: [assignedId],
+    };
+    const ownCreation = { expectedRevision: 0, createdBy: actorId };
+    const foreignCreation = { expectedRevision: 0, createdBy: otherId };
+    expect(canInspectTaskRecovery(null, assignedId, undefined, now)).toBe(false);
+    expect(canInspectTaskRecovery(lease, assignedId, undefined, now)).toBe(true);
+    expect(canInspectTaskRecovery(lease, outsideId, undefined, now)).toBe(false);
+    expect(canInspectTaskRecovery(lease, outsideId, ownCreation, now)).toBe(true);
+    expect(canInspectTaskRecovery(lease, outsideId, foreignCreation, now)).toBe(false);
+    expect(canInspectTaskRecovery({ ...lease, authorizedTaskIds: [] }, assignedId, undefined, now)).toBe(false);
+    expect(canInspectTaskRecovery(lease, assignedId, undefined, now + 120_000)).toBe(false);
   });
 });
 
