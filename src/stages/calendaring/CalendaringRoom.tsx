@@ -7,6 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
   CalenderParams, CalenderRun, CuttingIncoming, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole,
 } from '../../core/types';
@@ -62,7 +63,7 @@ export function CalendaringModule() {
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
 
-  const tasks = useLiveQuery(() => db.tasks.where('stage').equals(StageId.CALENDARING).toArray(), []);
+  const tasks = useLiveQuery(async () => (await listVisibleTasks()).filter(task => task.stage === StageId.CALENDARING), []);
 
   const users = useLiveQuery(() => db.users.toArray(), []);
   const userName = (id?: string) => users?.find((u) => u.id === id)?.fullName ?? 'неизвестен';
