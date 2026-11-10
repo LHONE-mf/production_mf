@@ -143,25 +143,54 @@ export async function pullAtomicTasks(session: HybridSession) {
     }
     previousSequence = Number(change.sequence);
   }
-  await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, async () => {
-    // Two manual pulls can overlap. A slow, older response must not replace
-    // the cursor (or records) committed by a newer response in the meantime.
-    const durableCursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
-    if (durableCursor !== cursor) throw new Error('Concurrent task pull: cursor advanced; retry');
-    for (const change of changes) {
-      if (change.entity_type !== 'task' || !Number.isSafeInteger(change.revision) || change.revision < 1) throw new Error('Invalid sync entity or revision');
-      const queued = await db.hybridTaskOutbox.where('entityId').equals(change.entity_id).count();
-      if (queued) throw new Error('Pending local edit blocks remote task ' + change.entity_id);
-      const current = await db.tasks.get(change.entity_id);
-      const knownRevision = (await db.hybridTaskRevisions.get(change.entity_id))?.revision ?? 0;
-      if (current && knownRevision === 0) throw new Error('Unmanaged local task ID collision');
-      if (knownRevision >= change.revision) continue;
-      if (knownRevision !== 0 && knownRevision !== change.revision - 1) throw new Error('Revision gap: full reconciliation required');
-      const task = decodeTask(change.entity_id, change.payload);
-      await db.tasks.put(task);
-      await db.hybridTaskRevisions.put({ entityId: task.id, revision: change.revision });
-    }
-    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: Number(response.nextCursor) });
-  });
+  await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions,
+    db.hybridSyncMetadata, db.hybridTaskDeferred, async () => {
+      // A previous pull may have checkpointed changes to blocked tasks. Replay
+      // those first, in server sequence order, whenever their queue is clear.
+      // Store newly blocked changes in the SAME transaction as the cursor so
+      // an unrelated task can progress without losing any server events.
+      const durableCursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
+      if (durableCursor !== cursor) throw new Error('Concurrent task pull: cursor advanced; retry');
+      const deferred = await db.hybridTaskDeferred.orderBy('sequence').toArray();
+      if (deferred.length + changes.length > 5000) {
+        throw new Error('Too many deferred server changes: resolve offline task conflicts first');
+      }
+      for (const entry of deferred) {
+        if (!Number.isSafeInteger(entry.sequence) || entry.sequence < 1 ||
+            entry.sequence > cursor || entry.entityId !== entry.change?.entity_id ||
+            Number(entry.change.sequence) !== entry.sequence) {
+          throw new Error('Invalid stored deferred server task');
+        }
+      }
+      for (const { change, sequence, deferredEntry } of [
+        ...deferred.map(entry => ({ change: entry.change, sequence: entry.sequence, deferredEntry: true })),
+        ...changes.map(change => ({ change, sequence: Number(change.sequence), deferredEntry: false })),
+      ]) {
+        if (change.entity_type !== 'task' || !Number.isSafeInteger(change.revision) || change.revision < 1) {
+          throw new Error('Invalid sync entity or revision');
+        }
+        // Validate even blocked payloads before saving them for later replay.
+        const task = decodeTask(change.entity_id, change.payload);
+        const queued = await db.hybridTaskOutbox.where('entityId').equals(change.entity_id).count();
+        if (queued) {
+          if (!deferredEntry) {
+            await db.hybridTaskDeferred.put({ sequence, entityId: change.entity_id, change });
+          }
+          continue;
+        }
+        const current = await db.tasks.get(change.entity_id);
+        const knownRevision = (await db.hybridTaskRevisions.get(change.entity_id))?.revision ?? 0;
+        if (current && knownRevision === 0) throw new Error('Unmanaged local task ID collision');
+        if (knownRevision < change.revision) {
+          if (knownRevision !== 0 && knownRevision !== change.revision - 1) {
+            throw new Error('Revision gap: full reconciliation required');
+          }
+          await db.tasks.put(task);
+          await db.hybridTaskRevisions.put({ entityId: task.id, revision: change.revision });
+        }
+        if (deferredEntry) await db.hybridTaskDeferred.delete(sequence);
+      }
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: Number(response.nextCursor) });
+    });
   return { received: changes.length, hasMore: Boolean(response.hasMore) };
 }
