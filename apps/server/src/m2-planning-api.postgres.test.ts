@@ -79,6 +79,32 @@ integration('M2 planning routes and orders API (PostgreSQL)', () => {
       headers: authorization(0), payload: { id: '../bad', name: 'Invalid' } })).statusCode).toBe(400);
   });
 
+  it('lists workshops by tenant and restricts setup to the chief', async () => {
+    const url = '/planning/workshops';
+    expect((await app.inject({ method:'GET',url })).statusCode).toBe(401);
+    expect((await app.inject({ method:'GET',url,headers:authorization(2) })).statusCode).toBe(403);
+    const initial = await app.inject({ method:'GET',url,headers:authorization(1) });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json().workshops).toEqual(expect.arrayContaining([
+      { id:'coating',name:'Coating' },{ id:'assembly',name:'Assembly' },
+    ]));
+    expect((await app.inject({ method:'GET',url,headers:authorization(3) })).json().workshops)
+      .toEqual([{ id:'coating',name:'Coating' }]);
+    const workshop = { id:'pilot-'+randomUUID().slice(0,8),name:'Pilot workshop' };
+    expect((await app.inject({ method:'POST',url,headers:authorization(1),
+      payload:workshop })).statusCode).toBe(403);
+    expect((await app.inject({ method:'POST',url,headers:authorization(0),
+      payload:{id:'',name:'Invalid'} })).statusCode).toBe(400);
+    expect((await app.inject({ method:'POST',url,headers:authorization(0),
+      payload:workshop })).statusCode).toBe(201);
+    expect((await app.inject({ method:'POST',url,headers:authorization(0),
+      payload:workshop })).statusCode).toBe(409);
+    expect((await app.inject({ method:'GET',url,headers:authorization(1) })).json().workshops)
+      .toEqual(expect.arrayContaining([workshop]));
+    expect((await app.inject({ method:'GET',url,headers:authorization(3) })).json().workshops)
+      .not.toEqual(expect.arrayContaining([workshop]));
+  });
+
   it('creates an ordered, tenant-scoped draft route only for authorized planners', async () => {
     expect((await app.inject({ method:'POST', url:'/planning/routes', payload:draft })).statusCode).toBe(401);
     expect((await app.inject({
