@@ -627,6 +627,26 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 
+  it.each([null, false, 42] as const)(
+    'rejects malformed remote change %s without advancing checkpoint',
+    async malformed => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 4 });
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({
+          changes: [malformed], nextCursor: 5, hasMore: false,
+        }),
+      }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid sync response: malformed change');
+      expect(await db.tasks.count()).toBe(0);
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(4);
+    },
+  );
+
   it('rejects an empty pull page that falsely claims more changes', async () => {
     const session = {
       serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
