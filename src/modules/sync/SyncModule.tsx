@@ -170,11 +170,12 @@ export function SyncModule() {
         await provisionOfflineTaskEditLease({
           deviceId: selectedDeviceId, actorId: serverActorId,
           organizationId: organizationId.trim(), role: serverRole,
-          expiresAt: proven.deviceProofExpiresAt!,
+          expiresAt: proven.offlineEditExpiresAt ?? proven.deviceProofExpiresAt!,
         });
       }
       setSession(proven);
-      setMessage('Устройство подтверждено. Можно отправлять задания в течение 5 минут.');
+      setMessage('Устройство подтверждено. Сетевой доступ действует 5 минут; офлайн-редактирование разрешено до ' +
+        new Date(proven.offlineEditExpiresAt ?? proven.deviceProofExpiresAt!).toLocaleString('ru-RU') + '.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Подтверждение устройства не удалось'); }
     finally { setBusy(false); }
   }
