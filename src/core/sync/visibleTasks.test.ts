@@ -58,6 +58,21 @@ describe('screen-visible task scope', () => {
     expect((await listVisibleTasks()).map(item => item.id)).toEqual([localId]);
   });
 
+  it('fails closed on a malformed offline grant without deleting the server cache', async () => {
+    await db.tasks.put(task(assignedId));
+    await db.hybridTaskRevisions.put({ entityId: assignedId, revision: 4 });
+    await db.hybridTaskEditLeases.put({
+      id: 'active', deviceId, actorId, organizationId: orgId, role: 'chief',
+      expiresAt: Date.now() + 120_000,
+      authorizedTaskIds: ['not-a-server-task-id'],
+    });
+    expect(await listVisibleTasks()).toEqual([]);
+    expect((await db.tasks.get(assignedId))?.title).toBe(assignedId);
+    db.close();
+    await db.open();
+    expect(await listVisibleTasks()).toEqual([]);
+  });
+
   it('reveals own queued creation, but not another actor\'s unapproved creation', async () => {
     const ownId = '88888888-8888-4888-8888-888888888888';
     const foreignId = '99999999-9999-4999-8999-999999999999';
