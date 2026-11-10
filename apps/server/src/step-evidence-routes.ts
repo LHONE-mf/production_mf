@@ -180,4 +180,61 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
       } : null,
     })) };
   });
+
+  // Read-only visibility into declared output and documented interstage
+  // quantities. A difference is NOT proven waste, yield, or inventory.
+  app.get('/planning/batches/:id/quantity-flow', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error:'unauthorized' });
+    if (actor.role !== 'chief') return reply.code(403).send({ error:'forbidden' });
+    const params = batchParam.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error:'invalid_batch_id' });
+    const batchId = params.data.id;
+    const batch = await pool.query(`SELECT b.material_line,o.route_id,o.route_version
+      FROM production_batches b
+      JOIN production_orders o ON o.organization_id=b.organization_id AND o.id=b.order_id
+      WHERE b.organization_id=$1 AND b.id=$2`, [actor.organization_id,batchId]);
+    if (!batch.rowCount) return reply.code(404).send({ error:'batch_not_found' });
+    const b = batch.rows[0];
+    const rows = await pool.query(`
+      WITH branch_steps AS (
+        SELECT step_number,name,workshop_id,
+          LEAD(step_number) OVER (ORDER BY step_number) AS next_step
+        FROM process_route_steps
+        WHERE organization_id=$1 AND route_id=$2 AND route_version=$3
+          AND electrode_line=$5
+      )
+      SELECT s.step_number,s.name,s.workshop_id,s.next_step,
+        e.quantity::text AS output_quantity,e.quantity_unit AS output_unit,
+        h.id AS handoff_id,h.quantity::text AS handoff_quantity,
+        h.quantity_unit AS handoff_unit,
+        (r.handoff_id IS NOT NULL) AS received,
+        CASE WHEN e.quantity_unit=h.quantity_unit
+          THEN (e.quantity-h.quantity)::text ELSE NULL END AS quantity_difference
+      FROM branch_steps s
+      LEFT JOIN production_step_evidence e
+        ON e.organization_id=$1 AND e.batch_id=$4 AND e.step_number=s.step_number
+          AND e.kind='completed'
+      LEFT JOIN production_stage_handoffs h
+        ON h.organization_id=$1 AND h.batch_id=$4
+          AND h.from_step=s.step_number AND h.to_step=s.next_step
+      LEFT JOIN production_stage_receipts r
+        ON r.organization_id=h.organization_id AND r.handoff_id=h.id
+      ORDER BY s.step_number`,
+      [actor.organization_id,b.route_id,b.route_version,batchId,
+        b.material_line === 'cell' ? 'common' : b.material_line]);
+    return { batchId, steps:rows.rows.map(row=>({
+      number:row.step_number,name:row.name,workshopId:row.workshop_id,
+      nextStep:row.next_step,
+      output:row.output_quantity === null ? null : {
+        quantity:row.output_quantity,unit:row.output_unit,
+      },
+      handoff:row.handoff_id === null ? null : {
+        id:row.handoff_id,quantity:row.handoff_quantity,
+        unit:row.handoff_unit,received:row.received,
+      },
+      // Null when no transfer is documented or units are incomparable.
+      difference:row.quantity_difference,
+    })) };
+  });
 }

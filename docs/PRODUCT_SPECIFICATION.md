@@ -197,6 +197,16 @@ of measured yields, equipment, inspection results, physical movement, or
 legacy local journals. No production equipment was
 connected and this is not an accepted real-world route.
 
+**M2 quantity-flow checkpoint (2026-11-10):**
+The chief-only, online, read-only `GET /planning/batches/:id/quantity-flow`
+endpoint reports per-step completion output, the recorded outgoing handover,
+its independent receipt state, and an exact PostgreSQL NUMERIC output-minus-
+handover difference when units match. Missing handovers and the last route
+step return a null difference. This is an **audit comparison**, not inferred
+waste, mass balance, inventory movement, or a physical verification. Isolated
+PostgreSQL tests cover permission isolation, exact six-decimal subtraction,
+and sent-versus-received states. No migration or existing journals changed.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level
