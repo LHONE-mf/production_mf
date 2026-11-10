@@ -627,6 +627,24 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 
+  it.each([-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1] as const)(
+    'refuses corrupted local pull cursor %s before making a network request',
+    async cursor => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      await db.hybridSyncMetadata.put({ key: 'taskCursor', value: cursor });
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid locally stored task cursor');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect((await db.hybridSyncMetadata.get('taskCursor'))?.value)
+        .toEqual(cursor);
+    },
+  );
+
   it.each([null, '0', false, '', 0.5, -1] as const)(
     'rejects malformed pull cursor %s without touching offline task state',
     async nextCursor => {
