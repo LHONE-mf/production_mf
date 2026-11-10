@@ -26,6 +26,13 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
   (5 minutes) is separate from an explicitly server-provisioned shift-long
   offline edit permission (maximum 8 hours). The local demo identity cannot
   view previously synchronized tasks without a valid grant.
+- Authorization refresh: after proof and manual sync, a device-proven
+  `GET /sync/task-access` snapshot lists currently authorized server task IDs.
+  The offline lease stores the scoped list, and the task screen hides any
+  cached server-owned task outside that list. Own local pending shared task
+  creation remains visible. Previously cached production records are
+  **not destroyed** when access is revoked. The snapshot is limited to 5,000
+  IDs per device for this M1 pilot slice.
 - Migration: v18 offline grant and v19 deferred inbox stores are additive; a
   focused fake-IndexedDB test upgrades a representative v17 manufacturing
   database while retaining task, journal, cursor, outbox and conflict archive.
@@ -48,10 +55,13 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
    Android clients under distinct real users, including offline simultaneous
    edits, success/conflict, explicit archive, restart, revoke and reconnect.
    Emulator and PostgreSQL simulations do not substitute for this acceptance.
-2. **Authorization after scope changes**: offline revocation cannot be immediate
-   by design. Further field validation is required to ensure previously cached
-   workshop/assignment records are hidden or reconciled when the server removes
-   access, without losing production audit evidence.
+2. **Offline revocation window**: a freshly reauthenticated device refreshes
+   server-authorized task visibility and hides revoked assignments. An already
+   disconnected device can continue using its last scoped offline grant until
+   expiry (maximum eight hours); revocation cannot be immediate by design.
+   The pilot must test actual workshop/assignment changes and denial on
+   reconnect. Other legacy screens that read the shared task DB directly
+   require a separate visibility audit before unrestricted production rollout.
 3. **Existing actor-unbound sync data**: the new user-binding guard intentionally
    refuses to claim unknown older shared data. Provide backup and safe
    ownership migration before upgrading installations with legacy sync data.
@@ -74,8 +84,8 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
 - [ ] Two offline edits to the same task produce a visible conflict; archived
   local history survives restart; unaffected tasks continue pulling.
 - [ ] Revoking a worker device denies new device proof and sync reads/writes.
-- [ ] Reassigning/removing workshop access cannot expose stale records on a
-  reauthenticated client.
+- [ ] Reassigning/removing workshop access refreshes the authorized-ID
+  snapshot and hides stale records in task screens on reauthentication.
 - [ ] v17→v19 application upgrade, installed signed APK upgrade and backup/
   restore preserve existing production records and local edits.
 - [ ] All CI gates green for the exact APK build commit.
