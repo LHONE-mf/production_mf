@@ -4,6 +4,7 @@ import { migratePasswords } from '../security';
 import type { PendingTaskOperation } from '../sync/hybridOutbox';
 import type { ArchivedTaskConflict } from '../sync/taskConflictResolution';
 import type { OfflineTaskEditLease } from '../sync/offlineTaskLease';
+import type { DeferredTaskChange } from '../sync/deferredTaskChange';
 import { User, Task, TechCard, SyncDevice, SyncLog, UserRole, TaskStatus, TaskPriority, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
@@ -13,6 +14,7 @@ export class AppDatabase extends Dexie {
   hybridTaskRevisions!: Table<{ entityId: string; revision: number }, string>;
   hybridTaskResolutions!: Table<ArchivedTaskConflict, string>;
   hybridTaskEditLeases!: Table<OfflineTaskEditLease, string>;
+  hybridTaskDeferred!: Table<DeferredTaskChange, number>;
   hybridSyncMetadata!: Table<{ key: string; value: number }, string>;
   techCards!: Table<TechCard, string>;
   syncDevices!: Table<SyncDevice, string>;
@@ -153,6 +155,11 @@ export class AppDatabase extends Dexie {
     // v18: time-limited proven-device local edit authorization (no bearer tokens).
     this.version(18).stores({
       hybridTaskEditLeases: 'id, deviceId, expiresAt',
+    });
+
+    // v19: replayable remote task changes that were blocked by offline edits.
+    this.version(19).stores({
+      hybridTaskDeferred: 'sequence, entityId',
     });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
