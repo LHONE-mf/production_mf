@@ -121,12 +121,22 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
     const batch=await pool.query(`SELECT id FROM production_batches
       WHERE organization_id=$1 AND id=$2`,[actor.organization_id,batchId]);
     if(!batch.rowCount)return reply.code(404).send({error:'batch_not_found'});
-    const result=await pool.query(`SELECT id,step_number,kind,characteristic,
-       observed_value::text AS value,observed_unit,attention_required,note,
-       recorded_by,recorded_at
-      FROM production_inspection_observations
-      WHERE organization_id=$1 AND batch_id=$2
-      ORDER BY recorded_at,id LIMIT 300`,
+    const result=await pool.query(`SELECT i.id,i.step_number,i.kind,i.characteristic,
+       i.observed_value::text AS value,i.observed_unit,i.attention_required,i.note,
+       i.recorded_by,i.recorded_at,
+       last_review.review_number,last_review.outcome AS review_outcome,
+       last_review.reason AS review_reason,
+       last_review.reviewed_by,last_review.reviewed_at
+      FROM production_inspection_observations i
+      LEFT JOIN LATERAL (
+        SELECT review_number,outcome,reason,reviewed_by,reviewed_at
+        FROM production_inspection_reviews r
+        WHERE r.organization_id=i.organization_id
+          AND r.batch_id=i.batch_id AND r.observation_id=i.id
+        ORDER BY review_number DESC LIMIT 1
+      ) last_review ON TRUE
+      WHERE i.organization_id=$1 AND i.batch_id=$2
+      ORDER BY i.recorded_at,i.id LIMIT 300`,
       [actor.organization_id,batchId]);
     return {batchId,observations:result.rows.map(row=>({
       id:row.id,stepNumber:row.step_number,kind:row.kind,
@@ -134,6 +144,11 @@ export function registerInspectionObservationRoutes(app:FastifyInstance,pool:Poo
       observedUnit:row.observed_unit,
       attentionRequired:row.attention_required,
       note:row.note,recordedBy:row.recorded_by,recordedAt:row.recorded_at,
+      latestReview:row.review_number===null ? null : {
+        number:row.review_number,outcome:row.review_outcome,
+        reason:row.review_reason,reviewedBy:row.reviewed_by,
+        reviewedAt:row.reviewed_at,
+      },
     }))};
   });
 }

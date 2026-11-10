@@ -151,6 +151,25 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
         return reply.code(409).send({ error: 'invalid_batch_status_transition' });
       }
       if (status === 'completed') {
+        // A flagged observation without a latest documented non-blocking
+        // review must prevent accidental batch closure. This is triage only,
+        // not formal independent QA release or automatic hold.
+        const unresolved=await client.query(`SELECT i.id
+          FROM production_inspection_observations i
+          LEFT JOIN LATERAL (
+            SELECT r.outcome FROM production_inspection_reviews r
+            WHERE r.organization_id=i.organization_id
+              AND r.batch_id=i.batch_id AND r.observation_id=i.id
+            ORDER BY r.review_number DESC LIMIT 1
+          ) last_review ON TRUE
+          WHERE i.organization_id=$1 AND i.batch_id=$2
+            AND i.attention_required=true
+            AND COALESCE(last_review.outcome,'follow_up_required')<>'reviewed_no_block'
+          LIMIT 1`,[actor.organization_id,params.data.id]);
+        if(unresolved.rowCount){
+          await client.query('ROLLBACK');
+          return reply.code(409).send({error:'inspection_review_pending'});
+        }
         // An unresolved physical handover must not be disguised as a completed
         // batch. The declaration is immutable; a different actor must receipt
         // it before the chief may close the batch.
