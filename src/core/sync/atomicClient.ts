@@ -182,9 +182,10 @@ export async function pullAtomicTasks(session: HybridSession) {
         const knownRevision = (await db.hybridTaskRevisions.get(change.entity_id))?.revision ?? 0;
         if (current && knownRevision === 0) throw new Error('Unmanaged local task ID collision');
         if (knownRevision < change.revision) {
-          if (knownRevision !== 0 && knownRevision !== change.revision - 1) {
-            throw new Error('Revision gap: full reconciliation required');
-          }
+          // Server events contain complete snapshots. Scoped workshop visibility
+          // can legitimately skip intermediate revisions for a master.
+          // No queued edit or unmanaged local record may be overwritten here.
+          // A newer complete snapshot is therefore safe to apply directly.
           await db.tasks.put(task);
           await db.hybridTaskRevisions.put({ entityId: task.id, revision: change.revision });
         }
