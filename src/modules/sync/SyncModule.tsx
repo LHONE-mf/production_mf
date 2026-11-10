@@ -11,6 +11,7 @@ import { archiveConflictAndUseServer, archiveRejectedTaskAndUseServer } from '..
 import type { TaskPayloadV1 } from '../../core/sync/taskDto';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import { assertSyncTenant } from '../../core/sync/tenantGuard';
+import { provisionOfflineTaskEditLease, clearOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
 
 function serverEndpoint(origin: string, path: string) {
   const url = new URL(origin);
@@ -33,6 +34,7 @@ export function SyncModule() {
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [myDevices, setMyDevices] = useState<string[]>([]);
   const [serverRole, setServerRole] = useState('');
+  const [serverActorId, setServerActorId] = useState('');
   const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; payload: TaskPayloadV1 }>>({});
   const [inspectingTask, setInspectingTask] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -57,11 +59,14 @@ export function SyncModule() {
         body: JSON.stringify({ organizationId: organizationId.trim(), login: login.trim(), password }),
       });
       if (!response.ok) throw new Error('Вход не выполнен: HTTP ' + response.status);
-      const data: { accessToken?: string; user?: { role?: string; organizationId?: string } } = await response.json();
+      const data: { accessToken?: string; user?: { id?: string; role?: string; organizationId?: string } } = await response.json();
       if (typeof data.accessToken !== 'string' || !data.accessToken.trim()) throw new Error('Сервер не вернул корректный токен доступа');
       if (typeof data.user?.organizationId !== 'string' ||
           data.user.organizationId.toLowerCase() !== organizationId.trim().toLowerCase()) {
         throw new Error('Организация в ответе сервера не совпадает с выбранной');
+      }
+      if (typeof data.user.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.user.id)) {
+        throw new Error('Сервер не вернул корректный ID пользователя');
       }
       await assertSyncTenant(serverUrl, data.user.organizationId);
       const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
@@ -73,6 +78,8 @@ export function SyncModule() {
         throw new Error('Сервер вернул некорректный список устройств');
       }
       const deviceIds = enrolled.devices.map(device => device.id);
+      // A new login must never inherit a previous actor's offline edit grant.
+      await clearOfflineTaskEditLease();
       // Commit the UI session only after all required login checks succeed.
       // A failed device-list response must not leave a half-initialized session.
       setSession({ serverUrl, accessToken: data.accessToken });
@@ -81,6 +88,7 @@ export function SyncModule() {
       setRemoteTasks({});
       setInspectingTask(null);
       setServerRole(data.user?.role ?? '');
+      setServerActorId(data.user.id);
       setEnrolledDeviceId('');
       setSelectedDeviceId('');
       setMyDevices(deviceIds);
@@ -126,6 +134,15 @@ export function SyncModule() {
     try {
       if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') throw new Error('Подтверждение устройства доступно только в Android');
       const proven = await authenticateAndroidDevice(session, selectedDeviceId);
+      // Only a server-authenticated chief/master with a fresh, device-bound
+      // proof may stage offline task edits. The grant expires with that proof.
+      if (serverRole === 'chief' || serverRole === 'master') {
+        await provisionOfflineTaskEditLease({
+          deviceId: selectedDeviceId, actorId: serverActorId,
+          organizationId: organizationId.trim(), role: serverRole,
+          expiresAt: proven.deviceProofExpiresAt!,
+        });
+      }
       setSession(proven);
       setMessage('Устройство подтверждено. Можно отправлять задания в течение 5 минут.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Подтверждение устройства не удалось'); }
@@ -242,7 +259,8 @@ export function SyncModule() {
       // Never retain a usable bearer token merely because the network is offline.
       setError((cause instanceof Error ? cause.message : 'Ошибка выхода') + '. Локальные учётные данные очищены, но серверная сессия может оставаться активной до истечения срока.');
     } finally {
-      setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole('');
+      await clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить локальное разрешение на редактирование'));
+      setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setServerActorId('');
       setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
       setDevicePublicKey(''); setPassword(''); setBusy(false);
     }
