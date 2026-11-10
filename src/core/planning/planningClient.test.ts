@@ -88,6 +88,35 @@ describe('authenticated M2 planning client', () => {
     expect(JSON.parse(String(calls[3].options.body))).toEqual({ note: 'Count checked' });
   });
 
+  it('reads genealogy and records a source-to-target declaration with exact quantities', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ links: [] }) };
+    }));
+    expect((await planningApi.batchGenealogy(session, 'cell-batch')).links).toEqual([]);
+    await planningApi.declareGenealogy(session, 'cell-batch', {
+      sourceBatchId: 'cathode-batch', kind: 'assembly',
+      sourceQuantity: '12.500000', sourceUnit: 'kg',
+      targetQuantity: '100.000000', targetUnit: 'cells',
+      note: 'Pilot genealogy',
+    });
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/batches/cell-batch/links',
+      'https://mes.example.org/planning/batches/cell-batch/links',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET', 'POST']);
+    expect(calls.every(call => (call.options.headers as Record<string, string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual({
+      sourceBatchId: 'cathode-batch', kind: 'assembly',
+      sourceQuantity: '12.500000', sourceUnit: 'kg',
+      targetQuantity: '100.000000', targetUnit: 'cells',
+      note: 'Pilot genealogy',
+    });
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
