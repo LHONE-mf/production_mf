@@ -116,6 +116,12 @@ export type QuantityFlowStep = {
   output: { quantity: string; unit: QuantityUnit } | null;
   handoff: { id: string; quantity: string; unit: QuantityUnit; received: boolean } | null;
   difference: string | null;
+  sourceComparison?: {
+    status:'no_source'|'multiple_sources'|'reference_only'|'output_missing'|'unit_mismatch'|'compared';
+    sourceCount:number;
+    source:{linkId:string;sourceEntryId:string;summary:string;measure:LocalSourceMeasure}|null;
+    difference:string|null;
+  };
 };
 
 function endpoint(origin: string, path: string): string {
@@ -299,9 +305,45 @@ export const planningApi = {
     planningRequest<{id:string;reviewNumber:number;alreadyRecorded:boolean}>(
       c, '/planning/batches/'+id(batchId)+'/inspections/'+id(observationId)+'/reviews',
       {method:'POST',body:input}),
-  quantityFlow: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
-    planningRequest<{ batchId: string; steps: QuantityFlowStep[] }>(
-      c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal }),
+  quantityFlow: async (c: PlanningSession, batchId: string, signal?: AbortSignal) => {
+    const result=await planningRequest<{batchId:string;steps:QuantityFlowStep[]}>(
+      c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal });
+    const positive=/^(?=.*[1-9])(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
+    const decimal=/^-?(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
+    const units=['cells','pieces','kg','m','m2'];
+    const quantity=(v:{quantity:string;unit:QuantityUnit}|null) => v===null || Boolean(v &&
+      typeof v.quantity==='string' && positive.test(v.quantity) && units.includes(v.unit));
+    if (!result || result.batchId!==batchId || !Array.isArray(result.steps) ||
+        result.steps.some(step => {
+          if (!step || !Number.isSafeInteger(step.number) || step.number<1 ||
+              typeof step.name!=='string' || typeof step.workshopId!=='string' ||
+              !(step.nextStep===null || Number.isSafeInteger(step.nextStep) && step.nextStep>step.number) ||
+              !quantity(step.output) || !quantity(step.handoff) ||
+              step.handoff!==null && (typeof step.handoff.id!=='string' || typeof step.handoff.received!=='boolean') ||
+              !(step.difference===null || typeof step.difference==='string' && decimal.test(step.difference))) return true;
+          // Older servers can still show handovers without claiming a source comparison.
+          const comparison=step.sourceComparison;
+          if (comparison===undefined) return false;
+          if (!comparison || !Number.isSafeInteger(comparison.sourceCount) || comparison.sourceCount<0) return true;
+          const {source,sourceCount,status,difference}=comparison;
+          if (sourceCount!==1) return source!==null || difference!==null ||
+            status!==(sourceCount===0 ? 'no_source' : 'multiple_sources');
+          if (!source || typeof source.linkId!=='string' || typeof source.sourceEntryId!=='string' ||
+              typeof source.summary!=='string' || !source.measure ||
+              typeof source.measure.value!=='string' || !positive.test(source.measure.value) ||
+              !['dry_solids_kg','coated_side_a_m','calendered_length_m','cut_good_pieces',
+                'sort_input_good_pieces','assembled_cells_out'].includes(source.measure.kind)) return true;
+          const outputUnits:Partial<Record<LocalSourceMeasure['kind'],string>>={
+            calendered_length_m:'m',cut_good_pieces:'pieces',assembled_cells_out:'cells',
+          };
+          const unit=outputUnits[source.measure.kind];
+          const expected=!unit ? 'reference_only' : !step.output ? 'output_missing'
+            : step.output.unit!==unit ? 'unit_mismatch' : 'compared';
+          return status!==expected || (status==='compared'
+            ? typeof difference!=='string' || !decimal.test(difference) : difference!==null);
+        })) throw new Error('Сервер вернул неверную сверку количеств');
+    return result;
+  },
   recordStepEvidence: (c: PlanningSession, batchId: string, stepNumber: number, input: {
     eventId: string; kind: StepEvidenceKind;
     quantity?: string; quantityUnit?: QuantityUnit;

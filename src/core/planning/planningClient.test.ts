@@ -283,6 +283,20 @@ describe('authenticated M2 planning client', () => {
     );
   });
 
+  it('rejects source comparisons with inconsistent states, quantities or batch identities',async () => {
+    const step={number:1,name:'Cutting',workshopId:'cut',nextStep:null,
+      output:{quantity:'100.000000',unit:'pieces'},handoff:null,difference:null};
+    for(const body of [
+      {batchId:'other-batch',steps:[]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'compared',sourceCount:0,source:null,difference:'0'}}]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'multiple_sources',sourceCount:2,source:null,difference:'0'}}]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'no_source',sourceCount:0,source:null,difference:NaN}}]},
+    ]) {
+      vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async () => body}));
+      await expect(planningApi.quantityFlow(session,'lot-1')).rejects.toThrow('неверную сверку');
+    }
+  });
+
   it('uses verified session and stable UUID for an explicit local journal reference', async () => {
     const calls: Array<{ url:string; options:RequestInit }> = [];
     vi.stubGlobal('fetch',vi.fn(async (url:string, options:RequestInit) => {

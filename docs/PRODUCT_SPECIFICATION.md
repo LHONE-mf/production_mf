@@ -350,6 +350,18 @@ verified consumption, stock movement, yield or QA approval. Local automated
 tests and Chromium phone/desktop checks against disposable PostgreSQL passed;
 Android emulator/physical acceptance was not performed for this change.
 
+**M2 local source quantity comparison checkpoint (2026-11-10):**
+The read-only quantity-flow screen now compares a single linked calendered
+length, good-cut count or assembled-cell count with declared step output in
+the same engineering unit, using exact PostgreSQL decimal subtraction.
+It shows the source summary/IDs and explains missing output, different units
+or multiple measured references. Input dry-solids mass, partial side-A coating
+length and incoming sorting counts remain informational; multiple records
+are not summed because their physical scope may overlap. This is an advisory
+declaration comparison, not a material balance, stock movement, verified yield
+or QA decision. PostgreSQL, client-validation, UI and phone/desktop browser
+checks passed; physical production acceptance remains open.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions,

@@ -1,5 +1,29 @@
 # Hybrid MES: server foundation
 
+## M2 local source/output comparison (2026-11-10)
+
+`GET /planning/batches/:id/quantity-flow` adds `sourceComparison` per route
+step while preserving existing output/handover fields. Access remains online,
+chief-only and organization-scoped. The object contains `status`, `sourceCount`,
+`source` (single link UUID, source record UUID, summary and named measure, or
+null) and `difference` (exact output-minus-reference decimal, or null).
+
+Only `calendered_length_m` → `m`, `cut_good_pieces` → `pieces` and
+`assembled_cells_out` → `cells` are output-compatible. With exactly one measured
+reference and completion output in that unit, `status` is `compared` and
+PostgreSQL NUMERIC computes the difference. Dry-solids mass, side-A coating
+length and incoming sorting counts remain `reference_only`, even if units
+match. Other statuses are `no_source`, `multiple_sources`, `output_missing`
+and `unit_mismatch`. Generic narrative links do not count as measurements.
+Multiple measured links are neither summed nor arbitrarily selected; their
+records may overlap. No conversion, tolerance, pass/fail or reconciliation is
+inferred. The frontend validates response structure and status consistency;
+older servers show an explicit unavailable comparison message.
+
+This compares supervisor-attested declarations. It never promotes local
+records to verified production, inventory consumption, QA release or automatic
+route completion. No schema or manufacturing records are changed by the read.
+
 ## Locked dependencies and validator compatibility (2026-11-10)
 
 The independent server project now commits `package-lock.json`; use `npm ci`

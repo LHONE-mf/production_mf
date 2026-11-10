@@ -203,6 +203,21 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         FROM process_route_steps
         WHERE organization_id=$1 AND route_id=$2 AND route_version=$3
           AND electrode_line=$5
+      ), measured_sources AS (
+        SELECT step_number,count(*)::int AS source_count,
+          min(id::text) AS source_link_id,min(source_entry_id::text) AS source_entry_id,
+          min(summary) AS source_summary,min(source_measure_kind) AS source_metric,
+          min(source_measure_value) AS source_quantity
+        FROM production_local_journal_links
+        WHERE organization_id=$1 AND batch_id=$4 AND route_id=$2 AND route_version=$3
+          AND source_measure_kind IS NOT NULL
+        GROUP BY step_number
+      ), source_values AS (
+        SELECT measured_sources.*,
+          CASE source_metric WHEN 'calendered_length_m' THEN 'm'
+            WHEN 'cut_good_pieces' THEN 'pieces'
+            WHEN 'assembled_cells_out' THEN 'cells' ELSE NULL END AS comparison_unit
+        FROM measured_sources
       )
       SELECT s.step_number,s.name,s.workshop_id,s.next_step,
         e.quantity::text AS output_quantity,e.quantity_unit AS output_unit,
@@ -210,7 +225,11 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         h.quantity_unit AS handoff_unit,
         (r.handoff_id IS NOT NULL) AS received,
         CASE WHEN e.quantity_unit=h.quantity_unit
-          THEN (e.quantity-h.quantity)::text ELSE NULL END AS quantity_difference
+          THEN (e.quantity-h.quantity)::text ELSE NULL END AS quantity_difference,
+        COALESCE(l.source_count,0) AS source_count,l.source_link_id,l.source_entry_id,
+        l.source_summary,l.source_metric,l.source_quantity::text,l.comparison_unit,
+        CASE WHEN l.source_count=1 AND e.quantity_unit=l.comparison_unit
+          THEN (e.quantity-l.source_quantity)::text ELSE NULL END AS source_difference
       FROM branch_steps s
       LEFT JOIN production_step_evidence e
         ON e.organization_id=$1 AND e.batch_id=$4 AND e.step_number=s.step_number
@@ -220,6 +239,7 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
           AND h.from_step=s.step_number AND h.to_step=s.next_step
       LEFT JOIN production_stage_receipts r
         ON r.organization_id=h.organization_id AND r.handoff_id=h.id
+      LEFT JOIN source_values l ON l.step_number=s.step_number
       ORDER BY s.step_number`,
       [actor.organization_id,b.route_id,b.route_version,batchId,
         b.material_line === 'cell' ? 'common' : b.material_line]);
@@ -235,6 +255,22 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
       },
       // Null when no transfer is documented or units are incomparable.
       difference:row.quantity_difference,
+      // Compare only a single output-compatible measurement. Input/partial
+      // metrics are not equivalent to output; multiple sources may overlap.
+      // Never invent a sum, conversion, yield or independent verification.
+      sourceComparison:{
+        status:row.source_count===0 ? 'no_source' : row.source_count>1 ? 'multiple_sources'
+          : row.comparison_unit===null ? 'reference_only'
+          : row.output_quantity===null ? 'output_missing'
+          : row.comparison_unit!==row.output_unit ? 'unit_mismatch' : 'compared',
+        sourceCount:row.source_count,
+        source:row.source_count===1 ? {
+          linkId:row.source_link_id,sourceEntryId:row.source_entry_id,
+          summary:row.source_summary,
+          measure:{kind:row.source_metric,value:row.source_quantity},
+        } : null,
+        difference:row.source_difference,
+      },
     })) };
   });
 }

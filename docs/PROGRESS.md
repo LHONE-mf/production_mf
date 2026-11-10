@@ -1,3 +1,28 @@
+## 2026-11-10 — M2 linked local source/output quantity comparison
+
+- Continued from verified remote head `0b2ca08`; its exact-head web/server CI,
+  Run Tests and signed development APK passed. Existing PR #3 stays a draft.
+- Extended the existing chief-only quantity-flow API and Android/web panel to
+  compare a single output-compatible local reference with declared step output.
+  Exact NUMERIC subtraction covers calendered length (m), good cut electrodes
+  (pieces) and assembled cells (cells). Shows source summary and immutable
+  source/link identifiers. UI rejects malformed or inconsistent responses and
+  explains older-server comparison unavailability.
+- Input/partial metrics (dry solids, side-A coating length, sorting input) stay
+  reference-only. Missing output, incompatible units and multiple measured
+  references produce explicit non-comparison states; no conversion, arbitrary
+  choice or assumed sum is made. Generic narrative links are not measurements.
+- Added eight PostgreSQL regressions including a one-millionth difference near
+  the NUMERIC limit, positive/zero/negative differences, role/tenant isolation,
+  unchanged batch status and multiple-source ambiguity. Local full verification:
+  **164 backend / 199 frontend tests passed**, both typechecks and builds passed.
+  Chromium **390×844 and 1365×900** passed the new comparison and existing
+  genealogy navigation using synthetic records through real Fastify/PostgreSQL;
+  source details meet 44px touch targets, with no overflow or browser exceptions.
+- No migrations, production writes, local journal rewrites, inventory posting,
+  automatic sync or formal QA approval. Existing physical-device, deployed TLS,
+  upgrade/restore and M2 physical route acceptance gates remain open.
+
 ## 2026-11-10 — Security, reproducible server installs and session handoff
 
 - `8ea7aed`: committed the independent server lockfile and switched web/server

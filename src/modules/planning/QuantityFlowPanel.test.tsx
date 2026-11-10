@@ -14,6 +14,7 @@ const connection: ServerConnection = {
 let root: Root | undefined;
 let container: HTMLDivElement | undefined;
 async function mount() {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -33,6 +34,47 @@ afterEach(async () => {
 });
 
 describe('M2 online quantity flow', () => {
+  it('shows a traceable local reference and exact difference without declaring reconciliation or QA acceptance',async () => {
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async () => ({batchId:'batch-1',steps:[{
+      number:1,name:'Calendering',workshopId:'calender',nextStep:null,
+      output:{quantity:'999999999999.999998',unit:'m'},handoff:null,difference:null,
+      sourceComparison:{status:'compared',sourceCount:1,difference:'-0.000001',source:{
+        linkId:'link-1',sourceEntryId:'local-1',summary:'Каландрирование: рулон 42',
+        measure:{kind:'calendered_length_m',value:'999999999999.999999'},
+      }},
+    }]})});
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount();
+    expect(screen.textContent).toContain('Каландрирование: рулон 42');
+    expect(screen.textContent).toContain('999999999999.999999');
+    expect(screen.textContent).toContain('Заявленный выход минус локальная запись: -0.000001 m');
+    expect(screen.textContent).toContain('local-1');
+    expect(screen.textContent).toContain('не подтверждает качество');
+    expect(fetchMock.mock.calls.every(call => call[1].method==='GET')).toBe(true);
+  });
+
+  it.each([
+    ['reference_only',1,'Входной или частичный показатель'],
+    ['output_missing',1,'Заявленный выход операции ещё не записан'],
+    ['unit_mismatch',1,'Единицы измерения различаются'],
+    ['multiple_sources',2,'Несколько локальных величин'],
+    ['no_source',0,'Нет привязанной локальной величины'],
+  ])('explains %s without calculating a material balance',async (status,sourceCount,message) => {
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async () => ({batchId:'batch-1',steps:[{
+      number:1,name:'Sorting',workshopId:'sort',nextStep:null,
+      output:status==='output_missing' ? null : {quantity:'100.000000',unit:status==='unit_mismatch'?'kg':'pieces'},
+      handoff:null,difference:null,
+      sourceComparison:{status,sourceCount,source:sourceCount===1 ? {
+        linkId:'link-1',sourceEntryId:'local-1',summary:'Local snapshot',
+        measure:{kind:status==='reference_only'?'sort_input_good_pieces':'cut_good_pieces',value:'100.000000'},
+      }:null,difference:null},
+    }]})}));
+    setServerConnection(connection);
+    const screen=await mount();
+    expect(screen.textContent).toContain(message);
+    expect(screen.textContent).not.toContain('Заявленный выход минус локальная запись:');
+  });
+
   it('shows exact quantities and warns that an unmatched value is not measured waste', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok:true,
