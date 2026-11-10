@@ -10,6 +10,7 @@ import { registerBatchGenealogyRoutes } from './batch-genealogy-routes.js';
 import { registerStageHandoffRoutes } from './stage-handoff-routes.js';
 import { registerStepEvidenceRoutes } from './step-evidence-routes.js';
 import { registerLocalJournalLinkRoutes } from './local-journal-link-routes.js';
+import { registerInspectionObservationRoutes } from './inspection-observation-routes.js';
 import { registerDeviceChallengeRoutes } from './device-challenge-routes.js';
 
 function allowedBrowserOrigins(): Set<string> {
@@ -55,6 +56,7 @@ export function buildApp(pool: Pool) {
   registerStageHandoffRoutes(app, pool);
   registerStepEvidenceRoutes(app, pool);
   registerLocalJournalLinkRoutes(app, pool);
+  registerInspectionObservationRoutes(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
     try {
