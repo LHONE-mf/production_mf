@@ -2,7 +2,8 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../../core/store/authStore';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
-import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { requireOfflineTaskEditLease, clearOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { clearServerConnection } from '../../core/sync/serverConnection';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
 import { UserRole, Task } from '../../core/types';
 import { STAGES } from '../../stages/registry';
@@ -28,6 +29,18 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   const { currentUser, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
+  async function signOut() {
+    // A different local demo account must not inherit a live server session
+    // or an offline authorization to view the previous actor's task cache.
+    clearServerConnection();
+    try {
+      await clearOfflineTaskEditLease();
+      logout();
+    } catch {
+      window.alert('Не удалось очистить разрешение на серверные задания. Повторите выход.');
+    }
+  }
+
   if (!currentUser) return null;
 
   const permissions = getPermissions(currentUser.role);
@@ -52,6 +65,12 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {
+      id: 'planning',
+      label: 'Планирование',
+      icon: <ClipboardList className="w-5 h-5" />,
+      roles: [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
+    },
+    {
       id: 'chat',
       label: 'Чат цеха',
       icon: <MessageSquare className="w-5 h-5" />,
@@ -73,7 +92,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       id: 'sync',
       label: 'Синхронизация',
       icon: <Radio className="w-5 h-5" />,
-      roles: [UserRole.WORKER, UserRole.MASTER, UserRole.CHIEF],
+      roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {
       id: 'reports',
@@ -169,7 +188,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => void signOut()}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-red-300 text-sm transition"
           >
             <LogOut className="w-4 h-4" />
@@ -236,7 +255,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             <span className="text-white font-bold text-sm">Li-Ion Production</span>
           </div>
           <button
-            onClick={logout}
+            onClick={() => void signOut()}
             title="Выйти из профиля"
             className={`w-8 h-8 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
           >
