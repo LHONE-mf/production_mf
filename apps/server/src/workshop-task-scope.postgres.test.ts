@@ -344,6 +344,67 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     expect(operations.rows[0].count).toBe(2);
   });
 
+  it('keeps two independently enrolled devices of one actor isolated during conflicting edits and revocation', async () => {
+    const secondDevice = randomUUID();
+    const secondProof = randomBytes(32).toString('base64url');
+    await pool.query('INSERT INTO devices(id,organization_id,user_id) VALUES($1,$2,$3)',
+      [secondDevice, org, chief]);
+    await pool.query(
+      "INSERT INTO device_proof_grants(token_hash,organization_id,user_id,device_id,session_token_hash,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '30 minutes')",
+      [tokenHash(secondProof), org, chief, secondDevice, tokenHash(credentials[0].token)],
+    );
+    const secondAuth = {
+      authorization: 'Bearer ' + credentials[0].token,
+      'x-device-proof': secondProof,
+    };
+    const secondPush = (id: string, payload: ReturnType<typeof base>, revision: number) => app.inject({
+      method: 'POST', url: '/sync/push', headers: secondAuth,
+      payload: { operations: [{
+        operationId: randomUUID(), deviceId: secondDevice,
+        entityType: 'task', entityId: id, operationType: 'upsert',
+        expectedRevision: revision, payload,
+      }] },
+    });
+    const id = randomUUID();
+    const initial = base(id, 'assembly');
+    expect((await push(0, id, initial, 0)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 1 });
+    expect((await app.inject({
+      method: 'GET', url: '/sync/task/' + id + '?deviceId=' + secondDevice,
+      headers: secondAuth,
+    })).json()).toMatchObject({ revision: 1 });
+    expect((await app.inject({
+      method: 'GET', url: '/sync/task/' + id + '?deviceId=' + chiefDevice,
+      headers: secondAuth,
+    })).statusCode).toBe(403);
+
+    const deviceAEdit = { ...initial, title: 'Device A offline edit', status: 'assigned',
+      updatedAt: '2026-11-08T11:00:00.000Z' };
+    const deviceBEdit = { ...initial, title: 'Device B offline edit', status: 'assigned',
+      updatedAt: '2026-11-08T11:01:00.000Z' };
+    expect((await push(0, id, deviceAEdit, 1)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 2 });
+    expect((await secondPush(id, deviceBEdit, 1)).json().results[0])
+      .toMatchObject({ status: 'conflict', actualRevision: 2 });
+    const compared = await app.inject({
+      method: 'GET', url: '/sync/task/' + id + '?deviceId=' + secondDevice,
+      headers: secondAuth,
+    });
+    expect(compared.json()).toMatchObject({ revision: 2, payload: { title: 'Device A offline edit' } });
+    const count = await pool.query(
+      'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
+      [org, id],
+    );
+    expect(count.rows[0].count).toBe(2);
+
+    await pool.query('UPDATE devices SET revoked_at=now() WHERE id=$1', [secondDevice]);
+    expect((await app.inject({
+      method: 'GET', url: '/sync/task/' + id + '?deviceId=' + secondDevice,
+      headers: secondAuth,
+    })).statusCode).toBe(403);
+    expect((await comparison(0, id)).statusCode).toBe(200);
+  });
+
   it('removes access immediately when a master membership is revoked', async () => {
     await pool.query('DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2',[org,master]);
     expect((await pull(1)).json().changes).toEqual([]);
