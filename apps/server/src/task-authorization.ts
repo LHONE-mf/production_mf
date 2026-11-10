@@ -71,3 +71,22 @@ export function validateTaskStatusTransition(incoming: TaskPayloadV1, existing?:
   if (incoming.status === existing.status) return null;
   return allowedStatusChanges[existing.status].has(incoming.status) ? null : 'invalid_task_status_transition';
 }
+
+/** Workers may submit progress on tasks currently assigned to them; they cannot
+ * create, reassign, rewrite instructions, or approve completed work. */
+export function validateWorkerTaskEdit(
+  principal: Principal, incoming: TaskPayloadV1, existing?: TaskPayloadV1,
+): string | null {
+  if (principal.role !== 'worker') return null;
+  if (!existing) return 'worker_cannot_create_task';
+  if (existing.assignedTo !== principal.id || incoming.assignedTo !== principal.id) return 'task_not_assigned_to_worker';
+  const allowed: Record<TaskPayloadV1['status'], ReadonlyArray<TaskPayloadV1['status']>> = {
+    created: [], assigned: ['in_progress'], in_progress: ['checked'],
+    checked: ['in_progress'], completed: [], rejected: [],
+  };
+  if (!allowed[existing.status].includes(incoming.status)) return 'worker_status_transition_forbidden';
+  if (!isDeepStrictEqual(incoming, { ...existing, status: incoming.status, updatedAt: incoming.updatedAt })) {
+    return 'worker_may_only_update_status';
+  }
+  return null;
+}
