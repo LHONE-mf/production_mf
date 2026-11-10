@@ -41,6 +41,10 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     method: 'GET', url: '/sync/pull?cursor=0&limit=100&deviceId=' + (index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice),
     headers: auth(index),
   });
+  const access = (index: number) => app.inject({
+    method: 'GET', url: '/sync/task-access?deviceId=' + (index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice),
+    headers: auth(index),
+  });
   const comparison = (index: number, id: string) => app.inject({
     method: 'GET', url: '/sync/task/' + id + '?deviceId=' + (index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice),
     headers: auth(index),
@@ -93,6 +97,9 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     const masterChanges = await pull(1);
     expect(masterChanges.statusCode).toBe(200);
     expect(masterChanges.json().changes.map((change: {entity_id: string}) => change.entity_id)).toEqual([taskA]);
+    expect((await access(0)).json().ids).toEqual([taskA, taskB].sort());
+    expect((await access(1)).json().ids).toEqual([taskA]);
+    expect((await access(2)).json().ids).toEqual([]);
     expect((await comparison(1,taskA)).statusCode).toBe(200);
     expect((await comparison(1,taskB)).statusCode).toBe(404);
   });
@@ -107,6 +114,8 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     expect(visible.statusCode).toBe(200);
     expect(visible.json().changes.map((c: { entity_id: string }) => c.entity_id)).toContain(ownId);
     expect(visible.json().changes.map((c: { entity_id: string }) => c.entity_id)).not.toContain(otherId);
+    expect((await access(2)).json().ids).toContain(ownId);
+    expect((await access(2)).json().ids).not.toContain(otherId);
     expect((await comparison(2, ownId)).statusCode).toBe(200);
     expect((await comparison(2, otherId)).statusCode).toBe(404);
 
@@ -142,6 +151,7 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     try {
       expect((await pull(2)).statusCode).toBe(403);
       expect((await comparison(2, ownId)).statusCode).toBe(403);
+      expect((await access(2)).statusCode).toBe(403);
     } finally {
       await pool.query('UPDATE devices SET revoked_at=NULL WHERE id=$1',[workerDevice]);
     }
@@ -202,6 +212,7 @@ integration('master workshop task authorization (PostgreSQL)', () => {
         status: 'rejected', reason: 'workshop_access_denied',
       });
       expect((await comparison(1, replayTask)).statusCode).toBe(404);
+      expect((await access(1)).json().ids).not.toContain(replayTask);
       const count = await pool.query(
         'SELECT count(*)::int AS count FROM sync_operations WHERE organization_id=$1 AND entity_id=$2',
         [org, replayTask],
