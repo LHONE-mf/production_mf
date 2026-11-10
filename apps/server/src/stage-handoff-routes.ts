@@ -96,6 +96,17 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'not_next_route_step' });
       }
+      // A transfer cannot be declared before the sending operation has
+      // produced its immutable completion evidence. Without this check,
+      // a batch could be physically advanced while its route step is open.
+      const finished = await client.query(`SELECT 1 FROM production_step_evidence
+        WHERE organization_id=$1 AND batch_id=$2 AND step_number=$3
+          AND kind='completed' LIMIT 1`,
+        [actor.organization_id,batchId,data.fromStep]);
+      if (!finished.rowCount) {
+        await client.query('ROLLBACK');
+        return reply.code(409).send({ error: 'source_step_not_completed' });
+      }
       const latest = await client.query(`SELECT h.to_step,
           (r.handoff_id IS NOT NULL) AS received
         FROM production_stage_handoffs h
