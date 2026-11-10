@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { db } from '../core/db';
+import { listVisibleTasks } from '../core/sync/visibleTasks';
 import { useAuthStore } from '../core/store/authStore';
 import { TaskStatus } from '../core/types';
 import type {
@@ -84,7 +85,7 @@ export const KpiDashboard: React.FC = () => {
           db.fillRuns.toArray(),
           db.walzRuns.toArray(),
           db.formationRuns.toArray(),
-          db.tasks.toArray(),
+          listVisibleTasks(),
           db.users.toArray(),
         ]);
         if (cancelled) return;
