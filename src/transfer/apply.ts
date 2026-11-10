@@ -18,7 +18,7 @@ const PRIVILEGED_TYPES = new Set<string>(['user', 'mix-recipe', 'sort-spec']);
  * concurrent server pull or queued offline edit cannot be silently overwritten.
  * Forced packets deliberately have no exception to this rule. */
 async function applyLocalOnlyTask(
-  taskId: string,
+  taskId: string | undefined,
   apply: (existing: Task | undefined) => Promise<ApplyResult>,
 ): Promise<ApplyResult> {
   if (!taskId || typeof taskId !== 'string') {
