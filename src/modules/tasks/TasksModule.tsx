@@ -72,7 +72,9 @@ export function TasksModule() {
 
   if (!currentUser) return null;
 
-  const canCreate = currentUser.role === UserRole.MASTER || currentUser.role === UserRole.CHIEF;
+  const localSupervisor = currentUser.role === UserRole.MASTER || currentUser.role === UserRole.CHIEF;
+  const verifiedSupervisor = hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master');
+  const canCreate = localSupervisor || verifiedSupervisor;
   const canViewAll = currentUser.role !== UserRole.WORKER;
 
   const filteredTasks = tasks.filter((task) => {
@@ -155,7 +157,8 @@ export function TasksModule() {
       {/* Task list */}
       <div className="space-y-3">
         {filteredTasks.map((task) => (
-          <TaskCard key={task.id} task={task} canManage={canCreate}
+          <TaskCard key={task.id} task={task}
+            canManage={sharedTaskIds?.has(task.id) ? verifiedSupervisor : localSupervisor}
             canEditSharedFields={hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master')}
             canEditSharedStatus={hasEditLease && (
               editLease?.role === 'chief' || editLease?.role === 'master' ||
@@ -173,7 +176,7 @@ export function TasksModule() {
       </div>
 
       {/* Create task modal */}
-      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} canCreateShared={hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master')} onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} canCreateShared={verifiedSupervisor} onClose={() => setShowCreateModal(false)} />}
       {editingTask && <CreateTaskModal key={editingTask.id} initialTask={editingTask} creatorId={currentUser.id} users={users ?? []} onClose={() => setEditingTask(null)} />}
     </div>
   );
