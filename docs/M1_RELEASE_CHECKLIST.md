@@ -36,14 +36,25 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
 - Migration: v18 offline grant and v19 deferred inbox stores are additive; a
   focused fake-IndexedDB test upgrades a representative v17 manufacturing
   database while retaining task, journal, cursor, outbox and conflict archive.
+- Read-path audit: shared task titles/counts now pass one device/actor-scoped
+  visibility filter in Tasks, Dashboard, KPI, worker stage navigation, shared
+  stage-room cards, and the slurry, coating, calendaring, cutting and sorting
+  screens. Expired grants are invalidated even if the app remains open.
+- Legacy transfer isolation: signed QR/BLE task, result and forced packets
+  cannot overwrite a server-owned task or its pending operation; the legacy
+  encoder also rejects shared-task export. Existing local-only transfers are
+  preserved and covered by regression tests. Local-only status writes recheck
+  task ownership inside the same Dexie transaction.
 
 ### Evidence
 
 - Targeted Android emulator smoke run (passed): [42776980369](https://github.com/LHONE-mf/production_mf/actions/runs/42776980369).
   Exercises AndroidKeyStore and Capacitor proof, Fastify/PostgreSQL challenge,
   launcher, and WebView conflict-archive restart behavior on its pinned commit.
-- Combined frontend/PostgreSQL CI and Run Tests: use the latest successful
-  run on the feature branch before distributing an APK.
+- Combined frontend/PostgreSQL CI and Run Tests: [42785547836](https://github.com/LHONE-mf/production_mf/actions/runs/42785547836)
+  and [42785547879](https://github.com/LHONE-mf/production_mf/actions/runs/42785547879)
+  passed for application commit `bd6b36e` (2026-11-10). Recheck the exact
+  release commit before distributing an APK.
 - Signed development APK: use the latest successful **Build Android APK
   (Capacitor)** action for the target commit. A development-key APK is **not**
   a production release.
@@ -60,8 +71,9 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
    disconnected device can continue using its last scoped offline grant until
    expiry (maximum eight hours); revocation cannot be immediate by design.
    The pilot must test actual workshop/assignment changes and denial on
-   reconnect. Other legacy screens that read the shared task DB directly
-   require a separate visibility audit before unrestricted production rollout.
+   reconnect. The known task-list screens now use a common visibility guard;
+   broader legacy manufacturing flows still require separate security review
+   before unrestricted production rollout.
 3. **Existing actor-unbound sync data**: the new user-binding guard intentionally
    refuses to claim unknown older shared data. Provide backup and safe
    ownership migration before upgrading installations with legacy sync data.
