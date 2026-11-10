@@ -28,7 +28,8 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     return getServerConnection()?.session.accessToken === connection.session.accessToken;
   }
   async function load(signal?: AbortSignal) {
-    const [route, history, entries, mixes, coatings, calenders, cuts] = await Promise.all([
+    const [route, history, entries, mixes, coatings, calenders, cuts, sorts, assemblies] =
+      await Promise.all([
       planningApi.stepEvidence(connection, batch.id, signal),
       planningApi.journalLinks(connection, batch.id, signal),
       db.journal.orderBy('createdAt').reverse().limit(150).toArray(),
@@ -36,6 +37,8 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       db.coatRuns.orderBy('createdAt').reverse().limit(150).toArray(),
       db.calenderRuns.orderBy('createdAt').reverse().limit(150).toArray(),
       db.cuttingRuns.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.sortRuns.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.assemblyRuns.orderBy('createdAt').reverse().limit(150).toArray(),
     ]);
     if (!Array.isArray(route.steps) || !Array.isArray(history.links))
       throw new Error('Сервер вернул неверную историю журнала');
@@ -43,7 +46,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       setSteps(route.steps.filter((row,index,list) =>
         list.findIndex(other => other.number === row.number) === index));
       setLinks(history.links);
-      setLocal(localSourceCandidates(entries,mixes,coatings,calenders,cuts));
+      setLocal(localSourceCandidates(entries,mixes,coatings,calenders,cuts,sorts,assemblies));
     }
   }
 
@@ -116,8 +119,9 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       </button>
     </div>
     <p className="text-xs text-slate-400">
-      Выберите запись работ, замеса, нанесения покрытия, каландрирования
-      или нарезки с этого устройства и явно привяжите её к этапу маршрута.
+      Выберите запись работ, замеса, нанесения покрытия, каландрирования,
+      нарезки, сортировки или сборки с этого устройства. Подтвердите привязку
+      к конкретной партии и этапу маршрута.
       Передаются только краткое описание, дата, замечания и обозначенный
       заявленный параметр, если он есть. Это не доказательство выполнения,
       измерение сервера, приёмка качества или списание материалов.

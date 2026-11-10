@@ -43,7 +43,7 @@ const bodySchema = z.object({
   if (data.sourceMeasure &&
       ['cut_good_pieces','sort_input_good_pieces','assembled_cells_out']
         .includes(data.sourceMeasure.kind) &&
-      !/^\d+$/.test(data.sourceMeasure.value))
+      !/^\d+(?:\.0{1,6})?$/.test(data.sourceMeasure.value))
     ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'count must be an integer'});
 });
 

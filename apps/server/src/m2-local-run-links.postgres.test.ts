@@ -158,6 +158,9 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
     expect((await post(path(2),coat)).statusCode).toBe(201);
     expect((await post(path(3),calender)).statusCode).toBe(201);
     expect((await post(path(4),cutting)).statusCode).toBe(201);
+    const paddedCount={...cutting,linkId:randomUUID(),sourceEntryId:randomUUID(),
+      sourceMeasure:{kind:'cut_good_pieces',value:'155.000000'}};
+    expect((await post(path(4),paddedCount)).statusCode).toBe(201);
     expect((await post(path(5),sorting)).statusCode).toBe(201);
     expect((await post(path(1),{...mix,sourceMeasure:{kind:'dry_solids_kg',value:'12'}})).json())
       .toMatchObject({error:'journal_link_id_reused'});
@@ -177,7 +180,7 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
       expect.objectContaining({sourceKind:'cut_run',sourceEntryId:cutting.sourceEntryId,
         sourceMeasure:{kind:'cut_good_pieces',value:'154.000000'}}),
     ]));
-    expect(history.json().links).toHaveLength(6);
+    expect(history.json().links).toHaveLength(7);
     expect(history.json().links).toEqual(expect.arrayContaining([
       expect.objectContaining({sourceKind:'sort_run',sourceEntryId:sorting.sourceEntryId,
         sourceMeasure:{kind:'sort_input_good_pieces',value:'154.000000'}}),

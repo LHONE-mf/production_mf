@@ -248,6 +248,24 @@ rounded. Existing local records and already linked records are unchanged;
 nothing is auto-uploaded or promoted to verified batch yield, QA approval or
 inventory. Isolated PostgreSQL and UI tests exercise the new source types.
 
+**M2 sorting and assembly run checkpoint (2026-11-10):**
+Migration `014_m2_sort_assembly_sources.sql` extends the append-only
+supervisor-attested source references to local sorting (`sortRuns`) and
+cell assembly (`assemblyRuns`) journals. A sorting record may include the
+original **incoming good electrode count** from the cutting stage—not
+sorting's outgoing accepted quantity. Assembly may include the record's
+declared cells-out count. Both metrics are positive whole-piece counts and
+are always labelled as unverified local claims. The server restricts sorting
+references to sorting route steps on electrode batches and assembly references
+to assembly steps on cell batches; a source link is never route completion,
+inventory movement, QA release or equipment control. The Planning panel
+reads the existing Dexie stores on demand and transmits only selected
+metadata, summary, limited defect notes and optional count after explicit
+confirmation; it does not auto-upload or alter local manufacturing records.
+CI includes PostgreSQL isolation tests, source validation and frontend
+interaction tests. Final manufacturing QA and two-device physical pilot remain
+outstanding.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

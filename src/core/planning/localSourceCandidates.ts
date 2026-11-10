@@ -1,4 +1,6 @@
-import type { CalenderRun, CoatRun, CutRun, JournalEntry, MixBatch } from '../types';
+import type {
+  AssemblyRun, CalenderRun, CoatRun, CutRun, JournalEntry, MixBatch, SortRun,
+} from '../types';
 import type { LocalSourceKind, LocalSourceMeasure } from './planningClient';
 
 export type LocalSourceCandidate = {
@@ -43,6 +45,7 @@ function reported(kind:LocalSourceMeasure['kind'],value:unknown):
 export function localSourceCandidates(
   journal:JournalEntry[],mixes:MixBatch[],coatings:CoatRun[],
   calenders:CalenderRun[] = [], cuts:CutRun[] = [],
+  sorts:SortRun[] = [], assemblies:AssemblyRun[] = [],
 ): LocalSourceCandidate[] {
   const items:LocalSourceCandidate[] = [];
   for (const e of journal) {
@@ -120,6 +123,41 @@ export function localSourceCandidates(
       ...(measure?{sourceMeasure:measure}:{}),
     });
   }
+  for (const s of sorts) {
+    if (!s || !isUuid(s.id)) continue;
+    const at=time(s.createdAt), name=bounded(s.batchName);
+    const summary=name ? bounded('Сортировка электродов: '+name) : null;
+    if (!at || !summary || (s.defects!=null && typeof s.defects!=='string') ||
+      (s.defects?.trim().length ?? 0)>2000) continue;
+    // The SortRun.goodCount field is incoming good electrodes from cutting.
+    // Never call it sorting output or sum category buckets as verified yield.
+    const measure=Number.isSafeInteger(s.goodCount)
+      ? reported('sort_input_good_pieces',s.goodCount) : undefined;
+    items.push({
+      key:'sort_run:'+s.id,sourceKind:'sort_run',sourceEntryId:s.id,
+      sourceStage:'sorting',sourceCreatedAt:at,summary,
+      ...(s.defects?.trim()?{defects:s.defects.trim()}:{}),
+      ...(measure?{sourceMeasure:measure}:{}),
+    });
+  }
+  for (const a of assemblies) {
+    if (!a || !isUuid(a.id)) continue;
+    const at=time(a.createdAt), name=bounded(a.batchName);
+    const summary=name ? bounded('Сборка ячеек: '+name) : null;
+    if (!at || !summary || (a.defects!=null &&
+      (!Array.isArray(a.defects) || !a.defects.every(d=>typeof d==='string')))) continue;
+    const defectText=a.defects?.map(d=>d.trim()).filter(Boolean).join('; ') ?? '';
+    if (defectText.length>2000) continue;
+    // cellsOut is the local run's latest stated result; not a QA approval.
+    const measure=Number.isSafeInteger(a.cellsOut)
+      ? reported('assembled_cells_out',a.cellsOut) : undefined;
+    items.push({
+      key:'assembly_run:'+a.id,sourceKind:'assembly_run',sourceEntryId:a.id,
+      sourceStage:'assembly',sourceCreatedAt:at,summary,
+      ...(defectText?{defects:defectText}:{}),
+      ...(measure?{sourceMeasure:measure}:{}),
+    });
+  }
   return items.sort((a,b)=>b.sourceCreatedAt.localeCompare(a.sourceCreatedAt));
 }
 
@@ -127,10 +165,13 @@ export const localKindLabels:Record<LocalSourceKind,string> = {
   journal:'Журнал работ', mix_batch:'Журнал замесов',
   coat_run:'Журнал нанесения',
   calender_run:'Журнал каландрирования',cut_run:'Журнал нарезки',
+  sort_run:'Журнал сортировки',assembly_run:'Журнал сборки',
 };
 export const metricLabels:Record<LocalSourceMeasure['kind'],string> = {
   dry_solids_kg:'Заявленная масса сухих веществ, кг',
   coated_side_a_m:'Заявленная длина покрытия, сторона A, м',
   calendered_length_m:'Заявленная прокатанная длина, м',
   cut_good_pieces:'Заявлено годных после нарезки, шт',
+  sort_input_good_pieces:'Заявлено поступивших годных на сортировку, шт',
+  assembled_cells_out:'Заявлено собранных ячеек, шт',
 };

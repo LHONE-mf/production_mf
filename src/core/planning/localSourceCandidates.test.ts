@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { JournalEntry, MixBatch, CoatRun, CalenderRun, CutRun } from '../types';
+import type {
+  AssemblyRun, JournalEntry, MixBatch, CoatRun, CalenderRun, CutRun, SortRun,
+} from '../types';
 import { localSourceCandidates } from './localSourceCandidates';
 
 describe('selectable offline production source snapshots',()=>{
@@ -51,6 +53,33 @@ describe('selectable offline production source snapshots',()=>{
     expect(items).toHaveLength(2);
     for(const item of items)expect(item).not.toHaveProperty('sourceMeasure');
   });
+  it('distinguishes sorting input from assembly output and excludes invalid counts',()=>{
+    const sortId='805f1325-676b-4fc7-b73b-20742d15c8f5';
+    const assemblyId='dfb44d22-31b6-47b6-96e3-ff3ec3fa95bf';
+    const sorting=[{id:sortId,batchName:'Cathode pilot',goodCount:74,
+      defects:'Edge chips',createdAt:1794312000000} as SortRun];
+    const assembly=[{id:assemblyId,batchName:'Cell pilot',cellsOut:40,
+      defects:['Visual issue'],createdAt:'2026-11-10T10:00:00Z'} as AssemblyRun];
+    const records=localSourceCandidates([],[],[],[],[],sorting,assembly);
+    expect(records).toEqual(expect.arrayContaining([
+      expect.objectContaining({key:'sort_run:'+sortId,sourceStage:'sorting',
+        sourceMeasure:{kind:'sort_input_good_pieces',value:'74.000000'},
+        defects:'Edge chips'}),
+      expect.objectContaining({key:'assembly_run:'+assemblyId,sourceStage:'assembly',
+        sourceMeasure:{kind:'assembled_cells_out',value:'40.000000'},
+        defects:'Visual issue'}),
+    ]));
+    expect(records).toHaveLength(2);
+    expect(sorting[0].goodCount).toBe(74);
+    expect(assembly[0].cellsOut).toBe(40);
+    const malformed=localSourceCandidates([],[],[],[],[],
+      [{...sorting[0],id:'non-uuid'},
+       {...sorting[0],goodCount:74.5}] as SortRun[],
+      [{...assembly[0],cellsOut:0}, {...assembly[0],defects:[77]}] as unknown as AssemblyRun[]);
+    expect(malformed).toHaveLength(2);
+    for(const record of malformed)expect(record).not.toHaveProperty('sourceMeasure');
+  });
+
   it('excludes demo IDs, malformed legacy rows and unsafe values without mutation',()=>{
     const journal=[
       {id:'jr-001',stage:'coating',summary:'demo',createdAt:new Date()},

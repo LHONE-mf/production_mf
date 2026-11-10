@@ -11,6 +11,8 @@ const journal = vi.hoisted(() => ({
   coatings: [] as Array<Record<string,unknown>>,
   calenders: [] as Array<Record<string,unknown>>,
   cuts: [] as Array<Record<string,unknown>>,
+  sorts: [] as Array<Record<string,unknown>>,
+  assemblies: [] as Array<Record<string,unknown>>,
   reads: 0,
 }));
 vi.mock('../../core/db', () => ({
@@ -29,6 +31,12 @@ vi.mock('../../core/db', () => ({
     })})},
     cuttingRuns:{orderBy:() => ({reverse:() => ({
       limit:() => ({toArray:async () => journal.cuts}),
+    })})},
+    sortRuns:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.sorts}),
+    })})},
+    assemblyRuns:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.assemblies}),
     })})},
   },
 }));
@@ -60,7 +68,8 @@ afterEach(async()=>{
   if(root)await act(async()=>root!.unmount());
   root=undefined;container?.remove();container=undefined;
   journal.entries=[];journal.mixes=[];journal.coatings=[];
-  journal.calenders=[];journal.cuts=[];journal.reads=0;
+  journal.calenders=[];journal.cuts=[];journal.sorts=[];journal.assemblies=[];
+  journal.reads=0;
   clearServerConnection();vi.unstubAllGlobals();
 });
 
@@ -194,6 +203,83 @@ describe('M2 manual link of existing local journal',()=>{
       sourceMeasure:{kind:'cut_good_pieces',value:'87.000000'},
     });
     expect(journal.cuts).toHaveLength(1);
+  });
+
+  it('shows sorting input counts and manually attests a matching source only',async()=>{
+    const sortId='a0ab4ab3-13d4-457c-9fb0-0f9c4dfc0732';
+    journal.sorts=[{
+      id:sortId,batchName:'ROLL-17',goodCount:74,
+      createdAt:1794312000000,defects:'Visible burr',
+    }];
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?
+        {steps:[{number:5,name:'Sorting',stage:'sorting',workshopId:'sorting',evidence:null}]}:
+        options.method==='GET'?{links:[]}:{id:'linked',alreadyLinked:false},
+    }));
+    vi.stubGlobal('fetch',fetchMock);
+    setServerConnection(connection);
+    const screen=await mount();
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    expect(select.textContent).toContain('Журнал сортировки');
+    await act(async()=>{
+      select.value='sort_run:'+sortId;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    expect(screen.textContent).toContain('Заявлено поступивших годных на сортировку, шт');
+    const checkbox=screen.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(async()=>{checkbox.click();});
+    const form=screen.querySelector('button[type="submit"]')!.closest('form')!;
+    await act(async()=>{
+      form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      await Promise.resolve();
+    });
+    const posts=fetchMock.mock.calls.filter(call=>call[1].method==='POST');
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(String(posts[0][1].body))).toMatchObject({
+      sourceKind:'sort_run',sourceStage:'sorting',sourceEntryId:sortId,
+      sourceMeasure:{kind:'sort_input_good_pieces',value:'74.000000'},
+      defects:'Visible burr',
+    });
+    expect(journal.sorts).toHaveLength(1);
+  });
+
+  it('shows assembly cells out without leaking operation equipment parameters',async()=>{
+    const id='b1de324e-8c34-4fc7-8d7b-c5b61a4ab301';
+    journal.assemblies=[{id,batchName:'CELL-Lot',cellsOut:40,
+      createdAt:'2026-11-10T10:10:00.000Z',
+      defects:['Rejected visual inspection'],ops:[{params:{'POWER':'test-only-secret'}}]}];
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?
+        {steps:[{number:6,name:'Assembly',stage:'assembly',workshopId:'assembly',evidence:null}]}:
+        options.method==='GET'?{links:[]}:{id:'linked',alreadyLinked:false},
+    }));
+    vi.stubGlobal('fetch',fetchMock);
+    setServerConnection(connection);
+    const screen=await mount();
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    expect(select.textContent).toContain('Журнал сборки');
+    await act(async()=>{
+      select.value='assembly_run:'+id;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    expect(screen.textContent).toContain('Заявлено собранных ячеек, шт');
+    const checkbox=screen.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(async()=>{checkbox.click();});
+    const form=screen.querySelector('button[type="submit"]')!.closest('form')!;
+    await act(async()=>{
+      form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      await Promise.resolve();
+    });
+    const sent=fetchMock.mock.calls.filter(call=>call[1].method==='POST');
+    expect(sent).toHaveLength(1);
+    const posted=JSON.parse(String(sent[0][1].body));
+    expect(posted).toMatchObject({
+      sourceKind:'assembly_run',sourceStage:'assembly',sourceEntryId:id,
+      sourceMeasure:{kind:'assembled_cells_out',value:'40.000000'},
+      defects:'Rejected visual inspection',
+    });
+    expect(JSON.stringify(posted)).not.toContain('test-only-secret');
+    expect(journal.assemblies).toHaveLength(1);
   });
 
   it('never offers link writes for held batches',async()=>{
