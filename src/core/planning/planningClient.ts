@@ -46,6 +46,16 @@ export type BatchGenealogyLink = {
   targetQuantity: string; targetUnit: QuantityUnit;
   actorId: string; note: string | null; occurredAt: string;
 };
+export type StepEvidenceKind = 'started' | 'completed' | 'deviation';
+export type StepEvidence = {
+  id: string; kind: StepEvidenceKind; actorId: string;
+  quantity: string | null; quantityUnit: QuantityUnit | null;
+  equipmentCode: string | null; note: string | null; recordedAt: string;
+};
+export type BatchStepRecord = {
+  number: number; name: string; stage: string; workshopId: string;
+  evidence: StepEvidence | null;
+};
 export type StepDetail = RouteStep & { number: number };
 
 function endpoint(origin: string, path: string): string {
@@ -162,4 +172,15 @@ export const planningApi = {
     targetQuantity: string; targetUnit: QuantityUnit; note?: string;
   }) => planningRequest<{ id: string; sourceBatchId: string; targetBatchId: string; kind: GenealogyKind }>(
     c, '/planning/batches/' + id(targetBatchId) + '/links', { method: 'POST', body: input }),
+  stepEvidence: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; steps: BatchStepRecord[] }>(
+      c, '/planning/batches/' + id(batchId) + '/steps', { signal }),
+  recordStepEvidence: (c: PlanningSession, batchId: string, stepNumber: number, input: {
+    eventId: string; kind: StepEvidenceKind;
+    quantity?: string; quantityUnit?: QuantityUnit;
+    equipmentCode?: string; note?: string;
+  }) => planningRequest<{ id: string; stepNumber: number;
+    kind: StepEvidenceKind; alreadyRecorded: boolean }>(
+      c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/evidence',
+      { method: 'POST', body: input }),
 };
