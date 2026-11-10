@@ -93,7 +93,7 @@ integration('M2 chief-attested legacy stage journal references (PostgreSQL)', ()
     expect((await post(url(),{...payload,summary:'Changed summary'})).json())
       .toMatchObject({error:'journal_link_id_reused'});
     expect((await post(url(),{...payload,linkId:randomUUID()})).json())
-      .toMatchObject({error:'local_journal_entry_already_linked'});
+      .toMatchObject({error:'local_source_already_linked'});
     const records=await history();
     expect(records.statusCode).toBe(200);
     expect(records.json().links).toEqual([

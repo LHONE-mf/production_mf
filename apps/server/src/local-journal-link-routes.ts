@@ -6,14 +6,30 @@ import { authenticate } from './auth.js';
 const uuid = z.string().uuid();
 const batchParam = z.object({ id:uuid }).strict();
 const stepParam = z.object({ id:uuid,stepNumber:z.coerce.number().int().positive().safe() }).strict();
+const sourceValue = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)
+  .refine(value=>Number(value)>0);
+const sourceMeasureSchema = z.object({
+  kind:z.enum(['dry_solids_kg','coated_side_a_m']),value:sourceValue,
+}).strict();
 const bodySchema = z.object({
   linkId:uuid, sourceEntryId:uuid,
+  sourceKind:z.enum(['journal','mix_batch','coat_run']).default('journal'),
+  sourceMeasure:sourceMeasureSchema.optional(),
   sourceStage:z.enum(['storage','slurry','coating','calendaring','cutting',
     'sorting','assembly','electrolyte','electrolyte-705','walzing','formation']),
   sourceCreatedAt:z.string().datetime({offset:true}),
   summary:z.string().trim().min(1).max(2000),
   defects:z.string().trim().min(1).max(2000).optional(),
-}).strict();
+}).strict().superRefine((data,ctx)=>{
+  const stage = data.sourceKind==='mix_batch' ? 'slurry'
+    : data.sourceKind==='coat_run' ? 'coating' : null;
+  const metric = data.sourceKind==='mix_batch' ? 'dry_solids_kg'
+    : data.sourceKind==='coat_run' ? 'coated_side_a_m' : null;
+  if (stage && data.sourceStage!==stage)
+    ctx.addIssue({code:'custom',path:['sourceStage'],message:'source stage mismatch'});
+  if (data.sourceMeasure && data.sourceMeasure.kind!==metric)
+    ctx.addIssue({code:'custom',path:['sourceMeasure'],message:'source metric mismatch'});
+});
 
 function sqlCode(error: unknown) {
   return error && typeof error === 'object' && 'code' in error
@@ -69,13 +85,16 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
           AND step_number=$7 AND workshop_id=$8 AND source_stage=$9
           AND source_entry_id=$10 AND source_created_at=$11::timestamptz
           AND summary=$12 AND defects IS NOT DISTINCT FROM $13::text
-          AND linked_by=$14 AS identical
+          AND linked_by=$14 AND source_kind=$15
+          AND source_measure_kind IS NOT DISTINCT FROM $16::text
+          AND source_measure_value IS NOT DISTINCT FROM $17::numeric AS identical
         FROM production_local_journal_links
         WHERE organization_id=$1 AND id=$2`,
         [actor.organization_id,data.linkId,batchId,b.order_id,b.route_id,
           b.route_version,stepNumber,step.rows[0].workshop_id,
           data.sourceStage,data.sourceEntryId,data.sourceCreatedAt,
-          data.summary,data.defects ?? null,actor.id]);
+          data.summary,data.defects ?? null,actor.id,data.sourceKind,
+          data.sourceMeasure?.kind ?? null,data.sourceMeasure?.value ?? null]);
       if (old.rowCount) {
         await client.query('ROLLBACK');
         if (!old.rows[0].identical) return reply.code(409).send({error:'journal_link_id_reused'});
@@ -88,18 +107,20 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
       await client.query(`INSERT INTO production_local_journal_links
         (organization_id,id,batch_id,order_id,route_id,route_version,step_number,
           workshop_id,source_stage,source_entry_id,source_created_at,
-          summary,defects,linked_by)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          summary,defects,linked_by,source_kind,
+          source_measure_kind,source_measure_value)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
         [actor.organization_id,data.linkId,batchId,b.order_id,b.route_id,
           b.route_version,stepNumber,step.rows[0].workshop_id,
           data.sourceStage,data.sourceEntryId,data.sourceCreatedAt,
-          data.summary,data.defects ?? null,actor.id]);
+          data.summary,data.defects ?? null,actor.id,data.sourceKind,
+          data.sourceMeasure?.kind ?? null,data.sourceMeasure?.value ?? null]);
       await client.query('COMMIT');
       return reply.code(201).send({id:data.linkId,batchId,stepNumber,alreadyLinked:false});
     } catch (error) {
       await client.query('ROLLBACK');
       if (sqlCode(error) === '23505')
-        return reply.code(409).send({error:'local_journal_entry_already_linked'});
+        return reply.code(409).send({error:'local_source_already_linked'});
       throw error;
     } finally { client.release(); }
   });
@@ -114,13 +135,17 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
       WHERE organization_id=$1 AND id=$2`,[actor.organization_id,params.data.id]);
     if (!batch.rowCount) return reply.code(404).send({error:'batch_not_found'});
     const entries = await pool.query(`SELECT id,step_number,source_stage,source_entry_id,
-        source_created_at,summary,defects,linked_by,linked_at
+        source_created_at,summary,defects,linked_by,linked_at,
+        source_kind,source_measure_kind,source_measure_value::text
       FROM production_local_journal_links
       WHERE organization_id=$1 AND batch_id=$2
       ORDER BY step_number,linked_at,id LIMIT 200`,
       [actor.organization_id,params.data.id]);
     return {batchId:params.data.id,links:entries.rows.map(row=>({
       id:row.id,stepNumber:row.step_number,sourceStage:row.source_stage,
+      sourceKind:row.source_kind,
+      sourceMeasure:row.source_measure_kind
+        ? {kind:row.source_measure_kind,value:row.source_measure_value} : null,
       sourceEntryId:row.source_entry_id,
       sourceCreatedAt:row.source_created_at,summary:row.summary,
       defects:row.defects,linkedBy:row.linked_by,linkedAt:row.linked_at,
