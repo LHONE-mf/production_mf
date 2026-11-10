@@ -142,7 +142,7 @@ export function SyncModule() {
       const proven = await authenticateAndroidDevice(session, selectedDeviceId);
       // Only a server-authenticated chief/master with a fresh, device-bound
       // proof may stage offline task edits. The grant expires with that proof.
-      if (serverRole === 'chief' || serverRole === 'master') {
+      if (serverRole === 'chief' || serverRole === 'master' || serverRole === 'worker') {
         await provisionOfflineTaskEditLease({
           deviceId: selectedDeviceId, actorId: serverActorId,
           organizationId: organizationId.trim(), role: serverRole,
