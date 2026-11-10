@@ -147,6 +147,21 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'invalid_batch_status_transition' });
       }
+      if (status === 'completed') {
+        // An unresolved physical handover must not be disguised as a completed
+        // batch. The declaration is immutable; a different actor must receipt
+        // it before the chief may close the batch.
+        const pendingHandoffs = await client.query(`SELECT 1
+          FROM production_stage_handoffs h
+          LEFT JOIN production_stage_receipts r
+            ON r.organization_id=h.organization_id AND r.handoff_id=h.id
+          WHERE h.organization_id=$1 AND h.batch_id=$2 AND r.handoff_id IS NULL
+          LIMIT 1`, [actor.organization_id, params.data.id]);
+        if (pendingHandoffs.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({ error: 'handoff_receipt_pending' });
+        }
+      }
       const next = await client.query(`SELECT COALESCE(max(event_number),0)+1 AS number
         FROM production_batch_events WHERE organization_id=$1 AND batch_id=$2`,
         [actor.organization_id,params.data.id]);
