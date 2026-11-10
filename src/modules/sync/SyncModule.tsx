@@ -188,6 +188,7 @@ export function SyncModule() {
       // requiring a separate tap for every revision of the same task.
       // Bound network requests to avoid an indefinitely busy screen.
       const pushed = { accepted: 0, conflicts: 0, rejected: 0 };
+      let uploadLimitReached = false;
       for (let batch = 0; batch < 20; batch++) {
         const result = await pushAtomicTasks(session);
         pushed.accepted += result.accepted;
@@ -195,6 +196,7 @@ export function SyncModule() {
         pushed.rejected += result.rejected;
         if (result.accepted > 0) setMessage('Синхронизация: отправлено ' + pushed.accepted + ' изменений...');
         if (result.accepted === 0) break;
+        if (batch === 19) uploadLimitReached = true;
       }
       const outstanding = await db.hybridTaskOutbox.count();
       if (outstanding > 0) {
@@ -202,7 +204,9 @@ export function SyncModule() {
         // acknowledged revisions first, or inspect conflicts and rejections.
         setMessage('Отправлено: ' + pushed.accepted + ', конфликты: ' + pushed.conflicts +
           ', отклонено сервером: ' + pushed.rejected + '. Осталось локальных изменений: ' +
-          outstanding + '. Получение с сервера отложено: повторите ручную синхронизацию или разрешите конфликт.');
+          outstanding + '. Получение с сервера отложено: ' +
+          (uploadLimitReached ? 'достигнут лимит отправки за один запуск, повторите синхронизацию.' :
+            'повторите ручную синхронизацию или разрешите конфликт.'));
         return;
       }
       let received = 0;
