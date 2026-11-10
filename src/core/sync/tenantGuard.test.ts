@@ -6,7 +6,7 @@ let revisions = 0;
 vi.mock('../db', () => ({
   db: {
     hybridSyncMetadata: {
-      where: () => ({ startsWith: () => ({ toArray: async () => [...state.values()].filter(x => x.key.startsWith('syncTenant:')) }) }),
+      where: () => ({ startsWith: (prefix: string) => ({ toArray: async () => [...state.values()].filter(x => x.key.startsWith(prefix)) }) }),
       get: async (key: string) => state.get(key),
       put: async (record: { key: string; value: number }) => { state.set(record.key, record); },
     },
@@ -28,6 +28,29 @@ describe('single-tenant sync guard', () => {
     await assertSyncTenant('https://example.com/', org);
     expect([...state.keys()]).toEqual(['syncTenant:https://example.com:' + org]);
   });
+  it('pins a fresh installation to one authenticated server actor without storing tokens', async () => {
+    const actor = '33333333-3333-4333-8333-333333333333';
+    await assertSyncTenant('https://example.com', org, actor);
+    await assertSyncTenant('https://example.com/', org, actor);
+    expect([...state.keys()]).toEqual([
+      'syncTenant:https://example.com:' + org,
+      'syncActor:https://example.com:' + org + ':' + actor,
+    ]);
+    expect([...state.values()].every(record => record.value === 1)).toBe(true);
+    await expect(assertSyncTenant('https://example.com', org,
+      '44444444-4444-4444-8444-444444444444')).rejects.toThrow('another server user');
+    expect([...state.keys()]).toHaveLength(2);
+  });
+
+  it('refuses to claim an existing unidentified task queue for a new account', async () => {
+    const actor = '33333333-3333-4333-8333-333333333333';
+    await assertSyncTenant('https://example.com', org);
+    operations = 1;
+    await expect(assertSyncTenant('https://example.com', org, actor))
+      .rejects.toThrow('no verified user ownership');
+    expect([...state.keys()]).toEqual(['syncTenant:https://example.com:' + org]);
+  });
+
   it('blocks switching organizations', async () => {
     await assertSyncTenant('https://example.com', org);
     await expect(assertSyncTenant('https://example.com', otherOrg)).rejects.toThrow('another organization');
