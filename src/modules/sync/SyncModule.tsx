@@ -70,7 +70,6 @@ export function SyncModule() {
       if (typeof data.user.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(data.user.id)) {
         throw new Error('Сервер не вернул корректный ID пользователя');
       }
-      await assertSyncTenant(serverUrl, data.user.organizationId);
       const devicesResponse = await fetch(serverEndpoint(serverUrl, '/devices/mine'), {
         headers: { Authorization: 'Bearer ' + data.accessToken },
       });
@@ -80,6 +79,8 @@ export function SyncModule() {
         throw new Error('Сервер вернул некорректный список устройств');
       }
       const deviceIds = enrolled.devices.map(device => device.id);
+      // Pin this installation to the verified server user only after required login checks.
+      await assertSyncTenant(serverUrl, data.user.organizationId, data.user.id);
       // A new login must never inherit a previous actor's offline edit grant.
       await clearOfflineTaskEditLease();
       // Commit the UI session only after all required login checks succeed.
