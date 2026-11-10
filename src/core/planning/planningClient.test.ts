@@ -117,6 +117,25 @@ describe('authenticated M2 planning client', () => {
     });
   });
 
+  it('keeps a caller-supplied genealogy UUID unchanged when retrying after a lost reply', async () => {
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, options: RequestInit) => {
+      sent.push(String(options.body));
+      return { ok: true, json: async () => ({ id: 'operation-1' }) };
+    }));
+    const declaration = {
+      declarationId: '0b152b11-2437-4c31-a005-42bc20f38676',
+      sourceBatchId: 'cathode-1', kind: 'assembly' as const,
+      sourceQuantity: '2.500000', sourceUnit: 'kg' as const,
+      targetQuantity: '100', targetUnit: 'cells' as const,
+    };
+    await planningApi.declareGenealogy(session, 'cell-1', declaration);
+    await planningApi.declareGenealogy(session, 'cell-1', declaration);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toBe(sent[1]);
+    expect(JSON.parse(sent[0]).declarationId).toBe(declaration.declarationId);
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
