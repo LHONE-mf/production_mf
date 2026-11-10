@@ -3,6 +3,7 @@
 
 import { SyncPacket, UserRole } from '../core/types';
 import { signPacket, hasWorkshopKey } from '../core/security';
+import { db } from '../core/db';
 
 export const PACKET_PREFIX = 'LIP:';
 
@@ -18,10 +19,33 @@ export function currentSenderRole(): UserRole | undefined {
   }
 }
 
+/** The legacy HMAC transfer channel cannot grant access to server-owned
+ * tasks. Reject task/status exports that would bypass server task permissions.
+ * Local-only demo transfers continue to use the legacy QR/Bluetooth format. */
+function transferredTaskId(packet: SyncPacket): string | null {
+  const payload = packet.payload;
+  if (!payload || typeof payload !== 'object') return null;
+  const value = payload as Record<string, unknown>;
+  const id = packet.type === 'task' ? value.id :
+    packet.type === 'result' ? value.taskId :
+    packet.type === 'forced-push' && 'title' in value && 'status' in value && 'createdBy' in value ? value.id : null;
+  return typeof id === 'string' ? id : null;
+}
+
 /** Пакет → текст для QR / сообщения. Подпись (sig) добавляется автоматически,
  *  если пакет ещё не подписан. Роль отправителя подставляется из текущей сессии.
  *  Бросает ошибку, если ключ цеха не задан — неподписанные пакеты не выпускаем. */
 export async function encodePacket(p: SyncPacket): Promise<string> {
+  const taskId = transferredTaskId(p);
+  if (taskId) {
+    const [revision, queued] = await Promise.all([
+      db.hybridTaskRevisions.get(taskId),
+      db.hybridTaskOutbox.where('entityId').equals(taskId).count(),
+    ]);
+    if (revision || queued) {
+      throw new Error('Серверное задание нельзя передавать через QR/Bluetooth: используйте защищённую синхронизацию');
+    }
+  }
   if (!hasWorkshopKey()) {
     throw new Error('Ключ цеха не задан: задайте его в разделе «Синхронизация», чтобы подписывать пакеты');
   }
