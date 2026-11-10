@@ -131,6 +131,65 @@ describe('M2 quality inspection observation panel',()=>{
     expect(page.textContent).toContain('Формальное решение о качестве не вынесено');
   });
 
+  it('shows the latest review and writes a documented nonblocking decision once',async()=>{
+    const requests:Array<{url:string;options:RequestInit}>=[];
+    let lastReview:unknown=null;
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      requests.push({url,options});
+      if(url.endsWith('/steps'))return {ok:true,json:async()=>({
+        steps:[{number:1,name:'Coating',stage:'coating',workshopId:'coating',evidence:null}],
+      })};
+      if(options.method==='POST'){
+        const input=JSON.parse(String(options.body));
+        lastReview={number:1,outcome:input.outcome,reason:input.reason,
+          reviewedBy:'chief',reviewedAt:'2026-11-10T12:00:00Z'};
+        return {ok:true,json:async()=>({reviewNumber:1,alreadyRecorded:false})};
+      }
+      return {ok:true,json:async()=>({
+        batchId:'batch-1',observations:[{
+          id:'flagged-1',stepNumber:1,kind:'visual',characteristic:'Coating edge',
+          observedValue:null,observedUnit:null,attentionRequired:true,
+          note:'Edge irregularity',recordedBy:'chief',
+          recordedAt:'2026-11-10T11:30:00Z',latestReview:lastReview,
+        }],
+      })};
+    }));
+    setServerConnection(connection);
+    const page=await mount();
+    expect(page.textContent).toContain('Требуется проверка перед завершением');
+    expect(page.textContent).toContain('не независимая приёмка ОТК');
+    const button=[...page.querySelectorAll('button[type="submit"]')]
+      .find(b=>b.textContent?.includes('Сохранить проверку')) as HTMLButtonElement;
+    expect(button).toBeTruthy();
+    expect(button.disabled).toBe(true);
+    const choice=page.querySelector('select[aria-label="Результат проверки"]') as HTMLSelectElement;
+    await act(async()=>{
+      choice.value='reviewed_no_block';
+      choice.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    const reason=page.querySelector('textarea[aria-label="Обоснование проверки"]') as HTMLTextAreaElement;
+    await act(async()=>{
+      setText(reason,'Independent measurement checked and documented');
+    });
+    expect(button.disabled).toBe(false);
+    await act(async()=>{
+      button.closest('form')!.dispatchEvent(new Event('submit',{
+        bubbles:true,cancelable:true,
+      }));
+      await Promise.resolve();
+    });
+    const posts=requests.filter(r=>r.options.method==='POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0].url).toBe(
+      'https://mes.example.org/planning/batches/batch-1/inspections/flagged-1/reviews');
+    expect(JSON.parse(String(posts[0].options.body))).toMatchObject({
+      outcome:'reviewed_no_block',
+      reason:'Independent measurement checked and documented',
+    });
+    expect(page.textContent).toContain('Проверено: не блокирует завершение');
+    expect(page.textContent).toContain('официальная приёмка качества не выполнена');
+  });
+
   it('keeps finished batches read-only and allows held batches to register observations',async()=>{
     vi.stubGlobal('fetch',vi.fn(async(url:string)=>({
       ok:true,json:async()=>url.endsWith('/steps')?{
