@@ -142,11 +142,27 @@ These declarations **do not** move inventory, guarantee mass balance,
 automatically update batch statuses or constitute a validated physical
 handover. No real manufacturing records are modified.
 
-**Remaining for M2:** workshop-scoped permissions for non-chief batch actions,
-handover and genealogy UI, true split/merge workflows and reconciled input/output
-quantities, complete pilot route, and tested server deployment. M1 shared
-synchronization still applies to tasks only; physical acceptance is deferred,
-**not** passed.
+**M2 handover checkpoint (2026-11-10): online send/receipt flow built, M2 remains open.**
+Additive migration `009_m2_stage_handoffs.sql` stores immutable sent
+handoffs and separate immutable destination receipts. The authenticated
+server checks the order's approved route, consecutive steps in the
+batch's cathode/anode/cell line, quantity and unit, active batch state,
+previous receipt and tenant ownership. Chiefs can send; chiefs or masters
+with current destination workshop membership may receive, but the sender
+cannot confirm their own transfer. Masters see only their authorized
+pending inbox. A batch with unacknowledged handoffs cannot be marked
+completed. The Planning screen shows stage transfer history, supports
+sending the next eligible step and provides an incoming-transfer inbox.
+This is **online only**, not M1 task sync or a verified physical movement,
+inventory posting or production-yield calculation. Automated client,
+UI and PostgreSQL integration checks cover routing and permissions.
+
+**Remaining for M2:** stage journal/operation evidence, broader
+workshop-scoped sender permissions, genealogy detail UI, reconciled
+material quantities, true split/merge production execution,
+a real end-to-end pilot route and deployed-server acceptance.
+M1 shared synchronization still applies to tasks only; its physical
+two-device acceptance is deferred, **not** passed.
 
 ### M3 — Stage operations (P1)
 - [ ] Shared operation-run service and validation against specification versions.
