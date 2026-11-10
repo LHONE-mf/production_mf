@@ -222,17 +222,10 @@ export function SyncModule() {
         if (result.accepted === 0) break;
         if (batch === 19) uploadLimitReached = true;
       }
+      // Pull can now store blocked task versions in a durable inbox while
+      // applying unrelated server tasks. Do not stall the whole workshop
+      // because one task is conflicted or awaits upload.
       const outstanding = await db.hybridTaskOutbox.count();
-      if (outstanding > 0) {
-        // A pull cannot safely overwrite tasks with local queued edits. Finish
-        // acknowledged revisions first, or inspect conflicts and rejections.
-        setMessage('Отправлено: ' + pushed.accepted + ', конфликты: ' + pushed.conflicts +
-          ', отклонено сервером: ' + pushed.rejected + '. Осталось локальных изменений: ' +
-          outstanding + '. Получение с сервера отложено: ' +
-          (uploadLimitReached ? 'достигнут лимит отправки за один запуск, повторите синхронизацию.' :
-            'повторите ручную синхронизацию или разрешите конфликт.'));
-        return;
-      }
       let received = 0;
       let hasMore = false;
       for (let page = 0; page < 20; page++) {
@@ -246,7 +239,12 @@ export function SyncModule() {
           throw new Error('Сервер сообщил о дополнительных изменениях, но не вернул ни одного задания');
         }
       }
-      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
+      const deferred = await db.hybridTaskDeferred.count();
+      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + received +
+        ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
+        (outstanding ? '. Осталось локальных правок: ' + outstanding : '') +
+        (deferred ? '. Серверных изменений отложено: ' + deferred + ' (разрешите конфликт задания).' : '') +
+        (uploadLimitReached ? '. Достигнут лимит отправки за один запуск.' : '') +
         (hasMore ? '. Есть дополнительные изменения — повторите синхронизацию.' : '.'));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка синхронизации'); }
     finally { setBusy(false); }
