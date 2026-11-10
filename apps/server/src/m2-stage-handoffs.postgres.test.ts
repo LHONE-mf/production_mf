@@ -141,6 +141,9 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     ]));
     expect((await send(randomUUID(),2,3)).statusCode).toBe(409);
     expect((await app.inject({method:'POST',url:'/planning/batches/'+batchId+'/status',
+      headers:auth(0),payload:{expectedStatus:'in_progress',status:'completed'}})).json())
+      .toMatchObject({error:'handoff_receipt_pending'});
+    expect((await app.inject({method:'POST',url:'/planning/batches/'+batchId+'/status',
       headers:auth(0),payload:{expectedStatus:'in_progress',status:'hold',
         reason:'Manual inspection required'}})).statusCode).toBe(200);
     expect((await receive(secondId)).statusCode).toBe(200);
