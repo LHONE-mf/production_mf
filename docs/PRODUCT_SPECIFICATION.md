@@ -90,20 +90,32 @@ Automatic background synchronization remains disabled.
 - [ ] Input/output transfer records and batch detail/history UI.
 Gate: one pilot batch completes a documented route with traceable handovers.
 
-**M2 checkpoint (2026-11-10): first planning slice implemented, M2 still open.**
-The additive `006_m2_planning.sql` migration introduces organization-scoped
-routes, separately numbered route versions, immutable approved steps, cathode/
-anode/common route branches, production orders with exact decimal quantities,
-and unique organization-scoped batch codes. The authenticated Fastify planning
-API permits chief/technologist draft routes, chief approval, and chief-only
-draft production-order creation and listing, with an approved-route requirement.
-Real PostgreSQL integration tests verify access control, tenant isolation,
-rollback, code uniqueness and version immutability; M1 sync remains limited to
-tasks. **Not implemented:** route-version editing API, order release, batch
-transitions or handovers, genealogy, UI, or live production workflows.
-Existing manufacturing records are untouched. M1 physical acceptance remains
-deferred, not passed.
+**M2 checkpoint (2026-11-10): planning and batch API implemented; M2 remains open.**
+The additive `006_m2_planning.sql` migration establishes organization-scoped
+production orders, route identity and versioned ordered steps, immutable approved
+route versions, cathode/anode/common route lines and per-organization batch codes.
+The `007_m2_batch_lifecycle.sql` migration adds optional positive batch
+quantities and immutable creation/status event history. Existing shop-floor
+records are not migrated or modified.
 
+Server API now supports: chief/technologist route drafts, new draft versions
+copied from the latest approved version, transactional replacement of draft
+steps, chief approval, chief-only order creation and release, chief-only batch
+creation against released orders, and chief-only batch state transitions
+(created → in_progress/hold/scrapped; in_progress → hold/completed/scrapped;
+hold → in_progress/scrapped). Completed and scrapped are terminal. Every API
+batch state transition and creation is committed with an append-only event.
+Stale `expectedStatus` changes are rejected, and hold/scrap require a reason.
+Real PostgreSQL integration tests cover actor and tenant boundaries, rollback,
+immutable route steps, conflict detection, event ordering and terminal status.
+All automated checks passed on commit `6fcb588` (CI `42813936459`).
+
+**Remaining for M2:** order/batch management screens, workshop-scoped
+permissions for non-chief batch actions, detailed route handovers, batch
+genealogy (split/merge/scrap), quantities consumed/produced, and a complete
+pilot route. No deployed-server or physical production test has been done.
+M1 shared synchronization still applies to tasks only; M1 physical acceptance
+is deferred, **not** passed.
 ### M3 — Stage operations (P1)
 - [ ] Shared operation-run service and validation against specification versions.
 - [ ] Integrate existing stage journals incrementally without losing records.
