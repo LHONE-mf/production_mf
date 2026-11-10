@@ -38,6 +38,14 @@ export type HandoffInboxItem = {
 export type BatchHandoff = Omit<HandoffInboxItem, 'batchId' | 'batchCode'> & {
   receivedBy: string | null; receivedAt: string | null; receiptNote: string | null;
 };
+export type GenealogyKind = 'assembly' | 'split' | 'merge' | 'consumption';
+export type BatchGenealogyLink = {
+  id: string; sourceBatchId: string; targetBatchId: string;
+  sourceCode: string; targetCode: string; kind: GenealogyKind;
+  sourceQuantity: string; sourceUnit: QuantityUnit;
+  targetQuantity: string; targetUnit: QuantityUnit;
+  actorId: string; note: string | null; occurredAt: string;
+};
 export type StepDetail = RouteStep & { number: number };
 
 function endpoint(origin: string, path: string): string {
@@ -144,4 +152,13 @@ export const planningApi = {
     planningRequest<{ id: string; status: 'received' }>(
       c, '/planning/handoffs/' + id(handoffId) + '/receive',
       { method: 'POST', body: note?.trim() ? { note: note.trim() } : {} }),
+  batchGenealogy: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; links: BatchGenealogyLink[] }>(
+      c, '/planning/batches/' + id(batchId) + '/links', { signal }),
+  declareGenealogy: (c: PlanningSession, targetBatchId: string, input: {
+    sourceBatchId: string; kind: GenealogyKind;
+    sourceQuantity: string; sourceUnit: QuantityUnit;
+    targetQuantity: string; targetUnit: QuantityUnit; note?: string;
+  }) => planningRequest<{ id: string; sourceBatchId: string; targetBatchId: string; kind: GenealogyKind }>(
+    c, '/planning/batches/' + id(targetBatchId) + '/links', { method: 'POST', body: input }),
 };
