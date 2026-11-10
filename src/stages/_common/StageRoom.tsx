@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { StageId, JournalEntry } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { StageJournal } from './StageJournal';
@@ -24,7 +25,8 @@ export function StageRoom({ stage, title, icon, tool }: Props) {
   const [tab, setTab] = useState<'tool' | 'journal' | 'comments'>('tool');
 
   const tasks = useLiveQuery(
-    () => db.tasks.where('stage').equals(stage).reverse().sortBy('updatedAt'),
+    async () => (await listVisibleTasks()).filter(task => task.stage === stage)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
     [stage],
   );
 
