@@ -627,6 +627,23 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 
+  it('rejects an empty pull page that falsely claims more changes', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 5 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ changes: [], nextCursor: 5, hasMore: true }),
+    }));
+    await expect(pullAtomicTasks(session)).rejects.toThrow('cursor does not match delivered changes');
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(5);
+    db.close();
+    await db.open();
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(5);
+  });
+
   it.each([-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1] as const)(
     'refuses corrupted local pull cursor %s before making a network request',
     async cursor => {
