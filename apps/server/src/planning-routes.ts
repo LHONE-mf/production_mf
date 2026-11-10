@@ -43,39 +43,6 @@ function postgresCode(error: unknown) {
  * scoped order permissions are designed, only chiefs may create orders.
  */
 export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
-  // Planning needs an actual workshop directory. Never trust workshop IDs typed
-  // by the browser to belong to another organization.
-  app.get('/planning/workshops', async (request, reply) => {
-    const actor = await authenticate(pool, request.headers.authorization);
-    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
-    if (!['chief', 'technologist'].includes(actor.role))
-      return reply.code(403).send({ error: 'forbidden' });
-    const result = await pool.query(`SELECT id,name FROM workshops
-      WHERE organization_id=$1 ORDER BY name,id LIMIT 500`, [actor.organization_id]);
-    return { workshops: result.rows };
-  });
-
-  app.post('/planning/workshops', async (request, reply) => {
-    const actor = await authenticate(pool, request.headers.authorization);
-    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
-    if (actor.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
-    const parsed = z.object({
-      id: z.string().trim().min(1).max(120),
-      name: z.string().trim().min(1).max(300),
-    }).strict().safeParse(request.body);
-    if (!parsed.success) return reply.code(400).send({ error: 'invalid_workshop' });
-    try {
-      await pool.query(`INSERT INTO workshops(organization_id,id,name)
-        VALUES ($1,$2,$3)`, [actor.organization_id,parsed.data.id,parsed.data.name]);
-      return reply.code(201).send({ id: parsed.data.id,name: parsed.data.name });
-    } catch (error) {
-      if (postgresCode(error) === '23505')
-        return reply.code(409).send({ error: 'workshop_already_exists' });
-      throw error;
-    }
-  });
-
-
   // Workshop reference data for route-step selection. It is not a local demo
   // setting: values come from the authenticated, tenant-scoped server.
   app.get('/planning/workshops', async (request, reply) => {
