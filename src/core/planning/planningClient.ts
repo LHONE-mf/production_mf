@@ -156,6 +156,7 @@ export const planningApi = {
     planningRequest<{ batchId: string; links: BatchGenealogyLink[] }>(
       c, '/planning/batches/' + id(batchId) + '/links', { signal }),
   declareGenealogy: (c: PlanningSession, targetBatchId: string, input: {
+    declarationId?: string; // stable UUID makes uncertain network retries safe
     sourceBatchId: string; kind: GenealogyKind;
     sourceQuantity: string; sourceUnit: QuantityUnit;
     targetQuantity: string; targetUnit: QuantityUnit; note?: string;
