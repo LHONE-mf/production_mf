@@ -110,7 +110,24 @@ Real PostgreSQL integration tests cover actor and tenant boundaries, rollback,
 immutable route steps, conflict detection, event ordering and terminal status.
 All automated checks passed on commit `6fcb588` (CI `42813936459`).
 
-**Remaining for M2:** order/batch management screens, workshop-scoped
+**M2 UI checkpoint (2026-11-10): web/Android planning workspace implemented, M2 still open.**
+The `Планирование` tab now uses the *verified server login* through
+`src/core/sync/serverConnection.ts`, never the local demo user's token.
+The online-only workspace allows authorized planners to create workshops,
+draft/approve/fork routes, select workshops for ordered steps, and inspect
+versions. Server chiefs can create/release production orders, create
+cathode/anode/cell batches, transition their states and review append-only
+status history. It shows API errors and warns that M2 changes have **no offline
+queue**. Local logout clears the volatile server session and offline task
+access grant. The Fastify server has exact-origin CORS for the Android Capacitor
+WebView and local development; separately hosted web origins must be explicitly
+added via `CORS_ALLOWED_ORIGINS` (comma-separated full HTTPS origins).
+Automated backend, API-client and rendered UI role-gating tests have passed
+on commit `8410646` (CI `42818123387`); Android APK packaging is
+tracked separately.
+
+**Remaining for M2:** workshop-scoped
+
 permissions for non-chief batch actions, detailed route handovers, batch
 genealogy (split/merge/scrap), quantities consumed/produced, and a complete
 pilot route. No deployed-server or physical production test has been done.
