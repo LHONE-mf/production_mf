@@ -57,8 +57,13 @@ export type BatchStepRecord = {
   evidence: StepEvidence | null;
 };
 export type StepDetail = RouteStep & { number: number };
+export type LocalSourceKind = 'journal' | 'mix_batch' | 'coat_run';
+export type LocalSourceMeasure = {
+  kind: 'dry_solids_kg' | 'coated_side_a_m'; value: string;
+};
 export type LocalJournalLink = {
   id: string; stepNumber: number; sourceStage: string; sourceEntryId: string;
+  sourceKind: LocalSourceKind; sourceMeasure: LocalSourceMeasure | null;
   sourceCreatedAt: string; summary: string; defects: string | null;
   linkedBy: string; linkedAt: string;
 };
@@ -191,6 +196,7 @@ export const planningApi = {
       c, '/planning/batches/' + id(batchId) + '/journal-links', { signal }),
   attachLocalJournal: (c: PlanningSession, batchId: string, stepNumber: number, input: {
     linkId: string; sourceEntryId: string; sourceStage: string;
+    sourceKind?: LocalSourceKind; sourceMeasure?: LocalSourceMeasure;
     sourceCreatedAt: string; summary: string; defects?: string;
   }) => planningRequest<{ id: string; alreadyLinked: boolean }>(
     c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/journal-links',
