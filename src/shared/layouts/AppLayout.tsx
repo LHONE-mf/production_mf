@@ -2,6 +2,8 @@ import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../../core/store/authStore';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
+import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
 import { UserRole, Task } from '../../core/types';
 import { STAGES } from '../../stages/registry';
@@ -72,7 +74,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       id: 'sync',
       label: 'Синхронизация',
       icon: <Radio className="w-5 h-5" />,
-      roles: [UserRole.MASTER, UserRole.CHIEF],
+      roles: [UserRole.WORKER, UserRole.MASTER, UserRole.CHIEF],
     },
     {
       id: 'reports',
@@ -86,7 +88,14 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
   // Комнаты этапов: worker видит только комнаты своих заданий, остальные роли — все этапы
   const tasksByWorker = useLiveQuery<Task[]>(
-    async () => (currentUser ? db.tasks.where('assignedTo').equals(currentUser.id).toArray() : []),
+    async () => {
+      if (!currentUser) return [];
+      const [tasks, lease] = await Promise.all([
+        listVisibleTasks(), requireOfflineTaskEditLease().catch(() => null),
+      ]);
+      return tasks.filter(task => task.assignedTo === currentUser.id ||
+        (lease?.role === 'worker' && task.assignedTo === lease.actorId));
+    },
     [currentUser?.id],
   ) ?? [];
   const visibleStages = (() => {
