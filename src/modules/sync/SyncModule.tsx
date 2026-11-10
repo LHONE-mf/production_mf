@@ -12,6 +12,7 @@ import type { TaskPayloadV1 } from '../../core/sync/taskDto';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import { assertSyncTenant } from '../../core/sync/tenantGuard';
 import { provisionOfflineTaskEditLease, clearOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { fetchAuthorizedTaskIds } from '../../core/sync/taskAccessClient';
 
 function serverEndpoint(origin: string, path: string) {
   const url = new URL(origin);
@@ -163,14 +164,19 @@ export function SyncModule() {
     setBusy(true); setError(''); setMessage('');
     try {
       if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'android') throw new Error('Подтверждение устройства доступно только в Android');
+      // A failed re-verification must not leave an old authorization scope
+      // active after a server membership or assignment change.
+      await clearOfflineTaskEditLease();
       const proven = await authenticateAndroidDevice(session, selectedDeviceId);
-      // Only a server-authenticated chief/master with a fresh, device-bound
-      // proof may stage offline task edits. The grant expires with that proof.
+      // Current visibility is obtained from the server under the same fresh
+      // device proof; stale cached tasks are hidden, never deleted.
       if (serverRole === 'chief' || serverRole === 'master' || serverRole === 'worker') {
+        const authorizedTaskIds = await fetchAuthorizedTaskIds(proven);
         await provisionOfflineTaskEditLease({
           deviceId: selectedDeviceId, actorId: serverActorId,
           organizationId: organizationId.trim(), role: serverRole,
           expiresAt: proven.offlineEditExpiresAt ?? proven.deviceProofExpiresAt!,
+          authorizedTaskIds,
         });
       }
       setSession(proven);
@@ -263,6 +269,18 @@ export function SyncModule() {
         if (pulled.received === 0) {
           throw new Error('Сервер сообщил о дополнительных изменениях, но не вернул ни одного задания');
         }
+      }
+      // Refresh visible IDs after pushes/reassignments; fail closed if the
+      // actor or device loses access during synchronization.
+      if (serverRole === 'chief' || serverRole === 'master' || serverRole === 'worker') {
+        await clearOfflineTaskEditLease();
+        const authorizedTaskIds = await fetchAuthorizedTaskIds(session);
+        await provisionOfflineTaskEditLease({
+          deviceId: session.deviceProofDeviceId!, actorId: serverActorId,
+          organizationId: organizationId.trim(), role: serverRole,
+          expiresAt: session.offlineEditExpiresAt ?? session.deviceProofExpiresAt!,
+          authorizedTaskIds,
+        });
       }
       const deferred = await db.hybridTaskDeferred.count();
       setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + received +
