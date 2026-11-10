@@ -176,9 +176,28 @@ equipment participated. CI `42843086813` passed 130 server tests and
 frontend checks on commit `87532ef`. This demonstrates integration
 consistency, **not** M2's real workshop acceptance gate.
 
-**Remaining for M2:** stage journal/operation evidence, broader
-workshop-scoped sender permissions, full traversable genealogy UI,
-reconciled input/output material quantities, true split/merge production
+**M2 route-step evidence checkpoint (2026-11-10):**
+The additive `010_m2_step_evidence.sql` migration and authenticated
+`/planning/batches/:id/steps` API provide append-only, organization-scoped
+records of a specific approved route step being started, completed (with
+a reported quantity and unit), or flagged with a deviation note. Step
+records retain the actor, server timestamp, optional equipment reference,
+original route version and workshop. Recording a later step's start
+requires completion evidence for the preceding branch step **and** its
+independently confirmed handover. Stable client event UUIDs allow
+idempotent retries. The online Planning screen includes a separate
+route-step evidence panel; existing local stage journals remain untouched.
+PostgreSQL tests cover identity and branch FKs, activity and sequence
+rules, independent receipt, immutable history and exact retries.
+**This does not yet enforce full completion of a batch against all its
+route steps**, reconcile measured yields, validate equipment, or link
+local legacy journals to server events. No production equipment was
+connected and this is not an accepted real-world route.
+
+**Remaining for M2:** integration of actual stage journals and inspection
+results, closing the batch-status gate against complete route evidence,
+broader workshop-scoped sender/operator permissions, traversable multi-level
+genealogy UI, reconciled input/output material quantities, true split/merge
 execution, a physical end-to-end pilot and deployed-server acceptance.
 M1 shared synchronization still applies to tasks only; its physical
 two-device acceptance is deferred, **not** passed.
