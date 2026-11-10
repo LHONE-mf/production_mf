@@ -6,6 +6,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
 import { createServerManagedTask, editServerManagedTask } from '../../core/sync/atomicTasks';
 import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { 
   Plus, Search, Clock, CheckCircle, 
   Circle, Play, XCircle
@@ -44,7 +45,7 @@ const PRIORITY_CONFIG = {
 
 export function TasksModule() {
   const { currentUser } = useAuthStore();
-  const storedTasks = useLiveQuery(() => db.tasks.toArray(), []);
+  const storedTasks = useLiveQuery(() => listVisibleTasks(), []);
   const users = useLiveQuery(() => db.users.toArray(), []);
   const editLease = useLiveQuery(() => db.hybridTaskEditLeases.get('active'), []);
   const sharedTaskVisibility = useLiveQuery(async () => {
