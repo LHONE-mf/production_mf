@@ -1,3 +1,58 @@
+## 2026-11-10 — Security, reproducible server installs and session handoff
+
+- `8ea7aed`: committed the independent server lockfile and switched web/server
+  CI, the Android emulator bridge and both server Docker install stages to
+  `npm ci`. Upgraded Zod to 4.6.7 for GHSA-mrhx-c7xc-m3w5. Collection validation
+  now rejects oversized comment arrays before expanding per-item errors.
+  `z.guid()` preserves the old UUID spelling contract; actor, device, tenant
+  and record-scope permissions remain enforced. Added bounded-error and
+  legacy-UUID compatibility regressions. Clean install, typecheck, all **156
+  backend tests** against isolated PostgreSQL 16, and build passed. Exact-commit
+  CI `42890626209` and Run Tests `42890626203` passed.
+- `e42b23a`: fixed a pre-existing integration assertion that counted earlier
+  preserved test tenants. It now explicitly verifies its own two tenant IDs;
+  repeated full runs pass without deleting immutable records.
+- `3506ffb`: upgraded only the existing Vitest dependency in the frontend and
+  server to 5.1.0, removing test-runner advisories. Reviewed official migration
+  requirements; Node 22.12+ / Node 24 supported. All **192 frontend / 156
+  backend tests**, both typechecks and builds passed without weakening test
+  assertions. Exact-commit CI `42891035866` and Run Tests `42891035711` passed.
+- `fa70f79`, `a3675f3`: applied compatible Vite 6.4.6 and source-map-js 1.2.2
+  security patches after reviewing upstream changes. `ab4637c` removed
+  react-router-dom (and its transitive routers) after a repository-wide search
+  confirmed no application imports; navigation uses the existing tab layout.
+  Each change passed frontend typecheck, all 192 tests and production/PWA build.
+  The final dependency set passed real Chromium **390×844 / 1365×900** against
+  Fastify and disposable PostgreSQL: two-level ancestry, return path, unchanged
+  operation target, exact quantities, no overflow, 44px controls, no exceptions.
+- Audit snapshot: server **zero** advisories including dev dependencies;
+  frontend **zero high/critical**, six moderate and two low. Frontend runtime-only
+  audit reports one moderate `uuid` advisory affecting v3/v5/v6 buffer APIs;
+  application code imports v4 only and calls none of those affected APIs.
+  Other findings are PWA build-tool dependencies (glob/minimatch/deepmerge,
+  rimraf and the plugin chain). A forced plugin downgrade is not accepted.
+  Review a compatible upstream PWA update and UUID major/native replacement
+  before production release; next dependency review due **2026-11-17**. This is
+  a scoped audit snapshot, not a production security sign-off.
+- Container-image verification limit: the local Docker VFS build exhausted the
+  small workspace disk during the final image layer. Both install stages and
+  TypeScript compilation ran, but **the final image did not build**. Only this
+  task's identified transient build cache was removed; dependencies were
+  restored and clean locked tests/builds rerun. Do not report Docker-image
+  acceptance. No production database, migration, signing key or app ID changed.
+- Latest code and acceptance evidence should be checked against the exact head
+  on draft [PR #3](https://github.com/LHONE-mf/production_mf/pull/3); prior run
+  IDs above are pinned evidence, not claims about future commits. The signed
+  development APK for selection fix `5c4c0df` passed (`42889087796`), as did its
+  web/server CI (`42889097314`). Later APK packaging remains a separate check.
+- **Next useful M2 slice:** reconcile declared stage quantities/units with
+  actual journal links, then define workshop-scoped operator permissions and
+  real split/merge execution. Current genealogy remains a declaration, not
+  stock movement or physical consumption. M0 installed-upgrade/backup/restore,
+  M1 deployed-TLS/two-physical-device acceptance and the physical M2 pilot
+  remain open. No new Android emulator run and no production acceptance.
+  Automatic background synchronization remains disabled.
+
 ## 2026-11-10 — M2 selection safety after delayed network replies
 
 - Fixed reproducible Planning races: a slow previous order, batch history or
