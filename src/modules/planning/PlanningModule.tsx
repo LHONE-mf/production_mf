@@ -506,6 +506,103 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         </div>)}
         {selectedBatchRow && <div className="rounded-lg border border-slate-600 p-3 space-y-3">
           <h3 className="text-white font-medium">{selectedBatchRow.batchCode} · История</h3>
+          <div className="space-y-3 rounded-lg border border-slate-700 p-3">
+            <h4 className="font-medium text-white">Происхождение партии</h4>
+            <p className="text-xs text-slate-400">
+              Декларации связывают партии одного заказа. Они не списывают материалы,
+              не рассчитывают выход и не подтверждают физический расход.
+              Если подтверждение пропало из-за сети, сначала обновите историю, не создавайте его повторно.
+            </p>
+            {!genealogyLinks.length &&
+              <p className="text-slate-400 text-sm">Связей с другими партиями пока нет.</p>}
+            <ol className="space-y-2">
+              {genealogyLinks.map(link => <li key={link.id}
+                className="rounded-md border-l-2 border-emerald-600 bg-slate-950/50 p-2 text-sm">
+                <div className="text-slate-100">
+                  {link.sourceCode} → {link.targetCode} · {genealogyKinds[link.kind]}
+                </div>
+                <p className="text-slate-300">
+                  Источник: {link.sourceQuantity} {link.sourceUnit} ·
+                  Результат: {link.targetQuantity} {link.targetUnit}
+                </p>
+                <p className="text-slate-400 text-xs">
+                  {link.targetBatchId === selectedBatchRow.id ? 'Входящая связь' : 'Исходящая связь'}
+                  {' · '}{new Date(link.occurredAt).toLocaleString('ru-RU')}
+                </p>
+                {link.note && <p className="text-slate-400 text-xs whitespace-pre-wrap">{link.note}</p>}
+              </li>)}
+            </ol>
+            {['created', 'in_progress'].includes(selectedBatchRow.status) &&
+              <form className="space-y-2 border-t border-slate-700 pt-3"
+                onSubmit={event => { event.preventDefault();
+                  if (!chosenGenealogySource) return;
+                  void run(async () => {
+                    await planningApi.declareGenealogy(connection, selectedBatchRow.id, {
+                      sourceBatchId: chosenGenealogySource.id, kind: linkKind,
+                      sourceQuantity: linkSourceQuantity.trim(),
+                      sourceUnit: chosenGenealogySource.quantityUnit,
+                      targetQuantity: linkTargetQuantity.trim(),
+                      targetUnit: selectedBatchRow.quantityUnit,
+                      ...(linkNote.trim() ? { note: linkNote.trim() } : {}),
+                    });
+                    setLinkSourceId('');
+                    setLinkSourceQuantity('');
+                    setLinkTargetQuantity('');
+                    setLinkNote('');
+                  }, 'Связь происхождения записана на сервере');
+                }}>
+                <h5 className="font-medium text-slate-200 text-sm">Добавить связь происхождения</h5>
+                <label className="block text-xs text-slate-400">Тип связи
+                  <select aria-label="Тип связи партии" className={fieldClass + ' mt-1'}
+                    value={linkKind} onChange={event => {
+                      setLinkKind(event.target.value as GenealogyKind); setLinkSourceId('');
+                    }}>
+                    {Object.entries(genealogyKinds).map(([kind, title]) =>
+                      <option key={kind} value={kind}>{title}</option>)}
+                  </select>
+                </label>
+                <label className="block text-xs text-slate-400">Исходная завершённая партия
+                  <select aria-label="Исходная партия" className={fieldClass + ' mt-1'}
+                    value={genealogySources.some(source => source.id === linkSourceId) ? linkSourceId : ''}
+                    onChange={event => setLinkSourceId(event.target.value)} required>
+                    <option value="">Выберите партию</option>
+                    {genealogySources.map(source => <option key={source.id} value={source.id}>
+                      {source.batchCode} · {lineNames[source.materialLine]}
+                    </option>)}
+                  </select>
+                </label>
+                {!genealogySources.length &&
+                  <p className="text-amber-200 text-xs">
+                    Для этого типа связи нет завершённых исходных партий в данном заказе.
+                  </p>}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <label className="block text-xs text-slate-400">
+                    Количество из источника ({chosenGenealogySource?.quantityUnit ?? '—'})
+                    <input aria-label="Количество из источника" className={fieldClass + ' mt-1'}
+                      inputMode="decimal" required value={linkSourceQuantity}
+                      onChange={event => setLinkSourceQuantity(event.target.value)}
+                      placeholder="Например, 12.5" />
+                  </label>
+                  <label className="block text-xs text-slate-400">
+                    Количество результата ({selectedBatchRow.quantityUnit})
+                    <input aria-label="Количество результата" className={fieldClass + ' mt-1'}
+                      inputMode="decimal" required value={linkTargetQuantity}
+                      onChange={event => setLinkTargetQuantity(event.target.value)}
+                      placeholder="Например, 100" />
+                  </label>
+                </div>
+                <label className="block text-xs text-slate-400">Основание / примечание
+                  <textarea aria-label="Примечание о происхождении" className={fieldClass + ' mt-1'}
+                    rows={2} maxLength={2000} value={linkNote}
+                    onChange={event => setLinkNote(event.target.value)} />
+                </label>
+                <button type="submit" className={buttonClass}
+                  disabled={busy || !chosenGenealogySource ||
+                    !linkSourceQuantity.trim() || !linkTargetQuantity.trim()}>
+                  Записать связь
+                </button>
+              </form>}
+          </div>
           <div className="space-y-2 rounded-lg border border-slate-700 p-3">
             <h4 className="font-medium text-white">Передачи между этапами</h4>
             {!handoffHistory.length && <p className="text-slate-400 text-sm">Передач пока нет.</p>}
