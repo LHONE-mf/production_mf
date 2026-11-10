@@ -15,7 +15,7 @@ describe('selectable offline production source snapshots',()=>{
     expect(result).toHaveLength(3);
     expect(new Set(result.map(r=>r.key)).size).toBe(3);
     expect(result).toEqual(expect.arrayContaining([
-      expect.objectContaining({key:'journal:'+id,sourceMeasure:undefined}),
+      expect.objectContaining({key:'journal:'+id}),
       expect.objectContaining({key:'mix_batch:'+id,sourceStage:'slurry',
         sourceMeasure:{kind:'dry_solids_kg',value:'1.123456'}}),
       expect.objectContaining({key:'coat_run:'+id,sourceStage:'coating',
@@ -39,8 +39,9 @@ describe('selectable offline production source snapshots',()=>{
     ] as unknown as CoatRun[];
     const result=localSourceCandidates(journal,mixes,coat);
     expect(result).toEqual([expect.objectContaining({
-      sourceKind:'mix_batch',sourceEntryId:id,sourceMeasure:undefined,
+      sourceKind:'mix_batch',sourceEntryId:id,
     })]);
+    expect(result[0]).not.toHaveProperty('sourceMeasure');
     expect(mixes[1].batchKg).toBe(Infinity);
   });
 });
