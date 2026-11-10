@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { StepEvidencePanel } from './StepEvidencePanel';
 import { QuantityFlowPanel } from './QuantityFlowPanel';
 import { BatchGenealogyPanel } from './BatchGenealogyPanel';
@@ -90,6 +90,10 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<Route | null>(null);
   const [routeSteps, setRouteSteps] = useState<RouteStep[]>([]);
+  // A slower read must never retarget a newer order, batch or route selection.
+  const batchListRequest = useRef(0);
+  const batchDetailRequest = useRef(0);
+  const routeDetailRequest = useRef(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -159,13 +163,17 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   }, [connection.session.accessToken]);
 
   async function run(action: () => Promise<unknown>, success: string) {
+    const orderRequest = batchListRequest.current;
+    const detailRequest = batchDetailRequest.current;
     setBusy(true); setError(''); setMessage('');
     try {
       await action();
       if (getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
       await refresh();
-      if (selectedOrder) await loadBatches(selectedOrder, false);
-      if (selectedBatch) await loadEvents(selectedBatch);
+      if (selectedOrder && orderRequest === batchListRequest.current)
+        await loadBatches(selectedOrder, false);
+      if (selectedBatch && detailRequest === batchDetailRequest.current)
+        await loadEvents(selectedBatch);
       setMessage(success);
     } catch (cause) {
       const problem = formatProblem(cause);
@@ -175,8 +183,10 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   }
 
   async function loadBatches(orderId: string, resetDetail = true) {
+    const request = ++batchListRequest.current;
     setSelectedOrder(orderId);
     if (resetDetail) {
+      ++batchDetailRequest.current;
       setSelectedBatch(null);
       setBatches([]);
       setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
@@ -185,13 +195,17 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     }
     try {
       const response = await planningApi.batches(connection, orderId);
-      if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
+      if (request === batchListRequest.current &&
+          getServerConnection()?.session.accessToken === connection.session.accessToken) {
         setBatches(response.batches);
       }
-    } catch (cause) { setError(formatProblem(cause)); }
+    } catch (cause) {
+      if (request === batchListRequest.current) setError(formatProblem(cause));
+    }
   }
 
   async function loadEvents(batchId: string) {
+    const request = ++batchDetailRequest.current;
     if (selectedBatch !== batchId) {
       setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
       setLinkKind('assembly'); setLinkDeclarationId(crypto.randomUUID());
@@ -206,27 +220,34 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         (async () => { const order = orders.find(o => o.id === selectedOrder);
           return order ? planningApi.routeSteps(connection, order.routeId, order.routeVersion) : { steps: [] as StepDetail[] }; })(),
       ]);
-      if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
+      if (request === batchDetailRequest.current &&
+          getServerConnection()?.session.accessToken === connection.session.accessToken) {
         setEvents(response.events);
         setHandoffHistory(ledger.handoffs);
         setHandoffRoute(steps.steps);
       }
-    } catch (cause) { setError(formatProblem(cause)); }
+    } catch (cause) {
+      if (request === batchDetailRequest.current) setError(formatProblem(cause));
+    }
   }
 
   async function inspectRoute(route: Route) {
+    const request = ++routeDetailRequest.current;
     setRoutePreview(route);
     setRouteSteps([]);
     setError('');
     try {
       const response = await planningApi.routeSteps(connection, route.id, route.version);
-      if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
+      if (request === routeDetailRequest.current &&
+          getServerConnection()?.session.accessToken === connection.session.accessToken) {
         setRouteSteps(response.steps.map(step => ({
           name: step.name, stage: step.stage,
           workshopId: step.workshopId, electrodeLine: step.electrodeLine,
         })));
       }
-    } catch (cause) { setError(formatProblem(cause)); }
+    } catch (cause) {
+      if (request === routeDetailRequest.current) setError(formatProblem(cause));
+    }
   }
 
   function editStep(
@@ -425,7 +446,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
             <button className={secondaryClass} disabled={busy}
               onClick={() => void run(async () => { await planningApi.forkRoute(connection, routePreview.id); setRoutePreview(null); },
                 'Новая версия маршрута создана')}>Новая версия</button>}
-          <button className={secondaryClass} onClick={() => setRoutePreview(null)}>Закрыть</button>
+          <button className={secondaryClass} onClick={() => {
+            ++routeDetailRequest.current; setRoutePreview(null); setRouteSteps([]);
+          }}>Закрыть</button>
         </div>
       </div>}
     </div>}

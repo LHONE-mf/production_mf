@@ -1,3 +1,17 @@
+## 2026-11-10 — M2 selection safety after delayed network replies
+
+- Fixed reproducible Planning races: a slow previous order, batch history or
+  route-step response could overwrite the active selection. Read success and
+  failure handlers now ignore superseded requests, closing a route invalidates
+  its pending read, and a completed save cannot reopen an order/batch the user
+  has left. No record edits, server permissions or synchronization changed.
+- Added five rendered regressions covering out-of-order order/batch/route reads,
+  an obsolete network failure and navigation during a save. The original three
+  selection tests reproduced the defects before the fix.
+- Local frontend **192 tests passed**, typecheck and build passed. Chromium
+  phone/desktop genealogy workflow passed again against real Fastify and
+  disposable PostgreSQL. This does not establish physical Android acceptance.
+
 ## 2026-11-10 — M2 multi-level genealogy browser and complete link pagination
 
 - Verified remote branch `feat/hybrid-server-foundation` at `cf12fa7` before
@@ -7,7 +21,7 @@
   microsecond timestamps, all 501 declarations, invalid cursors and role/tenant
   isolation. All **154 backend tests**, typecheck and build passed locally;
   GitHub CI `42887780371` and Run Tests `42887783266` passed for that exact commit.
-- Added the connected read-only genealogy browser in Planning: follow sources
+- `0a1cfa6` added the connected read-only genealogy browser in Planning: follow sources
   and results across multiple levels, inspect declaration metadata and exact
   quantities, return via the visited path, refresh and load further pages.
   Related batches need not be in the loaded batch list. Operation forms remain
@@ -21,8 +35,11 @@
   APIs, not genuine manufacturing evidence.
 - No production data or schema changes. No automatic synchronization enabled.
   No new Android emulator or physical-device tests; M0 upgrade/restore and M1
-  deployed-TLS/two-device acceptance remain open. UI commit CI/APK verification
-  will be recorded after pushing the completed slice.
+  deployed-TLS/two-device acceptance remain open.
+- Exact UI commit `0a1cfa6` passed GitHub web/server CI `42888406142`
+  (PR) and `42888395392` (push), Run Tests `42888406230`, and signed
+  development Android APK packaging `42888395454`. APK packaging is not
+  emulator, physical-device or production acceptance.
 
 ## 2026-11-10 — M1 verified engineering checkpoint; field gate remains open
 
