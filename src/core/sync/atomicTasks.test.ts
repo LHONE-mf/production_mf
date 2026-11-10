@@ -22,7 +22,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('server-managed task offline writes', () => {
   beforeEach(async () => {
     await db.open();
-    await db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, db.hybridTaskEditLeases, db.hybridTaskDeferred, async () => {
+    await db.transaction('rw', [db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, db.hybridSyncMetadata, db.hybridTaskEditLeases, db.hybridTaskDeferred], async () => {
       await db.tasks.clear();
       await db.hybridTaskOutbox.clear();
       await db.hybridTaskRevisions.clear();
