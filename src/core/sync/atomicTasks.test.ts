@@ -567,7 +567,7 @@ describe('server-managed task offline writes', () => {
     respondFirst({ ok: true, json: async () => ({
       results: [{ operationId, status: 'accepted', revision: 1 }],
     }) });
-    expect((await slow).accepted).toBe(0);
+    await expect(slow).rejects.toThrow('Queued task operation disappeared or changed state during sync');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(await db.hybridTaskOutbox.count()).toBe(0);
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
