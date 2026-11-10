@@ -205,7 +205,10 @@ handover difference when units match. Missing handovers and the last route
 step return a null difference. This is an **audit comparison**, not inferred
 waste, mass balance, inventory movement, or a physical verification. Isolated
 PostgreSQL tests cover permission isolation, exact six-decimal subtraction,
-and sent-versus-received states. No migration or existing journals changed.
+and sent-versus-received states. The Planning batch detail now offers a
+separate read-only quantity-flow panel with refresh and explicit warnings
+against treating the difference as verified waste. No migration or existing
+journals changed.
 
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StepEvidencePanel } from './StepEvidencePanel';
+import { QuantityFlowPanel } from './QuantityFlowPanel';
 import { ClipboardList, Factory, Plus, RefreshCw, ShieldAlert } from 'lucide-react';
 import { StageId, STAGE_LABELS } from '../../core/types';
 import { clearServerConnection, getServerConnection, useServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
@@ -524,6 +525,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         {selectedBatchRow && <div className="rounded-lg border border-slate-600 p-3 space-y-3">
           <h3 className="text-white font-medium">{selectedBatchRow.batchCode} · История</h3>
           <StepEvidencePanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
+          <QuantityFlowPanel key={selectedBatchRow.id} connection={connection} batchId={selectedBatchRow.id} />
           <div className="space-y-3 rounded-lg border border-slate-700 p-3">
             <h4 className="font-medium text-white">Происхождение партии</h4>
             <p className="text-xs text-slate-400">

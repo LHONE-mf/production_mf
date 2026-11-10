@@ -164,6 +164,21 @@ describe('authenticated M2 planning client', () => {
     expect(calls[1].options.body).toBe(calls[2].options.body);
   });
 
+  it('uses a read-only authenticated request for quantity reconciliation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok:true,json:async () => ({batchId:'lot-1',steps:[]}),
+    });
+    vi.stubGlobal('fetch',fetchMock);
+    expect((await planningApi.quantityFlow(session,'lot-1')).steps).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/lot-1/quantity-flow',
+      expect.objectContaining({
+        method:'GET',redirect:'error',credentials:'omit',
+        headers:expect.objectContaining({Authorization:'Bearer server-session-only'}),
+      }),
+    );
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {

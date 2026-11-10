@@ -57,6 +57,12 @@ export type BatchStepRecord = {
   evidence: StepEvidence | null;
 };
 export type StepDetail = RouteStep & { number: number };
+export type QuantityFlowStep = {
+  number: number; name: string; workshopId: string; nextStep: number | null;
+  output: { quantity: string; unit: QuantityUnit } | null;
+  handoff: { id: string; quantity: string; unit: QuantityUnit; received: boolean } | null;
+  difference: string | null;
+};
 
 function endpoint(origin: string, path: string): string {
   const url = new URL(origin);
@@ -175,6 +181,9 @@ export const planningApi = {
   stepEvidence: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; steps: BatchStepRecord[] }>(
       c, '/planning/batches/' + id(batchId) + '/steps', { signal }),
+  quantityFlow: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; steps: QuantityFlowStep[] }>(
+      c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal }),
   recordStepEvidence: (c: PlanningSession, batchId: string, stepNumber: number, input: {
     eventId: string; kind: StepEvidenceKind;
     quantity?: string; quantityUnit?: QuantityUnit;
