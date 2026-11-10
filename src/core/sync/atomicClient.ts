@@ -120,6 +120,11 @@ export async function pullAtomicTasks(session: HybridSession) {
     throw new Error('Invalid sync response: changes or cursor');
   }
   const changes = response.changes as RemoteTaskChange[];
+  // Reject malformed entries before inspecting the last sequence or opening
+  // the transaction; a null entry must never crash the pull unexpectedly.
+  if (changes.some(change => !change || typeof change !== 'object')) {
+    throw new Error('Invalid sync response: malformed change');
+  }
   const nextCursor = Number(response.nextCursor);
   // The cursor is a durable checkpoint. Never advance it past changes actually
   // delivered by the server, or a malformed response could silently skip tasks.
