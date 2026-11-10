@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
 
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const paramsSchema = z.object({ id: uuid }).strict();
 const pageSchema = z.object({
   after: uuid.optional(),

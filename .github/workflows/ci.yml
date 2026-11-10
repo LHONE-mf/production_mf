@@ -64,9 +64,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Server currently has no package-lock.json; npm install is used until a lockfile is committed.
-      - name: Install server dependencies
-        run: npm install --no-audit --no-fund
+      - name: Install locked server dependencies
+        run: npm ci --no-audit --no-fund
       - name: TypeScript
         run: npm run typecheck
       - name: Migrate isolated CI PostgreSQL database

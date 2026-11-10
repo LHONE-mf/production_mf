@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { authenticate, newToken, tokenHash } from './auth.js';
 import { verifyDeviceChallenge } from './device-proof.js';
 
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const issueBody = z.object({ deviceId: uuid }).strict();
 const verifyBody = z.object({
   deviceId: uuid, challengeId: uuid,

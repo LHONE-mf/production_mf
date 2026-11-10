@@ -4,8 +4,8 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate, newToken, tokenHash, verifyPassword } from './auth.js';
 import { isEd25519PublicKey } from './device-proof.js';
-const loginSchema = z.object({ organizationId: z.string().uuid(), login: z.string().min(1).max(128), password: z.string().min(1).max(1024) });
-const enrollSchema = z.object({ userId: z.string().uuid().optional(), publicKey: z.string().min(32).max(4096) });
+const loginSchema = z.object({ organizationId: z.guid(), login: z.string().min(1).max(128), password: z.string().min(1).max(1024) });
+const enrollSchema = z.object({ userId: z.guid().optional(), publicKey: z.string().min(32).max(4096) });
 
 export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'>) {
   app.post('/auth/login', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -60,7 +60,7 @@ export function registerAuthRoutes(app: FastifyInstance, pool: Pick<Pool,'query'
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
     if (principal.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
-    const id = z.string().uuid().safeParse((request.params as {id:string}).id);
+    const id = z.guid().safeParse((request.params as {id:string}).id);
     if (!id.success) return reply.code(400).send({ error: 'invalid_request' });
     const result = await pool.query('UPDATE devices SET revoked_at = now() WHERE id = $1 AND organization_id = $2 AND revoked_at IS NULL RETURNING id', [id.data, principal.organization_id]);
     if (!result.rows.length) return reply.code(404).send({ error: 'device_not_found' });

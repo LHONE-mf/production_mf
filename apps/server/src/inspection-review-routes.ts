@@ -4,10 +4,10 @@ import { z } from 'zod';
 import { authenticate } from './auth.js';
 
 const paramsSchema=z.object({
-  id:z.string().uuid(),observationId:z.string().uuid(),
+  id:z.guid(),observationId:z.guid(),
 }).strict();
 const schema=z.object({
-  reviewId:z.string().uuid(),
+  reviewId:z.guid(),
   outcome:z.enum(['follow_up_required','reviewed_no_block']),
   reason:z.string().trim().min(1).max(2000),
 }).strict();

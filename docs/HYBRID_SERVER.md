@@ -1,5 +1,16 @@
 # Hybrid MES: server foundation
 
+## Locked dependencies and validator compatibility (2026-11-10)
+
+The independent server project now commits `package-lock.json`; use `npm ci`
+for development, CI, the emulator bridge and both Docker install stages.
+The Zod runtime validator is upgraded to 4.6.7 to address oversized-collection
+validation memory exhaustion (GHSA-mrhx-c7xc-m3w5). UUID fields use `z.guid()`
+to retain the prior hexadecimal UUID spelling contract; this does not change
+organization, actor, device or record-scope authorization. Oversized comment
+arrays are rejected before expanding per-item issues, with regression coverage
+for the unchanged 1,000-comment boundary and existing UUID spellings.
+
 ## M2 genealogy pagination (2026-11-10)
 
 `GET /planning/batches/:id/links` remains chief-only and organization-scoped.
@@ -23,7 +34,7 @@ This branch adds a separate backend without changing the existing offline-first 
 1. Copy `infra/.env.example` to `infra/.env` and set a strong unique password.
 2. Start PostgreSQL: `docker compose --env-file infra/.env -f infra/docker-compose.yml up -d postgres`.
 3. Apply migration: `docker compose --env-file infra/.env -f infra/docker-compose.yml exec -T postgres psql -U production_mf -d production_mf < apps/server/migrations/001_foundation.sql` (run from repository root).
-4. `cd apps/server && npm install && DATABASE_URL=postgres://production_mf:<password>@localhost:5432/production_mf npm run dev` (expose port 5432 locally if using this path), **or** start the server container with `docker compose --env-file infra/.env -f infra/docker-compose.yml up --build -d`.
+4. `cd apps/server && npm ci && DATABASE_URL=postgres://production_mf:<password>@localhost:5432/production_mf npm run dev` (expose port 5432 locally if using this path), **or** start the server container with `docker compose --env-file infra/.env -f infra/docker-compose.yml up --build -d`.
 5. Check `http://localhost:3001/health/live` and `/health/ready`.
 
 The database port is intentionally not published by Compose. For migrations, use the exec command above. The application port is bound to localhost; use a properly configured TLS reverse proxy for remote access.

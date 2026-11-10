@@ -19,13 +19,13 @@ const routeSchema = z.object({
   }).strict()).min(1).max(50),
 }).strict();
 const approvalParams = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   version: z.coerce.number().int().positive().safe(),
 }).strict();
 const orderSchema = z.object({
   orderCode: z.string().trim().min(1).max(80),
   productCode: z.string().trim().min(1).max(120),
-  routeId: z.string().uuid(),
+  routeId: z.guid(),
   routeVersion: z.number().int().positive().safe(),
   // Keep decimal quantities exact from the API through PostgreSQL NUMERIC.
   plannedQuantity: z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/),
@@ -124,7 +124,7 @@ export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
     if (!['chief', 'technologist'].includes(actor.role)) return reply.code(403).send({ error: 'forbidden' });
-    const params = z.object({ id: z.string().uuid() }).strict().safeParse(request.params);
+    const params = z.object({ id: z.guid() }).strict().safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error: 'invalid_route' });
     const client = await pool.connect();
     try {

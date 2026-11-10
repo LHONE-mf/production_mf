@@ -4,7 +4,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
 
-const id = z.string().uuid();
+const id = z.guid();
 const batchParam = z.object({ id }).strict();
 const positiveQuantity = z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/);
 const sendSchema = z.object({

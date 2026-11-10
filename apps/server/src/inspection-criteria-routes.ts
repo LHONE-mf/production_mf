@@ -3,7 +3,7 @@ import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
 
-const uuid=z.string().uuid(),positive=z.coerce.number().int().positive().safe();
+const uuid=z.guid(),positive=z.coerce.number().int().positive().safe();
 const routeParam=z.object({id:uuid,version:positive}).strict();
 const stepParam=routeParam.extend({stepNumber:positive}).strict();
 const batchParam=z.object({id:uuid}).strict();

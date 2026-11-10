@@ -30,4 +30,24 @@ describe('task sync DTO v1', () => {
     expect(taskPayloadV1.safeParse({ ...payload, assignedTo: 'worker-001' }).success).toBe(false);
     expect(taskPayloadV1.safeParse({ ...payload, attachments: [{id, taskId:id, fileName:'x',fileType:'text/plain',data:'a'.repeat(1000001),createdAt:payload.createdAt}] }).success).toBe(false);
   });
+  it('rejects oversized comment collections before expanding per-item validation errors', () => {
+    const result = taskPayloadV1.safeParse({...payload,
+      comments:Array.from({length:1001}, () => ({unexpected:'invalid comment'})),
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toHaveLength(1);
+      expect(result.error.issues[0]).toMatchObject({code:'too_big',path:['comments']});
+    }
+    // The legitimate boundary is unchanged; valid historical tasks still parse.
+    expect(taskPayloadV1.safeParse({...payload,
+      comments:Array.from({length:1000}, () => payload.comments[0]),
+    }).success).toBe(true);
+  });
+
+  it('preserves PostgreSQL UUID spellings accepted by the existing v1 contract', () => {
+    expect(taskPayloadV1.safeParse({...payload,
+      assignedTo:'11111111-1111-1111-1111-111111111111',
+    }).success).toBe(true);
+  });
 });

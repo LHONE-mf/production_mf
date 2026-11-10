@@ -7,7 +7,7 @@ import { authenticate } from './auth.js';
 // Execution and shop-floor permissions are deliberately out of scope for this
 // planning slice. Only a server-authenticated chief may release orders or
 // change a batch. M1 task synchronization never touches these tables.
-const uuidParam = z.object({ id: z.string().uuid() }).strict();
+const uuidParam = z.object({ id: z.guid() }).strict();
 const quantity = z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/);
 const batchSchema = z.object({
   batchCode: z.string().trim().min(1).max(100),

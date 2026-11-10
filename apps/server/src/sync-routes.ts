@@ -6,14 +6,14 @@ import { taskPayloadV1, type TaskPayloadV1 } from './task-schema.js';
 import { validateTaskCreator, validateTaskComments, validateTaskAttachments, validateTaskTimestamps, validateTaskStatusTransition, validateWorkerTaskEdit } from './task-authorization.js';
 
 const operation = z.object({
-  operationId: z.string().uuid(), deviceId: z.string().uuid(),
-  entityType: z.literal('task'), entityId: z.string().uuid(),
+  operationId: z.guid(), deviceId: z.guid(),
+  entityType: z.literal('task'), entityId: z.guid(),
   operationType: z.enum(['upsert']), expectedRevision: z.number().int().nonnegative().nullable(),
   payload: taskPayloadV1
 }).strict();
 const pushSchema = z.object({ operations: z.array(operation).min(1).max(50) }).strict();
-const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().min(1).max(200).default(100), deviceId: z.string().uuid() }).strict();
-const comparisonSchema = z.object({ deviceId: z.string().uuid() }).strict();
+const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().default(0), limit: z.coerce.number().int().min(1).max(200).default(100), deviceId: z.guid() }).strict();
+const comparisonSchema = z.object({ deviceId: z.guid() }).strict();
 
 /** Every shared sync read/write requires the same short-lived, actor/session/device-bound grant. */
 async function deviceProofError(pool: Pool, principal: Principal, authorization: string, deviceId: string, proof: unknown) {
@@ -163,7 +163,7 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const principal = await authenticate(pool, request.headers.authorization);
     if (!principal) return reply.code(401).send({ error: 'unauthorized' });
     if (!['chief', 'master', 'worker'].includes(principal.role)) return reply.code(403).send({ error: 'forbidden' });
-    const parsed = z.string().uuid().safeParse((request.params as { id: string }).id);
+    const parsed = z.guid().safeParse((request.params as { id: string }).id);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_task_id' });
     const device = comparisonSchema.safeParse(request.query);
     if (!device.success) return reply.code(400).send({ error: 'invalid_request' });

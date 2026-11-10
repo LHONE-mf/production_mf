@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const uuid = z.string().uuid();
+const uuid = z.guid();
 const optionalId = uuid.nullable();
 const comment = z.object({ id: uuid, taskId: uuid, authorId: uuid, text: z.string().max(10000), createdAt: z.string().datetime() }).strict();
 const attachment = z.object({ id: uuid, taskId: uuid, fileName: z.string().max(255), fileType: z.string().max(120), data: z.string().max(1000000), createdAt: z.string().datetime() }).strict();
