@@ -21,7 +21,7 @@ async function authorizeTaskEditing(role: 'chief' | 'master' | 'worker' = 'maste
   await provisionOfflineTaskEditLease({
     deviceId, actorId: role === 'worker' ? task().assignedTo : task().createdBy,
     organizationId: '66666666-6666-4666-8666-666666666666',
-    role, expiresAt: Date.now() + 120_000,
+    role, expiresAt: Date.now() + 120_000, authorizedTaskIds: [taskId],
   });
 }
 afterEach(() => vi.unstubAllGlobals());
@@ -42,7 +42,7 @@ describe('server-managed task offline writes', () => {
     const actorId = '44444444-4444-4444-8444-444444444444';
     await provisionOfflineTaskEditLease({
       deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
-      role: 'master', expiresAt: Date.now() + 120_000,
+      role: 'master', expiresAt: Date.now() + 120_000, authorizedTaskIds: [taskId],
     });
     expect((await requireOfflineTaskEditLease()).deviceId).toBe(deviceId);
     db.close();
@@ -52,11 +52,11 @@ describe('server-managed task offline writes', () => {
     await expect(requireOfflineTaskEditLease()).rejects.toThrow('Подтвердите устройство');
     await expect(provisionOfflineTaskEditLease({
       deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
-      role: 'master', expiresAt: Date.now() + 36_000_000,
+      role: 'master', expiresAt: Date.now() + 36_000_000, authorizedTaskIds: [taskId],
     })).rejects.toThrow('Invalid offline task edit authorization');
     await provisionOfflineTaskEditLease({
       deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
-      role: 'master', expiresAt: Date.now() + 7 * 3_600_000,
+      role: 'master', expiresAt: Date.now() + 7 * 3_600_000, authorizedTaskIds: [taskId],
     });
     db.close();
     await db.open();
