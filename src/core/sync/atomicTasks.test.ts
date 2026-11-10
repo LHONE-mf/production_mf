@@ -52,8 +52,15 @@ describe('server-managed task offline writes', () => {
     await expect(requireOfflineTaskEditLease()).rejects.toThrow('Подтвердите устройство');
     await expect(provisionOfflineTaskEditLease({
       deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
-      role: 'master', expiresAt: Date.now() + 3_600_000,
+      role: 'master', expiresAt: Date.now() + 36_000_000,
     })).rejects.toThrow('Invalid offline task edit authorization');
+    await provisionOfflineTaskEditLease({
+      deviceId, actorId, organizationId: '66666666-6666-4666-8666-666666666666',
+      role: 'master', expiresAt: Date.now() + 7 * 3_600_000,
+    });
+    db.close();
+    await db.open();
+    expect((await requireOfflineTaskEditLease()).deviceId).toBe(deviceId);
   });
 
   it('edits the latest server task and queues consecutive status/field edits atomically', async () => {
