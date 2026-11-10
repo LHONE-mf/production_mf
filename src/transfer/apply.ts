@@ -13,6 +13,27 @@ export interface ApplyResult {
 /** Пакеты, которые обязан подтверждать мастер или начальник производства. */
 const PRIVILEGED_TYPES = new Set<string>(['user', 'mix-recipe', 'sort-spec']);
 
+/** Legacy signed QR/BLE packets are not authoritative server sync operations.
+ * Check ownership and perform the write in the SAME Dexie transaction so a
+ * concurrent server pull or queued offline edit cannot be silently overwritten.
+ * Forced packets deliberately have no exception to this rule. */
+async function applyLocalOnlyTask(
+  taskId: string,
+  apply: (existing: Task | undefined) => Promise<ApplyResult>,
+): Promise<ApplyResult> {
+  if (!taskId || typeof taskId !== 'string') {
+    return { ok: false, message: 'Некорректный ID задания' };
+  }
+  return db.transaction('rw', [db.tasks, db.hybridTaskRevisions, db.hybridTaskOutbox], async () => {
+    const revision = await db.hybridTaskRevisions.get(taskId);
+    const queued = await db.hybridTaskOutbox.where('entityId').equals(taskId).count();
+    if (revision || queued) {
+      return { ok: false, message: 'Серверное задание нельзя изменять через QR/Bluetooth: используйте защищённую синхронизацию' };
+    }
+    return apply(await db.tasks.get(taskId));
+  });
+}
+
 export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
   try {
     // ── Безопасность (офлайн-подпись пакетов) ────────────────────────────────
@@ -32,22 +53,24 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
     switch (p.type) {
       case 'task': {
         const t = p.payload as Task;
-        const existing = await db.tasks.get(t.id);
-        if (existing && !p.forced && existing.updatedAt >= new Date(t.updatedAt)) {
-          return { ok: true, message: `Задание «${t.title}» уже новее — пропущено` };
-        }
-        await db.tasks.put(t);
-        return { ok: true, message: `Задание получено: ${p.forced ? '(принудительно) ' : ''}«${t.title}»` };
+        return applyLocalOnlyTask(t?.id, async existing => {
+          if (existing && !p.forced && existing.updatedAt >= new Date(t.updatedAt)) {
+            return { ok: true, message: `Задание «${t.title}» уже новее — пропущено` };
+          }
+          await db.tasks.put(t);
+          return { ok: true, message: `Задание получено: ${p.forced ? '(принудительно) ' : ''}«${t.title}»` };
+        });
       }
       case 'result': {
-        const { taskId, status, note } = p.payload as { taskId: string; status: string; note?: string };
-        const t = await db.tasks.get(taskId);
-        if (!t) return { ok: false, message: 'Задание не найдено на этом устройстве' };
-        if (t.updatedAt >= new Date(p.ts)) {
-          return { ok: true, message: `Результат по «${t.title}» устарел — пропущен` };
-        }
-        await db.tasks.put({ ...t, status: status as Task['status'], updatedAt: new Date(p.ts) });
-        return { ok: true, message: `Результат принят: «${t.title}» → ${status}` };
+        const { taskId, status } = p.payload as { taskId: string; status: string; note?: string };
+        return applyLocalOnlyTask(taskId, async t => {
+          if (!t) return { ok: false, message: 'Задание не найдено на этом устройстве' };
+          if (t.updatedAt >= new Date(p.ts)) {
+            return { ok: true, message: `Результат по «${t.title}» устарел — пропущен` };
+          }
+          await db.tasks.put({ ...t, status: status as Task['status'], updatedAt: new Date(p.ts) });
+          return { ok: true, message: `Результат принят: «${t.title}» → ${status}` };
+        });
       }
       case 'journal': {
         const j = p.payload as JournalEntry;
@@ -329,8 +352,10 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           await db.mixBatches.put(payload as MixBatch);
           return { ok: true, message: `(forced) журнал замеса применён: ${(payload as MixBatch).recipeName}` };
         }
-        await db.tasks.put(payload as Task);
-        return { ok: true, message: `(forced) задание применено: ${(payload as Task).title}` };
+        return applyLocalOnlyTask((payload as Task).id, async () => {
+          await db.tasks.put(payload as Task);
+          return { ok: true, message: `(forced) задание применено: ${(payload as Task).title}` };
+        });
       }
       default:
         return { ok: false, message: 'Неизвестный тип пакета' };
