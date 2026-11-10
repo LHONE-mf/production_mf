@@ -51,6 +51,35 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
 }
 
 
+/** Create a new shared task from a proven supervisor's server identity.
+ * It stays in the outbox until an authorized manual sync accepts revision 1. */
+export async function createServerManagedTask(input: {
+  title: string; description: string; priority: Task['priority'];
+  assignedTo?: string; workshopId?: string;
+}): Promise<string> {
+  return db.transaction('rw', db.hybridTaskEditLeases, db.tasks, db.hybridTaskOutbox,
+    db.hybridTaskRevisions, async () => {
+      const lease = await requireOfflineTaskEditLease();
+      if (lease.role === 'worker') throw new Error('Workers cannot create server tasks');
+      const title = input.title.trim();
+      const workshopId = input.workshopId?.trim() || '';
+      const assignedTo = input.assignedTo?.trim() || '';
+      if (!title || title.length > 300 || input.description.length > 20_000 ||
+          workshopId.length > 120 || ((lease.role === 'master' || assignedTo) && !workshopId)) {
+        throw new Error('Invalid server task fields or missing workshop');
+      }
+      const now = new Date();
+      const task: Task = {
+        id: crypto.randomUUID(), title, description: input.description,
+        status: assignedTo ? TaskStatus.ASSIGNED : TaskStatus.CREATED,
+        priority: input.priority, assignedTo, createdBy: lease.actorId,
+        createdAt: now, updatedAt: now, comments: [], attachments: [],
+        ...(workshopId ? { workshopId } : {}),
+      };
+      return saveServerManagedTask(task, lease.deviceId);
+    });
+}
+
 /**
  * Edit the freshest local server-owned row, not a stale React render snapshot.
  * The full task and its outbox operation are saved in the same transaction.
@@ -76,7 +105,8 @@ export async function editServerManagedTask(
     }
     const current = await db.tasks.get(taskId);
     const revision = await db.hybridTaskRevisions.get(taskId);
-    if (!current || !revision || revision.revision < 1) throw new Error('Server task not found or not synchronized');
+    const queued = await db.hybridTaskOutbox.where('entityId').equals(taskId).count();
+    if (!current || (!revision && queued === 0)) throw new Error('Server task not found or not queued');
     if (current.status === TaskStatus.COMPLETED) throw new Error('Completed server tasks cannot be modified');
     if (lease.role === 'worker') {
       const workerTransitions: Partial<Record<TaskStatus, TaskStatus>> = {
