@@ -143,7 +143,10 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
     const result = await pool.query(
       `SELECT e.entity_id FROM sync_entities e
        WHERE e.organization_id=$1 AND e.entity_type='task'
-       AND ($2::boolean OR ($3::boolean AND e.payload->>'assignedTo'=$4::text)
+       AND ($2::boolean OR ($3::boolean AND e.payload->>'assignedTo'=$4::text AND EXISTS (
+           SELECT 1 FROM user_workshop_memberships m
+           WHERE m.organization_id=e.organization_id AND m.user_id=$4::uuid
+             AND m.workshop_id=e.payload->>'workshopId'))
          OR (NOT $3::boolean AND EXISTS (
            SELECT 1 FROM user_workshop_memberships m
            WHERE m.organization_id=e.organization_id AND m.user_id=$4::uuid
@@ -170,7 +173,10 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       `SELECT e.revision, e.payload FROM sync_entities e
         WHERE e.organization_id=$1 AND e.entity_type=$2 AND e.entity_id=$3
         AND ($4::boolean
-          OR ($6::boolean AND e.payload->>'assignedTo'=$5::text)
+          OR ($6::boolean AND e.payload->>'assignedTo'=$5::text AND EXISTS (
+            SELECT 1 FROM user_workshop_memberships m
+            WHERE m.organization_id=e.organization_id AND m.user_id=$5::uuid
+              AND m.workshop_id=e.payload->>'workshopId'))
           OR (NOT $6::boolean AND EXISTS (
             SELECT 1 FROM user_workshop_memberships m
             WHERE m.organization_id=e.organization_id AND m.user_id=$5::uuid
@@ -194,7 +200,12 @@ export function registerSyncRoutes(app: FastifyInstance, pool: Pool) {
       JOIN sync_entities e ON e.organization_id=o.organization_id AND e.entity_type=o.entity_type AND e.entity_id=o.entity_id
       WHERE o.organization_id=$1 AND o.sequence>$2 AND o.entity_type='task'
       AND ($4::boolean
-        OR ($6::boolean AND o.result_payload->>'assignedTo'=$5::text AND e.payload->>'assignedTo'=$5::text)
+        OR ($6::boolean AND o.result_payload->>'assignedTo'=$5::text AND e.payload->>'assignedTo'=$5::text
+          AND EXISTS (
+            SELECT 1 FROM user_workshop_memberships m
+            WHERE m.organization_id=o.organization_id AND m.user_id=$5::uuid
+              AND m.workshop_id=o.result_payload->>'workshopId'
+              AND m.workshop_id=e.payload->>'workshopId'))
         OR (NOT $6::boolean AND EXISTS (
           SELECT 1 FROM user_workshop_memberships m
           WHERE m.organization_id=o.organization_id AND m.user_id=$5::uuid
