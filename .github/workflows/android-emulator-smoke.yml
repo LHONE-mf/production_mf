@@ -55,7 +55,7 @@ jobs:
           import { readFile } from 'node:fs/promises';
           const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
           try {
-            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql']) {
+            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql']) {
               await pool.query(await readFile('migrations/' + name, 'utf8'));
               console.log('Migrated isolated emulator CI DB:', name);
             }
