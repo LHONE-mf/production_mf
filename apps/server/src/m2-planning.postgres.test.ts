@@ -48,9 +48,10 @@ integration('M2 planning schema and tenant boundaries (real PostgreSQL)', () => 
   });
 
   it('keeps route codes tenant-local and versions independent', async () => {
-    const routes = await pool.query('SELECT organization_id,code FROM process_routes WHERE code=$1',
-      ['NMC-01']);
+    const routes = await pool.query(`SELECT organization_id,code FROM process_routes
+      WHERE code=$1 AND organization_id=ANY($2::uuid[])`, ['NMC-01',[orgA,orgB]]);
     expect(routes.rows).toHaveLength(2);
+    expect(routes.rows.map(row => row.organization_id).sort()).toEqual([orgA,orgB].sort());
     await expect(pool.query(`INSERT INTO process_routes(organization_id,id,code,name,created_by)
       VALUES($1,$2,'NMC-01','Duplicate code',$3)`, [orgA,randomUUID(),chiefA]))
       .rejects.toMatchObject({ code: '23505' });
