@@ -81,13 +81,14 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
         [randomUUID(),tenant,id,tokenHash(tokens[i])]);
     }
     await pool.query(`INSERT INTO workshops(organization_id,id,name)
-      VALUES($1,'coating','Coating')`, [org]);
+      VALUES($1,'coating','Coating'),($1,'assembly','Cell assembly')`, [org]);
     const route = await app.inject({
       method:'POST',url:'/planning/routes',headers:headers(0),
       payload:{code:code('ROUTE'),name:'Traceable coating route',
         steps:[
           {name:'Cathode coating',stage:'coating',workshopId:'coating',electrodeLine:'cathode'},
           {name:'Anode coating',stage:'coating',workshopId:'coating',electrodeLine:'anode'},
+          {name:'Cell assembly',stage:'assembly',workshopId:'assembly',electrodeLine:'common'},
         ]},
     });
     expect(route.statusCode).toBe(201);

@@ -101,7 +101,8 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect((await app.inject({method:'POST',url:'/planning/batches/'+batchId+'/status',
       headers:auth(0),payload:{expectedStatus:'created',status:'in_progress'}})).statusCode).toBe(200);
     expect((await send(randomUUID(),1,3)).json()).toMatchObject({error:'not_next_route_step'});
-    expect((await send(randomUUID(),2,3)).json()).toMatchObject({error:'previous_handoff_not_received'});
+    // Source completion is checked before transfer ordering.
+    expect((await send(randomUUID(),2,3)).json()).toMatchObject({error:'source_step_not_completed'});
     expect((await send(randomUUID(),1,2,0,'150')).json())
       .toMatchObject({error:'handoff_quantity_exceeds_batch'});
     expect((await send(randomUUID(),1,2,0,'20','cells')).json())
