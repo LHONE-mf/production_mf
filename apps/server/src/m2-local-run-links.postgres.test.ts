@@ -142,7 +142,7 @@ integration('M2 typed local manufacturing run links (PostgreSQL)', () => {
       expect.objectContaining({sourceKind:'calender_run',sourceEntryId:calender.sourceEntryId,
         sourceMeasure:{kind:'calendered_length_m',value:'189.500000'}}),
       expect.objectContaining({sourceKind:'cut_run',sourceEntryId:cutting.sourceEntryId,
-        sourceMeasure:{kind:'cut_good_pieces',value:'154'}}),
+        sourceMeasure:{kind:'cut_good_pieces',value:'154.000000'}}),
     ]));
     expect(history.json().links).toHaveLength(5);
     const evidence=await pool.query(`SELECT count(*)::int AS n FROM production_step_evidence
