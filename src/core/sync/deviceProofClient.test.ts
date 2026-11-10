@@ -11,7 +11,7 @@ describe('device proof client', () => {
   it('exchanges a signed challenge without persisting credentials', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => ({ challengeId: deviceId, challenge }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ proofToken, deviceId, expiresIn: 300 }) });
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ proofToken, deviceId, expiresIn: 300, offlineEditExpiresIn: 28_800 }) });
     vi.stubGlobal('fetch', fetchMock);
     const signer = vi.fn(async () => 'D'.repeat(86));
     const verified = await obtainDeviceProof(session, deviceId, signer);
@@ -19,12 +19,25 @@ describe('device proof client', () => {
     expect(verified.deviceProofDeviceId).toBe(deviceId);
     expect(verified.deviceProofExpiresAt).toBeGreaterThan(Date.now() + 290_000);
     expect(verified.deviceProofExpiresAt).toBeLessThanOrEqual(Date.now() + 300_000);
+    expect(verified.offlineEditExpiresAt).toBeGreaterThan(Date.now() + 28_700_000);
+    expect(verified.offlineEditExpiresAt).toBeLessThanOrEqual(Date.now() + 28_800_000);
     expect(session).not.toHaveProperty('deviceProofToken');
     expect(signer).toHaveBeenCalledWith(challenge);
     expect(fetchMock.mock.calls[0][0].toString()).toBe('https://sync.example.com/devices/challenge');
     expect(fetchMock.mock.calls[1][0].toString()).toBe('https://sync.example.com/devices/challenge/verify');
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({ deviceId, challenge, signature: 'D'.repeat(86) });
   });
+  it('rejects a forged or overlong offline editing grant', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ challengeId: deviceId, challenge }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({
+        proofToken, deviceId, expiresIn: 300, offlineEditExpiresIn: 86_400,
+      }) });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(obtainDeviceProof(session, deviceId, async () => 'D'.repeat(86)))
+      .rejects.toThrow('Invalid offline edit grant response');
+  });
+
   it('fails closed for insecure remote endpoints before networking', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
