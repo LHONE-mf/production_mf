@@ -17,7 +17,7 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
   const code = (label: string) => label + '-' + randomUUID().slice(0,8);
   let routeId = '', orderId = '', batchId = '';
   let startId = '', finishId = '';
-  const step = (number: number, kind: 'started'|'completed'|'deviation', id = randomUUID(),
+  const step = (number: number, kind: 'started'|'completed'|'deviation', id: string = randomUUID(),
     extra: Record<string,string> = {}, i = 0, batch = batchId) =>
     app.inject({
       method: 'POST', url: '/planning/batches/' + batch + '/steps/' + number + '/evidence',
