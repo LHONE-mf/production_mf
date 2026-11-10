@@ -13,7 +13,7 @@ export interface OfflineTaskEditLease {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * A short-lived offline edit capability is provisioned only after authenticating
+ * A bounded shift-length offline edit capability is provisioned only after authenticating
  * a specific AndroidKeyStore device with the server. This contains no bearer
  * token or private key, and does not bypass server authorization on reconnect.
  */
@@ -21,7 +21,7 @@ export async function provisionOfflineTaskEditLease(input: Omit<OfflineTaskEditL
   if (!uuid.test(input.deviceId) || !uuid.test(input.actorId) || !uuid.test(input.organizationId) ||
       (!['chief', 'master', 'worker'].includes(input.role)) ||
       !Number.isSafeInteger(input.expiresAt) ||
-      input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 300_000) {
+      input.expiresAt <= Date.now() || input.expiresAt > Date.now() + 28_800_000) {
     throw new Error('Invalid offline task edit authorization');
   }
   await db.hybridTaskEditLeases.put({ ...input, id: 'active' });
