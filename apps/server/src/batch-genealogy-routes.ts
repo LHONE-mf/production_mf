@@ -127,6 +127,11 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
         targetBatchId:targetId,kind:data.kind });
     } catch (error) {
       await client.query('ROLLBACK');
+      // Another target may race with the same client declaration UUID. Never
+      // surface a database error or create a second link on that collision.
+      if (data.declarationId && error && typeof error === 'object' &&
+          'code' in error && error.code === '23505')
+        return reply.code(409).send({ error: 'declaration_id_reused' });
       throw error;
     } finally { client.release(); }
   });
