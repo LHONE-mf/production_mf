@@ -194,9 +194,19 @@ export function SyncModule() {
           outstanding + '. Получение с сервера отложено: повторите ручную синхронизацию или разрешите конфликт.');
         return;
       }
-      const pulled = await pullAtomicTasks(session);
-      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + pulled.received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
-        (pulled.hasMore ? '. Есть дополнительные изменения — повторите синхронизацию.' : '.'));
+      let received = 0;
+      let hasMore = false;
+      for (let page = 0; page < 20; page++) {
+        const pulled = await pullAtomicTasks(session);
+        received += pulled.received;
+        hasMore = pulled.hasMore;
+        if (!hasMore) break;
+        if (pulled.received === 0) {
+          throw new Error('Сервер сообщил о дополнительных изменениях, но не вернул ни одного задания');
+        }
+      }
+      setMessage('Отправлено: ' + pushed.accepted + ', получено: ' + received + ', конфликты: ' + pushed.conflicts + ', отклонено сервером: ' + pushed.rejected +
+        (hasMore ? '. Есть дополнительные изменения — повторите синхронизацию.' : '.'));
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка синхронизации'); }
     finally { setBusy(false); }
   }
