@@ -11,7 +11,8 @@ import { archiveConflictAndUseServer, archiveRejectedTaskAndUseServer } from '..
 import type { TaskPayloadV1 } from '../../core/sync/taskDto';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import { assertSyncTenant } from '../../core/sync/tenantGuard';
-import { provisionOfflineTaskEditLease, clearOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { provisionOfflineTaskEditLease, clearOfflineTaskEditLease, requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { canInspectTaskRecovery } from '../../core/sync/visibleTasks';
 import { fetchAuthorizedTaskIds } from '../../core/sync/taskAccessClient';
 
 function serverEndpoint(origin: string, path: string) {
@@ -71,10 +72,33 @@ export function SyncModule() {
   const rejected = rejectedOperations?.length;
   const archivedConflicts = useLiveQuery(() => db.hybridTaskResolutions.count(), []);
   const archiveHistory = useLiveQuery(() => db.hybridTaskResolutions.orderBy('archivedAt').reverse().limit(10).toArray(), []);
+  const recoveryLease = useLiveQuery(() => requireOfflineTaskEditLease().catch(() => null), []);
+  const [recoveryClock, setRecoveryClock] = useState(Date.now());
+  useEffect(() => {
+    // Expired offline grants must hide previously rendered task titles without
+    // waiting for a database change or a manual page refresh.
+    const refresh = () => setRecoveryClock(Date.now());
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, []);
   const conflictingTasks = useLiveQuery(async () => {
     const operations = await db.hybridTaskOutbox.where('state').anyOf('conflict', 'rejected').toArray();
     return Promise.all(operations.map(async operation => ({ operation, task: await db.tasks.get(operation.entityId) })));
   }, []);
+  const visibleArchiveHistory = archiveHistory?.filter(record =>
+    canInspectTaskRecovery(recoveryLease, record.entityId,
+      record.localOperations.find(op => op.expectedRevision === 0 && op.payload.createdBy === recoveryLease?.actorId)
+        ? { expectedRevision: 0, createdBy: recoveryLease!.actorId } : undefined,
+      recoveryClock));
+  const visibleConflictingTasks = conflictingTasks?.filter(({ operation }) =>
+    canInspectTaskRecovery(recoveryLease, operation.entityId,
+      { expectedRevision: operation.expectedRevision, createdBy: operation.payload.createdBy }, recoveryClock));
 
   async function connect() {
     setBusy(true); setError(''); setMessage('');
@@ -401,10 +425,10 @@ export function SyncModule() {
           <div className="bg-slate-900/50 rounded-xl p-3"><p className="text-xl text-white font-semibold">{conflicts ?? '—'}</p><p className="text-slate-400 text-xs">Конфликты</p></div>
         </div>
         <p className="text-slate-400 text-sm">Отклонено сервером: {rejected ?? '—'} · Архив конфликтов (сохранено на устройстве): {archivedConflicts ?? '—'}</p>
-        {(archiveHistory?.length ?? 0) > 0 && (
+        {(visibleArchiveHistory?.length ?? 0) > 0 && (
           <div className="rounded-xl border border-slate-700 p-3 space-y-2">
             <h3 className="text-white text-sm font-semibold">Архив локальных изменений (только на устройстве)</h3>
-            {archiveHistory?.map(record => (
+            {visibleArchiveHistory?.map(record => (
               <details key={record.id} className="rounded-lg bg-slate-900/50 p-3 text-sm">
                 <summary className="cursor-pointer text-amber-200">{record.localTask.title} · {new Date(record.archivedAt).toLocaleString()} · {record.localOperations.length} изменений</summary>
                 <p className="text-slate-400 text-xs mt-2">Версия сервера: {record.serverRevision} · локальные изменения сохранены, но не отправлены</p>
@@ -422,10 +446,10 @@ export function SyncModule() {
             ))}
           </div>
         )}
-        {(conflictingTasks?.length ?? 0) > 0 && (
+        {(visibleConflictingTasks?.length ?? 0) > 0 && (
           <div className="space-y-2">
             <h3 className="text-white font-semibold text-sm">Задания, требующие внимания</h3>
-            {conflictingTasks?.map(({ operation, task }) => (
+            {visibleConflictingTasks?.map(({ operation, task }) => (
               <div key={operation.operationId} className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 space-y-1">
                 <p className="text-white text-sm font-medium">{task?.title || operation.payload.title || operation.entityId}</p>
                 <p className="text-amber-200 text-xs">{operation.state === 'rejected' ? 'Сервер отклонил изменение. Исправьте указанную причину перед повторной отправкой.' : 'Конфликт версий. Сравните изменения с сервером.'} Локальная копия сохранена.</p>
