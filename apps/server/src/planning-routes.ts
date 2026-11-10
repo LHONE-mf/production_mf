@@ -43,6 +43,45 @@ function postgresCode(error: unknown) {
  * scoped order permissions are designed, only chiefs may create orders.
  */
 export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
+
+  // Workshop reference data for route-step selection. It is not a local demo
+  // setting: values come from the authenticated, tenant-scoped server.
+  app.get('/planning/workshops', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    if (!['chief', 'master', 'technologist'].includes(actor.role))
+      return reply.code(403).send({ error: 'forbidden' });
+    const result = await pool.query(`SELECT w.id,w.name FROM workshops w
+      WHERE w.organization_id=$1 AND ($2::boolean OR EXISTS (
+        SELECT 1 FROM user_workshop_memberships m
+        WHERE m.organization_id=w.organization_id
+          AND m.workshop_id=w.id AND m.user_id=$3
+      )) ORDER BY w.name,w.id LIMIT 500`,
+      [actor.organization_id, actor.role !== 'master', actor.id]);
+    return { workshops: result.rows.map(row => ({ id: row.id, name: row.name })) };
+  });
+
+  app.post('/planning/workshops', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    if (actor.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
+    const parsed = z.object({
+      id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,119}$/),
+      name: z.string().trim().min(1).max(300),
+    }).strict().safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_workshop' });
+    try {
+      await pool.query(`INSERT INTO workshops(organization_id,id,name)
+        VALUES($1,$2,$3)`,
+        [actor.organization_id, parsed.data.id, parsed.data.name]);
+      return reply.code(201).send(parsed.data);
+    } catch (error) {
+      if (postgresCode(error) === '23505') return reply.code(409).send({ error: 'workshop_exists' });
+      throw error;
+    }
+  });
+
+
   app.post('/planning/routes', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
