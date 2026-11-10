@@ -627,6 +627,25 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 
+  it.each([null, '0', false, '', 0.5, -1] as const)(
+    'rejects malformed pull cursor %s without touching offline task state',
+    async nextCursor => {
+      const session = {
+        serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+        deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+        deviceProofExpiresAt: Date.now() + 300_000,
+      };
+      const operationId = await saveServerManagedTask(task(), deviceId);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true, json: async () => ({ changes: [], nextCursor, hasMore: false }),
+      }));
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid sync response: changes or cursor');
+      expect(await db.hybridSyncMetadata.get('taskCursor')).toBeUndefined();
+      expect((await db.hybridTaskOutbox.get(operationId))?.state).toBe('pending');
+      expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+    },
+  );
+
   it('does not roll back a newer pull cursor when an older network response arrives late', async () => {
     const session = {
       serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
