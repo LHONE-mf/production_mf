@@ -112,6 +112,7 @@ export async function pushAtomicTasks(session: HybridSession) {
 export async function pullAtomicTasks(session: HybridSession) {
   const proof = requireFreshDeviceProof(session);
   const cursor = (await db.hybridSyncMetadata.get('taskCursor'))?.value ?? 0;
+  if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error('Invalid locally stored task cursor');
   const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100&deviceId=' + encodeURIComponent(proof.deviceId), {
     headers: { 'x-device-proof': proof.token },
   });
