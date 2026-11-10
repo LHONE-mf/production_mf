@@ -43,6 +43,7 @@ describe('M2 online planning screen', () => {
       ok: true,
       json: async () => url.endsWith('/planning/workshops') ? { workshops: [] }
         : url.endsWith('/planning/routes') ? { routes: [] }
+        : url.endsWith('/planning/handoffs/inbox') ? { handoffs: [] }
         : { orders: [] },
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -55,7 +56,7 @@ describe('M2 online planning screen', () => {
     const app = await renderPlanning();
     expect(app.textContent).toContain('Новый производственный заказ');
     expect(app.textContent).toContain('Утверждённый маршрут');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenCalledWith(
       'https://mes.example.org/planning/orders',
       expect.objectContaining({ headers: expect.objectContaining({
@@ -67,6 +68,44 @@ describe('M2 online planning screen', () => {
     expect(button).toBeTruthy();
     await act(async () => { button!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
     expect(app.textContent).toContain('Новый технологический маршрут');
+  });
+
+  it('shows only workshop-scoped pending handovers for a server master', async () => {
+    const ticket = {
+      id: 'transfer-1', batchId: 'batch-1', batchCode: 'CATH-001',
+      fromStep: 1, toStep: 2, fromWorkshopId: 'coating',
+      toWorkshopId: 'cutting', quantity: '12.000000', quantityUnit: 'kg',
+      sentBy: 'chief-other', sentAt: '2026-11-10T10:00:00Z',
+      note: null,
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith('/planning/workshops') ? { workshops: [] }
+        : url.endsWith('/planning/routes') ? { routes: [] }
+        : { handoffs: [ticket] },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    setServerConnection({
+      session: { serverUrl: 'https://mes.example.org', accessToken: 'master-token' },
+      serverUrl: 'https://mes.example.org', organizationId: 'org',
+      serverRole: 'master', serverActorId: 'master-actor',
+      selectedDeviceId: '', enrolledDeviceId: '', myDevices: [],
+    });
+    const app = await renderPlanning();
+    const tab = Array.from(app.querySelectorAll('button')).find(button =>
+      button.textContent?.includes('Приёмка передач'));
+    expect(tab).toBeTruthy();
+    await act(async () => { tab!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(app.textContent).toContain('CATH-001');
+    expect(app.textContent).toContain('Подтвердить приёмку');
+    expect(app.textContent).not.toContain('Новый производственный заказ');
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/handoffs/inbox',
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: 'Bearer master-token' }),
+      }),
+    );
   });
 
   it('never exposes order creation for a technologist server role', async () => {
