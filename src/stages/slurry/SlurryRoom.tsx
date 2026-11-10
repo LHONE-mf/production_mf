@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { MixRecipe, StageId, JournalEntry } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -22,7 +23,8 @@ export function SlurryModule() {
   const [preset, setPreset] = useState<MixRecipe | null>(null);
 
   const tasks = useLiveQuery(
-    () => db.tasks.where('stage').equals(StageId.SLURRY).reverse().sortBy('updatedAt'),
+    async () => (await listVisibleTasks()).filter(task => task.stage === StageId.SLURRY)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()),
     [],
   );
 
