@@ -1,8 +1,14 @@
 name: Android emulator smoke and screenshot
 
-# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
+# One-time M1 visibility regression verification; return to manual-only
+# immediately after the targeted test commit triggers this emulator workflow.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/hybrid-server-foundation
+    paths:
+      - 'src/core/sync/visibleTasks.test.ts'
 
 permissions:
   contents: read
