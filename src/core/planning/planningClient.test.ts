@@ -59,6 +59,35 @@ describe('authenticated M2 planning client', () => {
     );
   });
 
+  it('uses the server bearer token for send, receive and scoped handover inbox', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ handoffs: [] }) };
+    }));
+    await planningApi.handoffInbox(session);
+    await planningApi.batchHandoffs(session, 'batch-1');
+    await planningApi.sendHandoff(session, 'batch-1', {
+      handoffId: 'handoff-1', fromStep: 1, toStep: 2,
+      quantity: '12.500000', quantityUnit: 'kg', note: 'Coating handover',
+    });
+    await planningApi.receiveHandoff(session, 'handoff-1', 'Count checked');
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/handoffs/inbox',
+      'https://mes.example.org/planning/batches/batch-1/handoffs',
+      'https://mes.example.org/planning/batches/batch-1/handoffs',
+      'https://mes.example.org/planning/handoffs/handoff-1/receive',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET','GET','POST','POST']);
+    expect(calls.every(call => (call.options.headers as Record<string, string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[2].options.body))).toMatchObject({
+      handoffId: 'handoff-1', fromStep: 1, toStep: 2, quantity: '12.500000',
+    });
+    expect(JSON.parse(String(calls[3].options.body))).toEqual({ note: 'Count checked' });
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
