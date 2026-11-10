@@ -35,7 +35,7 @@ export function buildApp(pool: Pool) {
   const app = Fastify({ logger: true });
   const origins = allowedBrowserOrigins();
   void app.register(cors, {
-    origin: (origin, callback) => callback(null, origins.has(origin)),
+    origin: (origin, callback) => callback(null, Boolean(origin && origins.has(origin))),
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
     allowedHeaders: ['authorization', 'content-type', 'x-device-proof'],
     maxAge: 600,
