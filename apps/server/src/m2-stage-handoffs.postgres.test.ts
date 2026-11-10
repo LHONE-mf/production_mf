@@ -147,7 +147,7 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect((await send(randomUUID(),2,3)).json()).toMatchObject({error:'batch_not_active'});
     expect((await app.inject({method:'POST',url:'/planning/batches/'+batchId+'/status',
       headers:auth(0),payload:{expectedStatus:'hold',status:'in_progress'}})).statusCode).toBe(200);
-    expect((await send(randomUUID(),2,3)).json()).toMatchObject({error:'not_next_route_step'});
+    expect((await send(randomUUID(),2,3)).json()).toMatchObject({error:'previous_handoff_not_received'});
     const historyRows = (await history()).json().handoffs;
     expect(historyRows.map((row:{fromStep:number;toStep:number})=>[row.fromStep,row.toStep]))
       .toEqual([[1,2],[2,3]]);
