@@ -7,6 +7,34 @@ const session: PlanningSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('authenticated M2 planning client', () => {
+  it('uses authenticated scoped reference criteria APIs without silently approving quality',async()=>{
+    const calls:Array<{url:string; options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({criteria:[],frozen:false})};
+    }));
+    await planningApi.routeInspectionCriteria(session,'route-1',1);
+    await planningApi.addInspectionCriterion(session,'route-1',1,2,{
+      criterionId:'criterion-1',characteristic:'Thickness',unit:'um',
+      lowerLimit:'75.000000',upperLimit:'150.000000',
+    });
+    await planningApi.batchInspectionCriteria(session,'batch-1');
+    expect(calls.map(x=>x.url)).toEqual([
+      'https://mes.example.org/planning/routes/route-1/versions/1/inspection-criteria',
+      'https://mes.example.org/planning/routes/route-1/versions/1/steps/2/inspection-criteria',
+      'https://mes.example.org/planning/batches/batch-1/inspection-criteria',
+    ]);
+    expect(calls.map(x=>x.options.method)).toEqual(['GET','POST','GET']);
+    expect(calls.every(x=>x.options.cache==='no-store' && x.options.redirect==='error' &&
+      x.options.credentials==='omit' &&
+      (x.options.headers as Record<string,string>).Authorization==='Bearer server-session-only'))
+      .toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toMatchObject({
+      characteristic:'Thickness',unit:'um',lowerLimit:'75.000000',
+      upperLimit:'150.000000',
+    });
+  });
+
   it('uses the verified bearer session for a stable, explicitly requested inspection record',async()=>{
     const calls:Array<{url:string;options:RequestInit}>=[];
     vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{

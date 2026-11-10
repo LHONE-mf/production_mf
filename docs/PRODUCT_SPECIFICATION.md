@@ -307,6 +307,23 @@ per-observation review history showing outcome, rationale and timestamp.
 This avoids hiding earlier follow-up decisions when a later review changes the
 technical completion guard. It does not grant formal QA acceptance authority.
 
+**M2 route-bound reference inspection limits checkpoint (2026-11-10):**
+The additive `017_m2_inspection_criteria.sql` migration adds immutable
+inspection reference criteria for steps in an **approved** versioned route.
+A chief may enter a named characteristic, recognized unit, lower and/or
+upper exact-decimal limit, and an optional note. New criteria are blocked
+as soon as the route version is used by any production order. Existing
+records remain available for audit and safe idempotent retries, with no
+retroactive threshold changes for existing batches. Read-only access for
+technologists is available through the route API, while batch-specific
+queries expose only the relevant cathode, anode, or cell route branch.
+These are planning references, **not validated test methods or automatic
+product conformance**, and the app never calculates a QA pass, grants release
+or automatically changes manufacturing status. Formal inspection-plan
+approval by an independent quality authority remains future work.
+Isolated PostgreSQL authorization, immutability, numeric and branch tests
+cover the new reference registry.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

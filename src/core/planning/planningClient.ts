@@ -74,6 +74,15 @@ export type LocalJournalLink = {
 export type InspectionKind = 'measurement' | 'visual';
 export type InspectionUnit = 'um' | 'mm' | 'g' | 'mg' | 'mOhm' |
   'V' | 'mAh' | 'pct' | 'C';
+export type InspectionCriterion = {
+  id: string; stepNumber: number; characteristic: string;
+  unit: InspectionUnit; lowerLimit: string | null; upperLimit: string | null;
+  note: string | null; createdBy: string; createdAt: string;
+};
+export type InspectionCriterionInput = {
+  criterionId: string; characteristic: string; unit: InspectionUnit;
+  lowerLimit?: string; upperLimit?: string; note?: string;
+};
 export type InspectionReviewOutcome = 'follow_up_required' | 'reviewed_no_block';
 export type InspectionReview = {
   number: number; outcome: InspectionReviewOutcome; reason: string;
@@ -227,6 +236,22 @@ export const planningApi = {
   }) => planningRequest<{ id: string; alreadyLinked: boolean }>(
     c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/journal-links',
     { method: 'POST', body: input }),
+  routeInspectionCriteria: (c: PlanningSession, routeId: string,
+    version: number, signal?: AbortSignal) =>
+    planningRequest<{ routeId: string; version: number; state: RouteState;
+      frozen: boolean; criteria: InspectionCriterion[] }>(
+      c, '/planning/routes/' + id(routeId) + '/versions/' + version +
+        '/inspection-criteria', { signal }),
+  addInspectionCriterion: (c: PlanningSession, routeId: string, version: number,
+    stepNumber: number, input: InspectionCriterionInput) =>
+    planningRequest<{ id: string; alreadyRecorded: boolean }>(
+      c, '/planning/routes/' + id(routeId) + '/versions/' + version +
+        '/steps/' + stepNumber + '/inspection-criteria',
+      { method: 'POST', body: input }),
+  batchInspectionCriteria: (c: PlanningSession, batchId: string,
+    signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; criteria: InspectionCriterion[] }>(
+      c, '/planning/batches/' + id(batchId) + '/inspection-criteria', { signal }),
   inspections: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; observations: InspectionObservation[] }>(
       c, '/planning/batches/' + id(batchId) + '/inspections', { signal }),
