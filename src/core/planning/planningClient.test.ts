@@ -136,6 +136,34 @@ describe('authenticated M2 planning client', () => {
     expect(JSON.parse(sent[0]).declarationId).toBe(declaration.declarationId);
   });
 
+  it('transmits route-step evidence as exact authenticated and non-redirecting requests', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ steps: [] }) };
+    }));
+    expect((await planningApi.stepEvidence(session, 'batch-1')).steps).toEqual([]);
+    const evidence = {
+      eventId: '80af22b0-5d66-40e1-8eea-2c5d9b62e2dd',
+      kind: 'completed' as const, quantity: '48.500000',
+      quantityUnit: 'kg' as const, equipmentCode: 'CUT-LINE',
+      note: 'Operation recorded',
+    };
+    await planningApi.recordStepEvidence(session, 'batch-1', 2, evidence);
+    await planningApi.recordStepEvidence(session, 'batch-1', 2, evidence);
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/steps',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/evidence',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/evidence',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(call => (call.options.headers as Record<string,string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(evidence);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+  });
+
   it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
     const calls: Array<{ url: string; body: string }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
