@@ -30,6 +30,7 @@ export function SyncModule() {
   const [session, setSession] = useState<HybridSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [devicePublicKey, setDevicePublicKey] = useState('');
+  const [deviceOwnerId, setDeviceOwnerId] = useState('');
   const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [myDevices, setMyDevices] = useState<string[]>([]);
@@ -105,15 +106,20 @@ export function SyncModule() {
       // Enrollment is chief-authorized. Only the public key crosses the network.
       const response = await fetch(serverEndpoint(session.serverUrl, '/devices'), {
         method: 'POST', headers: { Authorization: 'Bearer ' + session.accessToken, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publicKey: devicePublicKey.trim() }),
+        body: JSON.stringify({ publicKey: devicePublicKey.trim(), ...(deviceOwnerId.trim() ? { userId: deviceOwnerId.trim() } : {}) }),
       });
       if (!response.ok) throw new Error('Регистрация устройства: HTTP ' + response.status);
-      const data: { id?: string } = await response.json();
+      const data: { id?: string; userId?: string } = await response.json();
       if (!data.id) throw new Error('Сервер не вернул ID устройства');
       setEnrolledDeviceId(data.id);
-      setSelectedDeviceId(data.id);
-      setMyDevices(previous => previous.includes(data.id!) ? previous : [...previous, data.id!]);
-      setMessage('Устройство зарегистрировано. Для отправки заданий подтвердите владение ключом.');
+      if (data.userId === serverActorId) {
+        setSelectedDeviceId(data.id);
+        setMyDevices(previous => previous.includes(data.id!) ? previous : [...previous, data.id!]);
+        setMessage('Устройство зарегистрировано. Для отправки заданий подтвердите владение ключом.');
+      } else {
+        setMessage('Устройство зарегистрировано для пользователя ' + (data.userId ?? '') +
+          '. Оно появится в списке устройств этого пользователя после его входа.');
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Ошибка регистрации устройства'); }
     finally { setBusy(false); }
   }
@@ -262,7 +268,7 @@ export function SyncModule() {
       await clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить локальное разрешение на редактирование'));
       setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setServerActorId('');
       setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
-      setDevicePublicKey(''); setPassword(''); setBusy(false);
+      setDevicePublicKey(''); setDeviceOwnerId(''); setPassword(''); setBusy(false);
     }
   }
 
@@ -299,7 +305,7 @@ export function SyncModule() {
               <p className="text-slate-400 text-xs">Регистрация не подтверждает владение закрытым ключом. Перед отправкой заданий требуется отдельная проверка подписи.</p>
               {Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && myDevices.length > 0 && <div className="space-y-2 pt-2">
                 <label className="block text-slate-300 text-xs">Устройство для подтверждения
-                  <select aria-label="Устройство для подтверждения" value={selectedDeviceId} onChange={event => { setSelectedDeviceId(event.target.value); setSession(previous => previous ? { serverUrl: previous.serverUrl, accessToken: previous.accessToken } : null); }} className="mt-1 w-full bg-slate-700 text-white rounded-lg p-2">
+                  <select aria-label="Устройство для подтверждения" value={selectedDeviceId} onChange={event => { setSelectedDeviceId(event.target.value); setSession(previous => previous ? { serverUrl: previous.serverUrl, accessToken: previous.accessToken } : null); void clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить разрешение предыдущего устройства')); }} className="mt-1 w-full bg-slate-700 text-white rounded-lg p-2">
                     <option value="">Выберите устройство</option>
                     {myDevices.map(id => <option key={id} value={id}>{id}</option>)}
                   </select>
@@ -312,6 +318,10 @@ export function SyncModule() {
               <p className="text-slate-200 text-sm font-medium">Регистрация устройства (администратор)</p>
               <p className="text-slate-400 text-xs">Зарегистрируйте публичный ключ устройства. Android-приложение может создать ключ в AndroidKeyStore, если провайдер поддерживает Ed25519.</p>
               {Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android' && <button type="button" disabled={busy} onClick={() => void prepareAndroidKey()} className="px-3 py-2 bg-slate-700 text-white rounded-lg disabled:opacity-50">Получить ключ Android</button>}
+              <label className="block text-slate-300 text-xs">ID владельца (UUID; пусто = ваш аккаунт)
+                <input value={deviceOwnerId} onChange={event => setDeviceOwnerId(event.target.value)}
+                  placeholder="ID другого пользователя" className="w-full mt-1 rounded-lg bg-slate-700 text-white p-2 text-sm" />
+              </label>
               <textarea aria-label="Публичный ключ устройства" value={devicePublicKey} onChange={event => setDevicePublicKey(event.target.value)} placeholder="Публичный ключ устройства" className="w-full rounded-lg bg-slate-700 text-white p-2 text-sm" rows={3} />
               <button type="button" disabled={busy || devicePublicKey.trim().length < 32} onClick={() => void enrollDevice()} className="px-3 py-2 bg-slate-700 text-white rounded-lg disabled:opacity-50">Зарегистрировать устройство</button>
               {enrolledDeviceId && <p className="text-green-300 text-xs break-all">ID устройства: {enrolledDeviceId}</p>}
