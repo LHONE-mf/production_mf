@@ -7,12 +7,22 @@ import type { Batch } from '../../core/planning/planningClient';
 
 const journal = vi.hoisted(() => ({
   entries: [] as Array<Record<string,unknown>>,
+  mixes: [] as Array<Record<string,unknown>>,
+  coatings: [] as Array<Record<string,unknown>>,
   reads: 0,
 }));
 vi.mock('../../core/db', () => ({
-  db:{journal:{orderBy:() => ({reverse:() => ({
-    limit:() => ({toArray:async () => {journal.reads++;return journal.entries;}}),
-  })})}},
+  db:{
+    journal:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => {journal.reads++;return journal.entries;}}),
+    })})},
+    mixBatches:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.mixes}),
+    })})},
+    coatRuns:{orderBy:() => ({reverse:() => ({
+      limit:() => ({toArray:async () => journal.coatings}),
+    })})},
+  },
 }));
 import { LocalJournalLinkPanel } from './LocalJournalLinkPanel';
 
@@ -41,7 +51,7 @@ async function mount(status:Batch['status']='in_progress') {
 afterEach(async()=>{
   if(root)await act(async()=>root!.unmount());
   root=undefined;container?.remove();container=undefined;
-  journal.entries=[];journal.reads=0;
+  journal.entries=[];journal.mixes=[];journal.coatings=[];journal.reads=0;
   clearServerConnection();vi.unstubAllGlobals();
 });
 
@@ -83,7 +93,7 @@ describe('M2 manual link of existing local journal',()=>{
     expect(button.disabled).toBe(true);
     const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
     await act(async()=>{
-      select.value=validId;
+      select.value='journal:'+validId;
       select.dispatchEvent(new Event('change',{bubbles:true}));
     });
     const checkbox=screen.querySelector('input[type="checkbox"]') as HTMLInputElement;
@@ -105,6 +115,42 @@ describe('M2 manual link of existing local journal',()=>{
     });
     expect(journal.entries).toHaveLength(5);
     expect(screen.textContent).toContain('Исходный локальный журнал не изменён');
+  });
+
+  it('attaches a slurry mix snapshot with its reported dry-solids metric, not automatic output',async()=>{
+    const mixId='efeb45b8-bf18-4d21-8b54-ef7c91d8cb2f';
+    journal.mixes=[{id:mixId,recipeName:'LFP-12',batchKg:12.125,
+      createdAt:1794312000000}];
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>({
+      ok:true,json:async()=>url.endsWith('/steps')?
+        {steps:[{number:1,name:'Slurry',stage:'slurry',workshopId:'slurry',evidence:null}]}:
+        options.method==='GET'?{links:[]}:{id:'linked',alreadyLinked:false},
+    }));
+    vi.stubGlobal('fetch',fetchMock);
+    setServerConnection(connection);
+    const screen=await mount();
+    expect(fetchMock.mock.calls.every(call=>call[1].method==='GET')).toBe(true);
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    expect(select.textContent).toContain('Журнал замесов');
+    await act(async()=>{
+      select.value='mix_batch:'+mixId;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    expect(screen.textContent).toContain('Заявленная масса сухих веществ');
+    const checkbox=screen.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    await act(async()=>{ checkbox.click(); });
+    const form=screen.querySelector('button[type="submit"]')!.closest('form')!;
+    await act(async()=>{
+      form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
+      await Promise.resolve();
+    });
+    const posted=fetchMock.mock.calls.filter(call=>call[1].method==='POST');
+    expect(posted).toHaveLength(1);
+    expect(JSON.parse(String(posted[0][1].body))).toMatchObject({
+      sourceKind:'mix_batch',sourceStage:'slurry',sourceEntryId:mixId,
+      sourceMeasure:{kind:'dry_solids_kg',value:'12.125000'},
+    });
+    expect(journal.mixes).toHaveLength(1);
   });
 
   it('never offers link writes for held batches',async()=>{

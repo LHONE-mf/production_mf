@@ -223,6 +223,20 @@ retries. Demo-style non-UUID identifiers are rejected. These pointers are
 equipment measurements, verified yield, or valid completion evidence.
 Other legacy manufacturing-run tables are not yet integrated.
 
+**M2 typed local manufacturing runs checkpoint (2026-11-10):**
+An additive migration `012_m2_local_run_sources.sql` expands the existing
+append-only manual reference ledger to distinguish source stores by
+`(organization,source_kind,source_entry_id)`, keeping existing generic
+journal links. The supervisor can now intentionally attach a local slurry
+`mixBatches` record or coating `coatRuns` record through the same Planning
+batch panel. Selected records may carry explicitly labelled values for reported
+dry solids mass (kg) or side-A coating length (m), respectively. They never
+autofill step-completion evidence or the authoritative quantity-flow audit.
+No automatic upload, local Dexie rewrite, inventory posting, or equipment
+controls are introduced. The API validates source kind/stage and metric
+compatibility; PostgreSQL and UI tests cover these boundaries. Full stage-run
+coverage, quality checks, and physical pilot validation remain future work.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

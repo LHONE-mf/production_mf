@@ -1,29 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { db } from '../../core/db';
-import type { JournalEntry } from '../../core/types';
+import { localSourceCandidates, localKindLabels, metricLabels, type LocalSourceCandidate }
+  from '../../core/planning/localSourceCandidates';
 import { clearServerConnection, getServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import { planningApi, type Batch, type BatchStepRecord, type LocalJournalLink } from '../../core/planning/planningClient';
 
 type Props = { connection: ServerConnection; batch: Batch };
-const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const inputClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2 text-sm text-white';
-
-function linkable(entry: JournalEntry): boolean {
-  // Imported/old records may have incomplete fields despite their TS type.
-  // The shipped demo rows have non-UUID IDs; this is NOT authenticity proof.
-  if (!entry || typeof entry.id !== 'string' ||
-      typeof entry.stage !== 'string' || typeof entry.summary !== 'string' ||
-      (entry.defects != null && typeof entry.defects !== 'string')) return false;
-  const timestamp: unknown = entry.createdAt;
-  if (!(timestamp instanceof Date) && typeof timestamp !== 'string' &&
-      typeof timestamp !== 'number') return false;
-  const date = timestamp instanceof Date ? timestamp.getTime()
-    : new Date(timestamp).getTime();
-  const summaryLength = entry.summary.trim().length;
-  return uuid.test(entry.id) && summaryLength > 0 && summaryLength <= 2000 &&
-    (entry.defects?.trim().length ?? 0) <= 2000 &&
-    Number.isFinite(date);
-}
 
 /** Manual online association of a local journal snapshot with one route step.
  *  A reference is not completion evidence or validated material consumption.
@@ -31,7 +14,7 @@ function linkable(entry: JournalEntry): boolean {
 export function LocalJournalLinkPanel({ connection, batch }: Props) {
   const [steps, setSteps] = useState<BatchStepRecord[]>([]);
   const [links, setLinks] = useState<LocalJournalLink[]>([]);
-  const [local, setLocal] = useState<JournalEntry[]>([]);
+  const [local, setLocal] = useState<LocalSourceCandidate[]>([]);
   const [stepChoice, setStepChoice] = useState<number | null>(null);
   const [entryChoice, setEntryChoice] = useState('');
   const [linkId, setLinkId] = useState(() => crypto.randomUUID());
@@ -45,10 +28,12 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     return getServerConnection()?.session.accessToken === connection.session.accessToken;
   }
   async function load(signal?: AbortSignal) {
-    const [route, history, entries] = await Promise.all([
+    const [route, history, entries, mixes, coatings] = await Promise.all([
       planningApi.stepEvidence(connection, batch.id, signal),
       planningApi.journalLinks(connection, batch.id, signal),
       db.journal.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.mixBatches.orderBy('createdAt').reverse().limit(150).toArray(),
+      db.coatRuns.orderBy('createdAt').reverse().limit(150).toArray(),
     ]);
     if (!Array.isArray(route.steps) || !Array.isArray(history.links))
       throw new Error('Сервер вернул неверную историю журнала');
@@ -56,7 +41,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       setSteps(route.steps.filter((row,index,list) =>
         list.findIndex(other => other.number === row.number) === index));
       setLinks(history.links);
-      setLocal(entries.filter(linkable));
+      setLocal(localSourceCandidates(entries,mixes,coatings));
     }
   }
 
@@ -76,10 +61,11 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
   const number = stepChoice !== null && steps.some(step => step.number === stepChoice)
     ? stepChoice : steps[0]?.number;
   const stage = steps.find(step => step.number === number)?.stage;
-  const linkedIds = new Set(links.map(link => link.sourceEntryId));
+  const linkedIds = new Set(links.map(link =>
+    (link.sourceKind ?? 'journal') + ':' + link.sourceEntryId));
   const candidates = local.filter(entry =>
-    entry.stage === stage && !linkedIds.has(entry.id));
-  const chosen = candidates.find(entry => entry.id === entryChoice);
+    entry.sourceStage === stage && !linkedIds.has(entry.key));
+  const chosen = candidates.find(entry => entry.key === entryChoice);
 
   function resetSelection() {
     setEntryChoice('');
@@ -94,10 +80,11 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     setBusy(true); setError(''); setMessage('');
     try {
       await planningApi.attachLocalJournal(connection,batch.id,number,{
-        linkId,sourceEntryId:chosen.id,sourceStage:chosen.stage,
-        sourceCreatedAt:new Date(chosen.createdAt).toISOString(),
-        summary:chosen.summary.trim(),
-        ...(chosen.defects?.trim() ? {defects:chosen.defects.trim()} : {}),
+        linkId,sourceEntryId:chosen.sourceEntryId,sourceKind:chosen.sourceKind,
+        sourceStage:chosen.sourceStage,sourceCreatedAt:chosen.sourceCreatedAt,
+        summary:chosen.summary,
+        ...(chosen.defects ? {defects:chosen.defects} : {}),
+        ...(chosen.sourceMeasure ? {sourceMeasure:chosen.sourceMeasure} : {}),
       });
       if (!sameSession()) return;
       // Do not repeat a successful append if refreshing failed.
@@ -127,9 +114,11 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       </button>
     </div>
     <p className="text-xs text-slate-400">
-      Выберите запись из журнала этого устройства и привяжите к этапу маршрута.
-      На сервер копируются название работы, дата и замечания, но не параметры измерений.
-      Это ручная ссылка, а не подтверждение технологической операции.
+      Выберите запись журнала работ, фактического замеса или нанесения покрытия
+      с этого устройства и явно привяжите её к этапу маршрута.
+      Передаются только краткое описание, дата, замечания и обозначенный
+      заявленный параметр, если он есть. Это не доказательство выполнения,
+      измерение сервера, приёмка качества или списание материалов.
       Демонстрационные записи не предлагаются.
     </p>
     {loading && <p role="status" className="text-xs text-slate-400">Загрузка журнала…</p>}
@@ -137,8 +126,11 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     {message && <p role="status" className="text-sm text-emerald-200">{message}</p>}
     {links.length > 0 && <ol className="space-y-1">
       {links.map(link => <li key={link.id} className="border-l-2 border-slate-600 pl-2 text-xs text-slate-300">
-        Этап {link.stepNumber}: {link.summary}
+        Этап {link.stepNumber} · {localKindLabels[link.sourceKind ?? 'journal']}: {link.summary}
         {' · '}{new Date(link.sourceCreatedAt).toLocaleString('ru-RU')}
+        {link.sourceMeasure && <span className="block text-slate-400">
+          {metricLabels[link.sourceMeasure.kind]}: {link.sourceMeasure.value}
+        </span>}
         {link.defects && <span className="block text-amber-200">Замечание: {link.defects}</span>}
       </li>)}
     </ol>}
@@ -155,20 +147,24 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
             {step.number}. {step.name} ({step.stage})</option>)}
         </select>
       </label>
-      <label className="block text-xs text-slate-400">Локальная запись (последние 150)
+      <label className="block text-xs text-slate-400">Локальная запись (до 150 из каждого журнала)
         <select aria-label="Локальная запись" className={inputClass + ' mt-1'}
           value={entryChoice} onChange={event => {
             setEntryChoice(event.target.value);
             setLinkId(crypto.randomUUID());setConfirmed(false);
           }}>
           <option value="">Выберите запись</option>
-          {candidates.map(entry => <option key={entry.id} value={entry.id}>
-            {new Date(entry.createdAt).toLocaleString('ru-RU')} · {entry.summary.slice(0,90)}
+          {candidates.map(entry => <option key={entry.key} value={entry.key}>
+            {localKindLabels[entry.sourceKind]} · {new Date(entry.sourceCreatedAt).toLocaleString('ru-RU')}
+            {' · '}{entry.summary.slice(0,90)}
           </option>)}
         </select>
       </label>
       {chosen && <div className="rounded-md bg-slate-900/60 p-2 text-xs text-slate-200">
-        <p>Передаётся на сервер: {chosen.summary}</p>
+        <p>Передаётся на сервер ({localKindLabels[chosen.sourceKind]}): {chosen.summary}</p>
+        {chosen.sourceMeasure && <p>
+          {metricLabels[chosen.sourceMeasure.kind]}: {chosen.sourceMeasure.value}
+        </p>}
         {chosen.defects && <p>Замечания: {chosen.defects}</p>}
       </div>}
       {!candidates.length && <p className="text-xs text-amber-200">
