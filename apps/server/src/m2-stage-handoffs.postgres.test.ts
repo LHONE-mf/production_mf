@@ -112,6 +112,8 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect((await send(randomUUID(),1,2)).json())
       .toMatchObject({error:'source_step_not_completed'});
     expect((await evidence(1,'completed')).statusCode).toBe(201);
+    expect((await send(randomUUID(),1,2,0,'21')).json())
+      .toMatchObject({error:'handoff_exceeds_recorded_output'});
   });
 
   it('sends an append-only transfer, blocks self receipt, and scopes the master inbox', async () => {
