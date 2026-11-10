@@ -4,7 +4,7 @@ import { db } from '../../core/db';
 import type { Task as StoredTask } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
-import { editServerManagedTask } from '../../core/sync/atomicTasks';
+import { createServerManagedTask, editServerManagedTask } from '../../core/sync/atomicTasks';
 import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
 import { 
   Plus, Search, Clock, CheckCircle, 
@@ -150,7 +150,7 @@ export function TasksModule() {
       </div>
 
       {/* Create task modal */}
-      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} canCreateShared={hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master')} onClose={() => setShowCreateModal(false)} />}
       {editingTask && <CreateTaskModal key={editingTask.id} initialTask={editingTask} creatorId={currentUser.id} users={users ?? []} onClose={() => setEditingTask(null)} />}
     </div>
   );
@@ -241,12 +241,17 @@ function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, c
   );
 }
 
-function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}>; initialTask?: StoredTask }) {
+function CreateTaskModal({ onClose, creatorId, users, initialTask, canCreateShared = false }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}>; initialTask?: StoredTask; canCreateShared?: boolean }) {
   const [title, setTitle] = useState(initialTask?.title ?? '');
   const [description, setDescription] = useState(initialTask?.description ?? '');
   const [priority, setPriority] = useState<TaskPriority>(initialTask?.priority ?? TaskPriority.MEDIUM);
   const [assignee, setAssignee] = useState(initialTask?.assignedTo ?? '');
+  const [createShared, setCreateShared] = useState(false);
+  const [sharedAssigneeId, setSharedAssigneeId] = useState('');
+  const [sharedWorkshopId, setSharedWorkshopId] = useState('');
   const managedRevision = useLiveQuery(async () => initialTask ? db.hybridTaskRevisions.get(initialTask.id) : undefined, [initialTask?.id]);
+  const managedQueued = useLiveQuery(async () => initialTask ? db.hybridTaskOutbox.where('entityId').equals(initialTask.id).count() : 0, [initialTask?.id]);
+  const serverManaged = Boolean(managedRevision || managedQueued);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   async function createTask() {
@@ -261,7 +266,12 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
         assignedTo: assignee, createdBy: initialTask?.createdBy ?? creatorId, createdAt: initialTask?.createdAt ?? now, updatedAt: now,
         comments: initialTask?.comments ?? [], attachments: initialTask?.attachments ?? [],
       };
-      if (initialTask && managedRevision) {
+      if (!initialTask && createShared) {
+        await createServerManagedTask({
+          title: title.trim(), description: description.trim(), priority,
+          assignedTo: sharedAssigneeId.trim(), workshopId: sharedWorkshopId.trim(),
+        });
+      } else if (initialTask && serverManaged) {
         // Never send locally seeded demo assignee IDs to the shared server:
         // editing a shared assignment needs a separate server-user picker.
         const lease = await requireOfflineTaskEditLease();
@@ -329,10 +339,14 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
             </div>
             <div>
               <label className="block text-sm text-slate-300 mb-1">Исполнитель</label>
-              {managedRevision ? (
+              {serverManaged ? (
                 <p className="text-slate-400 text-xs break-all rounded-lg p-2 bg-slate-700/50">
                   {initialTask?.assignedTo || 'Не назначен'} (изменение назначения пока недоступно)
                 </p>
+              ) : createShared ? (
+                <input value={sharedAssigneeId} onChange={event => setSharedAssigneeId(event.target.value)}
+                  placeholder="UUID пользователя сервера (необязательно)"
+                  className="w-full rounded-lg bg-slate-700 text-white p-2 text-xs" />
               ) : (
                 <select
                   value={assignee}
@@ -346,8 +360,18 @@ function CreateTaskModal({ onClose, creatorId, users, initialTask }: { onClose: 
             </div>
           </div>
 
+          {!initialTask && canCreateShared && <label className="flex items-center gap-2 text-slate-200 text-sm">
+            <input type="checkbox" checked={createShared} onChange={event => setCreateShared(event.target.checked)} />
+            Создать серверное задание (отправка при ручной синхронизации)
+          </label>}
+          {!initialTask && createShared && <label className="block text-slate-300 text-sm">
+            Участок (код из сервера)
+            <input value={sharedWorkshopId} maxLength={120} onChange={event => setSharedWorkshopId(event.target.value)}
+              placeholder="assembly" className="mt-1 w-full rounded-lg bg-slate-700 p-2 text-white" />
+            <span className="text-xs text-slate-400">Для мастера и заданий с исполнителем участок обязателен. Исполнитель указывается UUID пользователя сервера.</span>
+          </label>}
           {error && <p role="alert" className="text-red-300 text-sm">{error}</p>}
-          <p className="text-slate-400 text-xs">{managedRevision ? 'Изменения сохраняются в локальной очереди и отправляются при ручной синхронизации.' : 'Локальное задание сохраняется только на этом устройстве.'}</p>
+          <p className="text-slate-400 text-xs">{serverManaged || createShared ? 'Задание сохраняется в локальной очереди и отправляется при ручной синхронизации.' : 'Локальное задание сохраняется только на этом устройстве.'}</p>
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
