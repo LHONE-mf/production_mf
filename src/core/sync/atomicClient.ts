@@ -115,7 +115,7 @@ export async function pullAtomicTasks(session: HybridSession) {
   const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100&deviceId=' + encodeURIComponent(proof.deviceId), {
     headers: { 'x-device-proof': proof.token },
   });
-  if (!Array.isArray(response.changes) || !Number.isSafeInteger(Number(response.nextCursor)) || Number(response.nextCursor) < cursor) {
+  if (!Array.isArray(response.changes) || !Number.isSafeInteger(response.nextCursor) || response.nextCursor < cursor) {
     throw new Error('Invalid sync response: changes or cursor');
   }
   const changes = response.changes as RemoteTaskChange[];
