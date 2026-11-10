@@ -6,6 +6,7 @@ import {
   planningApi, type Batch, type BatchEvent, type BatchStatus, type MaterialLine,
   type ProductionOrder, type QuantityUnit, type Route, type RouteStep, type Workshop,
   type HandoffInboxItem, type BatchHandoff, type StepDetail,
+  type BatchGenealogyLink, type GenealogyKind,
 } from '../../core/planning/planningClient';
 
 const fieldClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2.5 text-sm text-white';
@@ -23,6 +24,10 @@ const transitions: Record<BatchStatus, BatchStatus[]> = {
 };
 const lineNames: Record<MaterialLine, string> = {
   cathode: 'Катод', anode: 'Анод', cell: 'Ячейка',
+};
+const genealogyKinds: Record<GenealogyKind, string> = {
+  assembly: 'Сборка из электродов', split: 'Разделение партии',
+  merge: 'Объединение партий', consumption: 'Связь расходования',
 };
 const emptyStep = (): RouteStep => ({
   name: '', stage: StageId.COATING, workshopId: '', electrodeLine: 'cathode',
@@ -64,6 +69,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [incoming, setIncoming] = useState<HandoffInboxItem[]>([]);
   const [handoffHistory, setHandoffHistory] = useState<BatchHandoff[]>([]);
   const [handoffRoute, setHandoffRoute] = useState<StepDetail[]>([]);
+  const [genealogyLinks, setGenealogyLinks] = useState<BatchGenealogyLink[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<Route | null>(null);
@@ -91,6 +97,11 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [handoffQuantity, setHandoffQuantity] = useState('');
   const [handoffNote, setHandoffNote] = useState('');
   const [receiptNote, setReceiptNote] = useState('');
+  const [linkKind, setLinkKind] = useState<GenealogyKind>('assembly');
+  const [linkSourceId, setLinkSourceId] = useState('');
+  const [linkSourceQuantity, setLinkSourceQuantity] = useState('');
+  const [linkTargetQuantity, setLinkTargetQuantity] = useState('');
+  const [linkNote, setLinkNote] = useState('');
 
   async function refresh(signal?: AbortSignal) {
     const [w, r, o, h] = await Promise.all([
@@ -134,7 +145,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       await action();
       if (getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
       await refresh();
-      if (selectedOrder) await loadBatches(selectedOrder);
+      if (selectedOrder) await loadBatches(selectedOrder, false);
       if (selectedBatch) await loadEvents(selectedBatch);
       setMessage(success);
     } catch (cause) {
@@ -144,11 +155,14 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     } finally { setBusy(false); }
   }
 
-  async function loadBatches(orderId: string) {
+  async function loadBatches(orderId: string, resetDetail = true) {
     setSelectedOrder(orderId);
-    setSelectedBatch(null);
-    setBatches([]);
-    setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
+    if (resetDetail) {
+      setSelectedBatch(null);
+      setBatches([]);
+      setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
+      setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
+    }
     try {
       const response = await planningApi.batches(connection, orderId);
       if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
@@ -159,18 +173,21 @@ function PlanningWorkspace({ connection, onOpenSync }: {
 
   async function loadEvents(batchId: string) {
     setSelectedBatch(batchId);
-    setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
+    setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
     try {
-      const [response, ledger, steps] = await Promise.all([
+      const [response, ledger, steps, genealogy] = await Promise.all([
         planningApi.batchEvents(connection, batchId),
         planningApi.batchHandoffs(connection, batchId),
         (async () => { const order = orders.find(o => o.id === selectedOrder);
           return order ? planningApi.routeSteps(connection, order.routeId, order.routeVersion) : { steps: [] as StepDetail[] }; })(),
+        planningApi.batchGenealogy(connection, batchId),
       ]);
       if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
+        if (!Array.isArray(genealogy.links)) throw new Error('Сервер вернул неверную историю партий');
         setEvents(response.events);
         setHandoffHistory(ledger.handoffs);
         setHandoffRoute(steps.steps);
+        setGenealogyLinks(genealogy.links);
       }
     } catch (cause) { setError(formatProblem(cause)); }
   }
@@ -239,6 +256,17 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const chosenRoute = approved.find(route => route.id + ':' + route.version === routeChoice);
   const selectedOrderRow = orders.find(order => order.id === selectedOrder);
   const selectedBatchRow = batches.find(batch => batch.id === selectedBatch);
+  // Only batches within the selected order are eligible; the server checks
+  // tenant, order, lifecycle, branches and cycles independently.
+  const genealogySources = batches.filter(batch => selectedBatchRow &&
+    batch.id !== selectedBatchRow.id && batch.status === 'completed' &&
+    ['created', 'in_progress'].includes(selectedBatchRow.status) &&
+    (linkKind === 'assembly'
+      ? selectedBatchRow.materialLine === 'cell' &&
+        ['cathode', 'anode'].includes(batch.materialLine)
+      : linkKind === 'split' || linkKind === 'merge'
+        ? batch.materialLine === selectedBatchRow.materialLine : true));
+  const chosenGenealogySource = genealogySources.find(batch => batch.id === linkSourceId);
   const applicableSteps = handoffRoute.filter(step => step.electrodeLine ===
     (selectedBatchRow?.materialLine === 'cell' ? 'common' : selectedBatchRow?.materialLine));
   const latestTransfer = handoffHistory[handoffHistory.length - 1];
