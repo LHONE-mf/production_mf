@@ -5,6 +5,7 @@ import { clearServerConnection, getServerConnection, useServerConnection, type S
 import {
   planningApi, type Batch, type BatchEvent, type BatchStatus, type MaterialLine,
   type ProductionOrder, type QuantityUnit, type Route, type RouteStep, type Workshop,
+  type HandoffInboxItem, type BatchHandoff, type StepDetail,
 } from '../../core/planning/planningClient';
 
 const fieldClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2.5 text-sm text-white';
@@ -54,12 +55,15 @@ function PlanningWorkspace({ connection, onOpenSync }: {
 }) {
   const isChief = connection.serverRole === 'chief';
   const canEditRoutes = isChief || connection.serverRole === 'technologist';
-  const [tab, setTab] = useState<'orders' | 'routes'>('orders');
+  const [tab, setTab] = useState<'orders' | 'routes' | 'handoffs'>('orders');
   const [workshops, setWorkshops] = useState<Workshop[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [events, setEvents] = useState<BatchEvent[]>([]);
+  const [incoming, setIncoming] = useState<HandoffInboxItem[]>([]);
+  const [handoffHistory, setHandoffHistory] = useState<BatchHandoff[]>([]);
+  const [handoffRoute, setHandoffRoute] = useState<StepDetail[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<Route | null>(null);
@@ -84,20 +88,26 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [batchUnit, setBatchUnit] = useState<QuantityUnit>('kg');
   const [nextStatus, setNextStatus] = useState<BatchStatus>('in_progress');
   const [statusReason, setStatusReason] = useState('');
+  const [handoffQuantity, setHandoffQuantity] = useState('');
+  const [handoffNote, setHandoffNote] = useState('');
+  const [receiptNote, setReceiptNote] = useState('');
 
   async function refresh(signal?: AbortSignal) {
-    const [w, r, o] = await Promise.all([
+    const [w, r, o, h] = await Promise.all([
       planningApi.workshops(connection, signal),
       planningApi.routes(connection, signal),
       isChief ? planningApi.orders(connection, signal) : Promise.resolve({ orders: [] as ProductionOrder[] }),
+      planningApi.handoffInbox(connection, signal),
     ]);
     if (signal?.aborted || getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
-    if (!Array.isArray(w.workshops) || !Array.isArray(r.routes) || !Array.isArray(o.orders)) {
+    if (!Array.isArray(w.workshops) || !Array.isArray(r.routes) || !Array.isArray(o.orders) ||
+        !Array.isArray(h.handoffs)) {
       throw new Error('Сервер вернул неверный список заказов или маршрутов');
     }
     setWorkshops(w.workshops);
     setRoutes(r.routes);
     setOrders(o.orders);
+    setIncoming(h.handoffs);
   }
 
   useEffect(() => {
@@ -107,7 +117,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     void refresh(controller.signal)
       .catch(cause => {
         if (!controller.signal.aborted) {
-          setWorkshops([]); setRoutes([]); setOrders([]);
+          setWorkshops([]); setRoutes([]); setOrders([]); setIncoming([]);
           setError(formatProblem(cause));
           if (formatProblem(cause).startsWith('HTTP 401')) clearServerConnection();
         }
@@ -147,11 +157,18 @@ function PlanningWorkspace({ connection, onOpenSync }: {
 
   async function loadEvents(batchId: string) {
     setSelectedBatch(batchId);
-    setEvents([]);
+    setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
     try {
-      const response = await planningApi.batchEvents(connection, batchId);
+      const [response, ledger, steps] = await Promise.all([
+        planningApi.batchEvents(connection, batchId),
+        planningApi.batchHandoffs(connection, batchId),
+        (async () => { const order = orders.find(o => o.id === selectedOrder);
+          return order ? planningApi.routeSteps(connection, order.routeId, order.routeVersion) : { steps: [] as StepDetail[] }; })(),
+      ]);
       if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
         setEvents(response.events);
+        setHandoffHistory(ledger.handoffs);
+        setHandoffRoute(steps.steps);
       }
     } catch (cause) { setError(formatProblem(cause)); }
   }
@@ -241,6 +258,8 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         onClick={() => setTab('orders')}>Заказы и партии</button>
       <button role="tab" aria-selected={tab === 'routes'} className={tab === 'routes' ? buttonClass : secondaryClass}
         onClick={() => setTab('routes')}>Маршруты</button>
+      <button role="tab" aria-selected={tab === 'handoffs'} className={tab === 'handoffs' ? buttonClass : secondaryClass}
+        onClick={() => setTab('handoffs')}>Приёмка передач ({incoming.length})</button>
     </div>
     {loading && <p className="text-slate-300" role="status">Загружаем данные с сервера…</p>}
     {error && <p role="alert" className="rounded-lg border border-red-600/40 bg-red-950/40 p-3 text-sm text-red-200">{error}</p>}
