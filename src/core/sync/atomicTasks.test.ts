@@ -678,6 +678,40 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(1);
   });
 
+  it('rolls back earlier remote tasks when a later change in the same pull is malformed', async () => {
+    const secondTaskId = '55555555-5555-4555-8555-555555555555';
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const { encodeTask } = await import('./taskDto');
+    const badPayload = encodeTask({ ...task(), id: secondTaskId });
+    badPayload.updatedAt = 'invalid-date';
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 10 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        changes: [
+          { sequence: '11', entity_id: taskId, entity_type: 'task',
+            revision: 1, payload: encodeTask(task()) },
+          { sequence: '12', entity_id: secondTaskId, entity_type: 'task',
+            revision: 1, payload: badPayload },
+        ],
+        nextCursor: 12, hasMore: false,
+      }),
+    }));
+    await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid remote task date');
+    expect(await db.tasks.get(taskId)).toBeUndefined();
+    expect(await db.tasks.get(secondTaskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(secondTaskId)).toBeUndefined();
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+    db.close();
+    await db.open();
+    expect(await db.tasks.count()).toBe(0);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(10);
+  });
+
   it.each(['invalid_creation_date', 'reversed_audit_clock', 'foreign_comment', 'invalid_attachment_date'] as const)(
     'rolls back remote task and cursor for malformed %s',
     async failure => {
