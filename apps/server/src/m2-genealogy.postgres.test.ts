@@ -176,7 +176,6 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
     // must still be rejected, independent of the normal lifecycle safeguards.
     await pool.query(`UPDATE production_batches SET status='created'
       WHERE organization_id=$1 AND id=$2`,[org,cathodeId]);
-    await complete(anodeId).catch(() => undefined);
     // Add C -> A only after C is completed, with A artificially made writable.
     await complete(cellId);
     const cycle = await app.inject({method:'POST',
