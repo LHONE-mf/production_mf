@@ -7,9 +7,17 @@ ALTER TABLE production_batches
 ALTER TABLE production_batches
   ADD COLUMN IF NOT EXISTS quantity_unit text CHECK (
     quantity_unit IN ('cells', 'pieces', 'kg', 'm', 'm2'));
-ALTER TABLE production_batches
-  ADD CONSTRAINT production_batches_quantity_pair CHECK (
-    (planned_quantity IS NULL) = (quantity_unit IS NULL));
+DO $
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+    WHERE conrelid='production_batches'::regclass
+      AND conname='production_batches_quantity_pair') THEN
+    ALTER TABLE production_batches
+      ADD CONSTRAINT production_batches_quantity_pair CHECK (
+        (planned_quantity IS NULL) = (quantity_unit IS NULL));
+  END IF;
+END
+$;
 
 CREATE TABLE IF NOT EXISTS production_batch_events (
   organization_id uuid NOT NULL,
