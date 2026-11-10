@@ -10,9 +10,9 @@ integration('master workshop task authorization (PostgreSQL)', () => {
   const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
   const app = buildApp(pool);
   const org = randomUUID(), chief = randomUUID(), master = randomUUID(), worker = randomUUID();
-  const chiefDevice = randomUUID(), masterDevice = randomUUID();
+  const chiefDevice = randomUUID(), masterDevice = randomUUID(), workerDevice = randomUUID();
   const taskA = randomUUID(), taskB = randomUUID();
-  const credentials = [chief, master].map(user => ({
+  const credentials = [chief, master, worker].map(user => ({
     user, token: randomBytes(32).toString('base64url'),
     proof: randomBytes(32).toString('base64url'),
   }));
@@ -32,17 +32,17 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     app.inject({
       method: 'POST', url: '/sync/push', headers: auth(index),
       payload: { operations: [{
-        operationId, deviceId: index === 0 ? chiefDevice : masterDevice,
+        operationId, deviceId: index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice,
         entityType: 'task', entityId: id, operationType: 'upsert',
         expectedRevision, payload,
       }] },
     });
   const pull = (index: number) => app.inject({
-    method: 'GET', url: '/sync/pull?cursor=0&limit=100&deviceId=' + (index === 0 ? chiefDevice : masterDevice),
+    method: 'GET', url: '/sync/pull?cursor=0&limit=100&deviceId=' + (index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice),
     headers: auth(index),
   });
   const comparison = (index: number, id: string) => app.inject({
-    method: 'GET', url: '/sync/task/' + id + '?deviceId=' + (index === 0 ? chiefDevice : masterDevice),
+    method: 'GET', url: '/sync/task/' + id + '?deviceId=' + (index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice),
     headers: auth(index),
   });
 
@@ -56,9 +56,9 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     await pool.query('INSERT INTO organizations(id,name) VALUES($1,$2)', [org, 'Workshop authorization fixture']);
     for (const [index, person] of credentials.entries()) {
       await pool.query('INSERT INTO users(id,organization_id,login,password_hash,role) VALUES($1,$2,$3,$4,$5)', [
-        person.user, org, 'scope-test-' + person.user, 'test-only', index === 0 ? 'chief' : 'master',
+        person.user, org, 'scope-test-' + person.user, 'test-only', index === 0 ? 'chief' : index === 1 ? 'master' : 'worker',
       ]);
-      const device = index === 0 ? chiefDevice : masterDevice;
+      const device = index === 0 ? chiefDevice : index === 1 ? masterDevice : workerDevice;
       await pool.query('INSERT INTO devices(id,organization_id,user_id) VALUES($1,$2,$3)', [device,org,person.user]);
       await pool.query("INSERT INTO sessions(id,organization_id,user_id,token_hash,expires_at) VALUES($1,$2,$3,$4,now()+interval '30 minutes')",
         [randomUUID(),org,person.user,tokenHash(person.token)]);
@@ -67,7 +67,6 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     }
     await pool.query("INSERT INTO workshops(organization_id,id,name) VALUES($1,'assembly','Assembly'),($1,'coating','Coating')",[org]);
     await pool.query("INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly')",[org,master]);
-    await pool.query("INSERT INTO users(id,organization_id,login,password_hash,role) VALUES($1,$2,$3,'test-only','worker')",[worker,org,'scope-test-'+worker]);
     await pool.query("INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,'assembly')",[org,worker]);
   });
 
@@ -96,6 +95,56 @@ integration('master workshop task authorization (PostgreSQL)', () => {
     expect(masterChanges.json().changes.map((change: {entity_id: string}) => change.entity_id)).toEqual([taskA]);
     expect((await comparison(1,taskA)).statusCode).toBe(200);
     expect((await comparison(1,taskB)).statusCode).toBe(404);
+  });
+
+  it('lets a proven worker submit only assigned task progress, and revocation cuts access', async () => {
+    const ownId = randomUUID(), otherId = randomUUID();
+    const assigned = { ...base(ownId, 'assembly'), assignedTo: worker, status: 'assigned' };
+    expect((await push(0, ownId, assigned, 0)).json().results[0]).toMatchObject({ status: 'accepted', revision: 1 });
+    expect((await push(0, otherId, base(otherId, 'assembly'), 0)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 1 });
+    const visible = await pull(2);
+    expect(visible.statusCode).toBe(200);
+    expect(visible.json().changes.map((c: { entity_id: string }) => c.entity_id)).toContain(ownId);
+    expect(visible.json().changes.map((c: { entity_id: string }) => c.entity_id)).not.toContain(otherId);
+    expect((await comparison(2, ownId)).statusCode).toBe(200);
+    expect((await comparison(2, otherId)).statusCode).toBe(404);
+
+    const started = { ...assigned, status: 'in_progress', updatedAt: '2026-11-08T11:00:00.000Z' };
+    const submitted = { ...assigned, status: 'checked', updatedAt: '2026-11-08T12:00:00.000Z' };
+    const operationId = randomUUID();
+    expect((await push(2, ownId, started, 1, operationId)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 2 });
+    expect((await push(2, ownId, started, 1, operationId)).json().results[0])
+      .toMatchObject({ status: 'duplicate', revision: 2 });
+    expect((await push(2, ownId, submitted, 2)).json().results[0])
+      .toMatchObject({ status: 'accepted', revision: 3 });
+    const forbiddenEdit = await push(2, ownId, {
+      ...submitted, status: 'in_progress', description: 'rewritten work instructions',
+      updatedAt: '2026-11-08T13:00:00.000Z',
+    }, 3);
+    expect(forbiddenEdit.json().results[0]).toMatchObject({ status: 'rejected', reason: 'worker_may_only_update_status' });
+    const forbiddenApproval = await push(2, ownId, {
+      ...submitted, status: 'completed', updatedAt: '2026-11-08T13:00:00.000Z',
+    }, 3);
+    expect(forbiddenApproval.json().results[0]).toMatchObject({ status: 'rejected', reason: 'worker_status_transition_forbidden' });
+    expect((await push(2, otherId, { ...base(otherId, 'assembly'), status: 'in_progress' }, 1)).json().results[0])
+      .toMatchObject({ status: 'rejected', reason: 'task_not_assigned_to_worker' });
+    expect((await push(2, randomUUID(), assigned, 0)).json().results[0])
+      .toMatchObject({ status: 'rejected', reason: 'worker_cannot_create_task' });
+    const stored = await pool.query('SELECT revision, payload FROM sync_entities WHERE organization_id=$1 AND entity_id=$2',
+      [org, ownId]);
+    expect(stored.rows[0].revision).toBe(3);
+    expect(stored.rows[0].payload.status).toBe('checked');
+    expect(stored.rows[0].payload.description).toBe('');
+
+    await pool.query('UPDATE devices SET revoked_at=now() WHERE id=$1',[workerDevice]);
+    try {
+      expect((await pull(2)).statusCode).toBe(403);
+      expect((await comparison(2, ownId)).statusCode).toBe(403);
+    } finally {
+      await pool.query('UPDATE devices SET revoked_at=NULL WHERE id=$1',[workerDevice]);
+    }
   });
 
   it('allows a master to update an authorized task but rejects foreign workshop writes', async () => {
