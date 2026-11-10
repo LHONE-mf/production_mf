@@ -70,6 +70,74 @@ describe('M2 online planning screen', () => {
     expect(app.textContent).toContain('Новый технологический маршрут');
   });
 
+  it('shows source-to-target genealogy only inside a chief server batch detail', async () => {
+    const link = {
+      id: 'link-1', sourceBatchId: 'cathode-1', targetBatchId: 'cell-1',
+      sourceCode: 'CATHODE-LOT', targetCode: 'CELL-LOT',
+      kind: 'assembly', sourceQuantity: '12.500000', sourceUnit: 'kg',
+      targetQuantity: '100.000000', targetUnit: 'cells',
+      actorId: 'chief', note: 'Electrode batch trace',
+      occurredAt: '2026-11-10T10:00:00Z',
+    };
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+      ok: true, json: async () => {
+        if (url.endsWith('/planning/workshops')) return { workshops: [] };
+        if (url.endsWith('/planning/routes')) return { routes: [] };
+        if (url.endsWith('/planning/orders')) return { orders: [{
+          id: 'order-1', orderCode: 'PO-001', productCode: '18650-NMC',
+          routeId: 'route-1', routeVersion: 1, status: 'released',
+          plannedQuantity: '1000', quantityUnit: 'cells',
+        }] };
+        if (url.endsWith('/planning/handoffs/inbox')) return { handoffs: [] };
+        if (url.endsWith('/planning/orders/order-1/batches')) return { batches: [
+          { id: 'cathode-1', batchCode: 'CATHODE-LOT', materialLine: 'cathode',
+            status: 'completed', plannedQuantity: '20.000000', quantityUnit: 'kg' },
+          { id: 'cell-1', batchCode: 'CELL-LOT', materialLine: 'cell',
+            status: 'created', plannedQuantity: '100.000000', quantityUnit: 'cells' },
+        ] };
+        if (url.endsWith('/planning/batches/cell-1/links')) return { links: [link] };
+        if (url.endsWith('/planning/batches/cell-1/events')) return { events: [] };
+        if (url.endsWith('/planning/batches/cell-1/handoffs')) return { handoffs: [] };
+        if (url.endsWith('/planning/routes/route-1/versions/1/steps'))
+          return { steps: [] };
+        return {};
+      },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    setServerConnection({
+      session: { serverUrl: 'https://mes.example.org', accessToken: 'chief-token' },
+      serverUrl: 'https://mes.example.org', organizationId: 'org',
+      serverRole: 'chief', serverActorId: 'chief',
+      selectedDeviceId: '', enrolledDeviceId: '', myDevices: [],
+    });
+    const screen = await renderPlanning();
+    const openOrder = Array.from(screen.querySelectorAll('button'))
+      .find(button => button.textContent === 'Открыть партии');
+    expect(openOrder).toBeTruthy();
+    await act(async () => { openOrder!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    const openBatch = Array.from(screen.querySelectorAll('button'))
+      .find(button => button.textContent === 'История и статус' &&
+        button.closest('div.rounded-lg')?.textContent?.includes('CELL-LOT'));
+    // Use last matching batch button (cathode is listed first, cell second).
+    const detailButton = openBatch ?? Array.from(screen.querySelectorAll('button'))
+      .filter(button => button.textContent === 'История и статус').at(-1);
+    expect(detailButton).toBeTruthy();
+    await act(async () => { detailButton!.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(screen.textContent).toContain('Происхождение партии');
+    expect(screen.textContent).toContain('CATHODE-LOT → CELL-LOT');
+    expect(screen.textContent).toContain('12.500000 kg');
+    expect(screen.textContent).toContain('Добавить связь происхождения');
+    const available = screen.querySelector('select[aria-label="Исходная партия"]');
+    expect(available?.textContent).toContain('CATHODE-LOT');
+    expect(available?.textContent).not.toContain('CELL-LOT');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/cell-1/links',
+      expect.objectContaining({ headers: expect.objectContaining({
+        Authorization: 'Bearer chief-token',
+      }) }),
+    );
+  });
+
   it('shows only workshop-scoped pending handovers for a server master', async () => {
     const ticket = {
       id: 'transfer-1', batchId: 'batch-1', batchCode: 'CATH-001',
