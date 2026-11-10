@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { androidDevicePublicKey, authenticateAndroidDevice } from '../../core/sync/androidDeviceProof';
 import { requireFreshDeviceProof } from '../../core/sync/deviceProofClient';
@@ -22,23 +22,45 @@ function serverEndpoint(origin: string, path: string) {
   return new URL(path, url).toString();
 }
 
+interface VolatileSyncConnection {
+  session: HybridSession;
+  serverUrl: string;
+  organizationId: string;
+  serverRole: string;
+  serverActorId: string;
+  selectedDeviceId: string;
+  enrolledDeviceId: string;
+  myDevices: string[];
+}
+
+// Navigation must not force a second login after offline edits. Keep the
+// bearer token and proof ONLY in JavaScript memory, never on disk or Dexie.
+let volatileConnection: VolatileSyncConnection | null = null;
+
 export function SyncModule() {
-  const [serverUrl, setServerUrl] = useState('');
-  const [organizationId, setOrganizationId] = useState('');
+  const [serverUrl, setServerUrl] = useState(volatileConnection?.serverUrl ?? '');
+  const [organizationId, setOrganizationId] = useState(volatileConnection?.organizationId ?? '');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [session, setSession] = useState<HybridSession | null>(null);
+  const [session, setSession] = useState<HybridSession | null>(volatileConnection?.session ?? null);
   const [busy, setBusy] = useState(false);
   const [devicePublicKey, setDevicePublicKey] = useState('');
   const [localDevicePublicKey, setLocalDevicePublicKey] = useState('');
   const [deviceOwnerId, setDeviceOwnerId] = useState('');
-  const [enrolledDeviceId, setEnrolledDeviceId] = useState('');
-  const [selectedDeviceId, setSelectedDeviceId] = useState('');
-  const [myDevices, setMyDevices] = useState<string[]>([]);
-  const [serverRole, setServerRole] = useState('');
-  const [serverActorId, setServerActorId] = useState('');
+  const [enrolledDeviceId, setEnrolledDeviceId] = useState(volatileConnection?.enrolledDeviceId ?? '');
+  const [selectedDeviceId, setSelectedDeviceId] = useState(volatileConnection?.selectedDeviceId ?? '');
+  const [myDevices, setMyDevices] = useState<string[]>(volatileConnection?.myDevices ?? []);
+  const [serverRole, setServerRole] = useState(volatileConnection?.serverRole ?? '');
+  const [serverActorId, setServerActorId] = useState(volatileConnection?.serverActorId ?? '');
   const [remoteTasks, setRemoteTasks] = useState<Record<string, { revision: number; payload: TaskPayloadV1 }>>({});
   const [inspectingTask, setInspectingTask] = useState<string | null>(null);
+  useEffect(() => {
+    volatileConnection = session
+      ? { session, serverUrl, organizationId, serverRole, serverActorId,
+          selectedDeviceId, enrolledDeviceId, myDevices }
+      : null;
+  }, [session, serverUrl, organizationId, serverRole, serverActorId,
+    selectedDeviceId, enrolledDeviceId, myDevices]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const pending = useLiveQuery(() => db.hybridTaskOutbox.where('state').equals('pending').count(), []);
@@ -266,6 +288,7 @@ export function SyncModule() {
       setError((cause instanceof Error ? cause.message : 'Ошибка выхода') + '. Локальные учётные данные очищены, но серверная сессия может оставаться активной до истечения срока.');
     } finally {
       await clearOfflineTaskEditLease().catch(() => setError('Не удалось очистить локальное разрешение на редактирование'));
+      volatileConnection = null;
       setRemoteTasks({}); setInspectingTask(null); setSession(null); setServerRole(''); setServerActorId('');
       setEnrolledDeviceId(''); setSelectedDeviceId(''); setMyDevices([]);
       setDevicePublicKey(''); setLocalDevicePublicKey(''); setDeviceOwnerId(''); setPassword(''); setBusy(false);
@@ -298,7 +321,7 @@ export function SyncModule() {
           </form>
         ) : (
           <div className="space-y-3">
-            <p className="text-green-300 text-sm">Подключено к {new URL(session.serverUrl).host}. Токен хранится только до закрытия экрана.</p>
+            <p className="text-green-300 text-sm">Подключено к {new URL(session.serverUrl).host}. Токен находится только в памяти приложения до выхода или перезапуска.</p>
             <p className="text-slate-400 text-xs">ID вашей серверной учётной записи: <span className="font-mono break-all text-slate-200">{serverActorId}</span></p>
             <div className="rounded-xl border border-slate-600 p-3 space-y-1">
               <p className="text-slate-200 text-sm font-medium">Устройства вашей учётной записи</p>
