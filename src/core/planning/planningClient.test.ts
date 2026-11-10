@@ -19,6 +19,8 @@ describe('authenticated M2 planning client', () => {
         method: 'GET',
         headers: expect.objectContaining({ Authorization: 'Bearer server-session-only' }),
         cache: 'no-store',
+        redirect: 'error',
+        credentials: 'omit',
       }),
     );
   });
