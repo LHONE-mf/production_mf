@@ -95,7 +95,10 @@ describe('M2 online planning screen', () => {
           { id: 'cell-1', batchCode: 'CELL-LOT', materialLine: 'cell',
             status: 'in_progress', plannedQuantity: '100.000000', quantityUnit: 'cells' },
         ] };
-        if (url.endsWith('/planning/batches/cell-1/links')) return { links: [link] };
+        if (url.endsWith('/planning/batches/cell-1/links'))
+          return {batchId:'cell-1',links:[link],hasMore:false,nextAfter:null};
+        if (url.endsWith('/planning/batches/cathode-1/links'))
+          return {batchId:'cathode-1',links:[link],hasMore:false,nextAfter:null};
         if (url.endsWith('/planning/batches/cell-1/events')) return { events: [] };
         if (url.endsWith('/planning/batches/cell-1/handoffs')) return { handoffs: [] };
         if (url.endsWith('/planning/routes/route-1/versions/1/steps'))
@@ -137,6 +140,17 @@ describe('M2 online planning screen', () => {
         Authorization: 'Bearer chief-token',
       }) }),
     );
+    const genealogy = screen.querySelector('section[aria-label="Просмотр происхождения партии"]');
+    const sourceButton = [...genealogy!.querySelectorAll('button')]
+      .find(button => button.textContent === 'CATHODE-LOT');
+    expect(sourceButton).toBeTruthy();
+    await act(async () => { sourceButton!.click(); });
+    expect(genealogy?.textContent).toContain('Просматривается: CATHODE-LOT');
+    expect(screen.textContent).toContain('CELL-LOT · История');
+    // The target and units for a new declaration remain those of the cell batch.
+    expect(screen.querySelector('select[aria-label="Исходная партия"]')?.textContent)
+      .toContain('CATHODE-LOT');
+    expect(screen.textContent).toContain('Количество результата (cells)');
   });
 
   it('shows only workshop-scoped pending handovers for a server master', async () => {

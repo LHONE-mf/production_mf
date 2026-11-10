@@ -46,6 +46,10 @@ export type BatchGenealogyLink = {
   targetQuantity: string; targetUnit: QuantityUnit;
   actorId: string; note: string | null; occurredAt: string;
 };
+export type BatchGenealogyPage = {
+  batchId: string; links: BatchGenealogyLink[];
+  hasMore: boolean; nextAfter: string | null;
+};
 export type StepEvidenceKind = 'started' | 'completed' | 'deviation';
 export type StepEvidence = {
   id: string; kind: StepEvidenceKind; actorId: string;
@@ -218,9 +222,33 @@ export const planningApi = {
     planningRequest<{ id: string; status: 'received' }>(
       c, '/planning/handoffs/' + id(handoffId) + '/receive',
       { method: 'POST', body: note?.trim() ? { note: note.trim() } : {} }),
-  batchGenealogy: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
-    planningRequest<{ batchId: string; links: BatchGenealogyLink[] }>(
-      c, '/planning/batches/' + id(batchId) + '/links', { signal }),
+  batchGenealogy: async (c: PlanningSession, batchId: string, signal?: AbortSignal, after?: string) => {
+    const page = await planningRequest<BatchGenealogyPage>(
+      c, '/planning/batches/' + id(batchId) + '/links' +
+        (after ? '?after=' + id(after) : ''), { signal });
+    const quantity = /^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/;
+    const units = ['cells','pieces','kg','m','m2'];
+    if (!page || page.batchId !== batchId || !Array.isArray(page.links) ||
+        page.links.length > 500 || typeof page.hasMore !== 'boolean' ||
+        (page.hasMore ? !page.links.length || page.nextAfter !== page.links[page.links.length-1]?.id ||
+          page.nextAfter === after : page.nextAfter !== null) ||
+        new Set(page.links.map(link => link?.id)).size !== page.links.length ||
+        page.links.some(link => !link ||
+          !['id','sourceBatchId','targetBatchId','sourceCode','targetCode','actorId']
+            .every(key => typeof link[key as keyof BatchGenealogyLink] === 'string' &&
+              Boolean(link[key as keyof BatchGenealogyLink])) ||
+          link.id === after || link.sourceBatchId === link.targetBatchId ||
+          (link.sourceBatchId !== batchId && link.targetBatchId !== batchId) ||
+          !['assembly','split','merge','consumption'].includes(link.kind) ||
+          !units.includes(link.sourceUnit) || !units.includes(link.targetUnit) ||
+          typeof link.sourceQuantity !== 'string' || !quantity.test(link.sourceQuantity) ||
+          typeof link.targetQuantity !== 'string' || !quantity.test(link.targetQuantity) ||
+          typeof link.occurredAt !== 'string' || !Number.isFinite(Date.parse(link.occurredAt)) ||
+          (link.note !== null && typeof link.note !== 'string'))) {
+      throw new Error('Сервер вернул неверную историю партий; обновите сервер и повторите запрос');
+    }
+    return page;
+  },
   declareGenealogy: (c: PlanningSession, targetBatchId: string, input: {
     declarationId?: string; // stable UUID makes uncertain network retries safe
     sourceBatchId: string; kind: GenealogyKind;

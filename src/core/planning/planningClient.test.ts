@@ -172,7 +172,7 @@ describe('authenticated M2 planning client', () => {
     const calls: Array<{ url: string; options: RequestInit }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
       calls.push({ url, options });
-      return { ok: true, json: async () => ({ links: [] }) };
+      return { ok: true, json: async () => ({ batchId:'cell-batch',links:[],hasMore:false,nextAfter:null }) };
     }));
     expect((await planningApi.batchGenealogy(session, 'cell-batch')).links).toEqual([]);
     await planningApi.declareGenealogy(session, 'cell-batch', {
@@ -214,6 +214,30 @@ describe('authenticated M2 planning client', () => {
     expect(sent).toHaveLength(2);
     expect(sent[0]).toBe(sent[1]);
     expect(JSON.parse(sent[0]).declarationId).toBe(declaration.declarationId);
+  });
+
+  it('requests the next genealogy page with an encoded cursor and cancellation signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ok:true,json:async () => ({
+      batchId:'cell-batch',links:[],hasMore:false,nextAfter:null,
+    })});
+    vi.stubGlobal('fetch',fetchMock);
+    const controller = new AbortController();
+    await planningApi.batchGenealogy(session,'cell-batch',controller.signal,'cursor/1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/cell-batch/links?after=cursor%2F1',
+      expect.objectContaining({signal:controller.signal,cache:'no-store',redirect:'error'}));
+  });
+
+  it('rejects mismatched, truncated legacy, or inconsistent genealogy responses', async () => {
+    for (const body of [null,{links:[]},
+      {batchId:'other-batch',links:[],hasMore:false,nextAfter:null},
+      {batchId:'cell-batch',links:[],hasMore:true,nextAfter:'cursor'},
+      {batchId:'cell-batch',links:[],hasMore:false,nextAfter:'cursor'},
+      {batchId:'cell-batch',links:[{id:'broken'}],hasMore:false,nextAfter:null}]) {
+      vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async () => body}));
+      await expect(planningApi.batchGenealogy(session,'cell-batch')).rejects.toThrow(
+        'Сервер вернул неверную историю партий');
+    }
   });
 
   it('transmits route-step evidence as exact authenticated and non-redirecting requests', async () => {

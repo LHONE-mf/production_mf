@@ -1,3 +1,29 @@
+## 2026-11-10 — M2 multi-level genealogy browser and complete link pagination
+
+- Verified remote branch `feat/hybrid-server-foundation` at `cf12fa7` before
+  changes; its web/server CI and Run Tests passed. PR #3 remains a draft.
+- `6b7d349` replaces silent 500-link truncation with chief-only, tenant/batch
+  scoped cursor pagination. Real PostgreSQL regression tests cover equal and
+  microsecond timestamps, all 501 declarations, invalid cursors and role/tenant
+  isolation. All **154 backend tests**, typecheck and build passed locally;
+  GitHub CI `42887780371` and Run Tests `42887783266` passed for that exact commit.
+- Added the connected read-only genealogy browser in Planning: follow sources
+  and results across multiple levels, inspect declaration metadata and exact
+  quantities, return via the visited path, refresh and load further pages.
+  Related batches need not be in the loaded batch list. Operation forms remain
+  bound to the original batch. Failed page reads preserve loaded history;
+  obsolete responses and malformed/truncated legacy responses are rejected.
+- Local frontend: **187 tests passed**, typecheck and production build passed.
+  Real Chromium at **390×844** and **1365×900** passed two-level navigation,
+  return path, unchanged operation target, exact quantity display, no horizontal
+  overflow, 44px touch targets and no browser exceptions. Checks used synthetic
+  fixtures in a disposable local PostgreSQL 16 database through actual Fastify
+  APIs, not genuine manufacturing evidence.
+- No production data or schema changes. No automatic synchronization enabled.
+  No new Android emulator or physical-device tests; M0 upgrade/restore and M1
+  deployed-TLS/two-device acceptance remain open. UI commit CI/APK verification
+  will be recorded after pushing the completed slice.
+
 ## 2026-11-10 — M1 verified engineering checkpoint; field gate remains open
 
 - Working branch: `feat/hybrid-server-foundation`. Latest functional/security changes:

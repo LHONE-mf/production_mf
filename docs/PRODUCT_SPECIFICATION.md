@@ -335,10 +335,25 @@ the reference boundaries and clearly states that this is **not a formal QA
 pass/fail, batch release, or automatic hold**. No production state or
 inventory changes are made. Server and UI tests cover the behavior.
 
+**M2 multi-level genealogy navigation checkpoint (2026-11-10):**
+The online chief batch detail now supports following incoming and outgoing
+declarations across multiple levels, including batches outside the currently
+loaded order list. A visited path, back and return-to-start controls preserve
+orientation; browsing never retargets the batch's operation forms. Exact
+declared quantities, units, author, timestamp and notes remain visible.
+The server now pages direct links with explicit `hasMore`/`nextAfter` metadata
+and a batch/tenant-bound UUID cursor, preserving PostgreSQL microsecond
+ordering. The UI exposes incomplete pages, retries failed reads without
+discarding loaded declarations, rejects malformed/mismatched responses and
+ignores late navigation responses. This remains read-only provenance, not
+verified consumption, stock movement, yield or QA approval. Local automated
+tests and Chromium phone/desktop checks against disposable PostgreSQL passed;
+Android emulator/physical acceptance was not performed for this change.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
-broader workshop-scoped sender/operator permissions, traversable multi-level
-genealogy UI, reconciled input/output material quantities, true split/merge
+broader workshop-scoped sender/operator permissions,
+reconciled input/output material quantities, true split/merge
 execution, a physical end-to-end pilot and deployed-server acceptance.
 M1 shared synchronization still applies to tasks only; its physical
 two-device acceptance is deferred, **not** passed.

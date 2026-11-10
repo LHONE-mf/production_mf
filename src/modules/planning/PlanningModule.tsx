@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StepEvidencePanel } from './StepEvidencePanel';
 import { QuantityFlowPanel } from './QuantityFlowPanel';
+import { BatchGenealogyPanel } from './BatchGenealogyPanel';
 import { LocalJournalLinkPanel } from './LocalJournalLinkPanel';
 import { InspectionObservationPanel } from './InspectionObservationPanel';
 import { RouteInspectionCriteriaPanel, BatchInspectionCriteriaPanel }
@@ -12,7 +13,7 @@ import {
   planningApi, type Batch, type BatchEvent, type BatchStatus, type MaterialLine,
   type ProductionOrder, type QuantityUnit, type Route, type RouteStep, type Workshop,
   type HandoffInboxItem, type BatchHandoff, type StepDetail,
-  type BatchGenealogyLink, type GenealogyKind,
+  type GenealogyKind,
 } from '../../core/planning/planningClient';
 
 const fieldClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2.5 text-sm text-white';
@@ -84,7 +85,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [incoming, setIncoming] = useState<HandoffInboxItem[]>([]);
   const [handoffHistory, setHandoffHistory] = useState<BatchHandoff[]>([]);
   const [handoffRoute, setHandoffRoute] = useState<StepDetail[]>([]);
-  const [genealogyLinks, setGenealogyLinks] = useState<BatchGenealogyLink[]>([]);
+  const [genealogyVersion, setGenealogyVersion] = useState(0);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<Route | null>(null);
@@ -178,7 +179,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     if (resetDetail) {
       setSelectedBatch(null);
       setBatches([]);
-      setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
+      setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
       setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
       setLinkDeclarationId(crypto.randomUUID());
     }
@@ -196,21 +197,19 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       setLinkKind('assembly'); setLinkDeclarationId(crypto.randomUUID());
     }
     setSelectedBatch(batchId);
-    setEvents([]); setHandoffHistory([]); setHandoffRoute([]); setGenealogyLinks([]);
+    setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
+    setGenealogyVersion(value => value+1);
     try {
-      const [response, ledger, steps, genealogy] = await Promise.all([
+      const [response, ledger, steps] = await Promise.all([
         planningApi.batchEvents(connection, batchId),
         planningApi.batchHandoffs(connection, batchId),
         (async () => { const order = orders.find(o => o.id === selectedOrder);
           return order ? planningApi.routeSteps(connection, order.routeId, order.routeVersion) : { steps: [] as StepDetail[] }; })(),
-        planningApi.batchGenealogy(connection, batchId),
       ]);
       if (getServerConnection()?.session.accessToken === connection.session.accessToken) {
-        if (!Array.isArray(genealogy.links)) throw new Error('Сервер вернул неверную историю партий');
         setEvents(response.events);
         setHandoffHistory(ledger.handoffs);
         setHandoffRoute(steps.steps);
-        setGenealogyLinks(genealogy.links);
       }
     } catch (cause) { setError(formatProblem(cause)); }
   }
@@ -540,30 +539,8 @@ function PlanningWorkspace({ connection, onOpenSync }: {
           <InspectionObservationPanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
           <div className="space-y-3 rounded-lg border border-slate-700 p-3">
             <h4 className="font-medium text-white">Происхождение партии</h4>
-            <p className="text-xs text-slate-400">
-              Декларации связывают партии одного заказа. Они не списывают материалы,
-              не рассчитывают выход и не подтверждают физический расход.
-              Если подтверждение пропало из-за сети, сначала обновите историю, не создавайте его повторно.
-            </p>
-            {!genealogyLinks.length &&
-              <p className="text-slate-400 text-sm">Связей с другими партиями пока нет.</p>}
-            <ol className="space-y-2">
-              {genealogyLinks.map(link => <li key={link.id}
-                className="rounded-md border-l-2 border-emerald-600 bg-slate-950/50 p-2 text-sm">
-                <div className="text-slate-100">
-                  {link.sourceCode} → {link.targetCode} · {genealogyKinds[link.kind]}
-                </div>
-                <p className="text-slate-300">
-                  Источник: {link.sourceQuantity} {link.sourceUnit} ·
-                  Результат: {link.targetQuantity} {link.targetUnit}
-                </p>
-                <p className="text-slate-400 text-xs">
-                  {link.targetBatchId === selectedBatchRow.id ? 'Входящая связь' : 'Исходящая связь'}
-                  {' · '}{new Date(link.occurredAt).toLocaleString('ru-RU')}
-                </p>
-                {link.note && <p className="text-slate-400 text-xs whitespace-pre-wrap">{link.note}</p>}
-              </li>)}
-            </ol>
+            <BatchGenealogyPanel key={selectedBatchRow.id+':'+genealogyVersion}
+              connection={connection} batch={selectedBatchRow} />
             {['created', 'in_progress'].includes(selectedBatchRow.status) &&
               <form className="space-y-2 border-t border-slate-700 pt-3"
                 onSubmit={event => { event.preventDefault();
