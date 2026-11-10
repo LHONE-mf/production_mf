@@ -71,6 +71,21 @@ export type LocalJournalLink = {
   sourceCreatedAt: string; summary: string; defects: string | null;
   linkedBy: string; linkedAt: string;
 };
+export type InspectionKind = 'measurement' | 'visual';
+export type InspectionUnit = 'um' | 'mm' | 'g' | 'mg' | 'mOhm' |
+  'V' | 'mAh' | 'pct' | 'C';
+export type InspectionObservation = {
+  id: string; stepNumber: number; kind: InspectionKind;
+  characteristic: string; observedValue: string | null;
+  observedUnit: InspectionUnit | null; attentionRequired: boolean;
+  note: string | null; recordedBy: string; recordedAt: string;
+};
+export type InspectionInput =
+  | { observationId: string; kind: 'measurement'; characteristic: string;
+      observedValue: string; observedUnit: InspectionUnit;
+      attentionRequired: boolean; note?: string }
+  | { observationId: string; kind: 'visual'; characteristic: string;
+      attentionRequired: boolean; note: string };
 export type QuantityFlowStep = {
   number: number; name: string; workshopId: string; nextStep: number | null;
   output: { quantity: string; unit: QuantityUnit } | null;
@@ -205,6 +220,15 @@ export const planningApi = {
   }) => planningRequest<{ id: string; alreadyLinked: boolean }>(
     c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/journal-links',
     { method: 'POST', body: input }),
+  inspections: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; observations: InspectionObservation[] }>(
+      c, '/planning/batches/' + id(batchId) + '/inspections', { signal }),
+  recordInspection: (c: PlanningSession, batchId: string, stepNumber: number,
+      input: InspectionInput) =>
+    planningRequest<{ id: string; batchId: string; stepNumber: number;
+      alreadyRecorded: boolean }>(
+      c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/inspections',
+      { method: 'POST', body: input }),
   quantityFlow: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; steps: QuantityFlowStep[] }>(
       c, '/planning/batches/' + id(batchId) + '/quantity-flow', { signal }),

@@ -266,6 +266,24 @@ CI includes PostgreSQL isolation tests, source validation and frontend
 interaction tests. Final manufacturing QA and two-device physical pilot remain
 outstanding.
 
+**M2 inspection observation checkpoint (2026-11-10):**
+The additive `015_m2_inspection_observations.sql` migration adds immutable,
+chief-attested measurement and visual observation records keyed to a batch's
+approved route version and its electrode/cell branch. Observations can be
+added while a batch is in progress or held; identical UUID retries are safe,
+but changing an old observation is forbidden. The online Planning detail
+shows the history and offers explicit measurement/visual entry with an
+optional attention flag, requiring a note when attention is requested.
+Measurements preserve exact six-place decimals and named units.
+**No inspection plans, automatic specification comparisons, independent
+inspector approvals, acceptance disposition, batch release/hold automation,
+production quantity mutations or inventory postings are implemented.**
+Flagged observations alone do not block completion; supervisors must
+separately place affected batches on hold pending a future QA workflow.
+CI PostgreSQL tests assert actor and tenant isolation, route integrity,
+immutability, idempotency, and that inspection notes do not become route
+completion evidence. M4 formal quality release remains outstanding.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level

@@ -7,6 +7,34 @@ const session: PlanningSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('authenticated M2 planning client', () => {
+  it('uses the verified bearer session for a stable, explicitly requested inspection record',async()=>{
+    const calls:Array<{url:string;options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({batchId:'batch-1',observations:[],alreadyRecorded:false})};
+    }));
+    expect((await planningApi.inspections(session,'batch-1')).observations).toEqual([]);
+    const observation={
+      observationId:'4bc9355d-bfc1-40ca-84f8-34696c45e3c8',
+      kind:'measurement' as const,characteristic:'Separator thickness',
+      observedValue:'14.500000',observedUnit:'um' as const,
+      attentionRequired:false,note:'Calibrated device',
+    };
+    await planningApi.recordInspection(session,'batch-1',2,observation);
+    await planningApi.recordInspection(session,'batch-1',2,observation);
+    expect(calls.map(c=>c.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/inspections',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/inspections',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/inspections',
+    ]);
+    expect(calls.map(c=>c.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(c=>(c.options.headers as Record<string,string>).Authorization===
+      'Bearer server-session-only' && c.options.credentials==='omit' &&
+      c.options.redirect==='error' && c.options.cache==='no-store')).toBe(true);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(observation);
+  });
+
   it('reads workshop and route data using the verified memory-only server token', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true, json: async () => ({ workshops: [{ id: 'coating', name: 'Coating' }] }),
