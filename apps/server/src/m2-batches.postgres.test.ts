@@ -128,6 +128,16 @@ integration('M2 order release and auditable batch lifecycle (PostgreSQL)', () =>
     expect((await status(batchId,'hold','in_progress','Corrected process conditions')).json())
       .toMatchObject({ status:'in_progress',eventNumber:4 });
     expect((await status(batchId,'in_progress','completed')).json())
+      .toMatchObject({ error:'batch_route_step_incomplete' });
+    for (const kind of ['started','completed'] as const) {
+      const recorded = await app.inject({ method:'POST',
+        url:'/planning/batches/'+batchId+'/steps/1/evidence', headers:auth(0),
+        payload:kind === 'started' ? {eventId:randomUUID(),kind} :
+          {eventId:randomUUID(),kind,quantity:'12.500000',quantityUnit:'kg'},
+      });
+      expect(recorded.statusCode).toBe(201);
+    }
+    expect((await status(batchId,'in_progress','completed')).json())
       .toMatchObject({ status:'completed',eventNumber:5 });
     expect((await status(batchId,'completed','in_progress')).json())
       .toMatchObject({ error:'invalid_batch_status_transition' });

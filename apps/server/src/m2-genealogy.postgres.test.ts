@@ -43,6 +43,21 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
         headers:headers(0),payload:{expectedStatus,status},
       });
       expect(r.statusCode).toBe(200);
+      if (status === 'in_progress') {
+        const routeSteps = await app.inject({method:'GET',
+          url:'/planning/batches/'+id+'/steps',headers:headers(0)});
+        expect(routeSteps.statusCode).toBe(200);
+        const steps = routeSteps.json().steps as Array<{number:number}>;
+        expect(steps).toHaveLength(1);
+        for (const kind of ['started','completed'] as const) {
+          const evidence = await app.inject({method:'POST',
+            url:'/planning/batches/'+id+'/steps/'+steps[0].number+'/evidence',
+            headers:headers(0),payload:kind === 'started'
+              ? {eventId:randomUUID(),kind}
+              : {eventId:randomUUID(),kind,quantity:'100',quantityUnit:'kg'}});
+          expect(evidence.statusCode).toBe(201);
+        }
+      }
     }
   };
 
@@ -70,7 +85,10 @@ integration('M2 batch genealogy audit (real PostgreSQL)', () => {
     const route = await app.inject({
       method:'POST',url:'/planning/routes',headers:headers(0),
       payload:{code:code('ROUTE'),name:'Traceable coating route',
-        steps:[{name:'Coating',stage:'coating',workshopId:'coating',electrodeLine:'cathode'}]},
+        steps:[
+          {name:'Cathode coating',stage:'coating',workshopId:'coating',electrodeLine:'cathode'},
+          {name:'Anode coating',stage:'coating',workshopId:'coating',electrodeLine:'anode'},
+        ]},
     });
     expect(route.statusCode).toBe(201);
     const routeId = route.json().id as string;

@@ -131,8 +131,11 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const batch = await client.query(`SELECT status FROM production_batches
-        WHERE organization_id=$1 AND id=$2 FOR UPDATE`,
+      const batch = await client.query(`SELECT b.status,b.material_line,
+          o.route_id,o.route_version
+        FROM production_batches b
+        JOIN production_orders o ON o.organization_id=b.organization_id AND o.id=b.order_id
+        WHERE b.organization_id=$1 AND b.id=$2 FOR UPDATE OF b`,
         [actor.organization_id,params.data.id]);
       if (!batch.rowCount) {
         await client.query('ROLLBACK');
@@ -160,6 +163,29 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
         if (pendingHandoffs.rowCount) {
           await client.query('ROLLBACK');
           return reply.code(409).send({ error: 'handoff_receipt_pending' });
+        }
+        // A status alone cannot certify manufacturing: every step in this
+        // batch's approved route branch needs immutable completion evidence.
+        // Keep the check under the locked batch row to serialize concurrent
+        // status changes and evidence submissions.
+        const steps = await client.query(`SELECT s.step_number,
+            EXISTS (SELECT 1 FROM production_step_evidence e
+              WHERE e.organization_id=s.organization_id AND e.batch_id=$2
+                AND e.route_id=s.route_id AND e.route_version=s.route_version
+                AND e.step_number=s.step_number AND e.kind='completed') AS done
+          FROM process_route_steps s
+          WHERE s.organization_id=$1 AND s.route_id=$3 AND s.route_version=$4
+            AND s.electrode_line=$5 ORDER BY s.step_number`,
+          [actor.organization_id,params.data.id,batch.rows[0].route_id,
+            batch.rows[0].route_version,
+            batch.rows[0].material_line === 'cell' ? 'common' : batch.rows[0].material_line]);
+        if (!steps.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({ error: 'batch_route_steps_missing' });
+        }
+        if (steps.rows.some((step: { done: boolean }) => !step.done)) {
+          await client.query('ROLLBACK');
+          return reply.code(409).send({ error: 'batch_route_step_incomplete' });
         }
       }
       const next = await client.query(`SELECT COALESCE(max(event_number),0)+1 AS number

@@ -93,9 +93,16 @@ integration('M2 cross-module production order pilot (PostgreSQL)', () => {
     const cellId = await createBatch('cell','100','cells');
     const change = (id: string, expectedStatus: string, status: string) =>
       post('/planning/batches/'+id+'/status',{expectedStatus,status});
+    const evidence = (id: string, step: number, kind: 'started'|'completed',
+      quantity?: string, quantityUnit?: 'kg'|'cells') =>
+      post('/planning/batches/'+id+'/steps/'+step+'/evidence',
+        kind === 'started' ? {eventId:randomUUID(),kind} :
+          {eventId:randomUUID(),kind,quantity,quantityUnit});
 
     // The cutting department must independently accept its cathode input.
     expect((await change(cathodeId,'created','in_progress')).statusCode).toBe(200);
+    expect((await evidence(cathodeId,1,'started')).statusCode).toBe(201);
+    expect((await evidence(cathodeId,1,'completed','24.500000','kg')).statusCode).toBe(201);
     const transferId = randomUUID();
     const transfer = await post('/planning/batches/'+cathodeId+'/handoffs', {
       handoffId:transferId,fromStep:1,toStep:2,
@@ -111,11 +118,17 @@ integration('M2 cross-module production order pilot (PostgreSQL)', () => {
     expect((await post('/planning/handoffs/'+transferId+'/receive',
       {note:'Batch label and mass confirmed'},1)).json())
       .toMatchObject({ id:transferId,status:'received' });
+    expect((await change(cathodeId,'in_progress','completed')).json())
+      .toMatchObject({error:'batch_route_step_incomplete'});
+    expect((await evidence(cathodeId,2,'started')).statusCode).toBe(201);
+    expect((await evidence(cathodeId,2,'completed','24.000000','kg')).statusCode).toBe(201);
     expect((await change(cathodeId,'in_progress','completed')).statusCode).toBe(200);
 
     // A one-step anode line has no interstage handover, but its completed
     // identity is still available as a provenance input for assembly.
     expect((await change(anodeId,'created','in_progress')).statusCode).toBe(200);
+    expect((await evidence(anodeId,3,'started')).statusCode).toBe(201);
+    expect((await evidence(anodeId,3,'completed','18.750000','kg')).statusCode).toBe(201);
     expect((await change(anodeId,'in_progress','completed')).statusCode).toBe(200);
 
     for (const [sourceId,qty] of [[cathodeId,'24.500000'],[anodeId,'18.750000']] as const) {
@@ -132,6 +145,8 @@ integration('M2 cross-module production order pilot (PostgreSQL)', () => {
         .toMatchObject({ id:declarationId,alreadyRecorded:true });
     }
     expect((await change(cellId,'created','in_progress')).statusCode).toBe(200);
+    expect((await evidence(cellId,4,'started')).statusCode).toBe(201);
+    expect((await evidence(cellId,4,'completed','100','cells')).statusCode).toBe(201);
     expect((await change(cellId,'in_progress','completed')).statusCode).toBe(200);
 
     const lineage = (await get('/planning/batches/'+cellId+'/links')).json().links;

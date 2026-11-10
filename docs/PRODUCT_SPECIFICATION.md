@@ -189,13 +189,16 @@ idempotent retries. The online Planning screen includes a separate
 route-step evidence panel; existing local stage journals remain untouched.
 PostgreSQL tests cover identity and branch FKs, activity and sequence
 rules, independent receipt, immutable history and exact retries.
-**This does not yet enforce full completion of a batch against all its
-route steps**, reconcile measured yields, validate equipment, or link
-local legacy journals to server events. No production equipment was
+The batch-status endpoint now blocks `completed` until **every step of
+the batch's own route branch** has completion evidence and any sent handovers
+have independent receipts. A batch whose branch has no route steps is also
+blocked from completion. This is a record-presence gate, **not** validation
+of measured yields, equipment, inspection results, physical movement, or
+legacy local journals. No production equipment was
 connected and this is not an accepted real-world route.
 
 **Remaining for M2:** integration of actual stage journals and inspection
-results, closing the batch-status gate against complete route evidence,
+results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions, traversable multi-level
 genealogy UI, reconciled input/output material quantities, true split/merge
 execution, a physical end-to-end pilot and deployed-server acceptance.
