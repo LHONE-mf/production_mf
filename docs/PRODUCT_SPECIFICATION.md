@@ -72,6 +72,18 @@ Gate: CI green, tested upgrade/restore, architecture docs consistent.
 - [ ] PostgreSQL-backed multi-device tests: offline edits, duplicate push, stale revision, restart, revoked device.
 Gate: two authorized devices converge without silent loss or unauthorized data exposure.
 
+**M1 checkpoint (2026-11-10):** Engineering implementation now covers
+shared task creation, assigned-worker offline progress, short-lived Android
+network proof plus server-provisioned 8-hour offline authorization, durable
+conflict deferral, user-bound local sync caches, device-proven current task
+visibility snapshots, and explicit non-destructive conflict recovery.
+PostgreSQL integration, fake-IndexedDB restart/migration and Android emulator
+tests support those flows. **M1 has not passed its release gate**: two physical
+devices with real server provisioning, scope-change behavior, installation
+upgrade/restore and production deployment still need acceptance. See
+[`docs/M1_RELEASE_CHECKLIST.md`](M1_RELEASE_CHECKLIST.md).
+Automatic background synchronization remains disabled.
+
 ### M2 — Production orders and batches (P1)
 - [ ] Order/route/versioned route-step contracts and migrations.
 - [ ] Batch identity and lifecycle; cathode/anode lineage; route variants.
