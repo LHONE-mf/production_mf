@@ -1,7 +1,6 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../../core/store/authStore';
-import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
