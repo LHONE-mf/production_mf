@@ -7,7 +7,7 @@ ALTER TABLE production_batches
 ALTER TABLE production_batches
   ADD COLUMN IF NOT EXISTS quantity_unit text CHECK (
     quantity_unit IN ('cells', 'pieces', 'kg', 'm', 'm2'));
-DO $
+DO $m2$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
     WHERE conrelid='production_batches'::regclass
@@ -17,7 +17,7 @@ BEGIN
         (planned_quantity IS NULL) = (quantity_unit IS NULL));
   END IF;
 END
-$;
+$m2$;
 
 CREATE TABLE IF NOT EXISTS production_batch_events (
   organization_id uuid NOT NULL,
