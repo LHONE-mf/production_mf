@@ -127,7 +127,7 @@ function WorkerStats() {
 
 function ChiefDashboard() {
   const tasks = useLiveQuery(async () => (await listVisibleTasks())
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).slice(0, 5), []);
+    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5), []);
   return (
     <section className="lg:col-span-2 bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
       <h3 className="text-white font-semibold mb-3">Последние задания</h3>
