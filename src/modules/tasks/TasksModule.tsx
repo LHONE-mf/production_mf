@@ -47,6 +47,11 @@ export function TasksModule() {
   const storedTasks = useLiveQuery(() => db.tasks.toArray(), []);
   const users = useLiveQuery(() => db.users.toArray(), []);
   const editLease = useLiveQuery(() => db.hybridTaskEditLeases.get('active'), []);
+  const sharedTaskIds = useLiveQuery(async () => {
+    const revisions = await db.hybridTaskRevisions.toArray();
+    const queued = await db.hybridTaskOutbox.toArray();
+    return new Set([...revisions.map(row => row.entityId), ...queued.map(row => row.entityId)]);
+  }, []);
   const hasEditLease = Boolean(editLease && editLease.expiresAt > Date.now());
   const tasks: Task[] = (storedTasks ?? []).map(task => ({
     ...task,
@@ -65,8 +70,15 @@ export function TasksModule() {
   const canViewAll = currentUser.role !== UserRole.WORKER;
 
   const filteredTasks = tasks.filter((task) => {
-    if (!canViewAll && task.assignedTo !== currentUser.id &&
-        !(hasEditLease && editLease?.role === 'worker' && task.assignedTo === editLease.actorId)) return false;
+    // Local demo accounts must not reveal previously synced server records.
+    // Access to shared tasks requires a still-valid offline permission from
+    // the verified server identity, independently of the local demo role.
+    if (sharedTaskIds?.has(task.id) ?? true) {
+      if (!hasEditLease) return false;
+      if (editLease?.role === 'worker' && task.assignedTo !== editLease.actorId) return false;
+    } else if (!canViewAll && task.assignedTo !== currentUser.id) {
+      return false;
+    }
     if (statusFilter !== 'all' && task.status !== statusFilter) return false;
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -128,6 +140,9 @@ export function TasksModule() {
         </div>
       </div>
 
+      {!hasEditLease && (sharedTaskIds?.size ?? 0) > 0 && <p className="text-amber-300 text-sm">
+        Серверные задания скрыты. Подтвердите Android-устройство в разделе синхронизации для доступа к сохранённым заданиям.
+      </p>}
       {storedTasks === undefined && <p className="text-slate-400 text-sm">Загрузка заданий...</p>}
       {/* Task list */}
       <div className="space-y-3">
