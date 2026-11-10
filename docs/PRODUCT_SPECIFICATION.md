@@ -157,10 +157,29 @@ This is **online only**, not M1 task sync or a verified physical movement,
 inventory posting or production-yield calculation. Automated client,
 UI and PostgreSQL integration checks cover routing and permissions.
 
+**M2 genealogy and integrated API pilot checkpoint (2026-11-10):**
+The online Planning page now shows direct, actor-attributed genealogy links
+between batches from one production order; chief users can declare links
+using completed source batches, explicit source/target quantities and units,
+and optional reference notes. Declarations remain provenance only, not
+physical consumption or inventory transactions. A client-generated stable
+declaration UUID allows safe retries after an uncertain HTTP response;
+the PostgreSQL API returns the original result for an identical retry and
+rejects different data under the same ID.
+
+An isolated full-stack PostgreSQL test completes a *simulated* pilot flow:
+approved route -> released order -> cathode/anode/cell batches -> cathode
+coating-to-cutting handover -> independent master receipt -> completed
+electrode batches -> two source-to-cell provenance links -> completed cell
+batch and audit-history verification. No deployed service or factory
+equipment participated. CI `42843086813` passed 130 server tests and
+frontend checks on commit `87532ef`. This demonstrates integration
+consistency, **not** M2's real workshop acceptance gate.
+
 **Remaining for M2:** stage journal/operation evidence, broader
-workshop-scoped sender permissions, genealogy detail UI, reconciled
-material quantities, true split/merge production execution,
-a real end-to-end pilot route and deployed-server acceptance.
+workshop-scoped sender permissions, full traversable genealogy UI,
+reconciled input/output material quantities, true split/merge production
+execution, a physical end-to-end pilot and deployed-server acceptance.
 M1 shared synchronization still applies to tasks only; its physical
 two-device acceptance is deferred, **not** passed.
 
