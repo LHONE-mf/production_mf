@@ -90,6 +90,20 @@ Automatic background synchronization remains disabled.
 - [ ] Input/output transfer records and batch detail/history UI.
 Gate: one pilot batch completes a documented route with traceable handovers.
 
+**M2 checkpoint (2026-11-10): first planning slice implemented, M2 still open.**
+The additive `006_m2_planning.sql` migration introduces organization-scoped
+routes, separately numbered route versions, immutable approved steps, cathode/
+anode/common route branches, production orders with exact decimal quantities,
+and unique organization-scoped batch codes. The authenticated Fastify planning
+API permits chief/technologist draft routes, chief approval, and chief-only
+draft production-order creation and listing, with an approved-route requirement.
+Real PostgreSQL integration tests verify access control, tenant isolation,
+rollback, code uniqueness and version immutability; M1 sync remains limited to
+tasks. **Not implemented:** route-version editing API, order release, batch
+transitions or handovers, genealogy, UI, or live production workflows.
+Existing manufacturing records are untouched. M1 physical acceptance remains
+deferred, not passed.
+
 ### M3 — Stage operations (P1)
 - [ ] Shared operation-run service and validation against specification versions.
 - [ ] Integrate existing stage journals incrementally without losing records.
