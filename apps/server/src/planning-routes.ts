@@ -266,9 +266,34 @@ export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
       FROM process_routes r
       JOIN process_route_versions v
         ON v.organization_id=r.organization_id AND v.route_id=r.id
-      WHERE r.organization_id=$1 AND ($2::boolean OR v.state='approved')
+      WHERE r.organization_id=$1 AND (
+        $2::boolean OR (
+          v.state='approved'
+          -- A master may see a route only if the entire approved version
+          -- belongs to workshops where that master currently has membership.
+          -- Do not leak names of other production lines via route summaries.
+          AND EXISTS (
+            SELECT 1 FROM process_route_steps visible
+            JOIN user_workshop_memberships m
+              ON m.organization_id=visible.organization_id
+              AND m.workshop_id=visible.workshop_id AND m.user_id=$3
+            WHERE visible.organization_id=v.organization_id
+              AND visible.route_id=v.route_id AND visible.route_version=v.version
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM process_route_steps hidden
+            WHERE hidden.organization_id=v.organization_id
+              AND hidden.route_id=v.route_id AND hidden.route_version=v.version
+              AND NOT EXISTS (
+                SELECT 1 FROM user_workshop_memberships m
+                WHERE m.organization_id=hidden.organization_id
+                  AND m.workshop_id=hidden.workshop_id AND m.user_id=$3
+              )
+          )
+        )
+      )
       ORDER BY r.code,v.version DESC LIMIT 500`,
-      [actor.organization_id,actor.role !== 'master']);
+      [actor.organization_id,actor.role !== 'master',actor.id]);
     return { routes: result.rows.map(row => ({
       id: row.id, code: row.code, name: row.name, version: row.version,
       state: row.state, stepCount: row.step_count,
