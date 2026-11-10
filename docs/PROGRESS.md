@@ -1,3 +1,16 @@
+## 2026-11-10 — M1 verified engineering checkpoint; field gate remains open
+
+- Working branch: `feat/hybrid-server-foundation`. Latest functional/security changes:
+  - `73aa0f2` accepts newer *complete* server task snapshots across workshop-scoped revision gaps without overwriting queued edits; tests `777e424` and corrected earlier expectation `c83b1de`.
+  - `5fc12a9` requires current workshop membership for worker task-access listings, per-task comparison, and pull, even if the worker remains assigned; PostgreSQL revocation/restoration test `2f77336`.
+  - `17d01fc`, `de005ae`, `411bcbb` hide sensitive archived/conflicted task details without a valid offline access scope and verify expiry/revocation behavior.
+  - `daa278a` adds PostgreSQL integration coverage for two independently enrolled devices of the **same actor**, conflicting offline edits, device-proof isolation, and revocation of one device while the other remains authorized.
+- **Automated web/server tests passed** on `daa278a`: Run Tests `42797978836`, CI — web and server `42797979176`.
+- **Signed Android APK succeeded** on latest application-code commit `411bcbb`: run `42797199340`.
+- **Android emulator smoke succeeded** on `f1caa75`: run `42797431939`. Real emulator test evidence includes launch/screenshot checks, WebView IndexedDB conflict archive retained across activity restart, AndroidKeyStore Ed25519 and Capacitor plugin challenges verified by Fastify/PostgreSQL, and replay rejection. The temporary self-trigger was removed in `fd707c7`; Android emulator workflows are manual-only again.
+- The native emulator proves important Android behaviors but **does not** represent two physical devices or a deployed production server. Separate enrolled devices and competing edits are exercised in PostgreSQL integration tests; client restart/deferred-outbox safety is exercised in Dexie tests.
+- **M1 release status: engineering candidate, not signed off.** Remaining external gate: validate two separate physical Android installations against a configured TLS server with separate enrollments and concurrent offline edits, restart/recovery, and revocation, then document results. M0 Android upgrade/backup/restore reliability is also unverified. Never silently migrate or delete existing manufacturing data. Automatic background sync remains disabled.
+
 ## 2026-11-08 — Emulator focus hardening and current M1 CI status
 
 - Working branch: `feat/hybrid-server-foundation`; latest code commit `25aeb2c7`.
