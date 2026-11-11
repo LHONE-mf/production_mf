@@ -132,6 +132,62 @@ describe('Workshop execution list',()=>{
     expect(screen.textContent).toContain('Загрузить предыдущие партии');
   });
 
+  it('discards a delayed old page after refreshing the workshop list',async()=>{
+    const cursor='11111111-1111-4111-8111-111111111111';
+    let completeOlder:(value:unknown)=>void=()=>{};
+    let firstReads=0;
+    const fetchMock=vi.fn((url:string)=>{
+      if(url.endsWith('/workshop-batches')){
+        firstReads++;
+        const batchCode=firstReads===1?'OLD-FIRST':'FRESH-FIRST';
+        return Promise.resolve({ok:true,json:async()=>({
+          batches:[{id:cursor,batchCode,status:'created',quantityUnit:'kg'}],
+          hasMore:firstReads===1,nextAfter:firstReads===1?cursor:null,
+        })});
+      }
+      return new Promise(resolve=>{completeOlder=resolve;});
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount();
+    const load=[...screen.querySelectorAll('button')]
+      .find(b=>b.textContent==='Загрузить предыдущие партии')!;
+    await act(async()=>{load.click();await Promise.resolve();});
+    const refresh=[...screen.querySelectorAll('button')]
+      .find(b=>b.textContent==='Обновить партии')!;
+    await act(async()=>{refresh.click();await Promise.resolve();});
+    expect(screen.textContent).toContain('FRESH-FIRST');
+    await act(async()=>{completeOlder({ok:true,json:async()=>({
+      batches:[{id:'older-id',batchCode:'OBSOLETE',status:'created',quantityUnit:'kg'}],
+      hasMore:false,nextAfter:null,
+    })});await Promise.resolve();});
+    expect(screen.textContent).not.toContain('OBSOLETE');
+    expect(screen.textContent).not.toContain('OLD-FIRST');
+    expect(screen.textContent).toContain('FRESH-FIRST');
+  });
+
+  it('does not clear a newer login when an old load-more fails with HTTP 401',async()=>{
+    const cursor='11111111-1111-4111-8111-111111111111';
+    let completeOlder:(value:unknown)=>void=()=>{};
+    vi.stubGlobal('fetch',vi.fn((url:string)=>url.endsWith('/workshop-batches')
+      ? Promise.resolve({ok:true,json:async()=>({
+          batches:[{id:cursor,batchCode:'START',status:'created',quantityUnit:'kg'}],
+          hasMore:true,nextAfter:cursor,
+        })})
+      : new Promise(resolve=>{completeOlder=resolve;})));
+    setServerConnection(connection);
+    const screen=await mount();
+    const load=[...screen.querySelectorAll('button')]
+      .find(b=>b.textContent==='Загрузить предыдущие партии')!;
+    await act(async()=>{load.click();await Promise.resolve();});
+    setServerConnection({...connection,session:{...connection.session,accessToken:'newer-session'}});
+    await act(async()=>{
+      completeOlder({ok:false,status:401,json:async()=>({error:'unauthorized'})});
+      await Promise.resolve();
+    });
+    expect(getServerConnection()?.session.accessToken).toBe('newer-session');
+    expect(screen.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it('rejects malformed server batch lists before rendering untrusted data',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({
       batches:[{id:'batch-1',batchCode:'CATH-001',status:'invalid',quantityUnit:'kg'}],
