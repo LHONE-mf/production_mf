@@ -118,6 +118,8 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [statusReason, setStatusReason] = useState('');
   const [handoffQuantity, setHandoffQuantity] = useState('');
   const [handoffNote, setHandoffNote] = useState('');
+  // Reuse IDs on lost responses; rotate for new transfer intent.
+  const [handoffDeclarationId, setHandoffDeclarationId] = useState(() => crypto.randomUUID());
   const [receiptNote, setReceiptNote] = useState('');
   const [linkKind, setLinkKind] = useState<GenealogyKind>('assembly');
   const [linkSourceId, setLinkSourceId] = useState('');
@@ -195,6 +197,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       setEvents([]); setHandoffHistory([]); setHandoffRoute([]);
       setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
       setLinkDeclarationId(crypto.randomUUID());
+      setHandoffQuantity(''); setHandoffNote(''); setHandoffDeclarationId(crypto.randomUUID());
     }
     try {
       const response = await planningApi.batches(connection, orderId);
@@ -210,6 +213,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   async function loadEvents(batchId: string) {
     const request = ++batchDetailRequest.current;
     if (selectedBatch !== batchId) {
+      setHandoffQuantity(''); setHandoffNote(''); setHandoffDeclarationId(crypto.randomUUID());
       setLinkSourceId(''); setLinkSourceQuantity(''); setLinkTargetQuantity(''); setLinkNote('');
       setLinkKind('assembly'); setLinkDeclarationId(crypto.randomUUID());
     }
@@ -672,10 +676,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
             </div>)}
             {proposedHandoff ? <form className="space-y-2" onSubmit={event => {
               event.preventDefault();
-              const ticketId = crypto.randomUUID();
-              void run(async () => {
+               void run(async () => {
                 await planningApi.sendHandoff(connection, selectedBatchRow.id, {
-                  handoffId: ticketId,
+                  handoffId: handoffDeclarationId,
                   fromStep: proposedHandoff.fromStep.number,
                   toStep: proposedHandoff.toStep.number,
                   quantity: handoffQuantity.trim(),
@@ -683,6 +686,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
                   ...(handoffNote.trim() ? { note: handoffNote.trim() } : {}),
                 });
                 setHandoffQuantity(''); setHandoffNote('');
+                setHandoffDeclarationId(crypto.randomUUID());
               }, 'Передача отправлена. Получатель должен подтвердить приёмку.');
             }}>
               <p className="text-sky-200 text-sm">
@@ -690,12 +694,16 @@ function PlanningWorkspace({ connection, onOpenSync }: {
               </p>
               <label className="block text-xs text-slate-400">Передаваемое количество ({selectedBatchRow.quantityUnit})
                 <input className={fieldClass + ' mt-1'} required inputMode="decimal"
-                  value={handoffQuantity} onChange={event => setHandoffQuantity(event.target.value)}
+                  value={handoffQuantity} onChange={event => {
+                    setHandoffQuantity(event.target.value); setHandoffDeclarationId(crypto.randomUUID());
+                  }}
                   placeholder="Количество" />
               </label>
               <label className="block text-xs text-slate-400">Примечание к передаче
                 <textarea className={fieldClass + ' mt-1'} maxLength={2000} rows={2}
-                  value={handoffNote} onChange={event => setHandoffNote(event.target.value)} />
+                  value={handoffNote} onChange={event => {
+                    setHandoffNote(event.target.value); setHandoffDeclarationId(crypto.randomUUID());
+                  }} />
               </label>
               <button className={buttonClass} disabled={busy || !handoffQuantity.trim()}>
                 Передать на следующий этап
