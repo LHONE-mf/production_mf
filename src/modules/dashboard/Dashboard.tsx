@@ -1,331 +1,105 @@
 import React from 'react';
-import { useAuthStore } from '../../core/store/authStore';
-import { UserRole, TaskStatus } from '../../core/types';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../core/db';
+import { useAuthStore } from '../../core/store/authStore';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
+import { useServerConnection } from '../../core/sync/serverConnection';
+import { TaskStatus, UserRole, type Task } from '../../core/types';
 import { ROLE_LABELS } from '../../core/permissions';
-import { 
-  ClipboardList, Users, CheckCircle, Clock, AlertTriangle, 
-  TrendingUp, Activity, Zap, Battery, Shield, Radio 
-} from 'lucide-react';
 
-export function Dashboard() {
-  const { currentUser } = useAuthStore();
-  if (!currentUser) return null;
+const statusNames:Record<TaskStatus,string>={
+  created:'Создано',assigned:'Назначено',in_progress:'В работе',
+  checked:'На проверке',completed:'Завершено',rejected:'Отклонено',
+};
+const isOpen=(t:Task)=>t.status!==TaskStatus.COMPLETED&&t.status!==TaskStatus.REJECTED;
+const isToday=(date:unknown)=>date && new Date(date as string).toDateString()===new Date().toDateString();
+const statsCard=(title:string,value:number|string,description:string)=><div key={title}
+  className="rounded-xl border border-slate-700 bg-slate-800/70 p-4">
+  <p className="text-sm text-slate-300">{title}</p>
+  <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+  <p className="text-xs text-slate-400">{description}</p>
+</div>;
 
-  const role = currentUser.role;
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-white">
-            Добро пожаловать, {currentUser.fullName.split(' ')[1] || currentUser.fullName}!
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {ROLE_LABELS[role]} • {new Date().toLocaleDateString('ru-RU', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-        </div>
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
-          <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-          <span className="text-green-300 text-xs font-medium">Онлайн</span>
-        </div>
-      </div>
-
-      {/* Role-specific stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {role === UserRole.CHIEF && <ChiefStats />}
-        {role === UserRole.MASTER && <MasterStats />}
-        {role === UserRole.TECHNOLOGIST && <TechnologistStats />}
-        {role === UserRole.WORKER && <WorkerStats />}
-      </div>
-
-      {/* Role-specific content */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {role === UserRole.CHIEF && <ChiefDashboard />}
-        {role === UserRole.MASTER && <MasterDashboard />}
-        {role === UserRole.TECHNOLOGIST && <TechnologistDashboard />}
-        {role === UserRole.WORKER && <WorkerDashboard />}
-      </div>
+/** No fictitious employees, shifts, equipment status or production output. */
+export function Dashboard(){
+  const user=useAuthStore(s=>s.currentUser);
+  const server=useServerConnection();
+  const data=useLiveQuery(async()=>{
+    const [tasks,users,techCards,devices]=await Promise.all([
+      listVisibleTasks(),db.users.toArray(),db.techCards.toArray(),db.syncDevices.toArray(),
+    ]);
+    return {tasks,users,techCards,devices};
+  },[]);
+  if(!user)return null;
+  if(!data)return <p role="status" className="text-slate-300">Загружаем показатели из базы…</p>;
+  const tasks=user.role===UserRole.WORKER
+    ? data.tasks.filter(t=>t.assignedTo===user.id):data.tasks;
+  const finished=tasks.filter(t=>t.status===TaskStatus.COMPLETED);
+  const todayCompleted=finished.filter(t=>isToday(t.updatedAt)).length;
+  const active=tasks.filter(isOpen).length;
+  const overdue=tasks.filter(t=>isOpen(t)&&t.dueDate&&new Date(t.dueDate).getTime()<Date.now()).length;
+  const team=data.users.filter(u=>u.isActive && u.assignedMasterId===user.id);
+  const activeUsers=data.users.filter(u=>u.isActive);
+  const cards=user.role===UserRole.CHIEF?[
+    ['Локальных сотрудников',activeUsers.length,'Активные локальные профили'],
+    ['Активных заданий',active,'Из доступных вам задач'],
+    ['Завершено сегодня',todayCompleted,'По последнему обновлению задачи'],
+    ['Просрочено',overdue,'Срок задачи уже прошёл'],
+  ]:user.role===UserRole.MASTER?[
+    ['Работников в команде',team.length,'С локальным назначением мастера'],
+    ['Активных заданий',active,'Из доступных вам задач'],
+    ['Завершено сегодня',todayCompleted,'Из доступных вам задач'],
+    ['Зарегистрированных устройств',data.devices.length,'Локальные записи, не статус mesh-сети'],
+  ]:user.role===UserRole.TECHNOLOGIST?[
+    ['Локальных техкарт',data.techCards.length,'На этом устройстве'],
+    ['Активных заданий',active,'Из доступных вам задач'],
+    ['Завершено сегодня',todayCompleted,'Из доступных вам задач'],
+    ['Просрочено',overdue,'Из доступных вам задач'],
+  ]:[
+    ['Мои задания',tasks.length,'Назначены этому работнику'],
+    ['В работе',tasks.filter(t=>t.status===TaskStatus.IN_PROGRESS).length,'Выполняются сейчас'],
+    ['Завершено сегодня',todayCompleted,'Мои задания'],
+    ['Просрочено',overdue,'Мои задания'],
+  ];
+  const recent=[...tasks].sort((a,b)=>
+    new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime()).slice(0,8);
+  return <main className="space-y-5">
+    <div>
+      <h1 className="text-xl font-bold text-white">Добро пожаловать, {user.fullName}</h1>
+      <p className="text-sm text-slate-400">{ROLE_LABELS[user.role]} · Локальные данные устройства ·
+        {' '}{server?'Серверная сессия активна':'Нет серверной сессии'}</p>
     </div>
-  );
-}
-
-function StatCard({ icon, label, value, color, trend }: { icon: React.ReactNode; label: string; value: string | number; color: string; trend?: string }) {
-  return (
-    <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-xl p-3 sm:p-5">
-      <div className="flex items-start justify-between">
-        <div className={`w-10 h-10 ${color} rounded-xl flex items-center justify-center`}>
-          {icon}
-        </div>
-        {trend && (
-          <span className="text-green-400 text-xs font-medium flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" />
-            {trend}
-          </span>
-        )}
-      </div>
-      <div className="mt-3">
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <p className="text-slate-400 text-sm mt-0.5">{label}</p>
-      </div>
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {cards.map(([title,value,note])=>statsCard(String(title),value,String(note)))}
     </div>
-  );
-}
-
-function ChiefStats() {
-  const users = useLiveQuery(() => db.users.count(), []);
-  const tasks = useLiveQuery(() => listVisibleTasks(), []);
-  const today = new Date().toDateString();
-  const active = tasks?.filter(t => t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.REJECTED).length ?? 0;
-  const completed = tasks?.filter(t => t.status === TaskStatus.COMPLETED && t.updatedAt && new Date(t.updatedAt).toDateString() === today).length ?? 0;
-  const overdue = tasks?.filter(t => t.dueDate && new Date(t.dueDate).getTime() < Date.now() && t.status !== TaskStatus.COMPLETED && t.status !== TaskStatus.REJECTED).length ?? 0;
-  return (
-    <>
-      <StatCard icon={<Users className="w-5 h-5 text-white" />} label="Сотрудников" value={users ?? '—'} color="bg-blue-500" />
-      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="Активных заданий" value={active} color="bg-orange-500" />
-      <StatCard icon={<CheckCircle className="w-5 h-5 text-white" />} label="Завершено сегодня" value={completed} color="bg-green-500" />
-      <StatCard icon={<AlertTriangle className="w-5 h-5 text-white" />} label="Просрочено" value={overdue} color="bg-red-500" />
-    </>
-  );
-}
-
-function MasterStats() {
-  return (
-    <>
-      <StatCard icon={<Users className="w-5 h-5 text-white" />} label="Работников в смене" value={4} color="bg-blue-500" />
-      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="Заданий в работе" value={7} color="bg-orange-500" />
-      <StatCard icon={<CheckCircle className="w-5 h-5 text-white" />} label="Завершено" value={5} color="bg-green-500" />
-      <StatCard icon={<Radio className="w-5 h-5 text-white" />} label="Устройств в mesh" value={3} color="bg-purple-500" />
-    </>
-  );
-}
-
-function TechnologistStats() {
-  return (
-    <>
-      <StatCard icon={<Zap className="w-5 h-5 text-white" />} label="Тех. карт" value={4} color="bg-purple-500" />
-      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="На контроле" value={6} color="bg-orange-500" />
-      <StatCard icon={<Activity className="w-5 h-5 text-white" />} label="Параметров в норме" value="98%" color="bg-green-500" />
-      <StatCard icon={<AlertTriangle className="w-5 h-5 text-white" />} label="Отклонений" value={1} color="bg-red-500" />
-    </>
-  );
-}
-
-function WorkerStats() {
-  return (
-    <>
-      <StatCard icon={<ClipboardList className="w-5 h-5 text-white" />} label="Мои задания" value={3} color="bg-blue-500" />
-      <StatCard icon={<Clock className="w-5 h-5 text-white" />} label="В работе" value={1} color="bg-orange-500" />
-      <StatCard icon={<CheckCircle className="w-5 h-5 text-white" />} label="Завершено сегодня" value={2} color="bg-green-500" />
-      <StatCard icon={<Shield className="w-5 h-5 text-white" />} label="Смена" value="Дневная" color="bg-slate-500" />
-    </>
-  );
-}
-
-function ChiefDashboard() {
-  const tasks = useLiveQuery(async () => (await listVisibleTasks())
-    .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).slice(0, 5), []);
-  return (
-    <section className="lg:col-span-2 bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
-      <h3 className="text-white font-semibold mb-3">Последние задания</h3>
-      {!tasks?.length ? <p className="text-slate-400 text-sm">Заданий пока нет. Создайте первое задание в разделе «Задания».</p> :
-        <div className="space-y-2">{tasks.map(task =>
-          <div key={task.id} className="flex justify-between gap-3 rounded-lg bg-slate-900/50 p-3">
-            <span className="text-white text-sm truncate">{task.title}</span>
-            <span className="text-slate-400 text-xs shrink-0">{task.status}</span>
-          </div>
-        )}</div>}
+    {user.role===UserRole.MASTER && <section className="space-y-2 rounded-xl bg-slate-800/70 p-4">
+      <h2 className="font-semibold text-white">Моя команда</h2>
+      {team.length===0?<p className="text-sm text-slate-400">
+        Сотрудники пока не назначены вашему локальному профилю.</p>:
+        team.map(member=><p className="text-sm text-slate-200" key={member.id}>
+          {member.fullName} · {ROLE_LABELS[member.role]}</p>)}
+    </section>}
+    {user.role===UserRole.TECHNOLOGIST && <section className="space-y-2 rounded-xl bg-slate-800/70 p-4">
+      <h2 className="font-semibold text-white">Локальные технологические карты</h2>
+      {data.techCards.length===0?<p className="text-sm text-slate-400">
+        Технологические карты пока не внесены.</p>:
+        data.techCards.slice(0,10).map(card=><p className="text-sm text-slate-200" key={card.id}>{card.name}</p>)}
+    </section>}
+    <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-800/70 p-4">
+      <h2 className="font-semibold text-white">
+        {user.role===UserRole.WORKER?'Мои задания':'Последние доступные задания'}
+      </h2>
+      {recent.length===0?<p className="text-sm text-slate-400">
+        Заданий пока нет. Никакие демонстрационные задания не созданы.</p>:
+        recent.map(task=><div className="flex flex-wrap justify-between gap-2 rounded-lg bg-slate-950/50 p-3"
+          key={task.id}>
+          <p className="text-sm text-white">{task.title}</p>
+          <span className="text-xs text-slate-300">{statusNames[task.status]}</span>
+          {task.dueDate && <span className="text-xs text-slate-400">
+            Срок: {new Date(task.dueDate).toLocaleDateString('ru-RU')}</span>}
+        </div>)}
     </section>
-  );
+  </main>;
 }
 
-function MasterDashboard() {
-  return (
-    <>
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Users className="w-5 h-5 text-orange-400" />
-          Сотрудники на смене
-        </h3>
-        <div className="space-y-2">
-          {[
-            { name: 'Козлов Д.С.', role: 'Работник', status: 'working', task: 'Сборка ячеек #45' },
-            { name: 'Новиков А.М.', role: 'Работник', status: 'working', task: 'Сварка контактов #32' },
-            { name: 'Морозов С.Н.', role: 'Работник', status: 'break', task: 'Обед' },
-          ].map((emp, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-slate-700/30 rounded-xl">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold ${
-                emp.status === 'working' ? 'bg-green-500' : 'bg-yellow-500'
-              }`}>
-                {emp.name.charAt(0)}
-              </div>
-              <div className="flex-1">
-                <p className="text-white text-sm font-medium">{emp.name}</p>
-                <p className="text-slate-400 text-xs">{emp.task}</p>
-              </div>
-              <div className={`px-2 py-0.5 rounded-full text-xs ${
-                emp.status === 'working' ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'
-              }`}>
-                {emp.status === 'working' ? 'Работает' : 'Перерыв'}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <ClipboardList className="w-5 h-5 text-blue-400" />
-          Текущие задания
-        </h3>
-        <div className="space-y-2">
-          {[
-            { title: 'Сборка блока ячеек 48V', assignee: 'Козлов Д.С.', priority: 'high', progress: 60 },
-            { title: 'Сварка никелевых контактов', assignee: 'Новиков А.М.', priority: 'medium', progress: 35 },
-            { title: 'Тестирование BMS платы', assignee: 'Морозов С.Н.', priority: 'low', progress: 0 },
-          ].map((task, i) => (
-            <div key={i} className="p-3 bg-slate-700/30 rounded-xl">
-              <div className="flex justify-between items-start mb-2">
-                <p className="text-white text-sm font-medium">{task.title}</p>
-                <span className={`px-2 py-0.5 rounded text-xs ${
-                  task.priority === 'high' ? 'bg-red-500/20 text-red-300' :
-                  task.priority === 'medium' ? 'bg-orange-500/20 text-orange-300' :
-                  'bg-blue-500/20 text-blue-300'
-                }`}>
-                  {task.priority === 'high' ? 'Высокий' : task.priority === 'medium' ? 'Средний' : 'Низкий'}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1 h-1.5 bg-slate-600 rounded-full overflow-hidden">
-                  <div className="h-full bg-blue-500 rounded-full" style={{ width: `${task.progress}%` }} />
-                </div>
-                <span className="text-slate-400 text-xs">{task.progress}%</span>
-              </div>
-              <p className="text-slate-500 text-xs mt-1">{task.assignee}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function TechnologistDashboard() {
-  return (
-    <>
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-purple-400" />
-          Технологические карты
-        </h3>
-        <div className="space-y-2">
-          {[
-            { name: 'TC-001: Сборка призматики', version: 'v2.3', status: 'active' },
-            { name: 'TC-002: Электролитическое заполнение', version: 'v1.8', status: 'active' },
-            { name: 'TC-003: Формирование SEI-слоя', version: 'v3.0', status: 'review' },
-            { name: 'TC-004: Тест ёмкости', version: 'v1.2', status: 'draft' },
-          ].map((tc, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-slate-700/30 rounded-xl">
-              <div className="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center">
-                <Zap className="w-4 h-4 text-purple-400" />
-              </div>
-              <div className="flex-1">
-                <p className="text-white text-sm font-medium">{tc.name}</p>
-                <p className="text-slate-400 text-xs">{tc.version}</p>
-              </div>
-              <span className={`px-2 py-0.5 rounded text-xs ${
-                tc.status === 'active' ? 'bg-green-500/20 text-green-300' :
-                tc.status === 'review' ? 'bg-yellow-500/20 text-yellow-300' :
-                'bg-slate-500/20 text-slate-300'
-              }`}>
-                {tc.status === 'active' ? 'Активна' : tc.status === 'review' ? 'На проверке' : 'Черновик'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-green-400" />
-          Параметры производства
-        </h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'Температура', value: '23.5°C', norm: true },
-            { label: 'Влажность', value: '35%', norm: true },
-            { label: 'Давление', value: '1.2 атм', norm: true },
-            { label: 'Напряжение', value: '3.72V', norm: false },
-          ].map((param, i) => (
-            <div key={i} className="p-3 bg-slate-700/30 rounded-xl text-center">
-              <p className="text-slate-400 text-xs mb-1">{param.label}</p>
-              <p className={`text-lg font-bold ${param.norm ? 'text-green-400' : 'text-red-400'}`}>
-                {param.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function WorkerDashboard() {
-  return (
-    <>
-      <div className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-5 lg:col-span-2">
-        <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-          <ClipboardList className="w-5 h-5 text-blue-400" />
-          Мои задания на сегодня
-        </h3>
-        <div className="space-y-3">
-          {[
-            { title: 'Сборка блока ячеек 48V', status: 'in_progress', priority: 'high', deadline: '14:00', progress: 60 },
-            { title: 'Проверка изоляции контактов', status: 'pending', priority: 'medium', deadline: '16:00', progress: 0 },
-            { title: 'Маркировка готовых блоков', status: 'pending', priority: 'low', deadline: '17:00', progress: 0 },
-          ].map((task, i) => (
-            <div key={i} className="p-4 bg-slate-700/30 rounded-xl border border-slate-600/30">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <p className="text-white font-medium">{task.title}</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      task.status === 'in_progress' ? 'bg-blue-500/20 text-blue-300' : 'bg-slate-500/20 text-slate-300'
-                    }`}>
-                      {task.status === 'in_progress' ? 'В работе' : 'Ожидает'}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-xs ${
-                      task.priority === 'high' ? 'bg-red-500/20 text-red-300' :
-                      task.priority === 'medium' ? 'bg-orange-500/20 text-orange-300' :
-                      'bg-blue-500/20 text-blue-300'
-                    }`}>
-                      {task.priority === 'high' ? 'Высокий' : task.priority === 'medium' ? 'Средний' : 'Низкий'}
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-slate-400 text-xs">Дедлайн</p>
-                  <p className="text-white text-sm font-medium">{task.deadline}</p>
-                </div>
-              </div>
-              {task.status === 'in_progress' && (
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs mb-1">
-                    <span className="text-slate-400">Прогресс</span>
-                    <span className="text-blue-300">{task.progress}%</span>
-                  </div>
-                  <div className="h-2 bg-slate-600 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full transition-all" style={{ width: `${task.progress}%` }} />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
-  );
-}
+export default Dashboard;
