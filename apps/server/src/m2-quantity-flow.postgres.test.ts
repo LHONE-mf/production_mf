@@ -20,6 +20,10 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
   const read = (batch = batchId, actor = 0) => app.inject({
     method:'GET',url:'/planning/batches/'+batch+'/quantity-flow',headers:headers(actor),
   });
+  const workshopFlow = (actor = 1, batch = batchId) => app.inject({
+    method:'GET',url:'/planning/workshop-batches/'+batch+'/quantity-comparison',
+    headers:headers(actor),
+  });
   const post = (url: string, payload: object, actor = 0) => app.inject({
     method:'POST',url,headers:headers(actor),payload,
   });
@@ -129,4 +133,45 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
       WHERE organization_id=$1 AND batch_id=$2`,[org,batchId]);
     expect(rows.rows[0].n).toBe(1);
   });
+
+  it('compares only current workshop declarations without exposing source journals', async () => {
+    expect((await app.inject({method:'GET',
+      url:'/planning/workshop-batches/'+batchId+'/quantity-comparison'})).statusCode).toBe(401);
+    expect((await workshopFlow(0)).statusCode).toBe(403);
+    expect((await workshopFlow(2)).statusCode).toBe(403);
+    expect((await workshopFlow(1,randomUUID())).statusCode).toBe(404);
+    expect((await workshopFlow(1,'not-a-uuid')).statusCode).toBe(400);
+    const scoped=await workshopFlow();
+    expect(scoped.statusCode).toBe(200);
+    expect(scoped.json()).toEqual({batchId,hasMore:false,steps:[
+      {number:2,name:'Cutting',workshopId:'cutting',nextStep:null,
+        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null},
+    ]});
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'coating')`,[org,master]);
+    const shared=await workshopFlow();
+    expect(shared.statusCode).toBe(200);
+    expect(shared.json().steps).toEqual([
+      {number:1,name:'Coating',workshopId:'coating',nextStep:2,
+        output:{quantity:'70.250001',unit:'kg'},
+        handoff:{id:expect.any(String),quantity:'65.125999',unit:'kg',received:true},
+        difference:'5.124002'},
+      {number:2,name:'Cutting',workshopId:'cutting',nextStep:null,
+        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null},
+    ]);
+    expect(shared.json().steps.every((row:object)=>
+      !('sourceComparison' in row) && !('sourceEntryId' in row))).toBe(true);
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='coating'`,[org,master]);
+    expect((await workshopFlow()).json().steps.map((row:{number:number})=>row.number))
+      .toEqual([2]);
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,master]);
+    expect((await workshopFlow()).statusCode).toBe(404);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,master]);
+    expect((await workshopFlow()).statusCode).toBe(200);
+    expect((await read()).json().steps).toHaveLength(2);
+  });
+
 });
