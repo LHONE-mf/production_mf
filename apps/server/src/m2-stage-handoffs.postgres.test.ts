@@ -129,7 +129,8 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect((await app.inject({method:'GET',
       url:'/planning/workshop-batches/'+batchId+'/handoff-candidate'})).statusCode).toBe(401);
     expect((await candidate(0)).statusCode).toBe(403);
-    expect((await candidate(3)).statusCode).toBe(404);
+    // The foreign chief is denied by role before tenant lookup.
+    expect((await candidate(3)).statusCode).toBe(403);
     expect((await candidate(2)).statusCode).toBe(404);
     expect((await candidate(1)).json()).toEqual({batchId,candidate:null});
     const response = await candidate();
