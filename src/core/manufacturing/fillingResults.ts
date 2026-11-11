@@ -21,7 +21,7 @@ export function validateFillingResult(run:FillRun):void {
  if(!run.measurementUnits||Object.entries(FILLING_UNITS).some(([key,unit])=>run.measurementUnits![key as keyof typeof FILLING_UNITS]!==unit))throw new Error('Единицы измерений: мг, кПа, мин, °C, ppm; точка росы не является ppm');
  if(!text(run.electrolyteName)||!text(run.measurementBasis)||run.measurementBasis!.length>1000||!Array.isArray(run.defects)||run.defects.some(v=>!text(v))||(run.comment!==undefined&&!text(run.comment))||(run.machineNo!==undefined&&!text(run.machineNo)))throw new Error('Укажите электролит и основание измерений: к чему относится доза, как измерены вакуум/давление и среда');
  for(const [key,min] of [['doseActual',0],['vacuumKpa',0],['pressureKpa',0],['dwellMin',0],['temperatureC',-273.15],['humidityPpm',0]] as const){
-  const value=run[key];if(typeof value!=='number'||!Number.isFinite(value)||value<min||key==='doseActual'&&value===0)throw new Error('Введите конечные измеренные дозу, вакуум, давление, выдержку, температуру и влажность в указанных единицах');
+  const value=run[key];if(typeof value!=='number'||!Number.isFinite(value)||value<min||key==='doseActual'&&value===0&&run.cellsFilled>0)throw new Error('Введите конечные измеренные дозу, вакуум, давление, выдержку, температуру и влажность в указанных единицах');
  }
  if(run.doseMin!==undefined&&(!Number.isFinite(run.doseMin)||run.doseMin<=0))throw new Error('Введённая целевая доза должна быть положительной; это не измерение');
 }

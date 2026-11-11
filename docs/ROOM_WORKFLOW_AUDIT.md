@@ -1,7 +1,7 @@
 # Room workflow evidence — 2026-11-11
 
 Inventory: `src/stages/registry.ts` and `StageRouter.tsx`, inspected at
-`ff2c97e` and updated by the coating persistence slice. This is a code audit,
+`ff2c97e` and updated through the receipt-bound filling, walzing and formation slices (`cc91d7a`, `f491e7c`, `4caa20b`). This is a code audit,
 not a factory acceptance report. **Code** means a control/write path exists;
 **unit/IndexedDB/component/browser** mean that specific automated check ran.
 No room has physical OnePlus, equipment, stock reconciliation or QA acceptance
@@ -33,3 +33,21 @@ and queued sync, leaving destructive cleanup behind typed confirmation. M0 still
 needs installed-APK upgrade/backup/restore acceptance. M1 automatic sync remains
 disabled pending physical two-device/TLS gates. M2 workshop controls already exist
 on the current branch; inspect their current tests before extending permissions.
+
+## Continuation verification checkpoint — 2026-11-11
+
+Starting remote: `43bb1a5`. Final local suite: **432 frontend tests**, typecheck
+and PWA build passed. Both complete formation alternatives, source/serial
+identity, real journal rollback, frozen offline retry/reopen and signed saved
+JSON/QR-frame export passed Chromium 390×844 and 1365×900. Explicit zero-dose,
+all-rejected filling also passed those viewports; it creates no onward output.
+
+Exact-head CI, Run Tests and signed APK passed for [filling `cc91d7a`](https://github.com/LHONE-mf/production_mf/commit/cc91d7a33c025f3ea1ca1bda8bdc847f1be26531)
+and [walzing `f491e7c`](https://github.com/LHONE-mf/production_mf/commit/f491e7c108953dc9cc20ef7e31e7bedb5a1d5487).
+Formation `4caa20b` [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43096351822)
+and [APK](https://github.com/LHONE-mf/production_mf/actions/runs/43096346525)
+were queued without jobs at 20:34 UTC; this is not a pass. Exact target-head
+checks must be inspected before artifact selection. No physical/native/device
+or factory acceptance is inferred from these tests. Slurry and storage remain
+the next local data-integrity priorities; authoritative operations, complete
+polarity pairing, inventory/QA and physical release gates remain open.

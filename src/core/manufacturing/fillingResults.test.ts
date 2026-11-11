@@ -24,6 +24,11 @@ it('saves the full received source with attributed journal once across concurren
  db.close();await db.open();expect(await saveFillingResult(run,'worker')).toEqual(a);
  expect(await receiveFillingHandover(receipt,UserRole.MASTER,'master',StageId.ELECTROLYTE)).toEqual(receipt);
 });
+it('retains an explicitly measured zero dose when the entire received count is rejected, without inventing filled output',async()=>{
+ const rejected={...run,doseActual:0,cellsFilled:0,cellsScrap:4};
+ expect(await saveFillingResult(rejected,'worker')).toEqual(rejected);
+ expect((await db.fillRuns.get(run.id))?.cellsFilled).toBe(0);expect((await db.journal.get(run.id))?.params?.['Отклонено']).toBe(4);
+});
 it('requires exact saved independent receipt, destination, source, actor and immutable result',async()=>{
  for(const changed of [{sourceReceipt:{...receipt,receipt:undefined}},{box:'floor7-room5'},{sourceReceipt:{...receipt,receipt:{...receipt.receipt!,note:'Altered'}}},{serialRange:{prefix:'FILL-',start:11,end:14}},{workerId:'master'}])await expect(saveFillingResult({...run,...changed} as FillRun,'worker')).rejects.toThrow();
  await db.electrolyteIncoming.delete(receipt.id);await expect(saveFillingResult(run,'worker')).rejects.toThrow();await db.electrolyteIncoming.add(receipt);

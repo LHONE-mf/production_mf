@@ -1,3 +1,36 @@
+## 2026-11-11 — Final filling/formation review and zero-dose rejection observation
+
+- The full received count may be explicitly rejected after an observed zero
+  electrolyte dose. The result now preserves that measured zero when no filled
+  cells are claimed. A positive filled count still requires a positive dose;
+  missing measurements never become zero. Full input range and rejection count
+  remain saved observations, with no onward output/serial allocation or QA/stock
+  disposition inferred. A failing IndexedDB regression reproduced the rejected
+  zero-dose write before the one-condition fix.
+- **432 frontend tests**, typecheck and PWA build passed after the correction.
+  Chromium **390×844 / 1365×900** additionally passed independent receipt ->
+  explicit zero-dose/all-rejected result, real journal failure/rollback, retained
+  values/ID, offline duplicate retry, saved journal/export, blocked downstream
+  transfer and exact reopen without overflow/runtime errors. Earlier checks in
+  this session cover both complete routes to source-bound formation and actual
+  signed saved JSON export through multi-frame QR.
+- Implementation commits in this continuation: filling `cc91d7a`, walzing/QR
+  `f491e7c`, formation `4caa20b`; starting remote was `43bb1a5`. Exact-head CI,
+  Run Tests and signed APK all passed for the first two (links below). Formation
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43096351822),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43096351885) and
+  [APK](https://github.com/LHONE-mf/production_mf/actions/runs/43096346525) were
+  still queued without assigned jobs at **20:34 UTC**; no passing conclusion is
+  claimed for those queued runs. Check the exact target commit's Actions/PR
+  checks before selecting an APK. No runs were manually cancelled or rerun.
+- Updated canonical local-observation boundary and room-by-room audit. Physical
+  OnePlus/equipment/scanner/BLE, installed signed upgrade/restore and separately
+  enrolled devices against deployed TLS remain untested. M0/M1 release gates,
+  M2 factory pilot, authoritative M3 integration, M4 QA/inventory and M5 remain
+  open. No merge, deployment, native/signing/schema/dependency or automatic-sync
+  change. Next implementation priority: slurry actual-weighing/mass-balance and
+  atomic batch/journal, then storage lot/location history and polarity pairing.
+
 ## 2026-11-11 — Source-bound formation observations complete the local recorded chain
 
 - Continued after `f491e7c108953dc9cc20ef7e31e7bedb5a1d5487`, whose exact-head
