@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { clearServerConnection, getServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import { planningApi, type BatchStatus, type WorkshopBatch } from '../../core/planning/planningClient';
 import { StepEvidencePanel } from './StepEvidencePanel';
+import { WorkshopHandoffPanel } from './WorkshopHandoffPanel';
 
 const statusNames: Record<BatchStatus,string> = {
   created: 'Создана', in_progress: 'В работе', hold: 'Приостановлена',
@@ -75,8 +76,11 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
           {selected?.id===batch.id?'Закрыть журнал':'Открыть журнал'}
         </button>
       </div>
-      {selected?.id===batch.id &&
-        <StepEvidencePanel key={batch.id} connection={connection} batch={batch} />}
+      {selected?.id===batch.id && <>
+        <StepEvidencePanel key={'evidence:'+batch.id} connection={connection} batch={batch} />
+        {batch.status==='in_progress' &&
+          <WorkshopHandoffPanel key={'handoff:'+batch.id} connection={connection} batchId={batch.id} />}
+      </>}
     </div>)}
   </section>;
 }

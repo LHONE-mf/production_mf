@@ -30,6 +30,9 @@ describe('Workshop execution list',()=>{
         batches:[{id:'batch-1',batchCode:'CATH-001',status:'in_progress',quantityUnit:'kg'}],
         hasMore:false,
       })};
+      if(url.endsWith('/handoff-candidate'))return {ok:true,json:async()=>({
+        batchId:'batch-1',candidate:null,
+      })};
       return {ok:true,json:async()=>({batchId:'batch-1',steps:[
         {number:2,name:'Cutting',stage:'cutting',workshopId:'cutting',evidence:null},
       ]})};
@@ -42,7 +45,7 @@ describe('Workshop execution list',()=>{
     const open=[...screen.querySelectorAll('button')].find(b=>b.textContent==='Открыть журнал')!;
     await act(async()=>{open.click();await Promise.resolve();});
     expect(screen.textContent).toContain('Cutting');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls.every(call=>!String(call[0]).endsWith('/planning/orders'))).toBe(true);
   });
 
