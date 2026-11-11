@@ -152,6 +152,7 @@ export interface CoatRun {
   segLengthsM: number[];           // длина участков нанесения, м (можно добавлять/удалять)
   sideALengthM?: number;           // общая длина нанесённого покрытия, сторона A (м) — считается из segLengthsM
   sideBLengthM?: number;           // общая длина, сторона B (м) — второй проход (двусторонняя намазка)
+  measuredDryThicknessUm?: number; // entered dry electrode total thickness, including foil and all coated faces
   wetThicknessUm?: number;         // расчётная мокрая толщина (не зазор фильеры), мкм
   headGapUm?: number;              // заданный пользователем механический зазор фильера–фольга, мкм
   defects?: string;                // дефекты / замечания

@@ -83,7 +83,14 @@ from estimated wet thickness. Intermittent coverage requires valid lengths and
 a gap smaller than pitch, with its start-of-segment assumption shown. Small
 positive flow estimates retain their precision. IndexedDB rollback/retry/reopen,
 component and phone/desktop browser checks passed. Physical coating/calibration
-acceptance and measured dry-roll handover remain open. Cutting now uses explicit
+acceptance remains open. Coating-to-calender handover now uses an optional
+entered dry-electrode total thickness including foil, with actor/time/basis.
+Wet-film estimates are not substituted; missing or unmarked legacy values do
+not drive the planned thickness comparison. Stable handovers are persisted
+before packet preparation and conflicts preserve the original snapshot.
+Calender target/force/temperature start unknown, heat choice is explicit, and
+source changes clear assignments. This is not gauge calibration, measured
+compression, porosity or physical acceptance. Cutting now uses explicit
 physical web length for advisory layout estimates, excluding A+B face coverage.
 Independent rectangular plate dimensions, safe whole counts, save-before-export,
 source-change isolation and persisted estimate inputs have unit, IndexedDB,

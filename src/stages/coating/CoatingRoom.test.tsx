@@ -48,6 +48,7 @@ it('retains the form on storage failure, prevents duplicate clicks and reopens t
     edit('Фольга','Measured Al');edit('Сухая поверхностная плотность, мг/см²','20');
     edit('Ширина полосы, см','50');edit('Скорость фольги, м/мин','8');
     edit('Калиброванная подача, см³/об','25');edit('Заданный зазор, мкм','180');edit('Длина участка 1, м','10');
+    edit('Измеренная толщина сухого электрода, мкм','100');
   });
   expect(node.textContent).toContain('200');
   const fail=()=>{throw new Error('Storage temporarily unavailable');};
@@ -62,6 +63,8 @@ it('retains the form on storage failure, prevents duplicate clicks and reopens t
   await act(async()=>{save.click();save.click();});
   await vi.waitFor(async()=>expect(await db.coatRuns.count()).toBe(1));
   expect(await db.journal.count()).toBe(1);
+  expect((await db.coatRuns.toArray())[0].measuredDryThicknessUm).toBe(100);
+  expect((await db.journal.toArray())[0].params).toMatchObject({'Измеренная сухая толщина с фольгой, мкм':100});
   await act(async()=>{root!.unmount();});
   db.close();await db.open();
   root=createRoot(node);
@@ -73,4 +76,21 @@ it('retains the form on storage failure, prevents duplicate clicks and reopens t
   expect(node.textContent).toContain('25 см³/об');
   expect(node.textContent).toContain('0.8 л/мин');
   expect(node.textContent).toContain('не указаны');
+});
+
+it('never promotes estimated wet thickness to a measured dry-roll handover',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'operator',login:'operator',fullName:'Operator',password:'test-only',
+    role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
+  await db.coatRuns.add({id:'legacy-wet-estimate',foilType:'Handover fixture',wetThicknessUm:200,
+    mode:'continuous',segLengthsM:[10],sideALengthM:10,ovenTempsC:[],workerId:'operator',createdAt:1,updatedAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CoatingModule/>);});
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал нанесения'))!.click();});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Handover fixture'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Handover fixture'))!.click();});
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Рулон технологу'))!.click();});
+  await vi.waitFor(async()=>expect(await db.rollSpecs.count()).toBe(1));
+  expect((await db.rollSpecs.get('legacy-wet-estimate'))?.thicknessBeforeUm).toBeUndefined();
+  expect((await db.coatRuns.get('legacy-wet-estimate'))?.wetThicknessUm).toBe(200);
 });

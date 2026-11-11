@@ -3,7 +3,7 @@
 // Цепочка данных: намазка → (roll-spec) технологу (master) → оператор каландра фиксирует
 // зазоры/длину/дефекты → (calender-result) результат доступен для нарезки.
 
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
+import { measuredDryThicknessUm, plannedThicknessReductionPct } from '../_common/rollThickness';
 
 // Параметры прокатки по рулону хранятся локально (мастер назначает их сам; на slave
 // они приходят пакетом roll-spec и пишутся apply.ts прямо в calenderRuns).
@@ -35,7 +36,7 @@ function saveLocalCalParam(rollId: string, p: CalenderParams) {
 type Tab = 'rolls' | 'params' | 'journal' | 'comments';
 
 const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
+  'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
 export function CalendaringModule() {
@@ -204,7 +205,9 @@ function RollsTab({
                 <span className="text-[10px] text-slate-500">{new Date(r.createdAt).toLocaleString('ru-RU')}</span>
               </div>
               <div className="grid grid-cols-2 gap-x-3 text-xs text-slate-300">
-                <span>До прокатки: <b className="text-white">{r.thicknessBeforeUm ?? '—'} мкм</b></span>
+                <span>Полная сухая толщина с фольгой до прокатки (замер): <b className="text-white">{measuredDryThicknessUm(r) ?? '—'} мкм</b></span>
+                {measuredDryThicknessUm(r)!==null && <span>Замер записал: {userName(r.thicknessBeforeMeasurement!.recordedBy)} · {new Date(r.thicknessBeforeMeasurement!.recordedAt).toLocaleString('ru-RU')}</span>}
+                {measuredDryThicknessUm(r)===null && typeof r.thicknessBeforeUm==='number' && Number.isFinite(r.thicknessBeforeUm) && <span>Ранее указано {r.thicknessBeforeUm} мкм; источник не подтверждён.</span>}
                 <span>Фольга: <b className="text-white">{r.foilType ?? '—'}</b></span>
                 <span>Участки A: <b className="text-white">{totalA} м</b></span>
                 <span>Сторона B: <b className="text-white">{r.sideBLengthM ?? '—'} м</b></span>
@@ -251,25 +254,23 @@ function ParamsTab({
   const [rollId, setRollId] = useState<string>(selectedRollId ?? rolls[0]?.id ?? '');
   const roll = rolls.find((r) => r.id === rollId);
 
-  const [targetThickness, setTargetThickness] = useState<number | ''>(18);
-  const [heating, setHeating] = useState(true);
-  const [heatTemp, setHeatTemp] = useState<number | ''>(80);
-  const [pressure, setPressure] = useState<number | ''>(60);
+  const [targetThickness, setTargetThickness] = useState<number | ''>('');
+  const [heating, setHeating] = useState<boolean|null>(null);
+  const [heatTemp, setHeatTemp] = useState<number | ''>('');
+  const [pressure, setPressure] = useState<number | ''>('');
   const [edgeTrim, setEdgeTrim] = useState(false);
   const [notes, setNotes] = useState('');
 
   // Расчётная подсказка: обжатие
-  const reduction = useMemo(() => {
-    if (!roll?.thicknessBeforeUm || !targetThickness) return null;
-    const before = Number(roll.thicknessBeforeUm);
-    const after = Number(targetThickness);
-    if (before <= 0 || after <= 0 || after >= before) return null;
-    return Math.round(((before - after) / before) * 1000) / 10; // %
-  }, [roll, targetThickness]);
+  const reduction=roll?plannedThicknessReductionPct(roll,Number(targetThickness)):null;
+  const validTarget=targetThickness!==''&&Number.isFinite(targetThickness)&&targetThickness>0;
+  const validParams=validTarget&&heating!==null&&(pressure===''||Number.isFinite(pressure)&&pressure>0)&&
+    (!heating||heatTemp!==''&&Number.isFinite(heatTemp)&&heatTemp>=0);
 
   const saveAndPush = async () => {
-    if (!roll || !currentUser) return;
+    if (!roll || !currentUser || !validParams || heating===null || !canEdit) return;
     const p: CalenderParams = {
+      targetThicknessBasis:'dry-electrode-including-foil',
       targetThicknessUm: numOrUndef(targetThickness),
       heating,
       heatTempC: heating ? numOrUndef(heatTemp) : undefined,
@@ -303,7 +304,9 @@ function ParamsTab({
         <h3 className="text-white font-semibold text-sm">Назначение параметров прокатки (технолог / master)</h3>
         <div>
           <label className={labelCls}>Рулон с намазки</label>
-          <select className={inputCls} value={rollId} onChange={(e) => setRollId(e.target.value)}>
+          <select aria-label="Рулон для каландрирования" className={inputCls} value={rollId} onChange={(e) => {
+            setRollId(e.target.value);setTargetThickness('');setPressure('');setHeatTemp('');setHeating(null);setEdgeTrim(false);setNotes('');
+          }}>
             {rolls.map((r) => (
               <option key={r.id} value={r.id}>{r.mixName} · {new Date(r.createdAt).toLocaleDateString('ru-RU')}</option>
             ))}
@@ -311,23 +314,25 @@ function ParamsTab({
         </div>
         {roll && (
           <div className="text-xs text-slate-400 bg-slate-900/60 rounded p-2">
-            До прокатки: <b className="text-white">{roll.thicknessBeforeUm ?? '—'} мкм</b> · участков A: {(roll.segLengthsM ?? []).join(' + ')} м · B: {roll.sideBLengthM ?? '—'} м
+            Полная сухая толщина с фольгой до прокатки (замер): <b className="text-white">{measuredDryThicknessUm(roll) ?? '—'} мкм</b> · участков A: {(roll.segLengthsM ?? []).join(' + ')} м · B: {roll.sideBLengthM ?? '—'} м
           </div>
         )}
+        {roll && measuredDryThicknessUm(roll)===null && <p className="text-xs text-amber-200">Атрибутированный замер сухого электрода не указан. Ранее записанные значения сохранены, но источник не подтверждён; оценка обжатия недоступна.</p>}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Толщина после прокатки, мкм</label>
-            <input type="number" step="0.5" className={inputCls} value={targetThickness} onChange={(e) => setTargetThickness(e.target.value === '' ? '' : Number(e.target.value))} />
+            <label className={labelCls}>Целевая полная толщина сухого электрода с фольгой, мкм *</label>
+            <input aria-label="Целевая полная толщина, мкм" type="number" min="0" step="any" className={inputCls} value={targetThickness} onChange={(e) => setTargetThickness(e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
           <div>
-            <label className={labelCls}>Давление, тс</label>
+            <label className={labelCls}>Усилие прокатки, тс</label>
             <input type="number" step="1" className={inputCls} value={pressure} onChange={(e) => setPressure(e.target.value === '' ? '' : Number(e.target.value))} />
           </div>
           <div>
             <label className={labelCls}>Нагрев валков</label>
-            <button onClick={() => setHeating(!heating)} className={`w-full px-2 py-1.5 rounded text-sm ${heating ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-300'}`}>
-              {heating ? '🔥 Нагрев: да' : 'Нагрев: нет'}
-            </button>
+            <select aria-label="Назначение нагрева валков" className={inputCls} value={heating===null?'':heating?'yes':'no'}
+              onChange={event=>setHeating(event.target.value===''?null:event.target.value==='yes')}>
+              <option value="">Выберите режим</option><option value="no">Без нагрева</option><option value="yes">С нагревом</option>
+            </select>
           </div>
           <div>
             <label className={labelCls}>Температура нагрева, °C</label>
@@ -342,13 +347,14 @@ function ParamsTab({
           <label className={labelCls}>Примечание технолога</label>
           <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="напр.: 2 прохода, контроль толщины каждые 50 м" />
         </div>
+        {!validParams && <p className="text-xs text-amber-200">Для назначения укажите положительную цель и явно выберите нагрев. При нагреве нужна температура; указанное усилие должно быть больше нуля. Это назначение параметров, не показания оборудования.</p>}
         {reduction !== null && (
-          <p className="text-xs text-blue-300">Обжатие: ~{reduction}% ({roll?.thicknessBeforeUm} → {targetThickness} мкм)</p>
+          <p className="text-xs text-blue-300">Плановое уменьшение полной толщины: ~{reduction}% ({roll && measuredDryThicknessUm(roll)} → {targetThickness} мкм). Это сравнение с целью, не фактическое обжатие, пористость или настройка зазора.</p>
         )}
         <button
           onClick={saveAndPush}
-          disabled={!canEdit || !roll}
-          className="w-full px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
+          disabled={!canEdit || !roll || !validParams}
+          className="w-full min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
         >
           {canEdit ? '💾 Назначить и отправить на устройство каландра (QR/текст/BT)' : 'Только технолог/мастер/начальник может назначать параметры'}
         </button>
@@ -441,7 +447,7 @@ function JournalTab({
         'Зазоры, мм': updated.gapsMm.join('/'),
         'Длина, м': updated.totalLengthM ?? '',
         'Толщина после, мкм': updated.thicknessAfterUm ?? '',
-        'Давление, тс': r.params?.pressureTons ?? '',
+        'Усилие прокатки, тс': r.params?.pressureTons ?? '',
         'Нагрев, °C': r.params?.heatTempC ?? '',
       },
       defects: updated.defects ?? '', createdAt: new Date(),
@@ -472,7 +478,7 @@ function JournalTab({
                 <p className="text-sm text-white font-medium">🔄 {roll?.mixName ?? r.rollId}</p>
                 <p className="text-[11px] text-slate-400">
                   {new Date(r.createdAt).toLocaleString('ru-RU')} · {userName(r.workerId)} ·{' '}
-                  цель {r.params?.targetThicknessUm ?? '—'} мкм{r.params?.heating ? ` · 🔥 ${r.params.heatTempC ?? '—'}°C` : ''}
+                  цель {r.params?.targetThicknessUm ?? '—'} мкм ({r.params?.targetThicknessBasis==='dry-electrode-including-foil'?'сухой электрод с фольгой':'основа не указана'}){r.params?.heating ? ` · 🔥 ${r.params.heatTempC ?? '—'}°C` : ''}
                   {r.params?.pressureTons ? ` · ${r.params.pressureTons} тс` : ''}{r.params?.edgeTrim ? ' · обрезка кромки' : ''}
                 </p>
               </div>

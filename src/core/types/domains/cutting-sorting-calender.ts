@@ -147,7 +147,12 @@ export interface SortRun {
 export interface RollSpec {
   id: string;                    // = coatRunId
   mixName: string;               // название замеса
-  thicknessBeforeUm?: number;    // толщина покрытия до прокатки (мкм) — из расчётов намазки/журнала
+  thicknessBeforeUm?: number;    // legacy values may be estimates; measured use requires the provenance below
+  thicknessBeforeMeasurement?: {
+    basis:'dry-electrode-including-foil';
+    recordedBy:string;
+    recordedAt:number;
+  };
   segLengthsM: number[];         // длины участков нанесения, м
   sideALengthM?: number;         // общая длина, сторона A, м
   sideBLengthM?: number;         // общая длина, сторона B, м
@@ -164,10 +169,11 @@ export interface RollToTechPacket {
 
 // Параметры прокатки, назначаемые технологом (master)
 export interface CalenderParams {
+  targetThicknessBasis?:'dry-electrode-including-foil'; // absent on unmarked legacy assignments
   targetThicknessUm?: number;    // целевая толщина после прокатки, мкм
   heating: boolean;              // необходим ли нагрев валков
   heatTempC?: number;            // температура нагрева, °C
-  pressureTons?: number;         // давление прокатки, тс
+  pressureTons?: number;         // усилие прокатки, тс (legacy field name; not pressure per area)
   edgeTrim: boolean;             // обрезка кромок электродов (облегчает прокатку)
   notes?: string;
 }

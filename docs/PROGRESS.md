@@ -1,3 +1,38 @@
+## 2026-11-11 — Measured dry-electrode handover and explicit calender targets
+
+- Cutting commit `cebd638` passed exact-head CI `42994773683`, Run Tests
+  `42994773794` and signed APK `42994764033` before continuing.
+- Reproduced wet-film estimate `200 µm` being exported as a dry-roll thickness,
+  and an unmarked legacy value being used to claim calender compression.
+- Coating now accepts an optional entered dry-electrode **total thickness,
+  including foil and all coated faces**. It is validated and stored with the
+  existing run. Handover retains source identity and records the measurement
+  basis, source actor and recording time. Estimated wet thickness remains in
+  its own field and is never substituted. Missing dry measurements stay unknown.
+- A roll snapshot commits before packet preparation. Stable-ID retries reuse
+  the stored snapshot; changed source data cannot overwrite it. Storage failure
+  leaves the original coating record intact and allows retry. Legacy conflicting
+  snapshots are preserved and made visible as a conflict, not rewritten.
+- Calender comparisons accept only valid, attributed measurements on this dry
+  total-electrode basis. Legacy unmarked values remain stored/displayed as
+  unconfirmed and do not enter the estimate. Target comparison is explicitly
+  planned total-thickness change, not actual compression, porosity or a gap.
+  Removed fabricated 18 µm / 80°C / 60 tonnes defaults. Heat is an explicit
+  selection, force is labelled tonnes-force, targets retain their thickness-basis
+  tag, and changing rolls clears settings.
+- Full local frontend verification: **313 tests**, typecheck and PWA build.
+  IndexedDB, unit and rendered checks cover validation, provenance, stable retry,
+  conflict/no overwrite, failure recovery, close/reopen and legacy isolation.
+  Chromium **390×844 / 1365×900** passed real data entry, offline handover,
+  actor/time/basis retention, reload, a 100→80 µm target comparison (20%),
+  exclusion/preservation of a 200 µm unmarked legacy value, explicit heat choice,
+  blank numeric settings, source reset, no overflow and no browser exceptions.
+- Updated the canonical specification and room audit. No schema, dependency,
+  server, signing, automatic-sync or production change. Still open: physical
+  gauge/process validation, installed-APK upgrade/restore, M1 two-device/TLS,
+  durable calender assignment/result failure recovery and material allocation.
+  No native emulator or physical packet delivery was performed in this slice.
+
 ## 2026-11-11 — Physical-length cutting estimates and durable whole-count records
 
 - Revalidated clean remote `3fc842a` and its successful exact-head CI before

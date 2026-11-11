@@ -7,11 +7,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
-import { CoatingMixSnapshot, CoatRun, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole } from '../../core/types';
+import { CoatingMixSnapshot, CoatRun, RollToTechPacket, StageId, SyncPacket, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
-import { saveCoatingRun } from './coatingJournal';
+import { saveCoatingRun, saveCoatingRollHandover } from './coatingJournal';
 import { requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm, intermittentCoverage } from './coatMath';
 
 type Tab = 'mixes' | 'setup' | 'journal' | 'comments';
@@ -25,6 +25,9 @@ export function CoatingModule() {
   const isManager = !!currentUser && [UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('mixes');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
+  const [handoverBusy,setHandoverBusy]=useState(false);
+  const handoverRef=useRef(false);
+  const [handoverError,setHandoverError]=useState('');
 
   // ── Данные для вкладок ────────────────────────────────────────────
   const incomingMixes = useLiveQuery(async () => {
@@ -104,6 +107,8 @@ export function CoatingModule() {
         ))}
       </div>
 
+      {handoverError && <p role="alert" className="text-sm text-red-200">{handoverError}</p>}
+      {handoverBusy && <p role="status" className="text-sm text-slate-300">Сохраняем данные рулона…</p>}
       {tab === 'mixes' && <MixesTab mixes={availableMixes} />}
       {tab === 'setup' && <SetupTab mixes={availableMixes} onSaved={() => setTab('journal')} />}
       {tab === 'journal' && (
@@ -119,24 +124,19 @@ export function CoatingModule() {
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
             });
           }}
-          onSendRoll={(r) => {
-            // Рулон → технологу (master) для уточнения параметров прокатки → каландрирование
-            const spec: RollSpec = {
-              id: r.id,
-              mixName: r.mixSnapshot?.recipeName ?? 'Без замеса',
-              thicknessBeforeUm: r.wetThicknessUm,
-              segLengthsM: r.segLengthsM ?? [],
-              sideALengthM: r.sideALengthM,
-              sideBLengthM: r.sideBLengthM,
-              foilType: r.foilType,
-              createdAt: Date.now(),
-            };
-            const rp: RollToTechPacket = { roll: spec };
-            db.rollSpecs.put(spec); // на master-устройстве появится сразу после приёма пакета
-            setOutPacket({
-              v: 1, type: 'roll-spec', stage: StageId.CALENDARING,
-              payload: rp, from: currentUser!.id, ts: Date.now(),
-            });
+          handoverBusy={handoverBusy}
+          onSendRoll={async (r) => {
+            if(handoverRef.current||!currentUser)return;
+            handoverRef.current=true;setHandoverBusy(true);setHandoverError('');
+            try{
+              const spec=await saveCoatingRollHandover(r);
+              const rp: RollToTechPacket = { roll: spec };
+              setOutPacket({
+                v: 1, type: 'roll-spec', stage: StageId.CALENDARING,
+                payload: rp, from: currentUser!.id, ts: Date.now(),
+              });
+            }catch(cause){setHandoverError(cause instanceof Error?cause.message:'Передача не сохранена. Повторите попытку.');}
+            finally{handoverRef.current=false;setHandoverBusy(false);}
           }}
         />
       )}
@@ -206,6 +206,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
   const [webSpeed, setWebSpeed] = useState<number | ''>('');
   const [supplyCm3Rev, setSupplyCm3Rev] = useState<number | ''>(''); // verified pump calibration only
   const [gapSetpoint, setGapSetpoint] = useState<number | ''>('');
+  const [measuredDry,setMeasuredDry]=useState<number|''>('');
   const [mode, setMode] = useState<'continuous' | 'intermittent'>('continuous');
   const [gapWidth, setGapWidth] = useState<number | ''>('');
   const [gapPitch, setGapPitch] = useState<number | ''>('');
@@ -245,7 +246,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
       await saveCoatingRun({
         foilType,mixSnapshot:mix,targetDryMgm2:numOrUndef(targetDry),
         coatingWidthCm:numOrUndef(widthCm),webSpeedMpm:numOrUndef(webSpeed),
-        pumpDeliveryCm3Rev:numOrUndef(supplyCm3Rev),headGapUm:numOrUndef(gapSetpoint),mode,
+        pumpDeliveryCm3Rev:numOrUndef(supplyCm3Rev),headGapUm:numOrUndef(gapSetpoint),measuredDryThicknessUm:numOrUndef(measuredDry),mode,
         gapWidthMm:numOrUndef(gapWidth),gapPitchMm:numOrUndef(gapPitch),segLengthsM:segs,
         sideBLengthM:numOrUndef(sideB),ovenTempsC:ovens.every(t=>t==='')?[]:ovens.map(t=>t===''?NaN:t),
         defects,notes,
@@ -299,6 +300,13 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
             <input type="number" min="0" step="any" aria-label="Заданный зазор, мкм" className={inputCls} value={gapSetpoint}
               onChange={event=>setGapSetpoint(numOrNull(event.target.value))} />
           </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>Измеренная полная толщина сухого электрода, мкм (необязательно)</label>
+          <input aria-label="Измеренная толщина сухого электрода, мкм" type="number" min="0" step="any"
+            className={inputCls} value={measuredDry} onChange={event=>setMeasuredDry(numOrNull(event.target.value))}/>
+          <p className="text-xs text-slate-400 mt-1">Замер после сушки: вся толщина электрода вместе с фольгой и покрытиями обеих сторон. Расчётная мокрая толщина не заменяет замер. При передаче сохраняются исполнитель и время записи; это не приёмка ОТК.</p>
         </div>
 
         <div>
@@ -426,13 +434,14 @@ function ResultRow({ label, value, unit, hint }: { label: string; value: number 
 
 // ── Вкладка: журнал нанесения ───────────────────────────────────────
 function JournalTab({
-  runs, userName, canForce, onSend, onSendRoll,
+  runs, userName, canForce, onSend, onSendRoll, handoverBusy,
 }: {
   runs: CoatRun[];
   userName: (id: string) => string;
   canForce: boolean;
   onSend: (r: CoatRun, forced: boolean) => void;
   onSendRoll: (r: CoatRun) => void;
+  handoverBusy?:boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -470,6 +479,7 @@ function JournalTab({
                   <Info k="Расход (оценка)" v={`${r.estimatedFlowLpm ?? '—'} л/мин`} />
                   <Info k="Сухая поверхностная плотность" v={`${r.targetDryMgm2 ?? '—'} мг/см²`} />
                   <Info k="Заданный зазор" v={`${r.headGapUm ?? '—'} мкм`} />
+                  <Info k="Измеренная толщина сухого электрода с фольгой" v={`${r.measuredDryThicknessUm ?? '—'} мкм`} />
                   <Info k="Мокрая толщина (оценка)" v={`${r.wetThicknessUm ?? '—'} мкм`} />
                   {r.mode === 'intermittent' && (
                     <>
@@ -497,7 +507,8 @@ function JournalTab({
                   <button onClick={() => onSend(r, false)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
                     📤 Отправить master&apos;у (QR/текст)
                   </button>
-                  <button onClick={() => onSendRoll(r)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Рулон технологу (master): название замеса, толщина до прокатки, длины участков → каландрирование">
+                  {!r.measuredDryThicknessUm && <p className="text-xs text-amber-200 w-full">Замер сухого электрода не указан. Передача не содержит измеренной толщины; оценка мокрого слоя не используется.</p>}
+                  <button disabled={handoverBusy} onClick={() => onSendRoll(r)} className="min-h-11 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Рулон технологу (master): название замеса, толщина до прокатки, длины участков → каландрирование">
                     🔄 Рулон технологу (намазка → каландр)
                   </button>
                   {canForce && (

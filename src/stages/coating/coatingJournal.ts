@@ -1,5 +1,5 @@
 import { db } from '../../core/db';
-import { StageId, type CoatRun, type CoatingMixSnapshot } from '../../core/types';
+import { StageId, type CoatRun, type CoatingMixSnapshot, type RollSpec } from '../../core/types';
 import { intermittentCoverage, requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm } from './coatMath';
 
 export interface CoatingEntry {
@@ -10,6 +10,7 @@ export interface CoatingEntry {
   webSpeedMpm?:number;
   pumpDeliveryCm3Rev?:number;
   headGapUm?:number;
+  measuredDryThicknessUm?:number;
   mode:CoatRun['mode'];
   gapWidthMm?:number;
   gapPitchMm?:number;
@@ -31,6 +32,7 @@ export function prepareCoatingRun(input:CoatingEntry,workerId:string,id:string,n
   positive(input.webSpeedMpm,'Скорость фольги');
   if(input.pumpDeliveryCm3Rev!==undefined)positive(input.pumpDeliveryCm3Rev,'Калиброванная подача насоса');
   if(input.headGapUm!==undefined)positive(input.headGapUm,'Заданный зазор головки');
+  if(input.measuredDryThicknessUm!==undefined)positive(input.measuredDryThicknessUm,'Измеренная толщина сухого электрода');
   if(input.sideBLengthM!==undefined&&(!Number.isFinite(input.sideBLengthM)||input.sideBLengthM<0))
     throw new Error('Длина стороны B: введите неотрицательное число');
   if(input.ovenTempsC.length!==0&&(input.ovenTempsC.length!==6||
@@ -68,9 +70,43 @@ export async function saveCoatingRun(input:CoatingEntry,workerId:string,id:strin
       summary:`Нанесение: ${run.mixSnapshot?.recipeName??'без замеса'}, сторона A ${run.sideALengthM} м`,
       params:{'Запись нанесения':run.id,'Ширина, см':run.coatingWidthCm!,
         'Лента, м/мин':run.webSpeedMpm!,'Мокрая толщина (оценка), мкм':run.wetThicknessUm??'',
+        'Измеренная сухая толщина с фольгой, мкм':run.measuredDryThicknessUm??'',
         'Шнек (оценка), об/мин':run.screwRpm??'','Заданный зазор, мкм':run.headGapUm??'',
         'Печи, °C':run.ovenTempsC.length?run.ovenTempsC.join('/'):'не указаны'},
       defects:run.defects??'',createdAt:new Date(run.createdAt)});
   });
   return run;
+}
+
+/** Never substitute a wet-film estimate for a dry electrode measurement. */
+export function coatingRollSpec(run:CoatRun):RollSpec {
+  const measured=run.measuredDryThicknessUm;
+  if(measured!==undefined){
+    positive(measured,'Измеренная толщина сухого электрода');
+    if(typeof run.workerId!=='string'||!run.workerId.trim()||!Number.isFinite(run.createdAt)||run.createdAt<=0||!Number.isFinite(new Date(run.createdAt).getTime()))
+      throw new Error('У замера отсутствует исполнитель или время записи');
+  }
+  return {id:run.id,mixName:run.mixSnapshot?.recipeName??'Без замеса',
+    thicknessBeforeUm:measured,
+    thicknessBeforeMeasurement:measured===undefined?undefined:{basis:'dry-electrode-including-foil',recordedBy:run.workerId,recordedAt:run.createdAt},
+    segLengthsM:[...run.segLengthsM],sideALengthM:run.sideALengthM,sideBLengthM:run.sideBLengthM,
+    foilType:run.foilType,createdAt:run.createdAt};
+}
+
+/** Stable source identity: retries reuse the snapshot; changed content cannot overwrite it. */
+export async function saveCoatingRollHandover(run:CoatRun):Promise<RollSpec> {
+  const spec=coatingRollSpec(run);
+  return db.transaction('rw',db.rollSpecs,async()=>{
+    const existing=await db.rollSpecs.get(spec.id);
+    if(existing){
+      const fields=['mixName','foilType','sideALengthM','sideBLengthM','thicknessBeforeUm'] as const;
+      const before=existing.thicknessBeforeMeasurement,after=spec.thicknessBeforeMeasurement;
+      if(fields.some(key=>existing[key]!==spec[key])||JSON.stringify(existing.segLengthsM)!==JSON.stringify(spec.segLengthsM)||
+        before?.basis!==after?.basis||before?.recordedBy!==after?.recordedBy||before?.recordedAt!==after?.recordedAt)
+        throw new Error('Рулон с этим ID уже сохранён с другими данными. Исходная передача сохранена; создайте отдельную исправленную запись.');
+      return existing;
+    }
+    await db.rollSpecs.add(spec);
+    return spec;
+  });
 }
