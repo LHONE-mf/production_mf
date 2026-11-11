@@ -1,3 +1,38 @@
+## 2026-11-11 — Validated, atomic coating journal with reproducible estimates
+
+- Completed a code-based inventory of all **11 registered rooms** in
+  [ROOM_WORKFLOW_AUDIT.md](ROOM_WORKFLOW_AUDIT.md): real stores/actions,
+  unit assumptions, access/failure gaps, evidence labels and concrete next
+  acceptance criteria. No untested room was labelled production accepted.
+- Reproduced blank coating records and invalid geometry being accepted. New
+  entries start without sample machine values; validate foil, dry loading,
+  width, speed, segment lengths, optional calibration/gap, side-B length,
+  temperatures and supplied slurry mass fraction/density. Blank oven values
+  remain unknown, with no fabricated six-zone zero readings. An entered oven
+  set requires all six zones. Existing records are not rewritten.
+- Added one transaction for `coatRuns` + the linked `journal` entry. Failure
+  rolls both back; the form remains available for retry. A stable run ID and
+  in-flight guard prevent rapid duplicate saves. Saved width, slurry snapshot,
+  pump calibration and flow estimate make displayed results reproducible after
+  closing/reopening. The entered mechanical gap is separate from wet thickness.
+- Geometry rejects missing/nonfinite/negative lengths and invalid gap/pitch.
+  The UI states the intermittent pattern assumption. A failing regression also
+  caught early flow rounding to zero; small positive L/min values are now
+  retained and overflow estimates stay unavailable. No hardware command, QA
+  decision, stock posting or server sync is inferred from these estimates.
+- Full frontend verification: **279 tests**, typecheck and PWA build passed.
+  Real IndexedDB tests cover invalid-write rejection, rollback, same-ID retry,
+  duplicate prevention and reopen. Mutation checks proved zero-input guards
+  are exercised. Chromium **390×844 / 1365×900** passed actual first-run,
+  no-demo empty stores, invalid/partial-oven input, offline save, saved results
+  after reload, 44px save target, no overflow and no browser exceptions.
+- No dependency, Dexie schema, server or Android signing change. Next P0 room
+  work: cutting uses A+B coated face lengths as physical web length; fix its
+  dimensional basis and integer counts. Coating-to-calender transfer also
+  needs a measured dry thickness rather than its present wet-film estimate.
+  M0 installed upgrade/restore, M1 physical two-device/TLS and factory M2
+  acceptance remain open. Automatic sync remains disabled.
+
 ## 2026-11-11 — Preserve upgrade data regardless of legacy account IDs
 
 - Fetched and fast-forwarded to the actual remote `ff2c97e` (34 newer commits),

@@ -138,6 +138,9 @@ export interface CoatRun {
   foilType: string;                // фольга (Al / Cu) + толщина, напр. «Al 12 мкм»
   targetDryMgm2?: number;          // целевая поверхностная плотность сухого покрытия, мг/см²
   // Подстроечные параметры линии
+  coatingWidthCm?: number;         // entered coated width, cm
+  pumpDeliveryCm3Rev?: number;     // entered verified calibration, cm3/revolution
+  estimatedFlowLpm?: number;       // calculated estimate, L/min
   screwRpm?: number;               // скорость шнекового насоса, об/мин
   webSpeedMpm?: number;            // скорость движения фольги, м/мин
   ovenTempsC: number[];            // температуры в шести печах, °C (индексы 0..5)
@@ -149,8 +152,8 @@ export interface CoatRun {
   segLengthsM: number[];           // длина участков нанесения, м (можно добавлять/удалять)
   sideALengthM?: number;           // общая длина нанесённого покрытия, сторона A (м) — считается из segLengthsM
   sideBLengthM?: number;           // общая длина, сторона B (м) — второй проход (двусторонняя намазка)
-  wetThicknessUm?: number;         // мокрая толщина (зазор фильеры), мкм
-  headGapUm?: number;              // расчётный/фактический зазор фильера–фольга, мкм
+  wetThicknessUm?: number;         // расчётная мокрая толщина (не зазор фильеры), мкм
+  headGapUm?: number;              // заданный пользователем механический зазор фильера–фольга, мкм
   defects?: string;                // дефекты / замечания
   notes?: string;
   workerId: string;

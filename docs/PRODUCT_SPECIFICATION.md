@@ -72,6 +72,20 @@ No server-side PostgreSQL records are affected, and no offline MES auto-sync
 has been added. The reset is intentionally destructive to local data and
 requires installed-APK upgrade acceptance before a production rollout.
 
+**M0 room utility checkpoint (2026-11-11):**
+The [room workflow audit](ROOM_WORKFLOW_AUDIT.md) inventories all 11 registered
+rooms with actual stores, assumptions, unverified paths and acceptance criteria.
+Coating now validates explicit entered data, records calculation width and pump
+calibration, and atomically persists the coating run plus generic work journal.
+Blank temperatures remain unknown; missing slurry properties or calibration do
+not create estimated measurements. Mechanical gap remains entered separately
+from estimated wet thickness. Intermittent coverage requires valid lengths and
+a gap smaller than pitch, with its start-of-segment assumption shown. Small
+positive flow estimates retain their precision. IndexedDB rollback/retry/reopen,
+component and phone/desktop browser checks passed. Physical coating/calibration
+acceptance and measured dry-roll handover remain open; cutting must distinguish
+physical web length from summed A+B face coverage before reliable yield claims.
+
 - [ ] Canonical documentation and code inventory; flag historical documents.
 - [ ] Validate Android upgrades, system insets, data retention, backup/restore.
 - [ ] Test Dexie schema upgrades and critical navigation/workflows.

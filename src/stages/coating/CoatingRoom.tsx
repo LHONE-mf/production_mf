@@ -2,7 +2,7 @@
 // Вкладки: 📥 Данные замесов · ⚙️ Намазка (расчёты) · 📒 Журнал нанесения · 💬 Комментарии
 // Данные замесов приходят пакетами LIP: (QR/текст, позже Bluetooth) — type 'coating-mix'.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -11,12 +11,13 @@ import { CoatingMixSnapshot, CoatRun, RollSpec, RollToTechPacket, StageId, SyncP
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
-import { headGapUm, requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm, intermittentCoverage } from './coatMath';
+import { saveCoatingRun } from './coatingJournal';
+import { requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm, intermittentCoverage } from './coatMath';
 
 type Tab = 'mixes' | 'setup' | 'journal' | 'comments';
 
 const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
+  'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
 export function CoatingModule() {
@@ -36,7 +37,7 @@ export function CoatingModule() {
   const runs = useLiveQuery(async () => {
     const all = await db.coatRuns.toArray();
     return all
-      .map((r) => ({ ...r, segLengthsM: Array.isArray(r.segLengthsM) ? r.segLengthsM : [], ovenTempsC: Array.isArray(r.ovenTempsC) ? r.ovenTempsC : new Array(6).fill(0) }))
+      .map((r) => ({ ...r, segLengthsM: Array.isArray(r.segLengthsM) ? r.segLengthsM : [], ovenTempsC: Array.isArray(r.ovenTempsC) ? r.ovenTempsC : [] }))
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
 
@@ -165,7 +166,7 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
         Данные замесов поступают с участка замесов офлайн-пакетом (QR / текст, позже Bluetooth): вязкость,
-        степень перетира, содержание СВ и плотность пасты — из них считаются зазор фильеры и скорость шнека.
+        степень перетира, содержание СВ и плотность пасты — из них оцениваются мокрая толщина и расход. Механический зазор вводится отдельно; оценка оборотов требует калибровки насоса.
         Здесь же видны замесы, сделанные на этом устройстве.
       </p>
       {mixes.length === 0 && (
@@ -199,10 +200,10 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
 function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: () => void }) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [mixId, setMixId] = useState<string>(mixes[0]?.mixBatchId ?? '');
-  const [foilType, setFoilType] = useState('Al 12 мкм');
-  const [targetDry, setTargetDry] = useState<number | ''>(28);
-  const [widthCm, setWidthCm] = useState<number | ''>(50);
-  const [webSpeed, setWebSpeed] = useState<number | ''>(8);
+  const [foilType, setFoilType] = useState('');
+  const [targetDry, setTargetDry] = useState<number | ''>('');
+  const [widthCm, setWidthCm] = useState<number | ''>('');
+  const [webSpeed, setWebSpeed] = useState<number | ''>('');
   const [supplyCm3Rev, setSupplyCm3Rev] = useState<number | ''>(''); // verified pump calibration only
   const [gapSetpoint, setGapSetpoint] = useState<number | ''>('');
   const [mode, setMode] = useState<'continuous' | 'intermittent'>('continuous');
@@ -210,10 +211,14 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
   const [gapPitch, setGapPitch] = useState<number | ''>('');
   const [segs, setSegs] = useState<number[]>([0]);
   const [sideB, setSideB] = useState<number | ''>('');
-  const [ovens, setOvens] = useState<number[]>(new Array(6).fill(0));
+  const [ovens, setOvens] = useState<(number|'')[]>(new Array(6).fill(''));
   const [defects, setDefects] = useState('');
   const [notes, setNotes] = useState('');
   const [saved, setSaved] = useState(false);
+  const [saving,setSaving]=useState(false);
+  const savingRef=useRef(false);
+  const [runId]=useState(uuidv4);
+  const [error,setError]=useState('');
 
   const mix = mixes.find((m) => m.mixBatchId === mixId);
 
@@ -228,49 +233,26 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
     const rpm = flow ? screwRpmFromFlow(flow, supplyCm3Rev===''?undefined:Number(supplyCm3Rev)) : null;
     // A physical machine gap cannot be inferred from wet film thickness.
     const gap = gapSetpoint!=='' && Number.isFinite(gapSetpoint) && gapSetpoint>0 ? gapSetpoint : null;
-    const cov = intermittentCoverage(segs, mode === 'intermittent' ? Number(gapWidth) || undefined : undefined, mode === 'intermittent' ? Number(gapPitch) || undefined : undefined);
+    const cov = mode==='intermittent'&&(gapWidth===''||gapPitch==='') ? null : intermittentCoverage(segs,
+      mode==='intermittent'?numOrUndef(gapWidth):undefined,mode==='intermittent'?numOrUndef(gapPitch):undefined);
     return { wet, flow, rpm, gap, cov };
   }, [mix, targetDry, widthCm, webSpeed, supplyCm3Rev, segs, mode, gapWidth, gapPitch, gapSetpoint]);
 
   const save = async () => {
-    if (!currentUser) return;
-    const run: CoatRun = {
-      id: uuidv4(),
-      mixBatchId: mix?.mixBatchId,
-      mixSnapshot: mix,
-      foilType,
-      targetDryMgm2: numOrUndef(targetDry),
-      screwRpm: calc.rpm ?? undefined,
-      webSpeedMpm: numOrUndef(webSpeed),
-      ovenTempsC: ovens.map((o) => Number(o) || 0),
-      mode,
-      gapWidthMm: mode === 'intermittent' ? numOrUndef(gapWidth) : undefined,
-      gapPitchMm: mode === 'intermittent' ? numOrUndef(gapPitch) : undefined,
-      segLengthsM: segs.map((s) => Number(s) || 0),
-      sideALengthM: Math.round(calc.cov.coatedM * 100) / 100,
-      sideBLengthM: numOrUndef(sideB),
-      wetThicknessUm: calc.wet ?? undefined,
-      headGapUm: calc.gap ?? undefined,
-      defects: defects.trim() || undefined,
-      notes: notes.trim() || undefined,
-      workerId: currentUser.id,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    await db.coatRuns.add(run);
-    // дублируем в общий журнал работ комнаты (для KPI)
-    await db.journal.add({
-      id: uuidv4(), stage: StageId.COATING, workerId: currentUser.id,
-      summary: `Нанесение: ${mix?.recipeName ?? 'без замеса'}, сторона A ${run.sideALengthM} м`,
-      params: {
-        'Шнек, об/мин': run.screwRpm ?? '', 'Лента, м/мин': run.webSpeedMpm ?? '',
-        'Режим': mode === 'continuous' ? 'сплошное' : 'с промежутками',
-        'Зазор, мкм': run.headGapUm ?? '', 'Печи, °C': ovens.join('/'),
-      },
-      defects: defects.trim(), createdAt: new Date(),
-    });
-    setSaved(true);
-    setTimeout(() => { setSaved(false); onSaved(); }, 700);
+    if (!currentUser || savingRef.current || saved) return;
+    savingRef.current=true;setSaving(true);setError('');
+    try {
+      await saveCoatingRun({
+        foilType,mixSnapshot:mix,targetDryMgm2:numOrUndef(targetDry),
+        coatingWidthCm:numOrUndef(widthCm),webSpeedMpm:numOrUndef(webSpeed),
+        pumpDeliveryCm3Rev:numOrUndef(supplyCm3Rev),headGapUm:numOrUndef(gapSetpoint),mode,
+        gapWidthMm:numOrUndef(gapWidth),gapPitchMm:numOrUndef(gapPitch),segLengthsM:segs,
+        sideBLengthM:numOrUndef(sideB),ovenTempsC:ovens.every(t=>t==='')?[]:ovens.map(t=>t===''?NaN:t),
+        defects,notes,
+      },currentUser.id,runId);
+      setSaved(true);onSaved();
+    }catch(cause){setError(cause instanceof Error?cause.message:'Не удалось сохранить запись. Данные формы сохранены для повторной попытки.');}
+    finally{savingRef.current=false;setSaving(false);}
   };
 
   return (
@@ -281,7 +263,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
 
         <div>
           <label className={labelCls}>Замес (данные с участка замесов)</label>
-          <select className={inputCls} value={mixId} onChange={(e) => setMixId(e.target.value)}>
+          <select aria-label="Замес для нанесения" className={inputCls} value={mixId} onChange={(e) => setMixId(e.target.value)}>
             <option value="">— без замеса —</option>
             {mixes.map((m) => (
               <option key={m.mixBatchId} value={m.mixBatchId}>
@@ -294,27 +276,27 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Фольга</label>
-            <input className={inputCls} value={foilType} onChange={(e) => setFoilType(e.target.value)} placeholder="Al 12 мкм" />
+            <input aria-label="Фольга" className={inputCls} value={foilType} onChange={(e) => setFoilType(e.target.value)} placeholder="Al 12 мкм" />
           </div>
           <div>
             <label className={labelCls}>Целевая сухая пов. плотность, мг/см²</label>
-            <input type="number" className={inputCls} value={targetDry} onChange={(e) => setTargetDry(numOrNull(e.target.value))} />
+            <input type="number" aria-label="Сухая поверхностная плотность, мг/см²" className={inputCls} value={targetDry} onChange={(e) => setTargetDry(numOrNull(e.target.value))} />
           </div>
           <div>
             <label className={labelCls}>Ширина полосы, см</label>
-            <input type="number" className={inputCls} value={widthCm} onChange={(e) => setWidthCm(numOrNull(e.target.value))} />
+            <input type="number" aria-label="Ширина полосы, см" className={inputCls} value={widthCm} onChange={(e) => setWidthCm(numOrNull(e.target.value))} />
           </div>
           <div>
             <label className={labelCls}>Скорость фольги, м/мин</label>
-            <input type="number" step="0.1" className={inputCls} value={webSpeed} onChange={(e) => setWebSpeed(numOrNull(e.target.value))} />
+            <input type="number" step="0.1" aria-label="Скорость фольги, м/мин" className={inputCls} value={webSpeed} onChange={(e) => setWebSpeed(numOrNull(e.target.value))} />
           </div>
           <div>
             <label className={labelCls}>Калиброванная подача насоса, см³/об</label>
-            <input type="number" min="0" step="any" className={inputCls} value={supplyCm3Rev} onChange={(e) => setSupplyCm3Rev(numOrNull(e.target.value))} />
+            <input type="number" min="0" step="any" aria-label="Калиброванная подача, см³/об" className={inputCls} value={supplyCm3Rev} onChange={(e) => setSupplyCm3Rev(numOrNull(e.target.value))} />
           </div>
           <div>
             <label className={labelCls}>Заданный зазор головки, мкм (по техкарте/настройке)</label>
-            <input type="number" min="0" step="any" className={inputCls} value={gapSetpoint}
+            <input type="number" min="0" step="any" aria-label="Заданный зазор, мкм" className={inputCls} value={gapSetpoint}
               onChange={event=>setGapSetpoint(numOrNull(event.target.value))} />
           </div>
         </div>
@@ -345,7 +327,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
             {segs.map((s, i) => (
               <div key={i} className="flex gap-2">
                 <span className="text-xs text-slate-500 w-6 pt-2">#{i + 1}</span>
-                <input type="number" className={inputCls} value={s || ''} onChange={(e) => {
+                <input type="number" aria-label={`Длина участка ${i+1}, м`} className={inputCls} value={s || ''} onChange={(e) => {
                   const v = Number(e.target.value) || 0;
                   setSegs(segs.map((x, j) => (j === i ? v : x)));
                 }} />
@@ -364,8 +346,8 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
             {ovens.map((t, i) => (
               <div key={i}>
                 <span className="text-[10px] text-slate-500">Печь {i + 1}</span>
-                <input type="number" className={inputCls} value={t || ''} placeholder="0"
-                  onChange={(e) => setOvens(ovens.map((x, j) => (j === i ? Number(e.target.value) || 0 : x)))} />
+                <input type="number" aria-label={`Температура печи ${i+1}, °C`} className={inputCls} value={t === '' ? '' : t} placeholder="не указана"
+                  onChange={(e) => setOvens(ovens.map((x, j) => (j === i ? numOrNull(e.target.value) : x)))} />
               </div>
             ))}
           </div>
@@ -374,7 +356,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Длина стороны B, м (2-я намазка)</label>
-            <input type="number" className={inputCls} value={sideB} onChange={(e) => setSideB(numOrNull(e.target.value))} />
+            <input type="number" aria-label="Длина стороны B, м" className={inputCls} value={sideB} onChange={(e) => setSideB(numOrNull(e.target.value))} />
           </div>
         </div>
 
@@ -387,8 +369,10 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
           <textarea rows={2} className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
 
-        <button onClick={save} className="w-full px-4 py-2 bg-green-600 hover:bg-green-500 rounded text-sm text-white font-medium">
-          {saved ? 'Сохранено ✓' : '💾 Записать в журнал нанесения'}
+        {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
+        <p className="text-xs text-slate-400">Пустые температуры означают «не указаны». Если заполняете печи, укажите все 6 зон. Параметры не отправляются на оборудование.</p>
+        <button onClick={()=>void save()} disabled={saving||saved} className="w-full min-h-11 px-4 py-2 bg-green-600 hover:bg-green-500 rounded text-sm text-white font-medium">
+          {saving ? 'Сохранение…' : saved ? 'Сохранено ✓' : '💾 Записать в журнал нанесения'}
         </button>
       </div>
 
@@ -410,15 +394,16 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
 
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 space-y-2">
           <h3 className="text-white font-semibold text-sm">📏 Итоговые длины</h3>
-          <ResultRow label="Суммарная длина участков (сторона A)" value={calc.cov.totalM} unit="м" />
+          {mode==='intermittent' && <p className="text-xs text-slate-400">Оценка предполагает промежуток в начале каждого участка, затем повтор через указанный шаг. Для другой схемы эта оценка неприменима.</p>}
+          <ResultRow label="Суммарная длина участков (сторона A)" value={calc.cov?.totalM} unit="м" />
           {mode === 'intermittent' && (
             <>
-              <ResultRow label="Полезная длина покрытия (без промежутков)" value={calc.cov.coatedM} unit="м" />
-              <ResultRow label="Длина промежутков" value={calc.cov.skipM} unit="м" />
+              <ResultRow label="Полезная длина покрытия (без промежутков)" value={calc.cov?.coatedM} unit="м" />
+              <ResultRow label="Длина промежутков" value={calc.cov?.skipM} unit="м" />
             </>
           )}
           <ResultRow label="Сторона B" value={numOrUndef(sideB) ?? null} unit="м" />
-          <ResultRow label="Сумма покрытия двух сторон (не длина рулона)" value={round2((calc.cov.coatedM ?? 0) + (numOrUndef(sideB) ?? 0))} unit="м" />
+          <ResultRow label="Сумма покрытия двух сторон (не длина рулона)" value={calc.cov ? round2(calc.cov.coatedM + (numOrUndef(sideB) ?? 0)) : null} unit="м" />
         </div>
       </div>
     </div>
@@ -478,11 +463,14 @@ function JournalTab({
             {open && (
               <div className="px-3 pb-3 pt-1 border-t border-slate-700/60 space-y-3">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                  <Info k="Шнек" v={`${r.screwRpm ?? '—'} об/мин`} />
+                  <Info k="Шнек (оценка)" v={`${r.screwRpm ?? '—'} об/мин`} />
                   <Info k="Лента" v={`${r.webSpeedMpm ?? '—'} м/мин`} />
-                  <Info k="Зазор фильеры" v={`${r.headGapUm ?? '—'} мкм`} />
-                  <Info k="Мокрая толщина" v={`${r.wetThicknessUm ?? '—'} мкм`} />
-                  <Info k="Сухая пов. плотн." v={`${r.targetDryMgm2 ?? '—'} мг/см²`} />
+                  <Info k="Ширина полосы" v={`${r.coatingWidthCm ?? '—'} см`} />
+                  <Info k="Калиброванная подача" v={`${r.pumpDeliveryCm3Rev ?? '—'} см³/об`} />
+                  <Info k="Расход (оценка)" v={`${r.estimatedFlowLpm ?? '—'} л/мин`} />
+                  <Info k="Сухая поверхностная плотность" v={`${r.targetDryMgm2 ?? '—'} мг/см²`} />
+                  <Info k="Заданный зазор" v={`${r.headGapUm ?? '—'} мкм`} />
+                  <Info k="Мокрая толщина (оценка)" v={`${r.wetThicknessUm ?? '—'} мкм`} />
                   {r.mode === 'intermittent' && (
                     <>
                       <Info k="Промежуток" v={`${r.gapWidthMm ?? '—'} мм`} />
@@ -491,7 +479,7 @@ function JournalTab({
                   )}
                 </div>
                 <div>
-                  <p className="text-[11px] text-slate-400 mb-1">Печи, °C:</p>
+                  <p className="text-[11px] text-slate-400 mb-1">Печи, °C: {!r.ovenTempsC?.length && 'не указаны'}</p>
                   <div className="flex gap-1 flex-wrap">
                     {(r.ovenTempsC ?? []).slice(0, 6).map((t, i) => (
                       <span key={i} className="px-2 py-0.5 bg-orange-500/15 border border-orange-500/30 rounded text-[11px] text-orange-300">
