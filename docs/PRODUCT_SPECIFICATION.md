@@ -1,5 +1,5 @@
 # Production MF — Product Specification and Roadmap
-Status: approved architecture direction (hybrid offline + server); proposed functional scope. Updated: 2026-11-08.
+Status: approved architecture direction (hybrid offline + server); proposed functional scope. Updated: 2026-11-11.
 Source of truth for future product architecture. Existing implementation must be checked in code and CI; a planned feature is not an implemented feature.
 
 ## Mission and release boundaries
@@ -113,9 +113,10 @@ with frozen source/specification, electrode count, actor/time and atomic journal
 Concurrent take-in resumes the original; receipt rejects duplicate allocation,
 changed snapshots and stripped provenance. Legacy ambiguity is preserved and
 blocks intake. No split or cathode/anode pairing is implemented. Cell format
-remains unassigned and cell output unknown. New intakes can now record sourced
-station observations; serial assignment and filling still require a separate
-cell-output declaration and acceptance. All six legacy station forms now reject fractional, negative, missing and
+stays unassigned in the frozen source snapshot. New intakes can record sourced
+station observations. Cell output stays unknown until a separate declaration
+names a terminal sourced observation already recorded in cells, full count,
+explicit format, serial range, counting basis, local actor/role and time. All six legacy station forms now reject fractional, negative, missing and
 unsafe counts without truncation; valid zero output is explicit. New observations
 on existing legacy batches require separate input/output/scrap units, immutable
 operation identity, actor/time and atomic journal persistence. Failed saves retain
@@ -130,9 +131,17 @@ allocation is one-time: quantity/unit must match the predecessor or frozen
 intake. Same-unit input must equal output plus scrap; differing units require
 an entered basis without a computed rate. Creation/receipt reject cycles,
 stale/duplicate allocation, cross-job links and stripped-contract appends.
-Old unlinked histories are retained without invented provenance. Complete
-cathode/anode pairing, physical reconciliation, separately declared cell release
-and serial integrity remain unfinished.
+Old unlinked histories are retained without invented provenance. A separate output declaration now requires active local technologist/master/chief
+permission and commits with its attributed journal; the immutable source/history
+and original raw totals are preserved. Its range must contain exactly the cell
+count, with whole nonnegative endpoints and no overlap in the local downstream
+serial history. Legacy serial edits/replacements cannot bypass these checks.
+First receipt requires a permitted signed role; conflicting, stripped or malformed
+declarations preserve the original. New operation append closes after declaration.
+KPI/source measures use the declared count, labelled as reported local data.
+Filling remains gated until declaration-bound, destination-specific allocation
+and receipt exist. Complete cathode/anode pairing, physical reconciliation,
+QA approval, installed upgrade/restore and two-device acceptance remain open.
 This is not actual yield, stock reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

@@ -253,8 +253,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         if (!ar.id || !ar.batchName || !Array.isArray(ar.ops)) {
           return { ok: false, message: 'Партия сборки повреждена' };
         }
-        await receiveAssemblyIntake(ar);
-        return { ok: true, message: ar.intake ? `Приёмка электродов «${ar.batchName}» сохранена; выход ячеек не определён` : `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
+        await receiveAssemblyIntake(ar,p.role);
+        return { ok: true, message: ar.cellOutput ? `Заявленный выход «${ar.batchName}» сохранён: ${ar.cellOutput.count} ячеек; QA не подтверждено` : ar.intake ? `Приёмка электродов «${ar.batchName}» сохранена; выход ячеек не определён` : `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
       }
       case 'electrolyte-in': {
         // Входящая партия ячеек со сборки в бокс заливки (сухая комната / 7 эт. к.5)
@@ -344,7 +344,7 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
         }
         if ('ops' in payload && 'cellType' in payload) {
-          await receiveAssemblyIntake(payload as AssemblyRun);return {ok:true,message:'Приёмка сборки сохранена без замены источника'};
+          await receiveAssemblyIntake(payload as AssemblyRun,p.role);return {ok:true,message:'Приёмка сборки сохранена без замены источника'};
         }
         if ('login' in payload) {
           await db.users.put(payload as User);

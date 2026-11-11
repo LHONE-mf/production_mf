@@ -1,6 +1,7 @@
+import {assemblyOutputTables,receiveAssemblyCellOutput,assertAssemblySerialAvailability} from './assemblyCellOutput';
 import {hasAssemblyOperationLedger,receiveAssemblyOperationRun} from './assemblyOperations';
 import {db} from '../db';
-import {StageId,type AssemblyRun,type SortRun} from '../types';
+import {StageId,UserRole,type AssemblyRun,type SortRun} from '../types';
 import {validateAssemblyIntake} from './assemblyIntakeValidation';
 export {validateAssemblyIntake} from './assemblyIntakeValidation';
 
@@ -32,9 +33,10 @@ export async function takeAssemblySource(source:SortRun,workerId:string,id:strin
   return run;
  });
 }
-export async function receiveAssemblyIntake(run:AssemblyRun):Promise<AssemblyRun>{
- return db.transaction('rw',db.assemblyRuns,async()=>{
+export async function receiveAssemblyIntake(run:AssemblyRun,senderRole?:UserRole):Promise<AssemblyRun>{
+ return db.transaction('rw',assemblyOutputTables(),async()=>{
   const previous=await db.assemblyRuns.get(run.id);
+  if(previous?.cellOutput!==undefined||run.cellOutput!==undefined)return receiveAssemblyCellOutput(run,senderRole);
   if(hasAssemblyOperationLedger(previous)||hasAssemblyOperationLedger(run))return receiveAssemblyOperationRun(run);
   if(previous?.intake||run.intake){
    if(previous&&JSON.stringify(previous)===JSON.stringify(run))return previous;
@@ -43,6 +45,12 @@ export async function receiveAssemblyIntake(run:AssemblyRun):Promise<AssemblyRun
    if(old){if(JSON.stringify(old)===JSON.stringify(run))return old;throw new Error('Конфликт приёмки сборки; запись сохранена');}
   }else{
    if((await db.assemblyRuns.toArray()).some(r=>(r.intake||hasAssemblyOperationLedger(r))&&r.batchName===run.batchName))throw new Error('Нельзя заменить приёмку старым пакетом');
+   const sameRange=JSON.stringify(previous?.serialRange)===JSON.stringify(run.serialRange);
+   if(previous?.serialRange&&!sameRange)throw new Error('Сохранённые номера не заменяются старым пакетом');
+   if(run.serialRange&&!sameRange){
+    if(!Number.isSafeInteger(run.cellsOut)||run.cellsOut<=0||run.serialRange.end-run.serialRange.start+1!==run.cellsOut)throw new Error('Диапазон номеров не соответствует заявленному количеству ячеек');
+    await assertAssemblySerialAvailability(run,run.serialRange);
+   }
    if(previous&&previous.updatedAt>=run.updatedAt)return previous;
   }
   await db.assemblyRuns.put(run);return run;

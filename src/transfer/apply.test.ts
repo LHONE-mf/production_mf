@@ -158,3 +158,23 @@ it('protects appended assembly observation history against typed and generic for
  expect(await db.assemblyRuns.get(base.id)).toEqual(saved);expect(await db.tasks.get(base.id)).toBeUndefined();
  await db.assemblyRuns.delete(base.id);await db.journal.delete(op.id);
 });
+
+it('requires a permitted envelope role for cell-output declarations and protects their immutable history',async()=>{
+ const {declareAssemblyCellOutput}=await import('../core/manufacturing/assemblyCellOutput');
+ const {appendAssemblyOperation}=await import('../core/manufacturing/assemblyOperations');
+ const base={id:'output-packet-job',batchName:'Output packet fixture',cellType:'unassigned' as const,ops:[],cellsOut:0,cellsScrap:0,defects:[],workerId:'operator',createdAt:'2026-11-11T10:00:00Z',updatedAt:'2026-11-11T10:00:00Z'};
+ await db.users.put({id:'output-master',login:'output-master',fullName:'Output master',password:'test-only',role:UserRole.MASTER,isActive:true,createdAt:new Date()});await db.assemblyRuns.put(base);
+ const operation={id:'output-packet-op',source:{kind:'declared' as const,reference:'output-packet-source'},substation:'crimp-cyl' as const,workerId:'operator',recordedAt:'2026-11-11T12:00:00Z',finishedAt:'2026-11-11T12:00:00Z',qtyIn:3,qtyOut:2,qtyScrap:1,units:{input:'cells' as const,output:'cells' as const,scrap:'cells' as const},params:{},defects:[]};
+ const observed=await appendAssemblyOperation(base,operation,'operator');
+ const output={id:'output-packet-declaration',operationId:operation.id,count:2,cellType:'cylindrical' as const,serialRange:{prefix:'PKT-',start:9000,end:9001},recordedBy:'output-master',recordedRole:UserRole.MASTER,recordedAt:'2026-11-11T13:00:00Z',note:'Entered count evidence, not QA'};
+ const saved=await declareAssemblyCellOutput(observed,output,'output-master');await db.assemblyRuns.put(observed);
+ expect((await applyPacket({...packet('assembly-run',saved),role:UserRole.WORKER})).ok).toBe(false);
+ expect((await applyPacket(packet('assembly-run',saved))).ok).toBe(true);
+ expect((await applyPacket(packet('forced-push',{...saved,cellOutput:undefined},true))).ok).toBe(false);
+ expect((await applyPacket(packet('forced-push',{...base,id:'legacy-range-bypass',cellType:'cylindrical',cellsOut:2,serialRange:output.serialRange},true))).ok).toBe(false);
+ expect(await db.assemblyRuns.get('legacy-range-bypass')).toBeUndefined();
+ const legacy={...base,id:'legacy-retained-range',cellType:'cylindrical' as const,cellsOut:2,serialRange:{prefix:'KEEP-',start:10000,end:10001}};await db.assemblyRuns.put(legacy);
+ expect((await applyPacket(packet('forced-push',{...legacy,serialRange:undefined,updatedAt:'2099-01-01'},true))).ok).toBe(false);expect(await db.assemblyRuns.get(legacy.id)).toEqual(legacy);await db.assemblyRuns.delete(legacy.id);
+ expect(await db.assemblyRuns.get(base.id)).toEqual(saved);
+ await db.assemblyRuns.delete(base.id);await db.users.delete('output-master');await db.journal.bulkDelete([operation.id,output.id]);
+});

@@ -118,8 +118,8 @@ export const KpiDashboard: React.FC = () => {
     const wCut = inWindow(cuts, (x) => x.createdAt);
     const wSort = inWindow(sorts, (x) => x.createdAt);
     const recordedAssembly = inWindow(assemblies, (x) => x.createdAt);
-    const unknownAssembly = recordedAssembly.filter(x=>x.intake||x.operationLedger).length;
-    const wAsm = recordedAssembly.filter(x=>!x.intake&&!x.operationLedger);
+    const unknownAssembly = recordedAssembly.filter(x=>!x.cellOutput&&(x.intake||x.operationLedger)).length;
+    const wAsm = recordedAssembly.filter(x=>x.cellOutput||!x.intake&&!x.operationLedger);
     const wFill = inWindow(fills, (x) => x.createdAt);
     const wWalz = inWindow(walz, (x) => x.createdAt);
     const wForm = inWindow(formations, (x) => x.createdAt);
@@ -132,8 +132,8 @@ export const KpiDashboard: React.FC = () => {
     const cutDefect = sum(wCut, (x) => x.defectCount);
     const sortGood = sum(wSort, (x) => x.goodCount);
     const sortRejected = sum(wSort, (x) => x.rejected);
-    const asmOut = sum(wAsm, (x) => x.cellsOut);
-    const asmScrap = sum(wAsm, (x) => x.cellsScrap);
+    const asmOut = sum(wAsm, (x) => x.cellOutput?.count??x.cellsOut);
+    const asmScrap = sum(wAsm, (x) => x.cellOutput?undefined:x.cellsScrap);
     const fillOut = sum(wFill, (x) => x.cellsFilled);
     const fillScrap = sum(wFill, (x) => x.cellsScrap);
     const walzOut = sum(wWalz, (x) => x.cellsOut);
@@ -172,7 +172,7 @@ export const KpiDashboard: React.FC = () => {
       return byWorker[id];
     };
     wCut.forEach((x) => { ensure(x.workerId).electrodes += x.goodCount; });
-    wAsm.forEach((x) => { ensure(x.workerId).cells += x.cellsOut; });
+    wAsm.forEach((x) => { ensure(x.cellOutput?.recordedBy??x.workerId).cells += x.cellOutput?.count??x.cellsOut; });
     wMix.forEach((x) => { ensure(x.workerId).batches += 1; });
     const workerRows = Object.entries(byWorker)
       .map(([id, v]) => ({ id, name: usersMap[id] ?? id.slice(0, 8), ...v }))
@@ -215,7 +215,7 @@ export const KpiDashboard: React.FC = () => {
         <div>
           <h2 className="text-xl font-bold text-white">📊 KPI производства</h2>
           <p className="text-sm text-slate-400">
-            Данные из журналов комнат · полностью офлайн · роль: {roleTitle[currentUser?.role ?? ''] ?? '—'}
+            Заявленные локальные итоги, не QA-допуск или склад · полностью офлайн · роль: {roleTitle[currentUser?.role ?? ''] ?? '—'}
           </p>
         </div>
         <div className="flex gap-2">

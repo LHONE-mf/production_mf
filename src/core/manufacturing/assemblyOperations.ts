@@ -6,7 +6,7 @@ import {validAssemblyCounts} from './assemblyCounts';
 
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function hasAssemblyOperationLedger(run?:AssemblyRun):boolean {
- return !!run&&(run.sourceLedger!==undefined||run.operationLedger!==undefined||run.ops?.some(op=>op.id!==undefined||op.recordedAt!==undefined||op.units!==undefined||op.source!==undefined||op.conversionNote!==undefined));
+ return !!run&&(run.cellOutput!==undefined||run.sourceLedger!==undefined||run.operationLedger!==undefined||run.ops?.some(op=>op.id!==undefined||op.recordedAt!==undefined||op.units!==undefined||op.source!==undefined||op.conversionNote!==undefined));
 }
 export function validateAssemblyOperation(op:AssemblyOp):void {
  const units=['parts','electrodes','sets','blocks','cells'];
@@ -21,7 +21,7 @@ export function validateAssemblyOperation(op:AssemblyOp):void {
 }
 // The batch identity and historical totals are immutable during observation append.
 function metadata(run:AssemblyRun){const {ops,updatedAt,operationLedger,sourceLedger,...rest}=run;return rest;}
-function validateLedger(run:AssemblyRun):void {
+export function validateAssemblyOperationRun(run:AssemblyRun):void {
  if(typeof run.id!=='string'||!run.id||typeof run.batchName!=='string'||!run.batchName||!Array.isArray(run.defects)||run.defects.some(d=>typeof d!=='string')||run.operationLedger!==1||!Array.isArray(run.ops)||!run.ops.length||typeof run.updatedAt!=='string'||!Number.isFinite(Date.parse(run.updatedAt)))throw new Error('Журнал операций повреждён или приёмка ещё не разрешает станции');
  if(run.sourceLedger!==undefined&&run.sourceLedger!==1)throw new Error('Неизвестная версия связей');
  if(run.intake){
@@ -54,10 +54,11 @@ export async function appendAssemblyOperation(expected:AssemblyRun,op:AssemblyOp
   if(!current)throw new Error('Партия недоступна для станционных наблюдений');
   const previous=current.ops.find(row=>row.id===op.id);
   if(previous){if(same(previous,op))return current;throw new Error('Конфликт ID операции; исходная запись сохранена');}
+  if(current.cellOutput!==undefined)throw new Error('Выход уже заявлен; история закрыта для новых операций');
   if(!op.source)throw new Error('Укажите источник операции');
   if(!same(current,expected))throw new Error('Партия изменена. Проверьте журнал и повторите сохранение.');
   const next:AssemblyRun={...current,operationLedger:1,sourceLedger:1,ops:[...current.ops,op],updatedAt:new Date().toISOString()};
-  validateLedger(next);await assertOperationOwnership(next);
+  validateAssemblyOperationRun(next);await assertOperationOwnership(next);
   await db.assemblyRuns.put(next);
   await db.journal.add({id:op.id!,stage:StageId.ASSEMBLY,workerId:op.workerId,createdAt:new Date(op.recordedAt!),summary:`Наблюдение сборки: ${current.batchName}`,
    params:{'Партия сборки':current.id,'Станция':op.substation,'Источник':JSON.stringify(op.source),'Вход':op.qtyIn,'Единица входа':op.units!.input!,
@@ -67,7 +68,8 @@ export async function appendAssemblyOperation(expected:AssemblyRun,op:AssemblyOp
 }
 export async function receiveAssemblyOperationRun(run:AssemblyRun):Promise<AssemblyRun>{
  return db.transaction('rw',db.assemblyRuns,async()=>{
-  validateLedger(run);
+  if(run.cellOutput!==undefined)throw new Error('Заявленный выход принимается отдельной проверкой');
+  validateAssemblyOperationRun(run);
   const old=await db.assemblyRuns.get(run.id);
   if(old){
    if(same(old,run))return old;

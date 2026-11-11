@@ -1,3 +1,54 @@
+## 2026-11-11 — Separate declared cell output and protected serial ranges
+
+- Continued from `2b665ac`, whose exact-head frontend/server CI passed. Cell
+  output is now a separate immutable `cellOutput` record, not the last station
+  quantity or a recalculated electrode-to-cell estimate. A declaration names the
+  sole positive terminal sourced observation in cells, its full count, explicit
+  cell format, inclusive serial range, counting basis, actor/role and time.
+  The selected ancestry must have explicit source links. No split is supported.
+- An active local technologist/master/chief from `users` can declare output;
+  worker UI/direct writes cannot. These local roles do not grant server workshop
+  authority. First packet receipt requires a permitted signed-envelope role;
+  exact replay is acknowledged, while altered/stripped/null declarations and
+  later operation appends are rejected. Historical source/operation fields,
+  raw numeric totals and originally unassigned format remain unchanged.
+- Declaration and attributed journal commit together. Competing identical
+  attempts resume the original ID. Failed writes preserve the frozen draft/ID
+  for retry; changing an unsaved draft is explicit. Serial length must exactly
+  equal the whole cell count, with safe nonnegative integer endpoints. Blank
+  input does not become zero. The room displays attribution, counting basis and
+  the saved format/range; ordinary workers can read a saved declaration.
+- Collision checks serialize with declaration/receipt across assembly, filling
+  incoming/results, walzing incoming/results and formation incoming/results.
+  Missing prefixes are treated conservatively; overlapping or malformed old
+  ranges block new claims for review. Checks use table identity rather than
+  untrusted record fields. A serial conflict rolls an entire first receipt
+  back, including any intermediate imported operation history.
+- The old direct range editor is read-only. Typed/generic forced legacy packets
+  cannot delete or change an existing range or introduce conflicting/invalid
+  ranges through an older payload shape. Existing historical ranges are kept.
+  This checks locally recorded intervals, not worldwide serial uniqueness or
+  physical label/scanner acceptance. Corrections need a future append-only flow.
+- KPI and manually selected server-source measures use the separately declared
+  count when present, rather than the old raw aggregate; they label reported
+  local totals, not QA or stock. Both filling rooms still exclude the new
+  ledgers: an allocation-safe handover/receipt tied to the declaration ID and
+  explicit destination is the next slice. No automatic receipt or box sequence
+  is introduced. Complete polarity pairing/material balance remains unverified.
+- **399 frontend tests**, typecheck and PWA build passed. IndexedDB/receipt tests
+  cover actor policy, terminal/count/range checks, concurrent claims, rollback,
+  exact retry/reopen, first receipt into existing/fresh history, malformed and
+  stripped payloads, occupied/unknown-prefix/downstream ranges and legacy bypass.
+  Removing the range collision guard makes two regressions fail. Chromium
+  **390×844 / 1365×900** passes sourced observations -> counted-cell declaration,
+  blank/overlapping serial rejection, failed-journal retained draft, offline
+  same-ID double-submit retry, unchanged raw history, exact reopen and closed
+  observation history without overflow/errors. Phone declaration UI inspected.
+- No schema/dependency/backend/native/signing/automatic-sync change. Physical
+  OnePlus, installed upgrade/restore, emulator, real BLE/QR and two-device TLS
+  acceptance were not run. This declaration is not QA approval, complete
+  physical genealogy, stock reconciliation or server-controlled route release.
+
 ## 2026-11-11 — Explicit assembly source and predecessor allocation
 
 - Revalidated clean remote `3d6e560` and green exact-head CI. New observations

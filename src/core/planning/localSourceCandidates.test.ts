@@ -110,3 +110,7 @@ it('does not label an intake or station observation ledger as assembled-cell out
   const rows=localSourceCandidates([],[],[],[],[],[],[record]);expect(rows).toHaveLength(1);expect(rows[0]).not.toHaveProperty('sourceMeasure');
  }
 });
+it('uses separately declared cell output rather than a legacy aggregate in a sourced observation ledger',()=>{
+ const record={id:'dfb44d22-31b6-47b6-96e3-ff3ec3fa95bf',batchName:'Declared output',cellType:'unassigned',ops:[],cellsOut:999,cellsScrap:0,workerId:'worker',defects:[],createdAt:'2026-11-10T10:00:00Z',updatedAt:'2026-11-10T10:00:00Z',operationLedger:1,cellOutput:{count:4}} as unknown as AssemblyRun;
+ const rows=localSourceCandidates([],[],[],[],[],[],[record]);expect(rows[0]).toMatchObject({summary:'Заявленный выход ячеек: Declared output',sourceMeasure:{kind:'assembled_cells_out',value:'4.000000'}});
+});
