@@ -44,6 +44,10 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
   const history = (index = 0) => app.inject({
     method:'GET',url:'/planning/batches/'+batchId+'/handoffs',headers:auth(index),
   });
+  const outbound = (index = 4, batch = batchId) => app.inject({
+    method:'GET',url:'/planning/workshop-batches/'+batch+'/outbound-handoffs',
+    headers:auth(index),
+  });
 
   beforeAll(async () => {
     const target = new URL(process.env.POSTGRES_TEST_URL!);
@@ -199,6 +203,35 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
       WHERE organization_id=$1 AND handoff_id=$2`,[org,firstId])).rejects.toThrow('append-only');
   });
 
+  it('exposes only current-workshop outbound transfers without order metadata', async () => {
+    expect((await app.inject({method:'GET',
+      url:'/planning/workshop-batches/'+batchId+'/outbound-handoffs'})).statusCode).toBe(401);
+    expect((await outbound(0)).statusCode).toBe(403);
+    expect((await outbound(3)).statusCode).toBe(403);
+    expect((await outbound(2)).statusCode).toBe(404);
+    expect((await outbound(4,randomUUID())).statusCode).toBe(404);
+    const senderView=await outbound();
+    expect(senderView.statusCode).toBe(200);
+    expect(senderView.json()).toEqual({batchId,hasMore:false,handoffs:[
+      expect.objectContaining({id:firstId,fromStep:1,toStep:2,
+        fromWorkshopId:'coating',toWorkshopId:'cutting',sentBy:sender,
+        quantity:'20.000000',quantityUnit:'kg',receivedBy:receiver,
+        receiptNote:'Count and label checked'}),
+    ]});
+    expect(Object.keys(senderView.json()).sort()).toEqual(['batchId','handoffs','hasMore']);
+    // A receiver's workshop membership does not reveal the first sender's
+    // transfer through the outbound audit view.
+    const receiverView=await outbound(1);
+    expect(receiverView.json()).toEqual({batchId,hasMore:false,handoffs:[]});
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='coating'`,[org,sender]);
+    expect((await outbound()).statusCode).toBe(404);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'coating')`,[org,sender]);
+    expect((await outbound()).json().handoffs).toHaveLength(1);
+    expect((await history(1)).statusCode).toBe(403);
+  });
+
   it('only advances through a received transfer and blocks work while a batch is held', async () => {
     expect((await send(secondId,2,3)).json())
       .toMatchObject({error:'source_step_not_completed'});
@@ -228,5 +261,13 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect(historyRows.map((row:{fromStep:number;toStep:number})=>[row.fromStep,row.toStep]))
       .toEqual([[1,2],[2,3]]);
     expect(historyRows.every((row:{receivedBy:string|null})=>row.receivedBy===receiver)).toBe(true);
+    const receiverOutbound=await outbound(1);
+    expect(receiverOutbound.statusCode).toBe(200);
+    expect(receiverOutbound.json().handoffs).toEqual([
+      expect.objectContaining({id:secondId,fromStep:2,toStep:3,
+        fromWorkshopId:'cutting',toWorkshopId:'sorting',
+        receivedBy:receiver,receiptNote:'Count and label checked'}),
+    ]);
+    expect((await outbound()).json().handoffs.map((h:{id:string})=>h.id)).toEqual([firstId]);
   });
 });

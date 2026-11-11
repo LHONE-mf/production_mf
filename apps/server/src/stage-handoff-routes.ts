@@ -233,6 +233,49 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
     } finally { client.release(); }
   });
 
+  // Read-only audit for masters, limited to handoffs *out of* workshops
+  // they currently belong to. The receiver's inbox is a separate view.
+  // Do not reveal unrelated route steps or any order-level information.
+  app.get('/planning/workshop-batches/:id/outbound-handoffs', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error:'unauthorized' });
+    if (actor.role !== 'master') return reply.code(403).send({ error:'forbidden' });
+    const params = batchParam.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error:'invalid_batch_id' });
+    const batchId = params.data.id;
+    const visible = await pool.query(`SELECT 1 FROM production_batches b
+      JOIN production_orders o ON o.organization_id=b.organization_id AND o.id=b.order_id
+      WHERE b.organization_id=$1 AND b.id=$2 AND EXISTS (
+        SELECT 1 FROM process_route_steps s
+        JOIN user_workshop_memberships m ON m.organization_id=s.organization_id
+          AND m.workshop_id=s.workshop_id AND m.user_id=$3
+        WHERE s.organization_id=b.organization_id
+          AND s.route_id=o.route_id AND s.route_version=o.route_version
+          AND s.electrode_line=CASE WHEN b.material_line='cell'
+            THEN 'common' ELSE b.material_line END
+      )`,[actor.organization_id,batchId,actor.id]);
+    if (!visible.rowCount) return reply.code(404).send({ error:'batch_not_found' });
+    const history = await pool.query(`SELECT h.id,h.from_step,h.to_step,
+        h.from_workshop_id,h.to_workshop_id,h.quantity::text,h.quantity_unit,
+        h.sent_by,h.sent_at,h.note,r.received_by,r.received_at,r.note AS receipt_note
+      FROM production_stage_handoffs h
+      LEFT JOIN production_stage_receipts r ON r.organization_id=h.organization_id
+        AND r.handoff_id=h.id
+      WHERE h.organization_id=$1 AND h.batch_id=$2
+        AND EXISTS (SELECT 1 FROM user_workshop_memberships m
+          WHERE m.organization_id=h.organization_id
+            AND m.user_id=$3 AND m.workshop_id=h.from_workshop_id)
+      ORDER BY h.from_step,h.sent_at,h.id LIMIT 201`,
+      [actor.organization_id,batchId,actor.id]);
+    return {batchId,handoffs:history.rows.slice(0,200).map(row=>({
+      id:row.id,fromStep:row.from_step,toStep:row.to_step,
+      fromWorkshopId:row.from_workshop_id,toWorkshopId:row.to_workshop_id,
+      quantity:row.quantity,quantityUnit:row.quantity_unit,
+      sentBy:row.sent_by,sentAt:row.sent_at,note:row.note,
+      receivedBy:row.received_by,receivedAt:row.received_at,receiptNote:row.receipt_note,
+    })),hasMore:history.rows.length>200};
+  });
+
   app.get('/planning/handoffs/inbox', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error:'unauthorized' });
