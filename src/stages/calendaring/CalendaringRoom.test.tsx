@@ -6,6 +6,8 @@ import {UserRole} from '../../core/types';
 import {useAuthStore} from '../../core/store/authStore';
 import {CalendaringModule} from './CalendaringRoom';
 
+vi.mock('../_ui/PacketOutModal',()=>({PacketOutModal:({packet}:{packet:{payload:unknown}})=>
+  <div data-testid="packet">{JSON.stringify(packet.payload)}</div>}));
 let root:Root|undefined,node:HTMLDivElement|undefined;
 afterEach(async()=>{
   if(root)await act(async()=>root!.unmount());
@@ -55,4 +57,33 @@ it('starts with no sample machine settings and compares only the attributed dry 
     targetThicknessUm:80,targetThicknessBasis:'dry-electrode-including-foil',heating:false,
   });
   expect((await db.calenderRuns.get('measured'))?.params?.pressureTons).toBeUndefined();
+});
+
+it('retains untouched result fields when editing one measured value',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'result',mixName:'Result fixture',segLengthsM:[10],createdAt:1});
+  await db.calenderRuns.add({id:'result',rollId:'result',gapsMm:[0.35],totalLengthM:10,thicknessAfterUm:80,hasDefects:false,workerId:'operator',createdAt:1,updatedAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Result fixture'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал прокатки'))!.click();});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Result fixture'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Result fixture'))!.click();});
+  const inputs=[...node.querySelectorAll<HTMLInputElement>('input')];
+  const length=inputs.find(i=>i.value==='10')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(length,'12');length.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect([...node.querySelectorAll<HTMLInputElement>('input')].some(i=>i.value==='80')).toBe(true);
+  const send=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Результат на нарезку'))!;
+  const fail=()=>{throw new Error('Journal unavailable');};db.journal.hook('creating',fail);
+  try{
+    await act(async()=>{send.click();});
+    await vi.waitFor(()=>expect(node!.querySelector('[role="alert"]')?.textContent).toContain('Journal unavailable'));
+  }finally{db.journal.hook('creating').unsubscribe(fail);}
+  expect((await db.calenderRuns.get('result'))?.totalLengthM).toBe(10);
+  expect(node.querySelector('[data-testid="packet"]')).toBeNull();
+  await act(async()=>{send.click();send.click();});
+  await vi.waitFor(()=>expect(node!.querySelector('[data-testid="packet"]')?.textContent).toContain('"totalLengthM":12'));
+  await vi.waitFor(async()=>expect(await db.calenderRuns.get('result')).toMatchObject({totalLengthM:12,thicknessAfterUm:80,gapsMm:[0.35]}));
+  expect(await db.journal.count()).toBe(1);
 });

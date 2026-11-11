@@ -3,7 +3,7 @@
 // Цепочка данных: намазка → (roll-spec) технологу (master) → оператор каландра фиксирует
 // зазоры/длину/дефекты → (calender-result) результат доступен для нарезки.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
+import { saveCalenderAssignment, saveCalenderResult, validateCalenderResult, hasCalenderResult } from './calenderJournal';
 import { measuredDryThicknessUm, plannedThicknessReductionPct } from '../_common/rollThickness';
 
 // Параметры прокатки по рулону хранятся локально (мастер назначает их сам; на slave
@@ -27,11 +28,7 @@ function loadLocalCalParams(): Record<string, CalenderParams> {
     return {};
   }
 }
-function saveLocalCalParam(rollId: string, p: CalenderParams) {
-  const all = loadLocalCalParams();
-  all[rollId] = p;
-  localStorage.setItem(CAL_PARAMS_KEY, JSON.stringify(all));
-}
+
 
 type Tab = 'rolls' | 'params' | 'journal' | 'comments';
 
@@ -100,8 +97,8 @@ export function CalendaringModule() {
       {tab === 'rolls' && (
         <RollsTab rolls={rolls ?? []} onSelect={(id) => { setSelectedRollId(id); setTab('params'); }} canSendToCutting={isTechManager}
           onSendResult={(run, forced) => {
-            const fresh = { ...run, updatedAt: Date.now() };
-            db.calenderRuns.put(fresh);
+            try{validateCalenderResult(run);}catch{return;}
+            const fresh = run;
             setOutPacket({
               v: 1, type: forced ? 'forced-push' : 'calender-result', stage: StageId.CALENDARING,
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
@@ -119,7 +116,6 @@ export function CalendaringModule() {
           onSaved={(roll, p) => {
             // технолог (master) уточнил параметры → сохраняем локально и формируем пакет
             // roll-spec с параметрами: slave применит их безусловно (forced от master'а)
-            saveLocalCalParam(roll.id, p);
             const rp: RollToTechPacket = { roll, calenderParams: p };
             setOutPacket({
               v: 1, type: 'roll-spec', stage: StageId.CALENDARING,
@@ -136,13 +132,8 @@ export function CalendaringModule() {
           userName={userName}
           canForce={isTechManager}
           onNew={() => setTab('params')}
-          onCutSend={(ci) => setOutPacket({
-            v: 1, type: 'cutting-roll', stage: StageId.CALENDARING,
-            payload: ci, from: currentUser!.id, ts: Date.now(),
-          })}
           onSend={(r, forced) => {
-            const fresh = { ...r, updatedAt: Date.now() };
-            db.calenderRuns.put(fresh);
+            const fresh = r;
             setOutPacket({
               v: 1, type: forced ? 'forced-push' : 'calender-result', stage: StageId.CALENDARING,
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
@@ -215,7 +206,7 @@ function RollsTab({
               <div className="flex items-center justify-between pt-1">
                 {run ? (
                   <span className={`text-[11px] ${run.hasDefects ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {run.hasDefects ? '⚠ прокатано с дефектами' : `✔ прокатано: ${run.thicknessAfterUm ?? '—'} мкм, ${run.totalLengthM ?? '—'} м`}
+                    {!hasCalenderResult(run) ? 'Назначение сохранено; результат не записан' : run.hasDefects ? '⚠ прокатано с дефектами' : `✔ прокатано: ${run.thicknessAfterUm ?? '—'} мкм, ${run.totalLengthM ?? '—'} м`}
                   </span>
                 ) : (
                   <span className="text-[11px] text-amber-400">ждёт параметров / прокатки</span>
@@ -226,7 +217,7 @@ function RollsTab({
                       К параметрам →
                     </button>
                   )}
-                  {run && canSendToCutting && !run.hasDefects && (
+                  {run && hasCalenderResult(run) && canSendToCutting && !run.hasDefects && (
                     <button onClick={() => onSendResult(run, false)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Результат прокатки → нарезка (QR/текст/Bluetooth)">
                       ✂️ На нарезку
                     </button>
@@ -254,6 +245,9 @@ function ParamsTab({
   const [rollId, setRollId] = useState<string>(selectedRollId ?? rolls[0]?.id ?? '');
   const roll = rolls.find((r) => r.id === rollId);
 
+  const [saveError,setSaveError]=useState('');
+  const [saving,setSaving]=useState(false);
+  const assignmentRef=useRef(false);
   const [targetThickness, setTargetThickness] = useState<number | ''>('');
   const [heating, setHeating] = useState<boolean|null>(null);
   const [heatTemp, setHeatTemp] = useState<number | ''>('');
@@ -268,7 +262,9 @@ function ParamsTab({
     (!heating||heatTemp!==''&&Number.isFinite(heatTemp)&&heatTemp>=0);
 
   const saveAndPush = async () => {
-    if (!roll || !currentUser || !validParams || heating===null || !canEdit) return;
+    if (!roll || !currentUser || !validParams || heating===null || !canEdit || assignmentRef.current) return;
+    assignmentRef.current=true;setSaving(true);setSaveError('');
+    try{
     const p: CalenderParams = {
       targetThicknessBasis:'dry-electrode-including-foil',
       targetThicknessUm: numOrUndef(targetThickness),
@@ -278,20 +274,11 @@ function ParamsTab({
       edgeTrim,
       notes: notes.trim() || undefined,
     };
-    // Сохраняем параметры у себя (master): локально + заводим запись прокатки «в работе»,
-    // чтобы оператор видел назначение
-    saveLocalCalParam(roll.id, p);
-    const existing = await db.calenderRuns.get(roll.id);
-    if (!existing) {
-      const run: CalenderRun = {
-        id: roll.id, rollId: roll.id, params: p, gapsMm: [], hasDefects: false,
-        workerId: currentUser.id, createdAt: Date.now(), updatedAt: Date.now(),
-      };
-      await db.calenderRuns.put(run);
-    } else {
-      await db.calenderRuns.put({ ...existing, params: p, updatedAt: Date.now() });
-    }
-    onSaved(roll, p);
+    await saveCalenderAssignment(roll,p,currentUser.id);
+    onSaved(roll,p);
+    }catch(cause){setSaveError(cause instanceof Error?cause.message:'Назначение не сохранено');}
+    finally{assignmentRef.current=false;setSaving(false);}
+
   };
 
   if (rolls.length === 0) {
@@ -347,13 +334,14 @@ function ParamsTab({
           <label className={labelCls}>Примечание технолога</label>
           <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="напр.: 2 прохода, контроль толщины каждые 50 м" />
         </div>
+        {saveError && <p role="alert" className="text-red-200 text-sm">{saveError}</p>}
         {!validParams && <p className="text-xs text-amber-200">Для назначения укажите положительную цель и явно выберите нагрев. При нагреве нужна температура; указанное усилие должно быть больше нуля. Это назначение параметров, не показания оборудования.</p>}
         {reduction !== null && (
           <p className="text-xs text-blue-300">Плановое уменьшение полной толщины: ~{reduction}% ({roll && measuredDryThicknessUm(roll)} → {targetThickness} мкм). Это сравнение с целью, не фактическое обжатие, пористость или настройка зазора.</p>
         )}
         <button
           onClick={saveAndPush}
-          disabled={!canEdit || !roll || !validParams}
+          disabled={!canEdit || !roll || !validParams || saving}
           className="w-full min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
         >
           {canEdit ? '💾 Назначить и отправить на устройство каландра (QR/текст/BT)' : 'Только технолог/мастер/начальник может назначать параметры'}
@@ -375,7 +363,7 @@ function ParamsTab({
 
 // ── Вкладка: журнал прокатки (оператор каландра) ────────────────────
 function JournalTab({
-  rolls, runs, userName, canForce, onSend, onNew, onCutSend,
+  rolls, runs, userName, canForce, onSend, onNew,
 }: {
   rolls: RollSpec[];
   runs: CalenderRun[];
@@ -383,15 +371,19 @@ function JournalTab({
   canForce: boolean;
   onSend: (r: CalenderRun, forced: boolean) => void;
   onNew: () => void;
-  onCutSend: (ci: CuttingIncoming) => void;
 }) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [resultError,setResultError]=useState('');
+  const [busy,setBusy]=useState(false);
+  const busyRef=useRef(false);
+  const revisions=useRef<Record<string,number>>({});
+  const journalIds=useRef<Record<string,string>>({});
   const [drafts, setDrafts] = useState<Record<string, { gaps: string; totalLen: string; thickAfter: string; defects: string; hasDef: boolean; notes: string }>>({});
 
   const draftFor = (r: CalenderRun) =>
     drafts[r.id] ?? {
-      gaps: (r.gapsMm ?? []).join(', '),
+      gaps: (r.gapsMm ?? []).join(' '),
       totalLen: r.totalLengthM != null ? String(r.totalLengthM) : '',
       thickAfter: r.thicknessAfterUm != null ? String(r.thicknessAfterUm) : '',
       defects: r.defects ?? '',
@@ -399,64 +391,31 @@ function JournalTab({
       notes: r.notes ?? '',
     };
 
-  const setDraft = (id: string, patch: Partial<ReturnType<typeof draftFor>>) =>
-    setDrafts((d) => ({ ...d, [id]: { ...(d[id] ?? {} as any), ...patch } }));
-
-  const save = async (r: CalenderRun) => {
-    const d = draftFor(r);
-    const gaps = d.gaps.split(/[,\s]+/).map(Number).filter((n) => !isNaN(n) && n > 0);
-    const updated: CalenderRun = {
-      ...r,
-      gapsMm: gaps,
-      totalLengthM: d.totalLen === '' ? undefined : Number(d.totalLen),
-      thicknessAfterUm: d.thickAfter === '' ? undefined : Number(d.thickAfter),
-      hasDefects: d.hasDef || !!d.defects.trim(),
-      defects: d.defects.trim() || undefined,
-      notes: d.notes.trim() || undefined,
-      workerId: currentUser?.id ?? r.workerId,
-      updatedAt: Date.now(),
-    };
-    await db.calenderRuns.put(updated);
-    // авто-передача на нарезку: прокатанный рулон без дефектов уходит пакетом cutting-roll.
-    // Задание технолога (тип электродов / L) берём из уже принятых входящих, иначе значения по умолчанию.
-    if (!updated.hasDefects) {
-      const prevIncoming = await db.cuttingRolls.get(updated.id);
-      const rsForCut = rolls.find((x) => x.id === updated.rollId);
-      if (rsForCut) {
-        const ci: CuttingIncoming = {
-          id: updated.id,
-          roll: rsForCut,
-          calender: updated,
-          thicknessAfterUm: updated.thicknessAfterUm,
-          electrodeType: prevIncoming?.electrodeType ?? 'strip',
-          coatingType: prevIncoming?.coatingType ?? rsForCut.mixName,
-          electrodeLengthMm: prevIncoming?.electrodeLengthMm,
-          webWidthMm: prevIncoming?.webWidthMm,
-          techNotes: prevIncoming?.techNotes ?? updated.notes,
-          createdAt: Date.now(),
-        };
-        onCutSend(ci);
-      }
-    }
-    // дубль в общий журнал работ комнаты (для KPI)
-    const roll = rolls.find((x) => x.id === r.rollId);
-    await db.journal.add({
-      id: uuidv4(), stage: StageId.CALENDARING, workerId: currentUser?.id ?? 'unknown',
-      summary: `Прокатка: ${roll?.mixName ?? r.rollId}${updated.hasDefects ? ' ⚠ дефекты' : ''}`,
-      params: {
-        'Зазоры, мм': updated.gapsMm.join('/'),
-        'Длина, м': updated.totalLengthM ?? '',
-        'Толщина после, мкм': updated.thicknessAfterUm ?? '',
-        'Усилие прокатки, тс': r.params?.pressureTons ?? '',
-        'Нагрев, °C': r.params?.heatTempC ?? '',
-      },
-      defects: updated.defects ?? '', createdAt: new Date(),
-    });
-    setDrafts((d) => { const c = { ...d }; delete c[r.id]; return c; });
+  const setDraft = (id: string, patch: Partial<ReturnType<typeof draftFor>>) => {
+    const run=runs.find(row=>row.id===id)!;
+    revisions.current[id]??=run.updatedAt;
+    setDrafts(d=>({...d,[id]:{...draftFor(run),...d[id],...patch}}));
+  };
+  const resetDraft=(id:string)=>{
+    delete revisions.current[id];delete journalIds.current[id];
+    setDrafts(d=>{const copy={...d};delete copy[id];return copy;});setResultError('');
+  };
+  const save = async (r: CalenderRun,send=false,forced=false) => {
+    if(!currentUser||busyRef.current)return;
+    busyRef.current=true;setBusy(true);setResultError('');
+    try{
+      journalIds.current[r.id]??=uuidv4();
+      const updated=await saveCalenderResult({...r,updatedAt:revisions.current[r.id]??r.updatedAt},
+        draftFor(r),currentUser.id,journalIds.current[r.id]);
+      resetDraft(r.id);
+      if(send)onSend(updated,forced);
+    }catch(cause){setResultError(cause instanceof Error?cause.message:'Результат не сохранён');}
+    finally{busyRef.current=false;setBusy(false);}
   };
 
   return (
     <div className="space-y-3">
+      {resultError && <p role="alert" className="text-red-200 text-sm">{resultError}</p>}
       <p className="text-xs text-slate-500">
         Журнал прокатки: фактические зазоры валков, общая длина, толщина после прокатки, дефекты. Отправка результата
         на нарезку — офлайн (QR/текст/Bluetooth). Если параметров ещё нет — назначьте их на вкладке «Параметры прокатки».
@@ -488,37 +447,38 @@ function JournalTab({
               <div className="px-3 pb-3 pt-2 border-t border-slate-700/60 space-y-3">
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
-                    <label className={labelCls}>Зазоры валков по проходам, мм (через запятую)</label>
-                    <input className={inputCls} value={d.gaps} onChange={(e) => setDraft(r.id, { gaps: e.target.value })} placeholder="0,35, 0,28, 0,25" />
+                    <label className={labelCls}>Зазоры валков, мм (проходы через пробел или ;) (через запятую)</label>
+                    <input disabled={busy} className={inputCls} aria-label="Зазоры по проходам, мм" value={d.gaps} onChange={(e) => setDraft(r.id, { gaps: e.target.value })} placeholder="0.35 0.28 0.25" />
                   </div>
                   <div>
                     <label className={labelCls}>Общая длина прокатанного полотна, м</label>
-                    <input type="number" className={inputCls} value={d.totalLen} onChange={(e) => setDraft(r.id, { totalLen: e.target.value })} />
+                    <input type="number" className={inputCls} aria-label="Измеренная длина, м" value={d.totalLen} onChange={(e) => setDraft(r.id, { totalLen: e.target.value })} />
                   </div>
                   <div>
                     <label className={labelCls}>Фактическая толщина после прокатки, мкм</label>
-                    <input type="number" step="0.5" className={inputCls} value={d.thickAfter} onChange={(e) => setDraft(r.id, { thickAfter: e.target.value })} />
+                    <input type="number" step="0.5" className={inputCls} aria-label="Измеренная толщина после, мкм" value={d.thickAfter} onChange={(e) => setDraft(r.id, { thickAfter: e.target.value })} />
                   </div>
                   <div>
                     <label className={labelCls}>Дефекты прокатки</label>
-                    <input className={inputCls} value={d.defects} onChange={(e) => setDraft(r.id, { defects: e.target.value })} placeholder="разрыв, полосность, налип…" />
+                    <input disabled={busy} className={inputCls} value={d.defects} onChange={(e) => setDraft(r.id, { defects: e.target.value })} placeholder="разрыв, полосность, налип…" />
                   </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm text-slate-300">
-                  <input type="checkbox" checked={d.hasDef} onChange={(e) => setDraft(r.id, { hasDef: e.target.checked })} className="accent-red-500" />
+                  <input disabled={busy} type="checkbox" checked={d.hasDef} onChange={(e) => setDraft(r.id, { hasDef: e.target.checked })} className="accent-red-500" />
                   Наличие дефектов в ходе прокатки
                 </label>
                 <div>
                   <label className={labelCls}>Примечание оператора</label>
-                  <input className={inputCls} value={d.notes} onChange={(e) => setDraft(r.id, { notes: e.target.value })} />
+                  <input disabled={busy} className={inputCls} value={d.notes} onChange={(e) => setDraft(r.id, { notes: e.target.value })} />
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => save(r)} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
-                  <button onClick={() => { save(r); setTimeout(() => onSend({ ...r, updatedAt: Date.now() }, false), 50); }} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
+                  <button disabled={busy} onClick={() => void save(r)} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
+                  <button disabled={busy} onClick={() => void save(r,true)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
                     ✂️ Результат на нарезку (QR/текст/BT)
                   </button>
+                  <button disabled={busy} onClick={()=>resetDraft(r.id)} className="min-h-11 px-3 text-sm text-slate-300">Сбросить черновик</button>
                   {canForce && (
-                    <button onClick={() => onSend(r, true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-xs text-white">⚡ Принудительно (forced)</button>
+                    <button disabled={busy} onClick={() => void save(r,true,true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-xs text-white">⚡ Принудительно (forced)</button>
                   )}
                 </div>
               </div>

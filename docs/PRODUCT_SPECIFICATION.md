@@ -88,7 +88,10 @@ entered dry-electrode total thickness including foil, with actor/time/basis.
 Wet-film estimates are not substituted; missing or unmarked legacy values do
 not drive the planned thickness comparison. Stable handovers are persisted
 before packet preparation and conflicts preserve the original snapshot.
-Calender target/force/temperature start unknown, heat choice is explicit, and
+Calender results and journal entries now commit atomically, stale edits are
+rejected and exports wait for committed snapshots. New assignments use
+IndexedDB; legacy cached settings remain a read-only fallback. Calender
+target/force/temperature start unknown, heat choice is explicit, and
 source changes clear assignments. This is not gauge calibration, measured
 compression, porosity or physical acceptance. Cutting now uses explicit
 physical web length for advisory layout estimates, excluding A+B face coverage.

@@ -1,3 +1,34 @@
+## 2026-11-11 — Atomic calender results, conflict recovery and save-before-export
+
+- Revalidated clean remote `ac12a2f` and successful exact-head CI. Reproduced
+  partial draft edits losing untouched fields. Inspection also found result
+  export running on a timer before successful persistence and independent
+  result/journal writes leaving partial saves.
+- Result measurements and the attributed generic journal now commit in one
+  IndexedDB transaction. Required positive gaps/length/thickness are validated;
+  decimal-comma gaps are parsed correctly, with spaces/semicolons separating
+  passes. Invalid tokens are rejected, not silently dropped.
+- Version checks and monotonically increasing timestamps reject stale or
+  concurrent edits. Drafts retain their base version until explicitly reset.
+  Failed writes retain the full form; duplicate clicks are guarded. Every result
+  export waits for the committed returned snapshot and does not rewrite it.
+  Removed automatic cutting packets that guessed a strip electrode shape.
+- Assignments now write only IndexedDB, preserving measured result fields in
+  the transaction. Legacy localStorage settings remain an untouched read-only
+  fallback; failure cannot create a new cached assignment. Assignment-only
+  rows are labelled as pending results, without a completed-roll checkmark.
+- Full frontend verification: **324 tests**, typecheck and PWA build. Unit and
+  real IndexedDB/component checks cover rollback/retry, competing edits,
+  assignment/result isolation, complete drafts, duplicate clicks and no failed
+  export. Conflict mutation tests demonstrate regression coverage. Chromium
+  **390×844 / 1365×900** passed injected journal failure, original retention,
+  offline retry, exact saved export values and reopen, decimal-comma gaps,
+  absence of fabricated cutting input, no overflow and no browser exceptions.
+- No schema, server, signing or automatic-sync change. Physical APK upgrade,
+  gauge/process, TLS/two-device and factory acceptance remain open. Next room
+  work: explicit cutting instruction handover and sorting count/allocation
+  validation; this slice does not reconcile physical stock or certify yield.
+
 ## 2026-11-11 — Measured dry-electrode handover and explicit calender targets
 
 - Cutting commit `cebd638` passed exact-head CI `42994773683`, Run Tests
