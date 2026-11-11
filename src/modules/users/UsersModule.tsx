@@ -1,204 +1,186 @@
 import React, { useState } from 'react';
-import { UserRole } from '../../core/types';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { Plus, Search, Edit2, UserX, UserCheck } from 'lucide-react';
+import { db } from '../../core/db';
+import { User, UserRole } from '../../core/types';
+import { useAuthStore } from '../../core/store/authStore';
+import { AuthService } from '../auth/services/AuthService';
 import { ROLE_LABELS, ROLE_COLORS } from '../../core/permissions';
-import { Plus, Search, Edit2, Trash2, Shield, UserCheck, UserX } from 'lucide-react';
 
-interface UserItem {
-  id: string;
-  login: string;
-  fullName: string;
-  role: UserRole;
-  isActive: boolean;
-  lastSeen?: string;
+const inputClass='w-full rounded-lg border border-slate-600 bg-slate-900 p-2.5 text-sm text-white';
+type Draft={fullName:string;login:string;password:string;role:UserRole};
+const emptyDraft=():Draft=>({fullName:'',login:'',password:'',role:UserRole.WORKER});
+
+/** Local employee directory, not the separate server workshop membership list. */
+export function UsersModule(){
+  const currentUser=useAuthStore(s=>s.currentUser);
+  const users=useLiveQuery(()=>db.users.toArray(),[]);
+  const [search,setSearch]=useState('');
+  const [roleFilter,setRoleFilter]=useState<UserRole|'all'>('all');
+  const [editing,setEditing]=useState<User|null|'new'>(null);
+  const [error,setError]=useState('');
+  const [busy,setBusy]=useState(false);
+
+  if(currentUser?.role!==UserRole.CHIEF)
+    return <p className="text-red-200">Управление сотрудниками доступно начальнику производства.</p>;
+
+  const all=users??[];
+  const filtered=all.filter(u=>
+    (roleFilter==='all'||u.role===roleFilter) &&
+    (u.login.toLowerCase().includes(search.toLowerCase()) ||
+     u.fullName.toLowerCase().includes(search.toLowerCase())));
+  const activeChiefCount=all.filter(u=>u.isActive&&u.role===UserRole.CHIEF).length;
+  async function toggleUser(user:User){
+    if(user.id===currentUser!.id){setError('Нельзя отключить собственную учётную запись');return;}
+    if(user.isActive && user.role===UserRole.CHIEF && activeChiefCount<=1){
+      setError('Нельзя отключить последнего начальника');return;
+    }
+    if(!window.confirm(user.isActive
+      ? 'Отключить локальный доступ сотрудника '+user.fullName+'?'
+      : 'Восстановить локальный доступ сотрудника '+user.fullName+'?'))return;
+    setError('');setBusy(true);
+    try{
+      await AuthService.updateUser(user.id,{isActive:!user.isActive});
+    }catch(cause){setError(cause instanceof Error?cause.message:'Ошибка изменения сотрудника');}
+    finally{setBusy(false);}
+  }
+  return <section className="space-y-5">
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 className="text-xl font-bold text-white">Сотрудники</h1>
+        <p className="text-sm text-slate-400">Локальные профили на устройстве · {all.length} записей</p>
+      </div>
+      <button type="button" className="flex items-center gap-2 rounded-lg bg-blue-600 p-2.5 text-white"
+        onClick={()=>{setError('');setEditing('new');}}>
+        <Plus size={18}/> Добавить сотрудника
+      </button>
+    </div>
+    <p className="text-xs text-slate-400">Профили здесь не создают пользователей PostgreSQL и не
+      назначают права на серверные производственные партии.</p>
+    {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
+    <div className="flex flex-wrap gap-2">
+      <label className="flex-1 min-w-[12rem]">
+        <span className="sr-only">Поиск сотрудников</span>
+        <span className="relative block">
+          <Search size={17} className="absolute left-3 top-3 text-slate-400"/>
+          <input className={inputClass+' pl-9'} placeholder="Поиск сотрудников"
+            value={search} onChange={e=>setSearch(e.target.value)}/>
+        </span>
+      </label>
+      <select aria-label="Роль сотрудника" className={inputClass+' w-auto'}
+        value={roleFilter} onChange={e=>setRoleFilter(e.target.value as UserRole|'all')}>
+        <option value="all">Все роли</option>
+        {Object.values(UserRole).map(role=><option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+      </select>
+    </div>
+    {users===undefined && <p className="text-sm text-slate-400">Загружаем сотрудников…</p>}
+    {users!==undefined && all.length===0 &&
+      <p className="text-slate-400">Пользователей пока нет.</p>}
+    {users!==undefined && filtered.length===0 && all.length>0 &&
+      <p className="text-slate-400">По фильтру ничего не найдено.</p>}
+    <div className="grid gap-3 md:grid-cols-2">
+      {filtered.map(user=><article key={user.id} className="rounded-xl border border-slate-700 bg-slate-800 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className={`rounded-lg p-2 text-white ${ROLE_COLORS[user.role]}`}>
+              {user.fullName.slice(0,1)}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-white">{user.fullName}</p>
+              <p className="truncate text-xs text-slate-400">@{user.login}</p>
+              <p className="text-xs text-slate-400">{ROLE_LABELS[user.role]} · {user.isActive?'Активен':'Отключён'}</p>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <button type="button" aria-label={'Редактировать '+user.login} title="Редактировать"
+              className="rounded p-2 text-slate-200 hover:bg-slate-700"
+              onClick={()=>{setError('');setEditing(user);}}><Edit2 size={17}/></button>
+            <button type="button" aria-label={(user.isActive?'Отключить ':'Включить ')+user.login}
+              disabled={busy || user.id===currentUser.id}
+              className="rounded p-2 text-slate-200 hover:bg-slate-700 disabled:opacity-30"
+              onClick={()=>void toggleUser(user)}>
+              {user.isActive?<UserX size={17}/>:<UserCheck size={17}/>}
+            </button>
+          </div>
+        </div>
+      </article>)}
+    </div>
+    {editing!==null && <UserEditor user={editing==='new'?null:editing}
+      actorId={currentUser.id} activeChiefCount={activeChiefCount}
+      onClose={()=>setEditing(null)}/>}
+  </section>;
 }
 
-const DEMO_USERS: UserItem[] = [
-  { id: 'chief-001', login: 'chief', fullName: 'Иванов Иван Иванович', role: UserRole.CHIEF, isActive: true, lastSeen: 'Сейчас' },
-  { id: 'master-001', login: 'master', fullName: 'Петров Пётр Петрович', role: UserRole.MASTER, isActive: true, lastSeen: 'Сейчас' },
-  { id: 'tech-001', login: 'technologist', fullName: 'Сидоров Алексей Викторович', role: UserRole.TECHNOLOGIST, isActive: true, lastSeen: '10 мин назад' },
-  { id: 'worker-001', login: 'worker', fullName: 'Козлов Дмитрий Сергеевич', role: UserRole.WORKER, isActive: true, lastSeen: 'Сейчас' },
-  { id: 'worker-002', login: 'worker2', fullName: 'Новиков Андрей Михайлович', role: UserRole.WORKER, isActive: true, lastSeen: '5 мин назад' },
-  { id: 'worker-003', login: 'worker3', fullName: 'Морозов Сергей Николаевич', role: UserRole.WORKER, isActive: false, lastSeen: '2 дня назад' },
-];
-
-export function UsersModule() {
-  const [users] = useState<UserItem[]>(DEMO_USERS);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-
-  const filteredUsers = users.filter((user) => {
-    if (roleFilter !== 'all' && user.role !== roleFilter) return false;
-    if (searchQuery && !user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) && !user.login.includes(searchQuery)) return false;
-    return true;
-  });
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Сотрудники</h1>
-          <p className="text-slate-400 text-sm mt-1">{filteredUsers.length} из {users.length} сотрудников</p>
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition shadow-lg shadow-blue-500/20"
-        >
-          <Plus className="w-5 h-5" />
-          Добавить сотрудника
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск по имени или логину..."
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-800/60 border border-slate-700/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-          />
-        </div>
+function UserEditor({user,actorId,activeChiefCount,onClose}:{
+  user:User|null;actorId:string;activeChiefCount:number;onClose:()=>void;
+}){
+  const [draft,setDraft]=useState<Draft>(user?{
+    fullName:user.fullName,login:user.login,password:'',role:user.role,
+  }:emptyDraft);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  async function submit(event:React.FormEvent){
+    event.preventDefault();if(busy)return;
+    if(user?.id===actorId && draft.role!==UserRole.CHIEF){
+      setError('Нельзя изменить свою роль');return;
+    }
+    if(user?.role===UserRole.CHIEF && draft.role!==UserRole.CHIEF && activeChiefCount<=1){
+      setError('Нельзя изменить роль последнего начальника');return;
+    }
+    if(!user && draft.password.length<10){
+      setError('Пароль должен содержать не менее 10 символов');return;
+    }
+    setBusy(true);setError('');
+    try{
+      if(user)await AuthService.updateUser(user.id,{
+        fullName:draft.fullName,login:draft.login,role:draft.role,
+        ...(draft.password?{password:draft.password}:{}),
+      });
+      else await AuthService.createUser({
+        fullName:draft.fullName,login:draft.login,role:draft.role,
+        password:draft.password,isActive:true,
+      });
+      onClose();
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Не удалось сохранить сотрудника');
+    }finally{setBusy(false);}
+  }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <section className="w-full max-w-lg space-y-4 rounded-xl border border-slate-600 bg-slate-800 p-4">
+      <h2 className="text-lg font-semibold text-white">{user?'Редактировать сотрудника':'Новый сотрудник'}</h2>
+      <form className="space-y-3" onSubmit={event=>void submit(event)}>
+        <label className="block text-sm text-slate-200">Имя
+          <input required minLength={2} maxLength={120} className={inputClass+' mt-1'}
+            value={draft.fullName} onChange={e=>setDraft({...draft,fullName:e.target.value})}/>
+        </label>
+        <label className="block text-sm text-slate-200">Логин
+          <input required minLength={3} maxLength={40} className={inputClass+' mt-1'}
+            value={draft.login} autoComplete="off"
+            onChange={e=>setDraft({...draft,login:e.target.value})}/>
+        </label>
+        <label className="block text-sm text-slate-200">{user?'Новый пароль (необязательно)':'Пароль (от 10 символов)'}
+          <input type="password" minLength={10} required={!user}
+            className={inputClass+' mt-1'} value={draft.password}
+            autoComplete="new-password" onChange={e=>setDraft({...draft,password:e.target.value})}/>
+        </label>
+        <label className="block text-sm text-slate-200">Роль
+          <select className={inputClass+' mt-1'} value={draft.role}
+            onChange={e=>setDraft({...draft,role:e.target.value as UserRole})}>
+            {Object.values(UserRole).map(role=><option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
+          </select>
+        </label>
+        {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
         <div className="flex gap-2">
-          {(['all', UserRole.CHIEF, UserRole.MASTER, UserRole.TECHNOLOGIST, UserRole.WORKER] as const).map((role) => (
-            <button
-              key={role}
-              onClick={() => setRoleFilter(role)}
-              className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                roleFilter === role ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-slate-800/60 text-slate-400 border border-slate-700/50 hover:text-white'
-              }`}
-            >
-              {role === 'all' ? 'Все' : ROLE_LABELS[role]}
-            </button>
-          ))}
+          <button type="button" disabled={busy} onClick={onClose}
+            className="flex-1 rounded-lg bg-slate-700 p-2 text-white">Отмена</button>
+          <button type="submit" disabled={busy}
+            className="flex-1 rounded-lg bg-blue-600 p-2 text-white disabled:opacity-40">
+            {busy?'Сохраняем…':'Сохранить'}
+          </button>
         </div>
-      </div>
-
-      {/* User list */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {filteredUsers.map((user) => (
-          <div key={user.id} className="bg-slate-800/60 backdrop-blur border border-slate-700/50 rounded-2xl p-4 hover:border-slate-600/50 transition">
-            <div className="flex items-start gap-3">
-              <div className={`w-12 h-12 ${ROLE_COLORS[user.role]} rounded-xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0 ${!user.isActive ? 'opacity-50' : ''}`}>
-                {user.fullName.charAt(0)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-white font-medium text-sm">{user.fullName}</h3>
-                    <p className="text-slate-400 text-xs">@{user.login}</p>
-                  </div>
-                  <div className="flex gap-1">
-                    <button className="p-1.5 hover:bg-slate-700 rounded-lg transition">
-                      <Edit2 className="w-3.5 h-3.5 text-slate-400" />
-                    </button>
-                    <button className="p-1.5 hover:bg-red-500/20 rounded-lg transition">
-                      <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-400" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className={`px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[user.role]} text-white`}>
-                    {ROLE_LABELS[user.role]}
-                  </span>
-                  <span className={`flex items-center gap-1 text-xs ${user.isActive ? 'text-green-400' : 'text-red-400'}`}>
-                    {user.isActive ? <UserCheck className="w-3 h-3" /> : <UserX className="w-3 h-3" />}
-                    {user.isActive ? 'Активен' : 'Неактивен'}
-                  </span>
-                </div>
-                {user.lastSeen && (
-                  <p className="text-slate-500 text-xs mt-1">Был(а) в сети: {user.lastSeen}</p>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Add user modal */}
-      {showAddModal && <AddUserModal onClose={() => setShowAddModal(false)} />}
-    </div>
-  );
+      </form>
+    </section>
+  </div>;
 }
 
-function AddUserModal({ onClose }: { onClose: () => void }) {
-  const [fullName, setFullName] = useState('');
-  const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.WORKER);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <Shield className="w-5 h-5 text-blue-400" />
-            Новый сотрудник
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white text-2xl">×</button>
-        </div>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">ФИО</label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              placeholder="Иванов Иван Иванович"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-300 mb-1">Логин</label>
-              <input
-                type="text"
-                value={login}
-                onChange={(e) => setLogin(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                placeholder="login"
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-300 mb-1">Пароль</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-                placeholder="••••••"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm text-slate-300 mb-1">Роль / Должность</label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-              className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-            >
-              {Object.entries(ROLE_LABELS).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex gap-3 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-medium transition">
-              Отмена
-            </button>
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition shadow-lg shadow-blue-500/20">
-              Добавить
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export { UsersModule as default };
+export default UsersModule;

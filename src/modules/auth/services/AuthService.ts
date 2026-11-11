@@ -58,24 +58,59 @@ export class AuthService {
   }
 
   static async createUser(userData: Omit<User, 'id' | 'createdAt'>): Promise<string> {
-    const id = `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    await db.users.add({
-      ...userData,
-      password: await hashPassword(userData.password),
-      id,
-      createdAt: new Date(),
+    const login=userData.login.trim().toLowerCase();
+    if(!/^[a-z0-9_.-]{3,40}$/.test(login) ||
+       userData.fullName.trim().length<2 || userData.password.length<10)
+      throw new Error('Имя, логин латиницей и пароль от 10 символов обязательны');
+    const id=crypto.randomUUID();
+    const hashed=await hashPassword(userData.password);
+    await db.transaction('rw',db.users,async()=>{
+      if(await db.users.where('login').equals(login).count()>0)
+        throw new Error('Этот логин уже занят');
+      await db.users.add({
+        ...userData,login,fullName:userData.fullName.trim(),password:hashed,
+        id,createdAt:new Date(),
+      });
     });
     return id;
   }
 
   static async updateUser(id: string, updates: Partial<User>): Promise<void> {
-    await db.users.update(id, updates.password
-      ? { ...updates, password: await hashPassword(updates.password) }
-      : updates);
+    const login=updates.login?.trim().toLowerCase();
+    if(login!==undefined && !/^[a-z0-9_.-]{3,40}$/.test(login))
+      throw new Error('Логин должен быть от 3 до 40 символов латиницей');
+    if(updates.fullName!==undefined && updates.fullName.trim().length<2)
+      throw new Error('Укажите имя сотрудника');
+    if(updates.password!==undefined && updates.password.length<10)
+      throw new Error('Пароль должен содержать не менее 10 символов');
+    const password=updates.password===undefined?undefined:await hashPassword(updates.password);
+    await db.transaction('rw',db.users,async()=>{
+      const existing=await db.users.get(id);
+      if(!existing)throw new Error('Сотрудник не найден');
+      if(login!==undefined && login!==existing.login &&
+         await db.users.where('login').equals(login).count()>0)
+        throw new Error('Этот логин уже занят');
+      if(existing.role===UserRole.CHIEF && updates.role && updates.role!==UserRole.CHIEF &&
+         await db.users.where('role').equals(UserRole.CHIEF).filter(u=>u.isActive).count()<=1)
+        throw new Error('Нельзя изменить роль последнего начальника');
+      await db.users.update(id,{
+        ...updates,
+        ...(login!==undefined?{login}:{}),
+        ...(updates.fullName!==undefined?{fullName:updates.fullName.trim()}:{}),
+        ...(password!==undefined?{password}:{}),
+      });
+    });
   }
 
   static async deleteUser(id: string): Promise<void> {
-    await db.users.update(id, { isActive: false });
+    await db.transaction('rw',db.users,async()=>{
+      const user=await db.users.get(id);
+      if(!user)throw new Error('Сотрудник не найден');
+      if(user.role===UserRole.CHIEF && user.isActive &&
+         await db.users.where('role').equals(UserRole.CHIEF).filter(u=>u.isActive).count()<=1)
+        throw new Error('Нельзя отключить последнего начальника');
+      await db.users.update(id,{isActive:false});
+    });
   }
 
   static async getUserById(id: string): Promise<User | undefined> {
