@@ -196,7 +196,7 @@ describe('M2 online planning screen', () => {
         : url.endsWith('/planning/routes') ? { routes: [] }
         : url.endsWith('/planning/workshop-batches') ? {
           batches: [{id:'batch-1',batchCode:'CATH-001',status:'in_progress',quantityUnit:'kg'}],
-          hasMore:false,
+          hasMore:false,nextAfter:null,
         } : url.endsWith('/planning/handoffs/inbox') ? { handoffs: [ticket] }
         : { steps:[] },
     }));

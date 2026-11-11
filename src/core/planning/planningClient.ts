@@ -203,9 +203,9 @@ export const planningApi = {
       { method: 'POST' }),
   orders: (c: PlanningSession, signal?: AbortSignal) =>
     planningRequest<{ orders: ProductionOrder[] }>(c, '/planning/orders', { signal }),
-  workshopBatches: (c: PlanningSession, signal?: AbortSignal) =>
-    planningRequest<{ batches: WorkshopBatch[]; hasMore: boolean }>(
-      c, '/planning/workshop-batches', { signal }),
+  workshopBatches: (c: PlanningSession, signal?: AbortSignal, after?: string) =>
+    planningRequest<{ batches: WorkshopBatch[]; hasMore: boolean; nextAfter: string | null }>(
+      c, '/planning/workshop-batches' + (after ? '?after=' + id(after) : ''), { signal }),
   workshopHandoffCandidate: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; candidate: WorkshopHandoffCandidate | null }>(
       c, '/planning/workshop-batches/' + id(batchId) + '/handoff-candidate', { signal }),
