@@ -122,9 +122,9 @@ on existing legacy batches require separate input/output/scrap units, immutable
 operation identity, actor/time and atomic journal persistence. Failed saves retain
 the in-memory draft/identity; receipt permits only replay or immutable-prefix
 append. New observations preserve historical totals without converting station
-counts to cells or summing scrap across units. Current cell output stays unknown;
-observation ledgers are excluded from filling, KPI cell output and manual
-assembled-cell source measures. Unsaved drafts are not persisted across navigation
+counts to cells or summing scrap across units. Undeclared cell output stays unknown; those observation ledgers are excluded
+from KPI cell output and assembled-cell source measures. New ledgers remain
+excluded from filling pending its declaration-bound handover. Unsaved drafts are not persisted across navigation
 or restart. New observations must name the intake, an earlier same-job
 predecessor, or an explicit external reference for legacy jobs. Full-source
 allocation is one-time: quantity/unit must match the predecessor or frozen
