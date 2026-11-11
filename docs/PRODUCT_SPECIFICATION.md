@@ -114,8 +114,10 @@ Concurrent take-in resumes the original; receipt rejects duplicate allocation,
 changed snapshots and stripped provenance. Legacy ambiguity is preserved and
 blocks intake. No split or cathode/anode pairing is implemented. Cell format
 remains unassigned, cell output unknown; new intakes have no station/serial
-entry or filling handover until units and conversion rules exist. Legacy station
-logic remains unchanged and needs reconciliation/operation-integrity work.
+entry or filling handover until units and conversion rules exist. All six legacy station forms now reject fractional, negative, missing and
+unsafe counts without truncation; valid zero output is explicit. Existing
+output/scrap aggregation remains and needs unit reconciliation, parameter
+validation and operation save-failure/duplicate integrity work.
 This is not actual yield, stock reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

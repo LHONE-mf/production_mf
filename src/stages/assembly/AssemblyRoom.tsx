@@ -1,3 +1,4 @@
+import {validAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
 import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
 // Каркас комнаты «Сборка» (AssemblyRoom). Полностью офлайн.
 // Структура: сверху выбор партии (AssemblyRun), ниже — вкладки-подсекции, каждая
@@ -92,6 +93,7 @@ export function AssemblyModule() {
   // Станция добавляет операцию в партию + пересчитывает итоги
   const addOp = async (op: AssemblyOp) => {
     if (!selected || !currentUser || selected.intake) return;
+    if(!validAssemblyCounts(op)){setIntakeError(ASSEMBLY_COUNT_ERROR);return;}
     const ops = [...selected.ops, op];
     const lastBySub = ops.filter((o) => o.substation === op.substation).slice(-1)[0];
     void lastBySub;

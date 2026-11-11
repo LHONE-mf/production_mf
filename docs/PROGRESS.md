@@ -1,3 +1,30 @@
+## 2026-11-11 — Reject truncated/invalid counts in all six assembly stations
+
+- Continued from protected intake `a8285a2`, whose exact-head CI/server checks
+  and signed APK packaging passed. Six rendered regressions reproduced `1.5`
+  silently becoming `1` in each existing station's `parseInt` path.
+- All six station forms now use `core/manufacturing/assemblyCounts.ts`:
+  entered input must be a positive safe whole count; output/scrap must be
+  nonnegative safe whole counts. Blank values remain missing and are rejected,
+  including blank scrap. Invalid counts show an error and retain the draft.
+  The room's persistence callback also checks counts before adding an operation.
+- **364 frontend tests**, typecheck and PWA build pass. Regressions cover each
+  count field, fractions, negatives, zero input, blanks, unsafe/nonfinite values
+  and valid zero-output/all-scrap entry. Chromium **390×844 / 1365×900** passes
+  fractional/blank-scrap rejection, retained draft, offline save and reload with
+  original counts, no overflow/errors. Protected intake browser checks reran
+  successfully on both sizes (rollback/retry/reopen/station gate).
+- No historical operations are rewritten. This validates entered numbers only:
+  it does not establish common station units, material balance, conversion,
+  physical acceptance or QA. New intakes remain gated. Legacy output/scrap
+  aggregation, optional process-parameter validation, serial uniqueness and
+  operation save-failure/duplicate handling still need work. Next: explicit
+  station units and append-only operation identity/persistence, then reconcile
+  source/counts before enabling new-intake station execution or filling.
+- No schema, backend, native/signing or automatic-sync change. Physical OnePlus,
+  installed upgrade/restore, emulator, BLE/QR and two-device/TLS acceptance
+  were not run. The draft PR remains unmerged.
+
 ## 2026-11-11 — Protected full-source assembly intake (first slice)
 
 - Revalidated clean remote `2903d06` and exact-head green CI before work.

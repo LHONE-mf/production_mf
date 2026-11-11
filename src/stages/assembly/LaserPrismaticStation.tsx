@@ -1,3 +1,4 @@
+import {parseAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
 // B-с6: Лазерная сварка призматических ячеек (герметизация крышки / шов корпуса).
 // Отдельный файл — можно переписать целиком, не трогая остальные подсекции сборки.
 // Оператор фиксирует: сколько ячеек подали, сколько годных получили, брак, параметры лазера
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
+  const [countError,setCountError]=useState(false);
   const [qtyIn, setQtyIn] = useState('');
   const [qtyOut, setQtyOut] = useState('');
   const [qtyScrap, setQtyScrap] = useState('0');
@@ -31,8 +33,9 @@ export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
   const ops = run.ops.filter((o) => o.substation === 'laser-prismatic');
 
   const save = () => {
-    const inN = parseInt(qtyIn, 10), outN = parseInt(qtyOut, 10);
-    if (!inN || isNaN(outN)) return;
+    const counts=parseAssemblyCounts(qtyIn,qtyOut,qtyScrap);
+    setCountError(!counts);
+    if(!counts)return;
     const params: Record<string, number | string> = {};
     if (laserPower) params['Мощность лазера, Вт'] = parseFloat(laserPower);
     if (speed) params['Скорость сварки, мм/с'] = parseFloat(speed);
@@ -43,9 +46,7 @@ export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
       substation: 'laser-prismatic',
       workerId,
       finishedAt: new Date().toISOString(),
-      qtyIn: inN,
-      qtyOut: outN,
-      qtyScrap: parseInt(qtyScrap, 10) || 0,
+      ...counts,
       params,
       defects: defects.split(',').map((s) => s.trim()).filter(Boolean),
       note: note.trim() || undefined,
@@ -86,6 +87,7 @@ export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
           <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
       </div>
 
+      {countError&&<p role="alert" className="text-red-300 text-sm">{ASSEMBLY_COUNT_ERROR}</p>}
       <button onClick={save}
         className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white">
         ➕ Зафиксировать операцию
