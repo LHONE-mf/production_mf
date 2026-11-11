@@ -40,7 +40,11 @@ export type AssemblyQuantityUnit = 'parts' | 'electrodes' | 'sets' | 'blocks' | 
 export type AssemblyOperationUnits = Partial<Record<'input'|'output'|'scrap',AssemblyQuantityUnit>>;
 
 // Одна операция на подсекции сборки (партия деталей проходит через подсекции по очереди)
+export type AssemblyOperationSource = {kind:'intake';sortRunId:string}|{kind:'operation';operationId:string}|{kind:'declared';reference:string};
+
 export interface AssemblyOp {
+  source?: AssemblyOperationSource;
+  conversionNote?: string;
   id?: string;
   recordedAt?: string;
   units?: AssemblyOperationUnits;
@@ -58,6 +62,7 @@ export interface AssemblyOp {
 
 // Партия сборки: пришла с сортировки (название партии), идёт по подсекциям, результат уходит на формовку
 export interface AssemblyRun {
+  sourceLedger?: 1;
   operationLedger?: 1; // New observations do not recalculate historical cell totals.
   sourceSort?:import('./cutting-sorting-calender').SortRun;
   intake?:{sortRunId:string;electrodeCount:number;recordedBy:string;recordedAt:string};

@@ -1,3 +1,4 @@
+import {AssemblyOperationSource} from './AssemblyOperationSource';
 import {useAssemblyOperationSave} from './useAssemblyOperationSave';
 import {AssemblyOperationUnits,ASSEMBLY_UNIT_LABELS} from './AssemblyOperationUnits';
 import {parseAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
-  const operation=useAssemblyOperationSave(onAddOp);
+  const operation=useAssemblyOperationSave(onAddOp,run);
   const [countError,setCountError]=useState(false);
   const [qtyIn, setQtyIn] = useState('');
   const [qtyOut, setQtyOut] = useState('');
@@ -92,6 +93,7 @@ export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
           <input disabled={operation.busy} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
       </div>
 
+      <AssemblyOperationSource run={run} form={operation}/>
       <AssemblyOperationUnits disabled={operation.busy} value={operation.units} onChange={operation.setUnits}/>
       {operation.error&&<p role="alert" className="text-red-300 text-sm">{operation.error}</p>}
       {operation.error&&<button disabled={operation.busy} onClick={operation.resetAttempt} className="min-h-11 px-3 bg-slate-800 rounded text-sm">Новая операция</button>}
@@ -110,6 +112,7 @@ export function LaserPrismaticStation({ run, workerId, onAddOp }: Props) {
               <span className="text-white font-medium">Вход {o.qtyIn} → годных {o.qtyOut}</span>, брак {o.qtyScrap}
               {Object.entries(o.params).length > 0 && <> · {Object.entries(o.params).map(([k, v]) => `${k}: ${v}`).join(' · ')}</>}
               {o.defects.length > 0 && <><br /><span className="text-red-400">⚠ Дефекты: {o.defects.join(', ')}</span></>}
+              {o.source&&<p className="break-all">Источник: {o.source.kind==='operation'?o.source.operationId:o.source.kind==='intake'?o.source.sortRunId:o.source.reference}{o.conversionNote&&<> · основание: {o.conversionNote}</>}</p>}
               {o.id&&o.units&&<p className="break-all">ID: {o.id} · {o.workerId} · единицы: {o.units.input&&ASSEMBLY_UNIT_LABELS[o.units.input]} → {o.units.output&&ASSEMBLY_UNIT_LABELS[o.units.output]} · брак: {o.units.scrap&&ASSEMBLY_UNIT_LABELS[o.units.scrap]}</p>}
               {o.note && <><br /><span className="text-slate-500">📝 {o.note}</span></>}
               <br /><span className="text-slate-600">{o.finishedAt ? new Date(o.finishedAt).toLocaleString() : ''}</span>

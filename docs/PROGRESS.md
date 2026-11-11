@@ -1,3 +1,41 @@
+## 2026-11-11 — Explicit assembly source and predecessor allocation
+
+- Revalidated clean remote `3d6e560` and green exact-head CI. New observations
+  now require the saved sorting intake, an earlier operation in this job, or
+  an explicitly identified external source on a legacy job. Protected intakes
+  can record sourced observations; cell release/serial/filling remain separate.
+- Intake inputs must equal the frozen accepted electrode count in electrodes.
+  A predecessor must occur earlier in the same job, with positive whole output
+  exactly matching the next input and unit. A full output/reference can be
+  allocated once; no splitting or automatic station order is inferred. Local
+  creation and receipt enforce the same graph, count and duplicate checks.
+  External references cannot be reused across local jobs. These are recorded
+  allocations, not confirmed stock movements or complete cathode/anode pairing.
+- Same-unit input is exactly partitioned into output plus scrap. Different
+  units require an entered explanatory basis; output remains an independent
+  observation, with no invented conversion rate or released-cell total.
+  Source/specification snapshots and actor attribution remain frozen.
+- The `sourceLedger` marker protects the new contract against stripped/older
+  packet appends. Historical unlinked operations remain readable and intact;
+  they are not retroactively given source identities. Receipt rejects cycles,
+  future/cross-job links, changed prefixes, duplicate allocations and copied
+  intake jobs, including forced paths. Saved-intake take-in resumes its job
+  after operations exist. Optional fields need no schema migration.
+- **389 frontend tests**, typecheck and PWA build passed. IndexedDB tests cover
+  actual first intake -> predecessor chain, competing allocation, bad links,
+  same-unit balance, differing-unit basis, external reference reuse, historical
+  replay, stripped receipt and reopen. The rendered room test records the first
+  sourced intake observation; six-station save/count regressions still pass.
+  Chromium **390×844 / 1365×900** passes intake/observation rollback, retained
+  draft, offline double-submit retry, predecessor-count rejection, full-output
+  chaining, consumed-source exclusion, resume/reopen with frozen snapshots,
+  no implicit cell conversion, overflow or browser errors. Phone UI inspected.
+- No server, dependency, signing or automatic-sync change. Next: separately
+  declared cell output and serial integrity. Source links do not complete a
+  route, reconcile stock, establish a physical conversion or grant QA approval.
+  Physical OnePlus, installed upgrade/restore, emulator, BLE/QR and two-device
+  TLS acceptance were not run.
+
 ## 2026-11-11 — Durable, attributed assembly station observations
 
 - Revalidated clean remote `a7a92b0` and its green exact-head CI. Six rendered

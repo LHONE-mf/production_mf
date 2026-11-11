@@ -98,7 +98,7 @@ export function AssemblyModule() {
 
   // New entries are observations; their units are not converted into cell release.
   const addOp = async (op: AssemblyOp) => {
-    if (!selected || !currentUser || selected.intake) throw new Error('Выберите доступную партию и войдите в профиль');
+    if (!selected || !currentUser) throw new Error('Выберите доступную партию и войдите в профиль');
     await appendAssemblyOperation(selected,op,currentUser.id);
   };
 
@@ -128,7 +128,7 @@ export function AssemblyModule() {
       <h2 className="text-lg font-bold text-white">🔋 Сборка элементов и батареек</h2>
       <p className="text-xs text-slate-400">
         Принимается весь годный выход одной записи сортировки без разделения. Электроды не пересчитываются в ячейки.
-        Станции и серийные номера для новой приёмки недоступны до определения единиц и модели сборки.
+        Для каждой операции явно укажите полный источник или предшественника. Выпуск ячеек и серийные номера отдельно не подтверждены.
       </p>
 
       {intakeError && <p role="alert" className="text-red-300 text-sm">{intakeError}</p>}
@@ -202,29 +202,29 @@ export function AssemblyModule() {
         </div>
       )}
 
-      {tab === 'li-electrodes' && (selected && !selected.intake ? (
+      {tab === 'li-electrodes' && (selected ? (
         <LiElectrodesStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
-      {tab === 'z-stacking' && (selected && !selected.intake ? (
+      {tab === 'z-stacking' && (selected ? (
         <ZStackingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
-      {tab === 'winding' && (selected && !selected.intake ? (
+      {tab === 'winding' && (selected ? (
         <WindingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
-      {tab === 'crimp-cyl' && (selected && !selected.intake ? (
+      {tab === 'crimp-cyl' && (selected ? (
         <CrimpCylStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
-      {tab === 'us-prismatic' && (selected && !selected.intake ? (
+      {tab === 'us-prismatic' && (selected ? (
         <UsPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
-      {tab === 'laser-prismatic' && (selected && !selected.intake ? (
+      {tab === 'laser-prismatic' && (selected ? (
         <LaserPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
+      ) : <NoBatch />)}
 
       {tab === 'journal' && (
         <div className="space-y-2">
@@ -242,7 +242,7 @@ export function AssemblyModule() {
                   <br /><span className="text-slate-500">{new Date(r.updatedAt).toLocaleString()}</span>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => { setSelectedId(r.id); setTab(r.intake?'journal':'li-electrodes'); }}
+                  <button onClick={() => { setSelectedId(r.id); setTab('li-electrodes'); }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-white">Открыть</button>
                   <button onClick={() => sendToMaster(r, false)}
                     className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">📤 Отправить</button>

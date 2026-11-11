@@ -146,7 +146,7 @@ it('protects appended assembly observation history against typed and generic for
  const {appendAssemblyOperation}=await import('../core/manufacturing/assemblyOperations');
  const base={id:'ops-receipt',batchName:'Historical recorded batch',cellType:'cylindrical' as const,ops:[],cellsOut:7,cellsScrap:1,defects:[],workerId:'original',createdAt:'2026-11-11T10:00:00Z',updatedAt:'2026-11-11T10:00:00Z'};
  await db.assemblyRuns.put(base);
- const op={id:'op-receipt',recordedAt:'2026-11-11T11:00:00Z',finishedAt:'2026-11-11T11:00:00Z',substation:'winding' as const,workerId:'operator',qtyIn:10,qtyOut:9,qtyScrap:1,units:{input:'sets' as const,output:'blocks' as const,scrap:'sets' as const},params:{},defects:[]};
+ const op={source:{kind:'declared' as const,reference:'ops-receipt-source'},conversionNote:'Separate observed unit counts',id:'op-receipt',recordedAt:'2026-11-11T11:00:00Z',finishedAt:'2026-11-11T11:00:00Z',substation:'winding' as const,workerId:'operator',qtyIn:10,qtyOut:9,qtyScrap:1,units:{input:'sets' as const,output:'blocks' as const,scrap:'sets' as const},params:{},defects:[]};
  const saved=await appendAssemblyOperation(base,op,'operator');
  expect((await applyPacket(packet('assembly-run',saved))).ok).toBe(true);
  for(const type of ['assembly-run','forced-push'] as const){

@@ -9,8 +9,13 @@ import {CrimpCylStation} from './CrimpCylStation';
 import {UsPrismaticStation} from './UsPrismaticStation';
 import {LaserPrismaticStation} from './LaserPrismaticStation';
 async function chooseUnits(node:HTMLElement){
+ await act(async()=>{const select=node.querySelector<HTMLSelectElement>('select[aria-label="Источник операции"]')!;select.value='declared';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ for(const [label,value] of [['Идентификатор внешнего источника','station-fixture-source'],['Основание разных единиц','Entered observed counts, no calculated rate']])await act(async()=>{
+  const input=node.querySelector<HTMLInputElement>('input[aria-label="'+label+'"]')!;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));
+ });
  for(const [i,value] of ['parts','electrodes','parts'].entries())await act(async()=>{
-  const select=node.querySelectorAll<HTMLSelectElement>('select')[i];select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));
+  const select=node.querySelectorAll<HTMLSelectElement>('select[aria-label^="Единица"]')[i];select.value=value;select.dispatchEvent(new Event('change',{bubbles:true}));
  });
 }
 const run:AssemblyRun={id:'legacy',batchName:'Existing recorded batch',cellType:'cylindrical',ops:[],cellsOut:0,cellsScrap:0,defects:[],workerId:'worker',createdAt:'2026-11-11',updatedAt:'2026-11-11'};

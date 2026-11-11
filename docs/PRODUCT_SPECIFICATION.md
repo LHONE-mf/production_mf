@@ -113,8 +113,9 @@ with frozen source/specification, electrode count, actor/time and atomic journal
 Concurrent take-in resumes the original; receipt rejects duplicate allocation,
 changed snapshots and stripped provenance. Legacy ambiguity is preserved and
 blocks intake. No split or cathode/anode pairing is implemented. Cell format
-remains unassigned, cell output unknown; new intakes have no station/serial
-entry or filling handover until units and conversion rules exist. All six legacy station forms now reject fractional, negative, missing and
+remains unassigned and cell output unknown. New intakes can now record sourced
+station observations; serial assignment and filling still require a separate
+cell-output declaration and acceptance. All six legacy station forms now reject fractional, negative, missing and
 unsafe counts without truncation; valid zero output is explicit. New observations
 on existing legacy batches require separate input/output/scrap units, immutable
 operation identity, actor/time and atomic journal persistence. Failed saves retain
@@ -123,9 +124,15 @@ append. New observations preserve historical totals without converting station
 counts to cells or summing scrap across units. Current cell output stays unknown;
 observation ledgers are excluded from filling, KPI cell output and manual
 assembled-cell source measures. Unsaved drafts are not persisted across navigation
-or restart. New source intakes remain gated: station predecessor/source
-reconciliation, pairing/conversion, separately declared cell release and serial
-integrity are still unfinished.
+or restart. New observations must name the intake, an earlier same-job
+predecessor, or an explicit external reference for legacy jobs. Full-source
+allocation is one-time: quantity/unit must match the predecessor or frozen
+intake. Same-unit input must equal output plus scrap; differing units require
+an entered basis without a computed rate. Creation/receipt reject cycles,
+stale/duplicate allocation, cross-job links and stripped-contract appends.
+Old unlinked histories are retained without invented provenance. Complete
+cathode/anode pairing, physical reconciliation, separately declared cell release
+and serial integrity remain unfinished.
 This is not actual yield, stock reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

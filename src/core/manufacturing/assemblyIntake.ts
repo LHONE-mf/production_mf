@@ -1,18 +1,10 @@
 import {hasAssemblyOperationLedger,receiveAssemblyOperationRun} from './assemblyOperations';
 import {db} from '../db';
 import {StageId,type AssemblyRun,type SortRun} from '../types';
-import {validateSortPartition} from './sortingAllocation';
+import {validateAssemblyIntake} from './assemblyIntakeValidation';
+export {validateAssemblyIntake} from './assemblyIntakeValidation';
 
-export function validateAssemblyIntake(run:AssemblyRun):void {
- if(!run?.intake||!run.sourceSort)throw new Error('Источник приёмки не указан');
- validateSortPartition(run.sourceSort);
- const count=run.sourceSort.buckets.reduce((n,b)=>n+b.count,0);
- if(typeof run.id!=='string'||!run.id||typeof run.intake.recordedAt!=='string'||typeof run.intake.recordedBy!=='string'||!run.intake.recordedBy.trim()||run.workerId!==run.intake.recordedBy||run.createdAt!==run.intake.recordedAt||run.updatedAt!==run.createdAt||!Number.isFinite(new Date(run.intake.recordedAt).getTime())||
-  !Array.isArray(run.defects)||run.defects.length>0||run.electrodesPerCell!==undefined||run.coatingType!==run.sourceSort.specSnapshot?.coatingType||run.cellType!=='unassigned'||run.electrodeType!==run.sourceSort.specSnapshot?.electrodeType||run.intake.sortRunId!==run.sourceSort.id||!run.sourceSort.cutRunId||!run.sourceSort.specSnapshot||
-  !Number.isSafeInteger(count)||count<=0||run.intake.electrodeCount!==count||run.batchName!==run.sourceSort.batchName||
-  !Array.isArray(run.ops)||run.ops.length||run.cellsOut!==0||run.cellsScrap!==0||run.serialRange)
-  throw new Error('Приёмка должна сохранять источник и электроды без выдуманного выхода ячеек или станционных операций');
-}
+
 async function existingIntake(run:AssemblyRun):Promise<AssemblyRun|undefined>{
  const rows=await db.assemblyRuns.toArray();
  const old=rows.find(r=>r.id===run.id||r.intake?.sortRunId===run.intake!.sortRunId||!r.intake&&r.batchName===run.batchName);
@@ -43,13 +35,13 @@ export async function takeAssemblySource(source:SortRun,workerId:string,id:strin
 export async function receiveAssemblyIntake(run:AssemblyRun):Promise<AssemblyRun>{
  return db.transaction('rw',db.assemblyRuns,async()=>{
   const previous=await db.assemblyRuns.get(run.id);
+  if(hasAssemblyOperationLedger(previous)||hasAssemblyOperationLedger(run))return receiveAssemblyOperationRun(run);
   if(previous?.intake||run.intake){
    if(previous&&JSON.stringify(previous)===JSON.stringify(run))return previous;
    validateAssemblyIntake(run);
    const old=await existingIntake(run);
    if(old){if(JSON.stringify(old)===JSON.stringify(run))return old;throw new Error('Конфликт приёмки сборки; запись сохранена');}
   }else{
-   if(hasAssemblyOperationLedger(previous)||hasAssemblyOperationLedger(run))return receiveAssemblyOperationRun(run);
    if((await db.assemblyRuns.toArray()).some(r=>(r.intake||hasAssemblyOperationLedger(r))&&r.batchName===run.batchName))throw new Error('Нельзя заменить приёмку старым пакетом');
    if(previous&&previous.updatedAt>=run.updatedAt)return previous;
   }

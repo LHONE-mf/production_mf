@@ -27,5 +27,16 @@ it('resumes a saved intake rather than taking the same sorted source twice',asyn
    await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Партии с сортировки'))!.click();});
   }
   expect(await db.assemblyRuns.count()).toBe(1);
+  await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('B-с1'))!.click();});
+  await vi.waitFor(()=>expect(node.querySelector('select[aria-label="Источник операции"]')).not.toBeNull());
+  await act(async()=>{const source=node.querySelector<HTMLSelectElement>('select[aria-label="Источник операции"]')!;source.value='intake';source.dispatchEvent(new Event('change',{bubbles:true}));});
+  for(const select of node.querySelectorAll<HTMLSelectElement>('select[aria-label^="Единица"]'))await act(async()=>{select.value='electrodes';select.dispatchEvent(new Event('change',{bubbles:true}));});
+  for(const [i,value] of ['8','7','1'].entries())await act(async()=>{
+   const input=node.querySelectorAll<HTMLInputElement>('input[type="number"]')[i];
+   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Зафиксировать операцию'))!.click();});
+  await vi.waitFor(async()=>expect((await db.assemblyRuns.toArray())[0].ops).toHaveLength(1));
+  expect((await db.assemblyRuns.toArray())[0]).toMatchObject({sourceLedger:1,cellsOut:0,ops:[{source:{kind:'intake',sortRunId:'sorted'}}]});
  }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
 });
