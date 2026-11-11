@@ -61,7 +61,7 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
     setSteps([]); setLinks([]); setLocal([]);
     setLoading(true); setError(''); setMessage('');
     void load(controller.signal).catch(cause => {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || !sameSession()) return;
       const text = cause instanceof Error ? cause.message : 'Записи недоступны';
       setError(text);
       if (text.startsWith('HTTP 401')) clearServerConnection();
@@ -108,10 +108,11 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
           (cause instanceof Error ? cause.message : 'ошибка связи'));
       }
     } catch (cause) {
+      if (!sameSession()) return;
       const text = cause instanceof Error ? cause.message : 'Ссылка не сохранена';
       setError(text);
       if (text.startsWith('HTTP 401')) clearServerConnection();
-    } finally { setBusy(false); }
+    } finally { if(sameSession())setBusy(false); }
   }
 
   async function withdraw(event:React.FormEvent){

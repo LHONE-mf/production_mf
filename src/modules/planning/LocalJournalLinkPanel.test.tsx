@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearServerConnection,setServerConnection,type ServerConnection } from '../../core/sync/serverConnection';
+import { clearServerConnection,getServerConnection,setServerConnection,type ServerConnection } from '../../core/sync/serverConnection';
 import type { Batch } from '../../core/planning/planningClient';
 
 const journal = vi.hoisted(() => ({
@@ -75,6 +75,30 @@ afterEach(async()=>{
 });
 
 describe('M2 manual link of existing local journal',()=>{
+  it('does not let an old attachment failure clear a newer server login',async()=>{
+    const id='417a31d1-9f8c-4939-8c2a-08303344abc1';
+    journal.entries=[{id,stage:'coating',summary:'User record',createdAt:new Date('2026-11-10T10:00:00Z')}];
+    let finish:(response:unknown)=>void=()=>{};
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>{
+      if(options.method==='POST')return new Promise(resolve=>{finish=resolve;});
+      return {ok:true,json:async()=>url.endsWith('/steps')?{
+        steps:[{number:1,name:'Coating',stage:'coating',workshopId:'coating',evidence:null}],
+      }:{links:[]}};
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount();
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    await act(async()=>{select.value='journal:'+id;select.dispatchEvent(new Event('change',{bubbles:true}));});
+    await act(async()=>{(screen.querySelector('input[type="checkbox"]') as HTMLInputElement).click();});
+    const submit=[...screen.querySelectorAll('button')].find(button=>button.textContent==='Привязать запись')!;
+    await act(async()=>{submit.closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(fetchMock.mock.calls.filter(call=>call[1].method==='POST')).toHaveLength(1);
+    setServerConnection({...connection,session:{...connection.session,accessToken:'new-owner-token'}});
+    await act(async()=>{finish({ok:false,status:401,json:async()=>({error:'unauthorized'})});});
+    expect(getServerConnection()?.session.accessToken).toBe('new-owner-token');
+    expect(screen.querySelector('[role="alert"]')).toBeNull();
+  });
+
   it('withdraws with a reason, safely retries a lost reply and keeps the original completed-batch history',async()=>{
     let withdrawal:Record<string,unknown>|null=null;
     const sent:string[]=[];

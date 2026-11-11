@@ -1,3 +1,17 @@
+## 2026-11-11 — Ignore obsolete journal attachment authentication failures
+
+- A rendered regression reproduced an old attachment request's HTTP 401
+  clearing a newer login. Attachment and initial-read error handlers now ignore
+  obsolete sessions; the current user's session and error state are preserved.
+- Full frontend verification passed: **205 tests**, typecheck and PWA build.
+  Backend remains at **171 passing tests** from the withdrawal slice; no further
+  backend changes. Withdrawal commit `38390a6` passed exact-head CI
+  `42955053012` and Run Tests `42955053016`.
+- Next M2 work: controlled versioned source replacement (withdrawn identities
+  remain reserved), workshop-scoped execution permissions and physical material
+  reconciliation. No physical-device/production gate was passed; automatic
+  task synchronization remains disabled.
+
 ## 2026-11-11 — Audited withdrawal of incorrect local journal references
 
 - Verified clean remote head `c7c4fc7` and its successful exact-head CI before
