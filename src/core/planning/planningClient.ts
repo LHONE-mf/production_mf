@@ -75,6 +75,8 @@ export type LocalJournalLink = {
   sourceCreatedAt: string; summary: string; defects: string | null;
   linkedBy: string; linkedAt: string;
   withdrawal?:{id:string;reason:string;withdrawnBy:string;withdrawnAt:string}|null;
+  replacementOf?:{linkId:string;reason:string;recordedBy:string;recordedAt:string}|null;
+  replacedBy?:string|null;
 };
 export type InspectionKind = 'measurement' | 'visual';
 export type InspectionUnit = 'um' | 'mm' | 'g' | 'mg' | 'mOhm' |
@@ -280,13 +282,20 @@ export const planningApi = {
       typeof result.alreadyRecorded!=='boolean')throw new Error('Сервер вернул неверное подтверждение отзыва');
     return result;
   },
-  attachLocalJournal: (c: PlanningSession, batchId: string, stepNumber: number, input: {
+  attachLocalJournal: async (c: PlanningSession, batchId: string, stepNumber: number, input: {
     linkId: string; sourceEntryId: string; sourceStage: string;
     sourceKind?: LocalSourceKind; sourceMeasure?: LocalSourceMeasure;
     sourceCreatedAt: string; summary: string; defects?: string;
-  }) => planningRequest<{ id: string; alreadyLinked: boolean }>(
+    replacesLinkId?:string;replacementReason?:string;
+  }) => {
+    const result=await planningRequest<{ id: string; batchId:string;stepNumber:number;alreadyLinked: boolean }>(
     c, '/planning/batches/' + id(batchId) + '/steps/' + stepNumber + '/journal-links',
-    { method: 'POST', body: input }),
+      { method: 'POST', body: input });
+    if(input.replacesLinkId && (!result||result.id!==input.linkId||result.batchId!==batchId||
+      result.stepNumber!==stepNumber||typeof result.alreadyLinked!=='boolean'))
+      throw new Error('Сервер вернул неверное подтверждение замены');
+    return result;
+  },
   routeInspectionCriteria: (c: PlanningSession, routeId: string,
     version: number, signal?: AbortSignal) =>
     planningRequest<{ routeId: string; version: number; state: RouteState;

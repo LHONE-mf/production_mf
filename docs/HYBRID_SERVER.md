@@ -1,5 +1,30 @@
 # Hybrid MES: server foundation
 
+## Audited replacement of withdrawn local references (2026-11-11)
+
+Apply additive migration `019_m2_local_source_replacements.sql` after `018`.
+The existing chief-only journal attachment endpoint accepts optional paired
+`replacesLinkId` and `replacementReason` fields (UUID; trimmed reason 1–2000
+characters). The original must already be withdrawn, have no successor, and
+belong to the same batch, order, route/version, step, workshop, stage and source
+kind. The replacement uses a different saved source identity. New corrections
+require an `in_progress` batch; they cannot relocate a source or reopen a batch.
+
+The fresh reference and immutable predecessor/successor relation are inserted
+in one transaction under the parent batch lock. Foreign keys, scope validation
+and unique predecessor/successor constraints preserve the correction history.
+The reason, actor and server time are recorded. Identical stable-ID retries
+return 200, including after completion or later withdrawal; they never
+reactivate a source. Changed intent, competing successors, reserved source
+identities and invalid scope return 409 with no partial reference left behind.
+
+Journal reads add `replacementOf: {linkId,reason,recordedBy,recordedAt}` and
+`replacedBy` (null when absent). The chief form requires a saved local source,
+explicit predecessor choice, reason and confirmation. Both references remain
+visible. Comparisons exclude the original and use only the active replacement's
+saved metric, if present; missing measurements are never invented. This is
+advisory source correction, with no stock posting, QA acceptance or status change.
+
 ## Append-only local reference withdrawal (2026-11-11)
 
 Apply additive migration `018_m2_local_source_withdrawals.sql` before serving
@@ -20,7 +45,7 @@ Quantity comparisons use active measured references only and additionally
 report `withdrawnSourceCount`. The UI refreshes comparisons after source changes.
 Withdrawal is terminal: old source identities remain reserved, and neither an
 attachment retry nor a new UUID reactivates/reassigns that source. Versioned
-replacement of an existing source snapshot remains future work. There is no
+editing of an existing source snapshot remains unsupported. There is no
 inventory mutation, batch release, formal QA disposition or offline queue.
 
 ## Whole-count API writes (2026-11-11)

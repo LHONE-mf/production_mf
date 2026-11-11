@@ -24,6 +24,8 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [withdrawal,setWithdrawal]=useState<{linkId:string;withdrawalId:string;reason:string}|null>(null);
+  const [replacementChoice,setReplacementChoice]=useState('');
+  const [replacementReason,setReplacementReason]=useState('');
 
   function sameSession() {
     return getServerConnection()?.session.accessToken === connection.session.accessToken;
@@ -48,6 +50,10 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
       typeof link.withdrawal.withdrawnBy!=='string'||typeof link.withdrawal.withdrawnAt!=='string'||
       !Number.isFinite(Date.parse(link.withdrawal.withdrawnAt)))))
       throw new Error('Сервер вернул неверную историю отзыва');
+    if(history.links.some(link=>(link.replacedBy!=null && typeof link.replacedBy!=='string') ||
+      link.replacementOf && (typeof link.replacementOf.linkId!=='string'||typeof link.replacementOf.reason!=='string'||
+        typeof link.replacementOf.recordedBy!=='string'||typeof link.replacementOf.recordedAt!=='string'||
+        !Number.isFinite(Date.parse(link.replacementOf.recordedAt)))))throw new Error('Сервер вернул неверную историю замены');
     if (!signal?.aborted && sameSession()) {
       setSteps(route.steps.filter((row,index,list) =>
         list.findIndex(other => other.number === row.number) === index));
@@ -77,17 +83,21 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
   const candidates = local.filter(entry =>
     entry.sourceStage === stage && !linkedIds.has(entry.key));
   const chosen = candidates.find(entry => entry.key === entryChoice);
+  const replacementOptions=links.filter(link=>link.withdrawal && !link.replacedBy && link.stepNumber===number &&
+    (!chosen || (link.sourceKind ?? 'journal')===chosen.sourceKind));
+  const replacing=replacementOptions.find(link=>link.id===replacementChoice);
 
   function resetSelection() {
     setEntryChoice('');
     setLinkId(crypto.randomUUID());
     setConfirmed(false);
+    setReplacementChoice('');setReplacementReason('');
   }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!chosen || number === undefined || batch.status !== 'in_progress' ||
-        !confirmed || busy || !sameSession()) return;
+        !confirmed || busy || !sameSession() || (replacementChoice && (!replacing||!replacementReason.trim()))) return;
     setBusy(true); setError(''); setMessage('');
     try {
       await planningApi.attachLocalJournal(connection,batch.id,number,{
@@ -96,12 +106,14 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
         summary:chosen.summary,
         ...(chosen.defects ? {defects:chosen.defects} : {}),
         ...(chosen.sourceMeasure ? {sourceMeasure:chosen.sourceMeasure} : {}),
+        ...(replacing ? {replacesLinkId:replacing.id,replacementReason:replacementReason.trim()} : {}),
       });
       if (!sameSession()) return;
       // Do not repeat a successful append if refreshing failed.
       resetSelection();
       onReferencesChanged?.();
-      setMessage('Ссылка записана на сервере. Исходный локальный журнал не изменён.');
+      setMessage(replacing ? 'Замена записана. Исходная ссылка остаётся отозванной.' :
+        'Ссылка записана на сервере. Исходный локальный журнал не изменён.');
       try { await load(); }
       catch (cause) {
         setError('Ссылка создана, но обновить список не удалось: ' +
@@ -168,11 +180,17 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
           {metricLabels[link.sourceMeasure.kind]}: {link.sourceMeasure.value}
         </span>}
         {link.defects && <span className="block text-amber-200">Замечание: {link.defects}</span>}
+        {link.replacementOf && <div className="mt-2 space-y-1 border-l-2 border-sky-600 pl-2">
+          <p className="break-all">Заменяет ссылку: {link.replacementOf.linkId}</p>
+          <p className="whitespace-pre-wrap break-words">Причина замены: {link.replacementOf.reason}</p>
+          <p className="break-all">Автор: {link.replacementOf.recordedBy} · {new Date(link.replacementOf.recordedAt).toLocaleString('ru-RU')}</p>
+        </div>}
         {link.withdrawal ? <div className="mt-2 rounded border border-amber-700 p-2 space-y-1">
           <p className="text-amber-200">Ссылка отозвана · {new Date(link.withdrawal.withdrawnAt).toLocaleString('ru-RU')}</p>
           <p className="whitespace-pre-wrap break-words">{link.withdrawal.reason}</p>
           <p className="break-all">Автор отзыва: {link.withdrawal.withdrawnBy}</p>
           <p>Исходная запись сохранена; величина исключена из сравнения.</p>
+          {link.replacedBy && <p className="break-all">Заменена ссылкой: {link.replacedBy}</p>}
         </div> : connection.serverRole==='chief' && (withdrawal?.linkId===link.id ?
           <form onSubmit={event=>void withdraw(event)} className="mt-2 space-y-2 rounded border border-amber-700 p-2">
             <p>Отзыв сохраняется в истории и исключает эту ссылку из сравнения. Статус партии и исходный журнал не меняются.</p>
@@ -210,6 +228,7 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
           value={entryChoice} onChange={event => {
             setEntryChoice(event.target.value);
             setLinkId(crypto.randomUUID());setConfirmed(false);
+            setReplacementChoice('');setReplacementReason('');
           }}>
           <option value="">Выберите запись</option>
           {candidates.map(entry => <option key={entry.key} value={entry.key}>
@@ -218,6 +237,18 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
           </option>)}
         </select>
       </label>
+      <label className="block text-xs text-slate-400">Заменить отозванную ссылку (необязательно)
+        <select aria-label="Отозванная ссылка для замены" className={inputClass+' mt-1'} value={replacementChoice}
+          onChange={event=>{setReplacementChoice(event.target.value);setReplacementReason('');setLinkId(crypto.randomUUID());setConfirmed(false);}}>
+          <option value="">Новая самостоятельная ссылка</option>
+          {replacementOptions.map(link=><option key={link.id} value={link.id}>{localKindLabels[link.sourceKind??'journal']} · {link.summary.slice(0,90)}</option>)}
+        </select>
+      </label>
+      {replacementChoice && <label className="block text-xs text-slate-400">Причина замены
+        <textarea aria-label="Причина замены ссылки" required rows={2} maxLength={2000} className={inputClass+' mt-1'}
+          value={replacementReason} onChange={event=>{setReplacementReason(event.target.value);setLinkId(crypto.randomUUID());}}/>
+        <span className="block mt-1">Выберите другую сохранённую запись того же типа. Оригинал останется отозванным; замена не меняет статус партии и не является приёмкой.</span>
+      </label>}
       {chosen && <div className="rounded-md bg-slate-900/60 p-2 text-xs text-slate-200">
         <p>Передаётся на сервер ({localKindLabels[chosen.sourceKind]}): {chosen.summary}</p>
         {chosen.sourceMeasure && <p>
@@ -233,7 +264,7 @@ export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }
           onChange={event => setConfirmed(event.target.checked)} />
         Подтверждаю ручную привязку этой записи к выбранной партии и этапу.
       </label>
-      <button type="submit" disabled={busy || !chosen || !confirmed}
+      <button type="submit" disabled={busy || !chosen || !confirmed || Boolean(replacementChoice && (!replacing||!replacementReason.trim()))}
         className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white disabled:opacity-40">
         Привязать запись
       </button>

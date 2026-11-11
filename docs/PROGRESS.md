@@ -1,3 +1,30 @@
+## 2026-11-11 — Controlled replacement of withdrawn local sources
+
+- Inspected remote branch head `8e3a671` and its successful exact-head CI
+  `42955227104` / Run Tests `42955227116`; continued the existing M2 ledger.
+- Migration `019` adds an immutable replacement relation with reason/actor/time,
+  scoped foreign keys, one successor per original and database scope validation.
+  Chief-only attachment accepts an explicit withdrawn predecessor of the same
+  batch/order/route/version/step/workshop/stage/source type. A different saved
+  source is required; original identities stay reserved. New replacements need
+  an active batch; exact retries remain safe after completion or withdrawal.
+- Link and relation commit atomically under the batch lock. Role/tenant checks,
+  wrong scope/type, concurrent retries, rival successors, changed intent,
+  reserved identities, rollback, immutable history, migration reapplication and
+  no invented metrics have real PostgreSQL regressions.
+- UI requires a saved source, predecessor, reason and confirmation, retains both
+  references and refreshes quantity comparisons. Lost replies retain request
+  identity; malformed acknowledgements are rejected. No local journal rewrite.
+- Full local checks passed: **207 frontend / 173 backend tests**, both
+  typechecks and builds. Real Chromium **390×844 / 1365×900** passed replacement,
+  retained original values/history, refreshed comparisons, genealogy navigation,
+  no overflow and no browser exceptions using disposable PostgreSQL/Fastify.
+- Only isolated test databases received migration `019`. M2 remains incomplete:
+  next priorities are workshop-scoped execution permissions and documented
+  input/output material reconciliation. Physical Android/TLS/production gates
+  remain open; automatic task sync remains disabled. No deploy, merge, stock
+  mutation, QA acceptance or production migration performed.
+
 ## 2026-11-11 — Ignore obsolete journal attachment authentication failures
 
 - A rendered regression reproduced an old attachment request's HTTP 401

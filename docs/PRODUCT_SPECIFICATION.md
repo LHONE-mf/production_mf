@@ -370,9 +370,21 @@ cannot rewrite the decision. Withdrawn values are excluded from advisory output
 comparisons and counted explicitly. The Android/web history retains the source
 and reason, and refreshes comparisons after correction. This does not reopen a
 completed batch or alter its evidence, quality decisions or inventory. Existing
-source identities remain reserved; snapshot replacement is not implemented.
+source identities remain reserved; existing snapshots cannot be edited.
 Automated PostgreSQL, rendered UI and phone/desktop browser checks passed;
 physical acceptance remains outstanding.
+
+**M2 controlled source replacement checkpoint (2026-11-11):**
+Chiefs can explicitly replace a withdrawn reference with a different saved local
+source of the same type and execution scope. Migration `019` appends immutable
+predecessor/successor history with a mandatory reason, author and time. Original
+references stay withdrawn and their identities stay reserved. Atomic insertion
+and exact retries prevent partial or duplicate corrections. New replacements
+require an active batch; historical retries cannot reopen or reactivate it.
+The form retains both references and refreshes advisory quantity comparisons;
+only saved metrics are used. Same-identity snapshot edits and cross-batch source
+relocation are unsupported. PostgreSQL, UI and phone/desktop browser checks
+passed; formal reconciliation, stock posting and physical acceptance remain open.
 
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,

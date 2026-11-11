@@ -7,6 +7,12 @@ const session: PlanningSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('authenticated M2 planning client', () => {
+  it('preserves replacement intent and refuses mismatched replacement acknowledgements',async()=>{
+    const input={linkId:'new-link',sourceEntryId:'new-source',sourceStage:'coating',sourceCreatedAt:'2026-11-11T03:00:00Z',
+      summary:'Saved correction',replacesLinkId:'old-link',replacementReason:'Wrong run'};
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({id:'wrong',alreadyLinked:true})}));
+    await expect(planningApi.attachLocalJournal(session,'batch-1',1,input)).rejects.toThrow('подтверждение замены');
+  });
   it('validates withdrawal acknowledgements and keeps the same client identity on retries',async()=>{
     const input={withdrawalId:'withdraw-1',reason:'Incorrect local run'};
     const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({

@@ -75,6 +75,48 @@ afterEach(async()=>{
 });
 
 describe('M2 manual link of existing local journal',()=>{
+  it('requires a replacement reason, retries the same intent and retains the withdrawn original',async()=>{
+    const id='19623234-3cc9-40ca-832e-12e579efda14';
+    journal.entries=[{id,stage:'coating',summary:'Correct saved journal',createdAt:new Date('2026-11-11T03:00:00Z')}];
+    const old={id:'old-link',stepNumber:1,sourceKind:'journal',sourceStage:'coating',sourceEntryId:'old-source',
+      summary:'Withdrawn original',sourceCreatedAt:'2026-11-10T03:00:00Z',sourceMeasure:null,
+      linkedBy:'chief',linkedAt:'2026-11-10T04:00:00Z',defects:null,
+      withdrawal:{id:'withdrawal',reason:'Wrong saved source',withdrawnBy:'chief',withdrawnAt:'2026-11-11T02:00:00Z'},replacedBy:null as string|null};
+    const sent:string[]=[];let replacement:Record<string,unknown>|undefined;
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      if(options.method==='POST'){
+        sent.push(String(options.body));const body=JSON.parse(String(options.body));
+        if(sent.length===1)throw Error('Reply lost');
+        old.replacedBy=body.linkId;replacement={...old,id:body.linkId,summary:body.summary,withdrawal:null,replacedBy:null,
+          sourceEntryId:id,replacementOf:{linkId:'old-link',reason:body.replacementReason,recordedBy:'chief',recordedAt:'2026-11-11T03:00:00Z'}};
+        return {ok:true,json:async()=>({id:body.linkId,batchId:'batch-1',stepNumber:1,alreadyLinked:true})};
+      }
+      return {ok:true,json:async()=>url.endsWith('/steps')?{steps:[{number:1,name:'Coating',stage:'coating',workshopId:'coating',evidence:null}]}:
+        {links:replacement?[old,replacement]:[old]}};
+    }));
+    setServerConnection(connection);const screen=await mount();
+    const select=screen.querySelector('select[aria-label="Локальная запись"]') as HTMLSelectElement;
+    await act(async()=>{select.value='journal:'+id;select.dispatchEvent(new Event('change',{bubbles:true}));});
+    const original=screen.querySelector('select[aria-label="Отозванная ссылка для замены"]') as HTMLSelectElement;
+    expect(original).toBeTruthy();
+    await act(async()=>{original.value='old-link';original.dispatchEvent(new Event('change',{bubbles:true}));});
+    const submit=[...screen.querySelectorAll('button')].find(b=>b.textContent==='Привязать запись') as HTMLButtonElement;
+    await act(async()=>{(screen.querySelector('input[type="checkbox"]') as HTMLInputElement).click();});
+    expect(submit.disabled).toBe(true);
+    const reason=screen.querySelector('textarea[aria-label="Причина замены ссылки"]') as HTMLTextAreaElement;
+    await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(reason,'Choose the correct saved run');reason.dispatchEvent(new Event('input',{bubbles:true}));});
+    await act(async()=>{submit.closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(screen.textContent).toContain('Reply lost');
+    await act(async()=>{submit.closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(sent).toHaveLength(2);expect(sent[0]).toBe(sent[1]);
+    expect(JSON.parse(sent[1])).toMatchObject({replacesLinkId:'old-link',replacementReason:'Choose the correct saved run',sourceEntryId:id});
+    expect(JSON.parse(sent[1]).sourceMeasure).toBeUndefined();
+    expect(screen.textContent).toContain('Withdrawn original');
+    expect(screen.textContent).toContain('Correct saved journal');
+    expect(screen.textContent).toContain('Заменяет ссылку: old-link');
+    expect(journal.entries).toHaveLength(1);
+  });
+
   it('does not let an old attachment failure clear a newer server login',async()=>{
     const id='417a31d1-9f8c-4939-8c2a-08303344abc1';
     journal.entries=[{id,stage:'coating',summary:'User record',createdAt:new Date('2026-11-10T10:00:00Z')}];

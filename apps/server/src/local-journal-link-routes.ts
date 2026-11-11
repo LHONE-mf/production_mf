@@ -25,7 +25,11 @@ const bodySchema = z.object({
   sourceCreatedAt:z.string().datetime({offset:true}),
   summary:z.string().trim().min(1).max(2000),
   defects:z.string().trim().min(1).max(2000).optional(),
+  replacesLinkId:uuid.optional(),
+  replacementReason:z.string().trim().min(1).max(2000).optional(),
 }).strict().superRefine((data,ctx)=>{
+  if(Boolean(data.replacesLinkId)!==Boolean(data.replacementReason))
+    ctx.addIssue({code:'custom',path:['replacementReason'],message:'replacement identity and reason required together'});
   const sourceStage:Record<string,string> = {
     mix_batch:'slurry',coat_run:'coating',
     calender_run:'calendaring',cut_run:'cutting',
@@ -146,14 +150,19 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
           AND summary=$12 AND defects IS NOT DISTINCT FROM $13::text
           AND linked_by=$14 AND source_kind=$15
           AND source_measure_kind IS NOT DISTINCT FROM $16::text
-          AND source_measure_value IS NOT DISTINCT FROM $17::numeric AS identical
-        FROM production_local_journal_links
-        WHERE organization_id=$1 AND id=$2`,
+          AND source_measure_value IS NOT DISTINCT FROM $17::numeric
+          AND rp.original_link_id IS NOT DISTINCT FROM $18::uuid
+          AND rp.reason IS NOT DISTINCT FROM $19::text AS identical
+        FROM production_local_journal_links l
+        LEFT JOIN production_local_journal_replacements rp
+          ON rp.organization_id=l.organization_id AND rp.replacement_link_id=l.id
+        WHERE l.organization_id=$1 AND l.id=$2`,
         [actor.organization_id,data.linkId,batchId,b.order_id,b.route_id,
           b.route_version,stepNumber,step.rows[0].workshop_id,
           data.sourceStage,data.sourceEntryId,data.sourceCreatedAt,
           data.summary,data.defects ?? null,actor.id,data.sourceKind,
-          data.sourceMeasure?.kind ?? null,data.sourceMeasure?.value ?? null]);
+          data.sourceMeasure?.kind ?? null,data.sourceMeasure?.value ?? null,
+          data.replacesLinkId ?? null,data.replacementReason ?? null]);
       if (old.rowCount) {
         await client.query('ROLLBACK');
         if (!old.rows[0].identical) return reply.code(409).send({error:'journal_link_id_reused'});
@@ -162,6 +171,19 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
       if (b.status !== 'in_progress') {
         await client.query('ROLLBACK');
         return reply.code(409).send({error:'batch_not_active'});
+      }
+      if(data.replacesLinkId){
+        const original=await client.query(`SELECT l.id,r.replacement_link_id
+          FROM production_local_journal_links l
+          JOIN production_local_journal_withdrawals w ON w.organization_id=l.organization_id AND w.link_id=l.id
+          LEFT JOIN production_local_journal_replacements r ON r.organization_id=l.organization_id AND r.original_link_id=l.id
+          WHERE l.organization_id=$1 AND l.id=$2 AND l.batch_id=$3
+            AND l.route_id=$4 AND l.route_version=$5 AND l.step_number=$6
+            AND l.source_kind=$7 AND l.source_stage=$8`,
+          [actor.organization_id,data.replacesLinkId,batchId,b.route_id,b.route_version,stepNumber,data.sourceKind,data.sourceStage]);
+        if(!original.rowCount||original.rows[0].replacement_link_id){
+          await client.query('ROLLBACK');return reply.code(409).send({error:'source_not_replaceable'});
+        }
       }
       await client.query(`INSERT INTO production_local_journal_links
         (organization_id,id,batch_id,order_id,route_id,route_version,step_number,
@@ -174,6 +196,9 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
           data.sourceStage,data.sourceEntryId,data.sourceCreatedAt,
           data.summary,data.defects ?? null,actor.id,data.sourceKind,
           data.sourceMeasure?.kind ?? null,data.sourceMeasure?.value ?? null]);
+      if(data.replacesLinkId)await client.query(`INSERT INTO production_local_journal_replacements
+        (organization_id,original_link_id,replacement_link_id,reason,recorded_by) VALUES($1,$2,$3,$4,$5)`,
+        [actor.organization_id,data.replacesLinkId,data.linkId,data.replacementReason,actor.id]);
       await client.query('COMMIT');
       return reply.code(201).send({id:data.linkId,batchId,stepNumber,alreadyLinked:false});
     } catch (error) {
@@ -196,9 +221,13 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
     const entries = await pool.query(`SELECT l.id,step_number,source_stage,source_entry_id,
         source_created_at,summary,defects,linked_by,linked_at,
         source_kind,source_measure_kind,source_measure_value::text,
-        w.id AS withdrawal_id,w.reason,w.withdrawn_by,w.withdrawn_at
+        w.id AS withdrawal_id,w.reason,w.withdrawn_by,w.withdrawn_at,
+        rp.original_link_id,rp.reason AS replacement_reason,rp.recorded_by,rp.recorded_at,
+        next.replacement_link_id AS replaced_by
       FROM production_local_journal_links l
       LEFT JOIN production_local_journal_withdrawals w ON w.organization_id=l.organization_id AND w.link_id=l.id
+      LEFT JOIN production_local_journal_replacements rp ON rp.organization_id=l.organization_id AND rp.replacement_link_id=l.id
+      LEFT JOIN production_local_journal_replacements next ON next.organization_id=l.organization_id AND next.original_link_id=l.id
       WHERE l.organization_id=$1 AND l.batch_id=$2
       ORDER BY step_number,linked_at,l.id LIMIT 200`,
       [actor.organization_id,params.data.id]);
@@ -212,6 +241,9 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
       defects:row.defects,linkedBy:row.linked_by,linkedAt:row.linked_at,
       withdrawal:row.withdrawal_id ? {id:row.withdrawal_id,reason:row.reason,
         withdrawnBy:row.withdrawn_by,withdrawnAt:row.withdrawn_at} : null,
+      replacementOf:row.original_link_id ? {linkId:row.original_link_id,reason:row.replacement_reason,
+        recordedBy:row.recorded_by,recordedAt:row.recorded_at} : null,
+      replacedBy:row.replaced_by ?? null,
     }))};
   });
 }

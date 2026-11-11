@@ -183,4 +183,63 @@ integration('M2 local source quantity comparisons (PostgreSQL)', () => {
     expect((await app.inject({method:'POST',url:'/planning/batches/'+other.id+'/journal-links/'+first.linkId+'/withdraw',
       headers:headers(),payload:{withdrawalId:randomUUID(),reason:'Wrong batch'}})).statusCode).toBe(404);
   });
+
+  it('atomically replaces a withdrawn source, preserves lineage and handles retries after completion',async()=>{
+    const b=await scenario('cutting','pieces');await complete(b,'100');
+    const original=await link(b,'cut_run','cut_good_pieces','90');
+    const url='/planning/batches/'+b.id+'/steps/1/journal-links';
+    const payload={linkId:randomUUID(),sourceEntryId:randomUUID(),sourceKind:'cut_run',sourceStage:'cutting',
+      sourceCreatedAt:'2026-11-11T03:00:00Z',summary:'Correct saved run',
+      sourceMeasure:{kind:'cut_good_pieces',value:'100'},replacesLinkId:original.linkId,replacementReason:'Wrong run was selected'};
+    const submit=(body:object,actor=0)=>app.inject({method:'POST',url,headers:headers(actor),payload:body});
+    expect((await submit(payload)).statusCode).toBe(409); // Must first withdraw explicitly.
+    await post('/planning/batches/'+b.id+'/journal-links/'+original.linkId+'/withdraw',{
+      withdrawalId:randomUUID(),reason:'Wrong saved run'});
+    expect((await submit(payload,1)).statusCode).toBe(403);
+    expect((await submit(payload,2)).statusCode).toBe(404);
+    expect((await submit({...payload,replacementReason:' '})).statusCode).toBe(400);
+    expect((await submit({...payload,replacementReason:undefined})).statusCode).toBe(400);
+    expect((await submit({...payload,sourceKind:'journal',sourceMeasure:undefined})).statusCode).toBe(409);
+    expect((await submit({...payload,sourceEntryId:original.sourceEntryId})).statusCode).toBe(409);
+    expect((await pool.query('SELECT id FROM production_local_journal_links WHERE organization_id=$1 AND id=$2',[org,payload.linkId])).rowCount).toBe(0);
+    const race=await Promise.all([submit(payload),submit(payload)]);
+    expect(race.map(r=>r.statusCode).sort()).toEqual([200,201]);
+    expect((await submit({...payload,replacementReason:'Rewritten reason'})).statusCode).toBe(409);
+    expect((await submit({...payload,replacesLinkId:undefined,replacementReason:undefined})).statusCode).toBe(409);
+    expect((await submit({...payload,linkId:randomUUID(),sourceEntryId:randomUUID()})).statusCode).toBe(409);
+    const flow=(await read(b.id)).json().steps[0].sourceComparison;
+    expect(flow).toMatchObject({status:'compared',sourceCount:1,withdrawnSourceCount:1,difference:'0.000000',source:{linkId:payload.linkId}});
+    const history=(await app.inject({method:'GET',url:'/planning/batches/'+b.id+'/journal-links',headers:headers()})).json().links;
+    expect(history.find((r:{id:string})=>r.id===original.linkId)).toMatchObject({replacedBy:payload.linkId,withdrawal:{reason:'Wrong saved run'},sourceMeasure:{value:'90.000000'}});
+    expect(history.find((r:{id:string})=>r.id===payload.linkId)).toMatchObject({replacementOf:{linkId:original.linkId,reason:payload.replacementReason,recordedBy:users[0]}});
+    await post('/planning/batches/'+b.id+'/status',{expectedStatus:'in_progress',status:'completed'},200);
+    expect((await submit(payload)).statusCode).toBe(200);
+    await post('/planning/batches/'+b.id+'/journal-links/'+payload.linkId+'/withdraw',{withdrawalId:randomUUID(),reason:'Audit after completion'});
+    expect((await submit(payload)).statusCode).toBe(200); // Never reactivates the replacement.
+    expect((await read(b.id)).json().steps[0].sourceComparison.sourceCount).toBe(0);
+    expect((await submit({...payload,linkId:randomUUID(),sourceEntryId:randomUUID(),replacesLinkId:payload.linkId})).statusCode).toBe(409);
+    await expect(pool.query(`UPDATE production_local_journal_replacements SET reason='Changed'
+      WHERE organization_id=$1 AND replacement_link_id=$2`,[org,payload.linkId])).rejects.toThrow('append-only');
+    await expect(pool.query(`DELETE FROM production_local_journal_replacements
+      WHERE organization_id=$1 AND replacement_link_id=$2`,[org,payload.linkId])).rejects.toThrow('append-only');
+    await pool.query(await readFile('migrations/019_m2_local_source_replacements.sql','utf8'));
+    expect((await pool.query(`SELECT reason FROM production_local_journal_replacements WHERE organization_id=$1 AND replacement_link_id=$2`,[org,payload.linkId])).rows[0].reason).toBe(payload.replacementReason);
+  });
+
+  it('rejects cross-batch replacement and rolls back failed replacement source inserts',async()=>{
+    const b=await scenario('cutting','pieces'),other=await scenario('cutting','pieces');
+    const original=await link(b,'cut_run','cut_good_pieces','99');
+    await post('/planning/batches/'+b.id+'/journal-links/'+original.linkId+'/withdraw',{withdrawalId:randomUUID(),reason:'Wrong source'});
+    const payload={linkId:randomUUID(),sourceEntryId:randomUUID(),sourceKind:'cut_run',sourceStage:'cutting',
+      sourceCreatedAt:'2026-11-11T03:00:00Z',summary:'Replacement',replacesLinkId:original.linkId,replacementReason:'Correct record'};
+    expect((await app.inject({method:'POST',url:'/planning/batches/'+other.id+'/steps/1/journal-links',headers:headers(),payload})).statusCode).toBe(409);
+    expect((await pool.query('SELECT id FROM production_local_journal_links WHERE organization_id=$1 AND id=$2',[org,payload.linkId])).rowCount).toBe(0);
+    await post('/planning/batches/'+b.id+'/steps/1/journal-links',payload);
+    expect((await read(b.id)).json().steps[0].sourceComparison).toMatchObject({status:'no_source',sourceCount:0}); // No invented quantity.
+    const foreignOriginal=await link(other,'cut_run','cut_good_pieces','98');
+    await post('/planning/batches/'+other.id+'/journal-links/'+foreignOriginal.linkId+'/withdraw',{withdrawalId:randomUUID(),reason:'Wrong source'});
+    await expect(pool.query(`INSERT INTO production_local_journal_replacements
+      (organization_id,original_link_id,replacement_link_id,reason,recorded_by)
+      VALUES($1,$2,$3,'Wrong batch',$4)`,[org,foreignOriginal.linkId,payload.linkId,users[0]])).rejects.toThrow('scope mismatch');
+  });
 });
