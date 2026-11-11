@@ -36,8 +36,14 @@ export const ASSEMBLY_SUBSTATIONS: { id: AssemblySubstation; name: string; icon:
   { id: 'laser-prismatic', name: 'Лазерная сварка (призм.)',      icon: '🔦' },
 ];
 
+export type AssemblyQuantityUnit = 'parts' | 'electrodes' | 'sets' | 'blocks' | 'cells';
+export type AssemblyOperationUnits = Partial<Record<'input'|'output'|'scrap',AssemblyQuantityUnit>>;
+
 // Одна операция на подсекции сборки (партия деталей проходит через подсекции по очереди)
 export interface AssemblyOp {
+  id?: string;
+  recordedAt?: string;
+  units?: AssemblyOperationUnits;
   substation: AssemblySubstation;
   workerId: string;
   startedAt?: string;        // ISO — время начала (факультативно)
@@ -52,6 +58,7 @@ export interface AssemblyOp {
 
 // Партия сборки: пришла с сортировки (название партии), идёт по подсекциям, результат уходит на формовку
 export interface AssemblyRun {
+  operationLedger?: 1; // New observations do not recalculate historical cell totals.
   sourceSort?:import('./cutting-sorting-calender').SortRun;
   intake?:{sortRunId:string;electrodeCount:number;recordedBy:string;recordedAt:string};
   id: string;

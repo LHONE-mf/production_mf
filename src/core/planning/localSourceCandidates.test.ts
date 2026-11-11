@@ -103,3 +103,10 @@ describe('selectable offline production source snapshots',()=>{
     expect(mixes[1].batchKg).toBe(Infinity);
   });
 });
+
+it('does not label an intake or station observation ledger as assembled-cell output',()=>{
+ const base:AssemblyRun={id:'dfb44d22-31b6-47b6-96e3-ff3ec3fa95bf',batchName:'Recorded batch',cellType:'cylindrical',ops:[],cellsOut:40,cellsScrap:0,workerId:'worker',defects:[],createdAt:'2026-11-10T10:00:00Z',updatedAt:'2026-11-10T10:00:00Z'};
+ for(const record of [{...base,operationLedger:1 as const},{...base,intake:{sortRunId:'source',electrodeCount:8,recordedBy:'worker',recordedAt:base.createdAt}}]){
+  const rows=localSourceCandidates([],[],[],[],[],[],[record]);expect(rows).toHaveLength(1);expect(rows[0]).not.toHaveProperty('sourceMeasure');
+ }
+});

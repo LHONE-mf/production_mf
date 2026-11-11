@@ -115,9 +115,17 @@ changed snapshots and stripped provenance. Legacy ambiguity is preserved and
 blocks intake. No split or cathode/anode pairing is implemented. Cell format
 remains unassigned, cell output unknown; new intakes have no station/serial
 entry or filling handover until units and conversion rules exist. All six legacy station forms now reject fractional, negative, missing and
-unsafe counts without truncation; valid zero output is explicit. Existing
-output/scrap aggregation remains and needs unit reconciliation, parameter
-validation and operation save-failure/duplicate integrity work.
+unsafe counts without truncation; valid zero output is explicit. New observations
+on existing legacy batches require separate input/output/scrap units, immutable
+operation identity, actor/time and atomic journal persistence. Failed saves retain
+the in-memory draft/identity; receipt permits only replay or immutable-prefix
+append. New observations preserve historical totals without converting station
+counts to cells or summing scrap across units. Current cell output stays unknown;
+observation ledgers are excluded from filling, KPI cell output and manual
+assembled-cell source measures. Unsaved drafts are not persisted across navigation
+or restart. New source intakes remain gated: station predecessor/source
+reconciliation, pairing/conversion, separately declared cell release and serial
+integrity are still unfinished.
 This is not actual yield, stock reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

@@ -143,13 +143,13 @@ export function localSourceCandidates(
   for (const a of assemblies) {
     if (!a || !isUuid(a.id)) continue;
     const at=time(a.createdAt), name=bounded(a.batchName);
-    const summary=name ? bounded('Сборка ячеек: '+name) : null;
+    const summary=name ? bounded((a.intake?'Приёмка электродов: ':a.operationLedger?'Наблюдения сборки: ':'Сборка ячеек: ')+name) : null;
     if (!at || !summary || (a.defects!=null &&
       (!Array.isArray(a.defects) || !a.defects.every(d=>typeof d==='string')))) continue;
     const defectText=a.defects?.map(d=>d.trim()).filter(Boolean).join('; ') ?? '';
     if (defectText.length>2000) continue;
     // cellsOut is the local run's latest stated result; not a QA approval.
-    const measure=Number.isSafeInteger(a.cellsOut)
+    const measure=!a.intake&&!a.operationLedger&&Number.isSafeInteger(a.cellsOut)
       ? reported('assembled_cells_out',a.cellsOut) : undefined;
     items.push({
       key:'assembly_run:'+a.id,sourceKind:'assembly_run',sourceEntryId:a.id,

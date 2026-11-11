@@ -117,7 +117,9 @@ export const KpiDashboard: React.FC = () => {
     const wCal = inWindow(calenders, (x) => x.createdAt);
     const wCut = inWindow(cuts, (x) => x.createdAt);
     const wSort = inWindow(sorts, (x) => x.createdAt);
-    const wAsm = inWindow(assemblies, (x) => x.createdAt);
+    const recordedAssembly = inWindow(assemblies, (x) => x.createdAt);
+    const unknownAssembly = recordedAssembly.filter(x=>x.intake||x.operationLedger).length;
+    const wAsm = recordedAssembly.filter(x=>!x.intake&&!x.operationLedger);
     const wFill = inWindow(fills, (x) => x.createdAt);
     const wWalz = inWindow(walz, (x) => x.createdAt);
     const wForm = inWindow(formations, (x) => x.createdAt);
@@ -183,7 +185,7 @@ export const KpiDashboard: React.FC = () => {
       coatMeters,
       cutGood, cutDefect,
       sortGood, sortRejected,
-      asmOut, asmScrap, fillOut, fillScrap,
+      asmOut, asmScrap, unknownAssembly, fillOut, fillScrap,
       walzOut, walzScrap, formOut, formScrap,
       avgCoulomb: avg(coulombVals),
       avgCap5: avg(cap5Vals),
@@ -207,6 +209,7 @@ export const KpiDashboard: React.FC = () => {
 
   return (
     <div className="p-4 md:p-6 space-y-6">
+      {kpi.unknownAssembly>0&&<p className="text-sm text-amber-200">Приёмки и станционные наблюдения ({kpi.unknownAssembly}) не включены в выход ячеек: выпуск не определён.</p>}
       {/* Шапка дашборда */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>

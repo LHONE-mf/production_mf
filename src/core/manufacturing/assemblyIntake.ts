@@ -1,3 +1,4 @@
+import {hasAssemblyOperationLedger,receiveAssemblyOperationRun} from './assemblyOperations';
 import {db} from '../db';
 import {StageId,type AssemblyRun,type SortRun} from '../types';
 import {validateSortPartition} from './sortingAllocation';
@@ -48,7 +49,8 @@ export async function receiveAssemblyIntake(run:AssemblyRun):Promise<AssemblyRun
    const old=await existingIntake(run);
    if(old){if(JSON.stringify(old)===JSON.stringify(run))return old;throw new Error('Конфликт приёмки сборки; запись сохранена');}
   }else{
-   if((await db.assemblyRuns.toArray()).some(r=>r.intake&&r.batchName===run.batchName))throw new Error('Нельзя заменить приёмку старым пакетом');
+   if(hasAssemblyOperationLedger(previous)||hasAssemblyOperationLedger(run))return receiveAssemblyOperationRun(run);
+   if((await db.assemblyRuns.toArray()).some(r=>(r.intake||hasAssemblyOperationLedger(r))&&r.batchName===run.batchName))throw new Error('Нельзя заменить приёмку старым пакетом');
    if(previous&&previous.updatedAt>=run.updatedAt)return previous;
   }
   await db.assemblyRuns.put(run);return run;

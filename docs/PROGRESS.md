@@ -1,3 +1,53 @@
+## 2026-11-11 — Durable, attributed assembly station observations
+
+- Revalidated clean remote `a7a92b0` and its green exact-head CI. Six rendered
+  regressions reproduced station forms clearing before an asynchronous save
+  completed. The room also copied the last station output into `cellsOut`, even
+  when that station counted electrodes or blocks.
+- All six forms now require explicit input/output/scrap units (parts,
+  electrodes, sets, blocks or cells), with no inferred conversion or default.
+  New observations carry an immutable operation ID, actor and recording time.
+  Nonfinite supplied process parameters and fractional/nonpositive layer counts
+  are rejected. This is observation recording on existing legacy batches;
+  protected source intakes remain gated pending the pairing/conversion model.
+- `core/manufacturing/assemblyOperations.ts` commits the operation and its
+  attributed journal together. Identical stable-ID retries, including after
+  reopen, retain the original. Conflicting IDs, reused IDs across batches and
+  stale parallel intent are rejected without losing history; refresh/review is
+  required before a separate append. Historical operations and totals are not
+  rewritten, including formerly accepted fractional legacy observations.
+- The shared six-station save hook waits for persistence before clearing,
+  blocks duplicate submit and freezes inputs while saving. Failures retain the
+  draft and original ID/time for retry. Changed intent after a failed attempt
+  requires explicit “new operation” after journal review. Unsaved drafts remain
+  in memory only; navigating away/restarting does not persist them.
+- New observation ledgers do not recalculate cell output or sum scrap across
+  differing units. Original numeric totals remain in the legacy snapshot, while
+  the room marks current output unknown. Both filling rooms exclude these
+  records; KPI shows their exclusion and manual server-source selection omits
+  assembled-cell measures. No station observation becomes a release or QA pass.
+- Typed and generic forced receipt allow exact replay or a full append whose
+  prefix and batch metadata are unchanged. Altered/truncated/stripped histories
+  and cross-batch ID reuse fail visibly. A legacy packet cannot create an
+  alternate same-name batch to bypass the protected observation ledger. Serial
+  writes recheck the current snapshot transactionally; new ledgers cannot use
+  the old serial/release editor. Export remains a read-only saved snapshot.
+- **384 frontend tests**, typecheck and PWA build passed. Real IndexedDB tests
+  cover journal rollback/retry, concurrent retries, stale intent, reopen,
+  immutable receipt and legacy preservation; six-station component tests cover
+  pending/failed saves and exact-ID retry. Removing the immutable receipt guard
+  makes its regression fail. Chromium **390×844 / 1365×900** passed required
+  units, failed-journal retained draft, offline retry/double-submit, exact reopen,
+  original totals, serial gate, both filling exclusions, KPI exclusion and no
+  overflow/errors. Protected-intake browser regressions also passed both sizes;
+  the new phone unit controls were visually inspected.
+- No schema, dependency, backend, native/signing or automatic-sync change.
+  Physical OnePlus, installed APK upgrade/restore, emulator, BLE/QR and
+  two-device/TLS acceptance were not run. Next: explicit station predecessor
+  and source/count reconciliation, then a separately declared cell release and
+  serial integrity before enabling new-intake execution/filling. No material
+  balance, stock consumption, pairing rate or physical yield is invented.
+
 ## 2026-11-11 — Reject truncated/invalid counts in all six assembly stations
 
 - Continued from protected intake `a8285a2`, whose exact-head CI/server checks

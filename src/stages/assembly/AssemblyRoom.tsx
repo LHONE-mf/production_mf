@@ -1,4 +1,4 @@
-import {validAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
+import {appendAssemblyOperation} from '../../core/manufacturing/assemblyOperations';
 import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
 // Каркас комнаты «Сборка» (AssemblyRoom). Полностью офлайн.
 // Структура: сверху выбор партии (AssemblyRun), ниже — вкладки-подсекции, каждая
@@ -59,12 +59,18 @@ export function AssemblyModule() {
   const [serialForm, setSerialForm] = useState({ prefix: '', start: '', end: '' });
 
   const saveSerialRange = async () => {
-    if (!selected || selected.intake) return;
+    if (!selected || selected.intake || selected.operationLedger) return;
     const start = Number(serialForm.start);
     const end = Number(serialForm.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
     const sr: SerialRange = { prefix: serialForm.prefix.trim() || undefined, start, end };
-    await db.assemblyRuns.put({ ...selected, serialRange: sr, updatedAt: new Date().toISOString() });
+    try{
+      await db.transaction('rw',db.assemblyRuns,async()=>{
+        const current=await db.assemblyRuns.get(selected.id);
+        if(!current||current.intake||current.operationLedger||JSON.stringify(current)!==JSON.stringify(selected))throw new Error('Партия изменена. Проверьте журнал перед заданием номеров.');
+        await db.assemblyRuns.put({...current,serialRange:sr,updatedAt:new Date().toISOString()});
+      });
+    }catch(cause){setIntakeError(cause instanceof Error?cause.message:'Номера не сохранены');}
   };
 
   const addComment = async (text: string) => {
@@ -90,22 +96,10 @@ export function AssemblyModule() {
 
   };
 
-  // Станция добавляет операцию в партию + пересчитывает итоги
+  // New entries are observations; their units are not converted into cell release.
   const addOp = async (op: AssemblyOp) => {
-    if (!selected || !currentUser || selected.intake) return;
-    if(!validAssemblyCounts(op)){setIntakeError(ASSEMBLY_COUNT_ERROR);return;}
-    const ops = [...selected.ops, op];
-    const lastBySub = ops.filter((o) => o.substation === op.substation).slice(-1)[0];
-    void lastBySub;
-    const updated: AssemblyRun = {
-      ...selected,
-      ops,
-      cellsOut: op.qtyOut,           // упрощённо: последняя операция задаёт итог годных
-      cellsScrap: (selected.cellsScrap ?? 0) + op.qtyScrap,
-      defects: [...selected.defects, ...op.defects],
-      updatedAt: new Date().toISOString(),
-    };
-    await db.assemblyRuns.put(updated);
+    if (!selected || !currentUser || selected.intake) throw new Error('Выберите доступную партию и войдите в профиль');
+    await appendAssemblyOperation(selected,op,currentUser.id);
   };
 
   const sendToMaster = (run: AssemblyRun, forced: boolean) => {
@@ -152,7 +146,7 @@ export function AssemblyModule() {
               </option>
             ))}
           </select>
-          {selected && !selected.intake && (() => {
+          {selected && !selected.intake && !selected.operationLedger && (() => {
             const sr = selected.serialRange;
             return (
               <span className="flex items-center gap-1.5 flex-wrap">
@@ -209,27 +203,27 @@ export function AssemblyModule() {
       )}
 
       {tab === 'li-electrodes' && (selected && !selected.intake ? (
-        <LiElectrodesStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <LiElectrodesStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'z-stacking' && (selected && !selected.intake ? (
-        <ZStackingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <ZStackingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'winding' && (selected && !selected.intake ? (
-        <WindingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <WindingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'crimp-cyl' && (selected && !selected.intake ? (
-        <CrimpCylStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <CrimpCylStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'us-prismatic' && (selected && !selected.intake ? (
-        <UsPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <UsPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'laser-prismatic' && (selected && !selected.intake ? (
-        <LaserPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+        <LaserPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
       ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'journal' && (
@@ -243,7 +237,7 @@ export function AssemblyModule() {
                   {' '}· {r.intake?'тип ячейки не задан':r.cellType === 'cylindrical' ? 'цилиндрическая' : 'призматическая'}
                   {r.coatingType && <> · покрытие: {r.coatingType}</>}
                   {r.intake&&<p className="break-all">Источник сортировки: {r.intake.sortRunId} · принято {r.intake.electrodeCount} электродов · {r.intake.recordedBy} · {new Date(r.intake.recordedAt).toLocaleString()}</p>}
-                  <br />операций: {r.ops.length} · ячеек годных: <b className="text-emerald-400">{r.intake?'не определён':r.cellsOut}</b> · брак: <span className="text-red-400">{r.intake?'не определён':r.cellsScrap}</span>
+                  <br />операций: {r.ops.length} · ячеек годных: <b className="text-emerald-400">{r.intake||r.operationLedger?'не определён':r.cellsOut}</b> · брак: <span className="text-red-400">{r.intake||r.operationLedger?'не определён':r.cellsScrap}</span>
                   {r.defects.length > 0 && <><br /><span className="text-red-400">⚠ {r.defects.join(', ')}</span></>}
                   <br /><span className="text-slate-500">{new Date(r.updatedAt).toLocaleString()}</span>
                 </div>

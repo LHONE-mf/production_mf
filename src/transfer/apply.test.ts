@@ -141,3 +141,20 @@ it('protects an assembly intake against forced and stripped-source replacement',
  expect(await db.assemblyRuns.get(run.id)).toEqual(run);expect(await db.tasks.get(run.id)).toBeUndefined();
  await db.assemblyRuns.delete(run.id);await db.sortRuns.delete(sorted.id);await db.journal.delete(run.id);
 });
+
+it('protects appended assembly observation history against typed and generic forced replacements',async()=>{
+ const {appendAssemblyOperation}=await import('../core/manufacturing/assemblyOperations');
+ const base={id:'ops-receipt',batchName:'Historical recorded batch',cellType:'cylindrical' as const,ops:[],cellsOut:7,cellsScrap:1,defects:[],workerId:'original',createdAt:'2026-11-11T10:00:00Z',updatedAt:'2026-11-11T10:00:00Z'};
+ await db.assemblyRuns.put(base);
+ const op={id:'op-receipt',recordedAt:'2026-11-11T11:00:00Z',finishedAt:'2026-11-11T11:00:00Z',substation:'winding' as const,workerId:'operator',qtyIn:10,qtyOut:9,qtyScrap:1,units:{input:'sets' as const,output:'blocks' as const,scrap:'sets' as const},params:{},defects:[]};
+ const saved=await appendAssemblyOperation(base,op,'operator');
+ expect((await applyPacket(packet('assembly-run',saved))).ok).toBe(true);
+ for(const type of ['assembly-run','forced-push'] as const){
+  for(const payload of [{...base,updatedAt:'2099-01-01'}, {...saved,ops:[{...op,qtyOut:10}]},{...saved,operationLedger:undefined}])
+   expect((await applyPacket(packet(type,payload,true))).ok).toBe(false);
+ }
+ expect((await applyPacket(packet('forced-push',{...base,id:'stripped-ops-receipt'},true))).ok).toBe(false);
+ expect(await db.assemblyRuns.get('stripped-ops-receipt')).toBeUndefined();
+ expect(await db.assemblyRuns.get(base.id)).toEqual(saved);expect(await db.tasks.get(base.id)).toBeUndefined();
+ await db.assemblyRuns.delete(base.id);await db.journal.delete(op.id);
+});
