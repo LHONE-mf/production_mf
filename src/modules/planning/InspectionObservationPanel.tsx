@@ -49,7 +49,7 @@ export function InspectionObservationPanel({connection,batch}:Props){
     const controller=new AbortController();
     setSteps([]);setRecords([]);setLoading(true);setError('');setMessage('');
     void reload(controller.signal).catch(cause=>{
-      if(controller.signal.aborted)return;
+      if(controller.signal.aborted||!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Журнал инспекций недоступен';
       setError(msg);
       if(msg.startsWith('HTTP 401'))clearServerConnection();
@@ -89,10 +89,12 @@ export function InspectionObservationPanel({connection,batch}:Props){
       setMessage('Решение о проверке записано; официальная приёмка качества не выполнена.');
       try{await reload();}
       catch(cause){
+        if(!sameSession())return;
         setError('Решение сохранено, но обновление списка не удалось: '+
           (cause instanceof Error?cause.message:'ошибка связи'));
       }
     }catch(cause){
+      if(!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Не удалось записать проверку';
       setError(msg);
       if(msg.startsWith('HTTP 401'))clearServerConnection();
@@ -122,10 +124,12 @@ export function InspectionObservationPanel({connection,batch}:Props){
       setMessage('Наблюдение сохранено. Формальное решение о качестве не вынесено.');
       try{await reload();}
       catch(cause){
+        if(!sameSession())return;
         setError('Запись создана, но обновление списка не удалось: '+
           (cause instanceof Error?cause.message:'ошибка связи'));
       }
     }catch(cause){
+      if(!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Не удалось записать наблюдение';
       setError(msg);
       if(msg.startsWith('HTTP 401'))clearServerConnection();
@@ -136,6 +140,7 @@ export function InspectionObservationPanel({connection,batch}:Props){
     setLoading(true);setError('');
     try{await reload();}
     catch(cause){
+      if(!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Не удалось обновить наблюдения';
       setError(msg);
       if(msg.startsWith('HTTP 401'))clearServerConnection();

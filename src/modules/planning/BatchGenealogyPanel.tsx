@@ -35,7 +35,8 @@ export function BatchGenealogyPanel({connection,batch}: {connection:ServerConnec
         setLinks(previous => after ? [...previous,...page.links] : page.links);
         setNextAfter(page.nextAfter);
       } catch (cause) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted ||
+            getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
         const message = cause instanceof Error ? cause.message : 'Не удалось загрузить связи';
         setError(message);
         if (message.startsWith('HTTP 401')) clearServerConnection();

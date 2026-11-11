@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { clearServerConnection, setServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
+import { clearServerConnection, getServerConnection, setServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import type { Batch } from '../../core/planning/planningClient';
 import { StepEvidencePanel } from './StepEvidencePanel';
 
@@ -38,6 +38,42 @@ afterEach(async () => {
 });
 
 describe('M2 route step evidence panel', () => {
+  it('ignores an obsolete initial read failure after a newer login', async () => {
+    let finish:(response:unknown)=>void=()=>{};
+    vi.stubGlobal('fetch',vi.fn(()=>new Promise(resolve=>{finish=resolve;})));
+    setServerConnection(connection);
+    const screen=await mount(batch);
+    setServerConnection({...connection,session:{...connection.session,accessToken:'new-chief-session'}});
+    await act(async()=>{finish({ok:false,status:401,json:async()=>({error:'unauthorized'})});});
+    expect(getServerConnection()?.session.accessToken).toBe('new-chief-session');
+    expect(screen.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('does not let an old evidence write clear a newer login after unmount', async () => {
+    let finish:(response:unknown)=>void=()=>{};
+    const fetchMock=vi.fn(async(_url:string,options:RequestInit)=>{
+      if(options.method==='POST')return new Promise(resolve=>{finish=resolve;});
+      return {ok:true,json:async()=>({batchId:batch.id,steps:[
+        {number:1,name:'Coating',stage:'coating',workshopId:'coating',evidence:null},
+      ]})};
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount(batch);
+    await act(async()=>{screen.querySelector('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(fetchMock.mock.calls.filter(call=>call[1].method==='POST')).toHaveLength(1);
+    await act(async()=>{root!.unmount();});root=undefined;
+    setServerConnection({...connection,session:{...connection.session,accessToken:'new-chief-session'}});
+    await act(async()=>{finish({ok:false,status:401,json:async()=>({error:'unauthorized'})});});
+    expect(getServerConnection()?.session.accessToken).toBe('new-chief-session');
+  });
+
+  it('clears the current login when its evidence read is unauthorized', async () => {
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:false,status:401,json:async()=>({error:'unauthorized'})}));
+    setServerConnection(connection);
+    await mount(batch);
+    expect(getServerConnection()).toBeNull();
+  });
+
   it('shows versioned step evidence from the server and offers only possible follow-up events', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

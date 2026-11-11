@@ -1,3 +1,25 @@
+## 2026-11-11 — Preserve newer logins across obsolete Planning failures
+
+- Continued after source replacement commit `1b423f4`. Its exact-head web/server
+  CI [42957968917](https://github.com/LHONE-mf/production_mf/actions/runs/42957968917),
+  Run Tests [42957968904](https://github.com/LHONE-mf/production_mf/actions/runs/42957968904)
+  and signed APK [42957964067](https://github.com/LHONE-mf/production_mf/actions/runs/42957964067)
+  all passed; `app-release-signed` was published for that SHA.
+- Inspection before expanding workshop execution permissions reproduced obsolete
+  HTTP 401 replies clearing a newer login in route-step evidence, observations,
+  inspection reviews/criteria, genealogy and the Planning refresh/action wrapper.
+  Late failures now check the session that sent the request before changing
+  errors or authentication. Current-session authorization failures still expire
+  the session; evidence submits also reject an obsolete session before sending.
+- Rendered regressions failed before the fix. Tests cover delayed initial reads,
+  evidence/observation/review/criterion writes, a workspace refresh after account
+  replacement/unmount, and current-session denial controls. Full frontend checks
+  passed: **222 tests**, typecheck and PWA build. Backend unchanged from the
+  **173-test** source-replacement verification.
+- No permissions were broadened. Next M2 work remains workshop-scoped execution
+  access and material reconciliation; physical/TLS/production acceptance stays
+  open, and automatic task synchronization remains disabled.
+
 ## 2026-11-11 — Controlled replacement of withdrawn local sources
 
 - Inspected remote branch head `8e3a671` and its successful exact-head CI

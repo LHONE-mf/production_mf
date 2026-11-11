@@ -58,7 +58,7 @@ export function RouteInspectionCriteriaPanel({connection,route,steps}:RouteProps
     const controller=new AbortController();
     setCriteria([]);setError('');setLoading(true);
     void reload(controller.signal).catch(cause=>{
-      if(controller.signal.aborted)return;
+      if(controller.signal.aborted||!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Ошибка загрузки критериев';
       setError(msg);
       if(msg.startsWith('HTTP 401'))clearServerConnection();
@@ -89,9 +89,10 @@ export function RouteInspectionCriteriaPanel({connection,route,steps}:RouteProps
       setCharacteristic('');setLower('');setUpper('');setNote('');
       setMessage('Контрольный показатель сохранён в неизменяемом журнале версии маршрута.');
       try{await reload();}
-      catch(cause){setError('Показатель создан, но обновление не удалось: '+
+      catch(cause){if(!sameSession())return;setError('Показатель создан, но обновление не удалось: '+
         (cause instanceof Error?cause.message:'ошибка связи'));}
     }catch(cause){
+      if(!sameSession())return;
       const msg=cause instanceof Error?cause.message:'Ошибка записи';
       setError(msg);if(msg.startsWith('HTTP 401'))clearServerConnection();
     }finally{setBusy(false);}
@@ -170,7 +171,7 @@ export function BatchInspectionCriteriaPanel({connection,batchId}:BatchProps) {
           connection.session.accessToken)setCriteria(response.criteria);
       })
       .catch(cause=>{
-        if(controller.signal.aborted)return;
+        if(controller.signal.aborted||getServerConnection()?.session.accessToken!==connection.session.accessToken)return;
         const msg=cause instanceof Error?cause.message:'Критерии недоступны';
         setError(msg);if(msg.startsWith('HTTP 401'))clearServerConnection();
       })

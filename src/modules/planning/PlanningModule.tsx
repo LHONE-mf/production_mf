@@ -153,7 +153,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     setError('');
     void refresh(controller.signal)
       .catch(cause => {
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && getServerConnection()?.session.accessToken === connection.session.accessToken) {
           setWorkshops([]); setRoutes([]); setOrders([]); setIncoming([]);
           setError(formatProblem(cause));
           if (formatProblem(cause).startsWith('HTTP 401')) clearServerConnection();
@@ -177,6 +177,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         await loadEvents(selectedBatch);
       setMessage(success);
     } catch (cause) {
+      if (getServerConnection()?.session.accessToken !== connection.session.accessToken) return;
       const problem = formatProblem(cause);
       setError(problem);
       if (problem.startsWith('HTTP 401')) clearServerConnection();

@@ -41,7 +41,7 @@ export function StepEvidencePanel({ connection, batch }: Props) {
     setRecords([]); setLoading(true); setError('');
     void fetchEvidence(controller.signal)
       .catch(reason => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !currentSession()) return;
         setRecords([]);
         const text = reason instanceof Error ? reason.message : 'Журнал недоступен';
         setError(text);
@@ -72,7 +72,7 @@ export function StepEvidencePanel({ connection, batch }: Props) {
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!currentNumber || !currentKind || busy || batch.status !== 'in_progress') return;
+    if (!currentNumber || !currentKind || busy || batch.status !== 'in_progress' || !currentSession()) return;
     setBusy(true); setError(''); setMessage('');
     try {
       await planningApi.recordStepEvidence(connection, batch.id, currentNumber, {
@@ -91,6 +91,7 @@ export function StepEvidencePanel({ connection, batch }: Props) {
           (cause instanceof Error ? cause.message : 'ошибка связи'));
       }
     } catch (cause) {
+      if (!currentSession()) return;
       const text = cause instanceof Error ? cause.message : 'Не удалось записать событие';
       setError(text);
       if (text.startsWith('HTTP 401')) clearServerConnection();
