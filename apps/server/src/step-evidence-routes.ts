@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { hasWholeCount } from './quantities.js';
 
 const uuid = z.guid();
 const paramsSchema = z.object({
@@ -90,6 +91,12 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         if (!existing.rows[0].identical)
           return reply.code(409).send({ error:'step_evidence_id_reused' });
         return { id:data.eventId,batchId,stepNumber,kind:data.kind,alreadyRecorded:true };
+      }
+      // Existing immutable declarations retain exact retry semantics. Validate
+      // only a new write; never round or rewrite a historical fractional count.
+      if (data.kind==='completed' && !hasWholeCount(data.quantity,data.quantityUnit)) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({error:'quantity_requires_whole_count'});
       }
       if (b.status !== 'in_progress' || !['released','in_progress'].includes(b.order_status)) {
         await client.query('ROLLBACK');

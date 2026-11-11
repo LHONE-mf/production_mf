@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { hasWholeCount } from './quantities.js';
 
 const stage = z.enum([
   'storage', 'slurry', 'coating', 'calendaring', 'cutting', 'sorting',
@@ -307,6 +308,8 @@ export function registerPlanningRoutes(app: FastifyInstance, pool: Pool) {
     const parsed = orderSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: 'invalid_order' });
     const data = parsed.data, id = randomUUID();
+    if (!hasWholeCount(data.plannedQuantity,data.quantityUnit))
+      return reply.code(400).send({error:'quantity_requires_whole_count'});
     try {
       const result = await pool.query(`INSERT INTO production_orders
         (organization_id,id,order_code,product_code,route_id,route_version,

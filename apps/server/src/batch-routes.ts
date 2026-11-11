@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { hasWholeCount } from './quantities.js';
 
 // Execution and shop-floor permissions are deliberately out of scope for this
 // planning slice. Only a server-authenticated chief may release orders or
@@ -62,6 +63,8 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
     if (!params.success || !parsed.success)
       return reply.code(400).send({ error: 'invalid_batch' });
     const data = parsed.data, id = randomUUID(), eventId = randomUUID();
+    if (!hasWholeCount(data.plannedQuantity,data.quantityUnit))
+      return reply.code(400).send({error:'quantity_requires_whole_count'});
     const client = await pool.connect();
     try {
       await client.query('BEGIN');

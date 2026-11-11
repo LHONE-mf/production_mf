@@ -1,5 +1,14 @@
 # Hybrid MES: server foundation
 
+## Whole-count API writes (2026-11-11)
+
+New orders, batches, completion evidence, handovers and genealogy declarations
+reject fractional `cells`/`pieces` with HTTP 400 `quantity_requires_whole_count`.
+Integer decimal spellings such as `12.000000` remain valid. Fractional physical
+units (kg, m, m2) retain exact six-decimal support. Existing immutable records
+remain readable; exact stable-ID historical retries are acknowledged before
+the new guard. No database migration or automatic correction is performed.
+
 ## M2 local source/output comparison (2026-11-10)
 
 `GET /planning/batches/:id/quantity-flow` adds `sourceComparison` per route

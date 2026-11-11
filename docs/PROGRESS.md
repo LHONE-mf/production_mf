@@ -1,3 +1,18 @@
+## 2026-11-11 — Whole-count manufacturing API safeguards
+
+- New order, batch, completion, handover and genealogy API writes require
+  whole counts for `cells` and `pieces`; fractional kg, m and m2 stay valid.
+  Values are validated as strings, without rounding or unit conversion.
+- Stable-ID retries are checked before the new count guard, preserving exact
+  retries of historical fractional declarations. No existing records or schema
+  were changed. Five real PostgreSQL regressions cover all affected write paths,
+  rejection without consuming identities, and unchanged historical quantities.
+- The client explains fractional-count errors and preserves the entered value
+  for correction. Full local verification passed: **202 frontend / 169 backend
+  tests**, both typechecks and builds. Physical-device acceptance remains open.
+- Prior refresh fix `2f4dcae` passed exact-head CI `42898623163` and Run Tests
+  `42898623062`. Automatic background synchronization remains disabled.
+
 ## 2026-11-10 — Quantity comparison refresh isolation
 
 - Reproduced and fixed two manual-refresh races in the quantity panel: a late

@@ -162,7 +162,9 @@ export async function planningRequest<T>(
     const failure: unknown = await response.json().catch(() => null);
     const code = typeof failure === 'object' && failure !== null && 'error' in failure &&
       typeof failure.error === 'string' ? failure.error : 'server_request_failed';
-    throw new Error('HTTP ' + response.status + ': ' + code);
+    const message=code==='quantity_requires_whole_count'
+      ? 'Количество ячеек и отдельных штук должно быть целым. Исправьте значение без округления.' : code;
+    throw new Error('HTTP ' + response.status + ': ' + message);
   }
   return response.json() as Promise<T>;
 }

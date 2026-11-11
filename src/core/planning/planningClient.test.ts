@@ -7,6 +7,15 @@ const session: PlanningSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('authenticated M2 planning client', () => {
+  it('explains a rejected fractional count without rounding the submitted value',async()=>{
+    const fetchMock=vi.fn().mockResolvedValue({ok:false,status:400,
+      json:async()=>({error:'quantity_requires_whole_count'})});
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(planningApi.createBatch(session,'order-1',{
+      batchCode:'CELL',materialLine:'cell',plannedQuantity:'1.5',quantityUnit:'cells',
+    })).rejects.toThrow('Количество ячеек и отдельных штук должно быть целым');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).plannedQuantity).toBe('1.5');
+  });
   it('uses authenticated scoped reference criteria APIs without silently approving quality',async()=>{
     const calls:Array<{url:string; options:RequestInit}>=[];
     vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{

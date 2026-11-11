@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { hasWholeCount } from './quantities.js';
 
 const uuid = z.guid();
 const paramsSchema = z.object({ id: uuid }).strict();
@@ -86,6 +87,11 @@ export function registerBatchGenealogyRoutes(app: FastifyInstance, pool: Pool) {
           return { id:linkId,sourceBatchId:data.sourceBatchId,targetBatchId:targetId,
             kind:data.kind,alreadyRecorded:true };
         }
+      }
+      if (!hasWholeCount(data.sourceQuantity,data.sourceUnit) ||
+          !hasWholeCount(data.targetQuantity,data.targetUnit)) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({error:'quantity_requires_whole_count'});
       }
       if (!['released','in_progress'].includes(source.order_status) ||
           source.status !== 'completed' ||

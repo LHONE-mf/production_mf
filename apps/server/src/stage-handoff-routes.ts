@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { authenticate } from './auth.js';
+import { hasWholeCount } from './quantities.js';
 
 const id = z.guid();
 const batchParam = z.object({ id }).strict();
@@ -70,6 +71,10 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
           return { id: data.handoffId, batchId, status: 'already_sent' };
         }
         return reply.code(409).send({ error: 'handoff_id_reused' });
+      }
+      if (!hasWholeCount(data.quantity,data.quantityUnit)) {
+        await client.query('ROLLBACK');
+        return reply.code(400).send({error:'quantity_requires_whole_count'});
       }
       if (record.status !== 'in_progress' || !['released','in_progress'].includes(record.order_status)) {
         await client.query('ROLLBACK');
