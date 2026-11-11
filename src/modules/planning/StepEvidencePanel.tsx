@@ -11,10 +11,14 @@ const labels: Record<StepEvidenceKind, string> = {
   started: 'Начало операции', completed: 'Завершение операции', deviation: 'Отклонение',
 };
 
-type Props = { connection: ServerConnection; batch: Pick<Batch, 'id' | 'status' | 'quantityUnit'> };
+type Props = {
+  connection: ServerConnection;
+  batch: Pick<Batch, 'id' | 'status' | 'quantityUnit'>;
+  onCompleted?: () => void;
+};
 
 /** Online-only, append-only evidence panel; never mirrors legacy local journals. */
-export function StepEvidencePanel({ connection, batch }: Props) {
+export function StepEvidencePanel({ connection, batch, onCompleted }: Props) {
   const [records, setRecords] = useState<BatchStepRecord[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<number | null>(null);
   const [kind, setKind] = useState<StepEvidenceKind>('started');
@@ -85,6 +89,9 @@ export function StepEvidencePanel({ connection, batch }: Props) {
       if (!currentSession()) return;
       setEventId(crypto.randomUUID()); setQuantity(''); setEquipmentCode(''); setNote('');
       setMessage('Событие записано в неизменяемый журнал сервера');
+      // A confirmed completion may unlock the next workshop handoff.
+      // Refresh dependent read-only panels even when journal reload fails.
+      if (currentKind === 'completed') onCompleted?.();
       try { await fetchEvidence(); }
       catch (cause) {
         setError('Запись сохранена, но обновление журнала не удалось: ' +
