@@ -54,6 +54,7 @@ const batch:Batch={
 };
 let root:Root|undefined,container:HTMLDivElement|undefined;
 async function mount(status:Batch['status']='in_progress') {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
   container=document.createElement('div');
   document.body.appendChild(container);
   root=createRoot(container);
@@ -74,6 +75,44 @@ afterEach(async()=>{
 });
 
 describe('M2 manual link of existing local journal',()=>{
+  it('withdraws with a reason, safely retries a lost reply and keeps the original completed-batch history',async()=>{
+    let withdrawal:Record<string,unknown>|null=null;
+    const sent:string[]=[];
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>{
+      if(options.method==='POST'){
+        sent.push(String(options.body));
+        const data=JSON.parse(String(options.body));
+        withdrawal={id:data.withdrawalId,reason:data.reason,withdrawnBy:'chief',withdrawnAt:'2026-11-11T03:00:00Z'};
+        if(sent.length===1)throw new Error('Reply lost');
+        return {ok:true,json:async()=>({id:data.withdrawalId,batchId:'batch-1',linkId:'link-1',alreadyRecorded:true})};
+      }
+      return {ok:true,json:async()=>url.endsWith('/steps')?{steps:[]}:{batchId:'batch-1',links:[{
+        id:'link-1',stepNumber:1,sourceStage:'coating',sourceEntryId:'local-1',sourceKind:'journal',
+        sourceMeasure:null,sourceCreatedAt:'2026-11-10T10:00:00Z',summary:'Original retained record',
+        defects:null,linkedBy:'chief',linkedAt:'2026-11-10T11:00:00Z',withdrawal,
+      }]}};
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount('completed');
+    const find=(label:string)=>[...screen.querySelectorAll('button')].find(b=>b.textContent===label)!;
+    await act(async()=>{find('Отозвать ссылку').click();});
+    expect((find('Записать отзыв') as HTMLButtonElement).disabled).toBe(true);
+    const reason=screen.querySelector('textarea[aria-label="Причина отзыва ссылки"]') as HTMLTextAreaElement;
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(reason,'Wrong source selected');
+      reason.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await act(async()=>{find('Записать отзыв').closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(screen.textContent).toContain('Reply lost');
+    expect(reason.value).toBe('Wrong source selected');
+    await act(async()=>{find('Записать отзыв').closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(sent).toHaveLength(2);expect(sent[0]).toBe(sent[1]);
+    expect(screen.textContent).toContain('Original retained record');
+    expect(screen.textContent).toContain('Ссылка отозвана');
+    expect(screen.textContent).toContain('Wrong source selected');
+    expect(find('Отозвать ссылку')).toBeUndefined();
+  });
+
   it('never sends demo records automatically and requires confirmation',async()=>{
     const validId='7cf31394-36cb-4aa0-a9f1-949a70863621';
     journal.entries=[

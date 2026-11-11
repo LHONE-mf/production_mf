@@ -90,10 +90,10 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
     expect(response.json()).toEqual({batchId,steps:[
       {number:1,name:'Coating',workshopId:'coating',nextStep:2,
         output:null,handoff:null,difference:null,
-        sourceComparison:{status:'no_source',sourceCount:0,source:null,difference:null}},
+        sourceComparison:{status:'no_source',sourceCount:0,withdrawnSourceCount:0,source:null,difference:null}},
       {number:2,name:'Cutting',workshopId:'cutting',nextStep:null,
         output:null,handoff:null,difference:null,
-        sourceComparison:{status:'no_source',sourceCount:0,source:null,difference:null}},
+        sourceComparison:{status:'no_source',sourceCount:0,withdrawnSourceCount:0,source:null,difference:null}},
     ]});
   });
 

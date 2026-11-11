@@ -1,5 +1,28 @@
 # Hybrid MES: server foundation
 
+## Append-only local reference withdrawal (2026-11-11)
+
+Apply additive migration `018_m2_local_source_withdrawals.sql` before serving
+the updated journal/quantity APIs. It preserves existing links and introduces
+an immutable withdrawal ledger with organization-scoped link/actor foreign keys.
+
+Chief-only `POST /planning/batches/:id/journal-links/:linkId/withdraw` accepts
+`{withdrawalId, reason}` (stable UUID; trimmed reason 1–2000 characters).
+It returns `{id,batchId,linkId,alreadyRecorded}`: 201 for a new record, 200 for
+an identical retry. Changed UUID payloads and competing withdrawals return 409;
+invalid requests return 400, unauthorized roles 403, inaccessible sources 404.
+The parent batch lock serializes corrections. A reference can be withdrawn
+after batch completion without reopening it or changing execution/QA history.
+
+Journal history includes an optional `withdrawal` object with `id`, `reason`,
+`withdrawnBy`, `withdrawnAt`; original summaries and measurements remain intact.
+Quantity comparisons use active measured references only and additionally
+report `withdrawnSourceCount`. The UI refreshes comparisons after source changes.
+Withdrawal is terminal: old source identities remain reserved, and neither an
+attachment retry nor a new UUID reactivates/reassigns that source. Versioned
+replacement of an existing source snapshot remains future work. There is no
+inventory mutation, batch release, formal QA disposition or offline queue.
+
 ## Whole-count API writes (2026-11-11)
 
 New orders, batches, completion evidence, handovers and genealogy declarations

@@ -86,6 +86,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
   const [handoffHistory, setHandoffHistory] = useState<BatchHandoff[]>([]);
   const [handoffRoute, setHandoffRoute] = useState<StepDetail[]>([]);
   const [genealogyVersion, setGenealogyVersion] = useState(0);
+  const [quantityVersion,setQuantityVersion]=useState(0);
   const [selectedOrder, setSelectedOrder] = useState<string | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<Route | null>(null);
@@ -554,12 +555,13 @@ function PlanningWorkspace({ connection, onOpenSync }: {
         </div>)}
         {selectedBatchRow && <div className="rounded-lg border border-slate-600 p-3 space-y-3">
           <h3 className="text-white font-medium">{selectedBatchRow.batchCode} · История</h3>
-          <StepEvidencePanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
-          <QuantityFlowPanel key={selectedBatchRow.id} connection={connection} batchId={selectedBatchRow.id} />
-          <LocalJournalLinkPanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
-          <BatchInspectionCriteriaPanel key={selectedBatchRow.id}
+          <StepEvidencePanel key={'evidence:'+selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
+          <QuantityFlowPanel key={'quantity:'+selectedBatchRow.id+':'+quantityVersion} connection={connection} batchId={selectedBatchRow.id} />
+          <LocalJournalLinkPanel key={'sources:'+selectedBatchRow.id} connection={connection} batch={selectedBatchRow}
+            onReferencesChanged={()=>setQuantityVersion(version=>version+1)} />
+          <BatchInspectionCriteriaPanel key={'criteria:'+selectedBatchRow.id}
             connection={connection} batchId={selectedBatchRow.id} />
-          <InspectionObservationPanel key={selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
+          <InspectionObservationPanel key={'inspections:'+selectedBatchRow.id} connection={connection} batch={selectedBatchRow} />
           <div className="space-y-3 rounded-lg border border-slate-700 p-3">
             <h4 className="font-medium text-white">Происхождение партии</h4>
             <BatchGenealogyPanel key={selectedBatchRow.id+':'+genealogyVersion}

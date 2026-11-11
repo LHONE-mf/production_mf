@@ -71,6 +71,7 @@ describe('M2 online planning screen', () => {
   });
 
   it('shows source-to-target genealogy only inside a chief server batch detail', async () => {
+    let withdrawal:{id:string;reason:string;withdrawnBy:string;withdrawnAt:string}|null=null;
     const link = {
       id: 'link-1', sourceBatchId: 'cathode-1', targetBatchId: 'cell-1',
       sourceCode: 'CATHODE-LOT', targetCode: 'CELL-LOT',
@@ -79,8 +80,19 @@ describe('M2 online planning screen', () => {
       actorId: 'chief', note: 'Electrode batch trace',
       occurredAt: '2026-11-10T10:00:00Z',
     };
-    const fetchMock = vi.fn().mockImplementation(async (url: string) => ({
+    const fetchMock = vi.fn().mockImplementation(async (url: string, options:RequestInit) => ({
       ok: true, json: async () => {
+        if(url.endsWith('/journal-links/local-link/withdraw')){
+          const data=JSON.parse(String(options.body));
+          withdrawal={id:data.withdrawalId,reason:data.reason,withdrawnBy:'chief',withdrawnAt:'2026-11-11T03:00:00Z'};
+          return {id:data.withdrawalId,batchId:'cell-1',linkId:'local-link',alreadyRecorded:false};
+        }
+        if(url.endsWith('/planning/batches/cell-1/journal-links'))return {batchId:'cell-1',links:[{
+          id:'local-link',stepNumber:1,sourceStage:'assembly',sourceKind:'journal',sourceEntryId:'local-1',
+          sourceMeasure:null,summary:'Original local reference',sourceCreatedAt:'2026-11-10T10:00:00Z',
+          linkedBy:'chief',linkedAt:'2026-11-10T11:00:00Z',defects:null,withdrawal,
+        }]};
+        if(url.endsWith('/planning/batches/cell-1/steps'))return {steps:[]};
         if (url.endsWith('/planning/workshops')) return { workshops: [] };
         if (url.endsWith('/planning/routes')) return { routes: [] };
         if (url.endsWith('/planning/orders')) return { orders: [{
@@ -151,6 +163,23 @@ describe('M2 online planning screen', () => {
     expect(screen.querySelector('select[aria-label="Исходная партия"]')?.textContent)
       .toContain('CATHODE-LOT');
     expect(screen.textContent).toContain('Количество результата (cells)');
+    await vi.waitFor(async()=>{
+      await act(async()=>{await new Promise(resolve=>setTimeout(resolve,0));});
+      expect(screen.textContent).toContain('Original local reference');
+    });
+    const withdraw=[...screen.querySelectorAll('button')].find(button=>button.textContent==='Отозвать ссылку');
+    expect(withdraw).toBeTruthy();
+    await act(async()=>{withdraw!.click();});
+    const reason=screen.querySelector('textarea[aria-label="Причина отзыва ссылки"]') as HTMLTextAreaElement;
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(reason,'Wrong journal record');
+      reason.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    const submit=[...screen.querySelectorAll('button')].find(button=>button.textContent==='Записать отзыв')!;
+    await act(async()=>{submit.closest('form')!.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));});
+    expect(screen.textContent).toContain('Ссылка отозвана. Исходная запись и история сохранены.');
+    expect(screen.textContent).toContain('Wrong journal record');
+    expect(fetchMock.mock.calls.filter(call=>call[0].endsWith('/quantity-flow')).length).toBeGreaterThanOrEqual(2);
   });
 
   it('shows only workshop-scoped pending handovers for a server master', async () => {

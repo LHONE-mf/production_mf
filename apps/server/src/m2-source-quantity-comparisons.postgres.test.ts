@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 import { buildApp } from './app.js';
@@ -94,7 +95,7 @@ integration('M2 local source quantity comparisons (PostgreSQL)', () => {
   it('distinguishes absent references, missing output and incompatible units',async () => {
     const b=await scenario('calendaring','kg');
     const comparison=async () => (await read(b.id)).json().steps[0].sourceComparison;
-    expect(await comparison()).toEqual({status:'no_source',sourceCount:0,source:null,difference:null});
+    expect(await comparison()).toEqual({status:'no_source',sourceCount:0,withdrawnSourceCount:0,source:null,difference:null});
     await link(b,'calender_run','calendered_length_m');
     expect(await comparison()).toMatchObject({status:'output_missing',difference:null});
     await complete(b,'10');
@@ -121,7 +122,65 @@ integration('M2 local source quantity comparisons (PostgreSQL)', () => {
     await link(b,'cut_run','cut_good_pieces','50');
     await link(b,'cut_run','cut_good_pieces','50');
     expect((await read(b.id)).json().steps[0].sourceComparison).toEqual({
-      status:'multiple_sources',sourceCount:2,source:null,difference:null,
+      status:'multiple_sources',sourceCount:2,withdrawnSourceCount:0,source:null,difference:null,
     });
+  });
+
+  it('withdraws an incorrect reference with an immutable reason while preserving the original',async()=>{
+    const b=await scenario('cutting','pieces');await complete(b,'100');
+    const source=await link(b,'cut_run','cut_good_pieces','99');
+    const url='/planning/batches/'+b.id+'/journal-links/'+source.linkId+'/withdraw';
+    const payload={withdrawalId:randomUUID(),reason:'Wrong local run selected'};
+    expect((await app.inject({method:'POST',url,payload})).statusCode).toBe(401);
+    expect((await app.inject({method:'POST',url,headers:headers(1),payload})).statusCode).toBe(403);
+    expect((await app.inject({method:'POST',url,headers:headers(2),payload})).statusCode).toBe(404);
+    expect((await app.inject({method:'POST',url,headers:headers(),payload:{...payload,reason:' '}})).statusCode).toBe(400);
+    expect((await app.inject({method:'POST',url,headers:headers(),payload:{...payload,withdrawnBy:users[2]}})).statusCode).toBe(400);
+    const simultaneous=await Promise.all([1,2].map(()=>app.inject({method:'POST',url,headers:headers(),payload})));
+    expect(simultaneous.map(r=>r.statusCode).sort()).toEqual([200,201]);
+    const retried=await post(url,payload,200);
+    expect(retried.alreadyRecorded).toBe(true);
+    const changed=await app.inject({method:'POST',url,headers:headers(),payload:{...payload,reason:'Changed story'}});
+    expect(changed.statusCode).toBe(409);
+    const history=await app.inject({method:'GET',url:'/planning/batches/'+b.id+'/journal-links',headers:headers()});
+    expect(history.json().links[0]).toMatchObject({id:source.linkId,sourceEntryId:source.sourceEntryId,
+      sourceMeasure:{value:'99.000000'},withdrawal:{id:payload.withdrawalId,reason:payload.reason,withdrawnBy:users[0]}});
+    expect((await read(b.id)).json().steps[0].sourceComparison).toMatchObject({
+      status:'no_source',sourceCount:0,withdrawnSourceCount:1,source:null,difference:null});
+    // Reapplying the additive migration must preserve both existing ledgers.
+    await pool.query(await readFile('migrations/018_m2_local_source_withdrawals.sql','utf8'));
+    expect((await pool.query(`SELECT reason FROM production_local_journal_withdrawals
+      WHERE organization_id=$1 AND id=$2`,[org,payload.withdrawalId])).rows[0].reason).toBe(payload.reason);
+    await post('/planning/batches/'+b.id+'/steps/1/journal-links',{
+      linkId:source.linkId,sourceEntryId:source.sourceEntryId,sourceKind:'cut_run',sourceStage:'cutting',
+      sourceCreatedAt:'2026-11-10T10:00:00Z',summary:'Local fixture reference',
+      sourceMeasure:{kind:'cut_good_pieces',value:'99'},
+    },200);
+    expect((await read(b.id)).json().steps[0].sourceComparison.sourceCount).toBe(0);
+    await expect(pool.query(`UPDATE production_local_journal_withdrawals SET reason='changed'
+      WHERE organization_id=$1 AND id=$2`,[org,payload.withdrawalId])).rejects.toThrow('append-only');
+    await expect(pool.query(`DELETE FROM production_local_journal_withdrawals
+      WHERE organization_id=$1 AND id=$2`,[org,payload.withdrawalId])).rejects.toThrow('append-only');
+    expect((await pool.query('SELECT status FROM production_batches WHERE organization_id=$1 AND id=$2',[org,b.id])).rows[0].status)
+      .toBe('in_progress');
+  });
+
+  it('resolves ambiguity explicitly, serializes competing withdrawals and permits audit corrections after completion',async()=>{
+    const b=await scenario('assembly','cells');await complete(b,'100');
+    const first=await link(b,'assembly_run','assembled_cells_out','100');
+    const second=await link(b,'assembly_run','assembled_cells_out','90');
+    await post('/planning/batches/'+b.id+'/status',{expectedStatus:'in_progress',status:'completed'},200);
+    const url='/planning/batches/'+b.id+'/journal-links/'+second.linkId+'/withdraw';
+    const responses=await Promise.all([1,2].map(()=>app.inject({method:'POST',url,headers:headers(),
+      payload:{withdrawalId:randomUUID(),reason:'Duplicate reference'}})));
+    expect(responses.map(r=>r.statusCode).sort()).toEqual([201,409]);
+    const comparison=(await read(b.id)).json().steps[0].sourceComparison;
+    expect(comparison).toMatchObject({status:'compared',sourceCount:1,withdrawnSourceCount:1,difference:'0.000000',
+      source:{linkId:first.linkId}});
+    const original=(await pool.query(`SELECT status FROM production_batches WHERE organization_id=$1 AND id=$2`,[org,b.id])).rows[0];
+    expect(original.status).toBe('completed');
+    const other=await scenario('assembly','cells');
+    expect((await app.inject({method:'POST',url:'/planning/batches/'+other.id+'/journal-links/'+first.linkId+'/withdraw',
+      headers:headers(),payload:{withdrawalId:randomUUID(),reason:'Wrong batch'}})).statusCode).toBe(404);
   });
 });

@@ -7,6 +7,19 @@ const session: PlanningSession = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('authenticated M2 planning client', () => {
+  it('validates withdrawal acknowledgements and keeps the same client identity on retries',async()=>{
+    const input={withdrawalId:'withdraw-1',reason:'Incorrect local run'};
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      id:'withdraw-1',batchId:'batch-1',linkId:'link-1',alreadyRecorded:false,
+    })});
+    vi.stubGlobal('fetch',fetchMock);
+    await planningApi.withdrawLocalSource(session,'batch-1','link-1',input);
+    await planningApi.withdrawLocalSource(session,'batch-1','link-1',input);
+    expect(fetchMock.mock.calls[0][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://mes.example.org/planning/batches/batch-1/journal-links/link-1/withdraw');
+    fetchMock.mockResolvedValue({ok:true,json:async()=>({id:'other',alreadyRecorded:true})});
+    await expect(planningApi.withdrawLocalSource(session,'batch-1','link-1',input)).rejects.toThrow('подтверждение отзыва');
+  });
   it('explains a rejected fractional count without rounding the submitted value',async()=>{
     const fetchMock=vi.fn().mockResolvedValue({ok:false,status:400,
       json:async()=>({error:'quantity_requires_whole_count'})});

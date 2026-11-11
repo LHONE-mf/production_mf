@@ -1,3 +1,31 @@
+## 2026-11-11 — Audited withdrawal of incorrect local journal references
+
+- Verified clean remote head `c7c4fc7` and its successful exact-head CI before
+  changes. Reused the current hybrid design and existing source ledger.
+- Added migration `018_m2_local_source_withdrawals.sql`: immutable withdrawal
+  identities, link/actor foreign keys and a unique withdrawal per source.
+  Chief-only withdrawal requires a reason, records actor/time, serializes under
+  a batch lock and safely acknowledges identical retries. Original sources,
+  completion evidence and batch status are preserved, including terminal batches.
+- Journal history exposes the reason and author. Quantity comparisons exclude
+  withdrawn measurements, show the excluded count and refresh after source
+  changes. Source identities stay reserved; original attachment retries cannot
+  reactivate them. No snapshot replacement or formal material reconciliation.
+- Added PostgreSQL regressions for role/tenant and batch isolation, concurrent
+  duplicate/competing attempts, strict inputs, migration reapplication,
+  immutable records, completed-batch correction and non-reactivation. UI/client
+  tests cover required rationale, lost-reply retry, acknowledgement validation
+  and retained history. Full checks: **171 backend / 204 frontend tests passed**,
+  both typechecks and builds passed.
+- Real Chromium **390×844 / 1365×900** passed withdrawal, retained values,
+  automatic comparison refresh, whole-count error handling and genealogy using
+  actual Fastify/disposable PostgreSQL. Browser testing exposed duplicate React
+  sibling keys that remounted the journal panel on refresh; distinct keys fix it
+  and a full-screen regression reproduces the old lost-confirmation defect.
+- Migration applied only to disposable local PostgreSQL; CI applies it only to
+  its isolated database. No production migration/deployment, physical Android
+  test, automatic task sync, inventory posting or QA acceptance performed.
+
 ## 2026-11-11 — Whole-count manufacturing API safeguards
 
 - New order, batch, completion, handover and genealogy API writes require

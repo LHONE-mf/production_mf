@@ -6,6 +6,8 @@ import { authenticate } from './auth.js';
 const uuid = z.guid();
 const batchParam = z.object({ id:uuid }).strict();
 const stepParam = z.object({ id:uuid,stepNumber:z.coerce.number().int().positive().safe() }).strict();
+const withdrawalParams=z.object({id:uuid,linkId:uuid}).strict();
+const withdrawalSchema=z.object({withdrawalId:uuid,reason:z.string().trim().min(1).max(2000)}).strict();
 const sourceValue = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/)
   .refine(value=>Number(value)>0);
 const sourceMeasureSchema = z.object({
@@ -57,6 +59,47 @@ function sqlCode(error: unknown) {
  *  The chief intentionally sends selected content from local device storage.
  */
 export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool) {
+  app.post('/planning/batches/:id/journal-links/:linkId/withdraw',async(request,reply)=>{
+    const actor=await authenticate(pool,request.headers.authorization);
+    if(!actor)return reply.code(401).send({error:'unauthorized'});
+    if(actor.role!=='chief')return reply.code(403).send({error:'forbidden'});
+    const params=withdrawalParams.safeParse(request.params);
+    const input=withdrawalSchema.safeParse(request.body);
+    if(!params.success||!input.success)return reply.code(400).send({error:'invalid_source_withdrawal'});
+    const {id:batchId,linkId}=params.data,data=input.data;
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      // Serialize with source additions and other audit corrections. This does
+      // not reopen a completed batch or alter its execution/QA history.
+      const batch=await client.query(`SELECT id FROM production_batches
+        WHERE organization_id=$1 AND id=$2 FOR UPDATE`,[actor.organization_id,batchId]);
+      if(!batch.rowCount){await client.query('ROLLBACK');return reply.code(404).send({error:'batch_not_found'});}
+      const source=await client.query(`SELECT id FROM production_local_journal_links
+        WHERE organization_id=$1 AND batch_id=$2 AND id=$3`,[actor.organization_id,batchId,linkId]);
+      if(!source.rowCount){await client.query('ROLLBACK');return reply.code(404).send({error:'journal_link_not_found'});}
+      const old=await client.query(`SELECT link_id=$3 AND reason=$4 AND withdrawn_by=$5 AS identical
+        FROM production_local_journal_withdrawals WHERE organization_id=$1 AND id=$2`,
+        [actor.organization_id,data.withdrawalId,linkId,data.reason,actor.id]);
+      if(old.rowCount){
+        await client.query('ROLLBACK');
+        if(!old.rows[0].identical)return reply.code(409).send({error:'withdrawal_id_reused'});
+        return {id:data.withdrawalId,batchId,linkId,alreadyRecorded:true};
+      }
+      const withdrawn=await client.query(`SELECT id FROM production_local_journal_withdrawals
+        WHERE organization_id=$1 AND link_id=$2`,[actor.organization_id,linkId]);
+      if(withdrawn.rowCount){await client.query('ROLLBACK');return reply.code(409).send({error:'local_source_already_withdrawn'});}
+      await client.query(`INSERT INTO production_local_journal_withdrawals
+        (organization_id,id,link_id,reason,withdrawn_by) VALUES($1,$2,$3,$4,$5)`,
+        [actor.organization_id,data.withdrawalId,linkId,data.reason,actor.id]);
+      await client.query('COMMIT');
+      return reply.code(201).send({id:data.withdrawalId,batchId,linkId,alreadyRecorded:false});
+    }catch(error){
+      await client.query('ROLLBACK');
+      if(sqlCode(error)==='23505')return reply.code(409).send({error:'withdrawal_id_reused'});
+      throw error;
+    }finally{client.release();}
+  });
   app.post('/planning/batches/:id/steps/:stepNumber/journal-links', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({error:'unauthorized'});
@@ -150,12 +193,14 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
     const batch = await pool.query(`SELECT id FROM production_batches
       WHERE organization_id=$1 AND id=$2`,[actor.organization_id,params.data.id]);
     if (!batch.rowCount) return reply.code(404).send({error:'batch_not_found'});
-    const entries = await pool.query(`SELECT id,step_number,source_stage,source_entry_id,
+    const entries = await pool.query(`SELECT l.id,step_number,source_stage,source_entry_id,
         source_created_at,summary,defects,linked_by,linked_at,
-        source_kind,source_measure_kind,source_measure_value::text
-      FROM production_local_journal_links
-      WHERE organization_id=$1 AND batch_id=$2
-      ORDER BY step_number,linked_at,id LIMIT 200`,
+        source_kind,source_measure_kind,source_measure_value::text,
+        w.id AS withdrawal_id,w.reason,w.withdrawn_by,w.withdrawn_at
+      FROM production_local_journal_links l
+      LEFT JOIN production_local_journal_withdrawals w ON w.organization_id=l.organization_id AND w.link_id=l.id
+      WHERE l.organization_id=$1 AND l.batch_id=$2
+      ORDER BY step_number,linked_at,l.id LIMIT 200`,
       [actor.organization_id,params.data.id]);
     return {batchId:params.data.id,links:entries.rows.map(row=>({
       id:row.id,stepNumber:row.step_number,sourceStage:row.source_stage,
@@ -165,6 +210,8 @@ export function registerLocalJournalLinkRoutes(app: FastifyInstance, pool: Pool)
       sourceEntryId:row.source_entry_id,
       sourceCreatedAt:row.source_created_at,summary:row.summary,
       defects:row.defects,linkedBy:row.linked_by,linkedAt:row.linked_at,
+      withdrawal:row.withdrawal_id ? {id:row.withdrawal_id,reason:row.reason,
+        withdrawnBy:row.withdrawn_by,withdrawnAt:row.withdrawn_at} : null,
     }))};
   });
 }

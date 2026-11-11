@@ -73,6 +73,9 @@ export function QuantityFlowPanel({ connection, batchId }: Props) {
           Выход: {step.output ? step.output.quantity + ' ' + step.output.unit : 'ещё не подтверждён'}
         </p>
         <div className="border-t border-slate-700 pt-2 space-y-1">
+          {Boolean(step.sourceComparison?.withdrawnSourceCount) && <p className="text-xs text-amber-200">
+            Исключено отозванных величин: {step.sourceComparison!.withdrawnSourceCount}. Причины сохранены в истории ссылок.
+          </p>}
           {step.sourceComparison?.source && <>
             <p className="text-slate-300 break-words">{step.sourceComparison.source.summary}</p>
             <p className="text-xs text-slate-400">

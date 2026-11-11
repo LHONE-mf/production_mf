@@ -74,6 +74,7 @@ export type LocalJournalLink = {
   sourceKind: LocalSourceKind; sourceMeasure: LocalSourceMeasure | null;
   sourceCreatedAt: string; summary: string; defects: string | null;
   linkedBy: string; linkedAt: string;
+  withdrawal?:{id:string;reason:string;withdrawnBy:string;withdrawnAt:string}|null;
 };
 export type InspectionKind = 'measurement' | 'visual';
 export type InspectionUnit = 'um' | 'mm' | 'g' | 'mg' | 'mOhm' |
@@ -119,6 +120,7 @@ export type QuantityFlowStep = {
   sourceComparison?: {
     status:'no_source'|'multiple_sources'|'reference_only'|'output_missing'|'unit_mismatch'|'compared';
     sourceCount:number;
+    withdrawnSourceCount?:number;
     source:{linkId:string;sourceEntryId:string;summary:string;measure:LocalSourceMeasure}|null;
     difference:string|null;
   };
@@ -270,6 +272,14 @@ export const planningApi = {
   journalLinks: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; links: LocalJournalLink[] }>(
       c, '/planning/batches/' + id(batchId) + '/journal-links', { signal }),
+  withdrawLocalSource:async(c:PlanningSession,batchId:string,linkId:string,
+    input:{withdrawalId:string;reason:string})=>{
+    const result=await planningRequest<{id:string;batchId:string;linkId:string;alreadyRecorded:boolean}>(
+      c,'/planning/batches/'+id(batchId)+'/journal-links/'+id(linkId)+'/withdraw',{method:'POST',body:input});
+    if(!result||result.id!==input.withdrawalId||result.batchId!==batchId||result.linkId!==linkId||
+      typeof result.alreadyRecorded!=='boolean')throw new Error('Сервер вернул неверное подтверждение отзыва');
+    return result;
+  },
   attachLocalJournal: (c: PlanningSession, batchId: string, stepNumber: number, input: {
     linkId: string; sourceEntryId: string; sourceStage: string;
     sourceKind?: LocalSourceKind; sourceMeasure?: LocalSourceMeasure;
@@ -327,6 +337,8 @@ export const planningApi = {
           const comparison=step.sourceComparison;
           if (comparison===undefined) return false;
           if (!comparison || !Number.isSafeInteger(comparison.sourceCount) || comparison.sourceCount<0) return true;
+          if(comparison.withdrawnSourceCount!==undefined &&
+            (!Number.isSafeInteger(comparison.withdrawnSourceCount)||comparison.withdrawnSourceCount<0))return true;
           const {source,sourceCount,status,difference}=comparison;
           if (sourceCount!==1) return source!==null || difference!==null ||
             status!==(sourceCount===0 ? 'no_source' : 'multiple_sources');

@@ -5,13 +5,13 @@ import { localSourceCandidates, localKindLabels, metricLabels, type LocalSourceC
 import { clearServerConnection, getServerConnection, type ServerConnection } from '../../core/sync/serverConnection';
 import { planningApi, type Batch, type BatchStepRecord, type LocalJournalLink } from '../../core/planning/planningClient';
 
-type Props = { connection: ServerConnection; batch: Batch };
+type Props = { connection: ServerConnection; batch: Batch; onReferencesChanged?:()=>void };
 const inputClass = 'w-full rounded-lg border border-slate-600 bg-slate-900 p-2 text-sm text-white';
 
 /** Manual online association of a local journal snapshot with one route step.
  *  A reference is not completion evidence or validated material consumption.
  */
-export function LocalJournalLinkPanel({ connection, batch }: Props) {
+export function LocalJournalLinkPanel({ connection, batch, onReferencesChanged }: Props) {
   const [steps, setSteps] = useState<BatchStepRecord[]>([]);
   const [links, setLinks] = useState<LocalJournalLink[]>([]);
   const [local, setLocal] = useState<LocalSourceCandidate[]>([]);
@@ -23,6 +23,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [withdrawal,setWithdrawal]=useState<{linkId:string;withdrawalId:string;reason:string}|null>(null);
 
   function sameSession() {
     return getServerConnection()?.session.accessToken === connection.session.accessToken;
@@ -42,6 +43,11 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
     ]);
     if (!Array.isArray(route.steps) || !Array.isArray(history.links))
       throw new Error('Сервер вернул неверную историю журнала');
+    if(history.links.some(link=>link.withdrawal && (
+      typeof link.withdrawal.id!=='string'||typeof link.withdrawal.reason!=='string'||
+      typeof link.withdrawal.withdrawnBy!=='string'||typeof link.withdrawal.withdrawnAt!=='string'||
+      !Number.isFinite(Date.parse(link.withdrawal.withdrawnAt)))))
+      throw new Error('Сервер вернул неверную историю отзыва');
     if (!signal?.aborted && sameSession()) {
       setSteps(route.steps.filter((row,index,list) =>
         list.findIndex(other => other.number === row.number) === index));
@@ -94,6 +100,7 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       if (!sameSession()) return;
       // Do not repeat a successful append if refreshing failed.
       resetSelection();
+      onReferencesChanged?.();
       setMessage('Ссылка записана на сервере. Исходный локальный журнал не изменён.');
       try { await load(); }
       catch (cause) {
@@ -105,6 +112,28 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
       setError(text);
       if (text.startsWith('HTTP 401')) clearServerConnection();
     } finally { setBusy(false); }
+  }
+
+  async function withdraw(event:React.FormEvent){
+    event.preventDefault();
+    if(!withdrawal||!withdrawal.reason.trim()||busy||!sameSession())return;
+    setBusy(true);setError('');setMessage('');
+    try{
+      await planningApi.withdrawLocalSource(connection,batch.id,withdrawal.linkId,{
+        withdrawalId:withdrawal.withdrawalId,reason:withdrawal.reason.trim(),
+      });
+      if(!sameSession())return;
+      setWithdrawal(null);onReferencesChanged?.();
+      setMessage('Ссылка отозвана. Исходная запись и история сохранены.');
+      try{await load();}catch(cause){
+        if(sameSession())setError('Отзыв сохранён, но обновить историю не удалось: '+
+          (cause instanceof Error?cause.message:'ошибка связи'));
+      }
+    }catch(cause){
+      if(!sameSession())return;
+      const text=cause instanceof Error?cause.message:'Отзыв не записан';
+      setError(text);if(text.startsWith('HTTP 401'))clearServerConnection();
+    }finally{if(sameSession())setBusy(false);}
   }
 
   return <section className="rounded-lg border border-slate-700 p-3 space-y-3">
@@ -138,6 +167,28 @@ export function LocalJournalLinkPanel({ connection, batch }: Props) {
           {metricLabels[link.sourceMeasure.kind]}: {link.sourceMeasure.value}
         </span>}
         {link.defects && <span className="block text-amber-200">Замечание: {link.defects}</span>}
+        {link.withdrawal ? <div className="mt-2 rounded border border-amber-700 p-2 space-y-1">
+          <p className="text-amber-200">Ссылка отозвана · {new Date(link.withdrawal.withdrawnAt).toLocaleString('ru-RU')}</p>
+          <p className="whitespace-pre-wrap break-words">{link.withdrawal.reason}</p>
+          <p className="break-all">Автор отзыва: {link.withdrawal.withdrawnBy}</p>
+          <p>Исходная запись сохранена; величина исключена из сравнения.</p>
+        </div> : connection.serverRole==='chief' && (withdrawal?.linkId===link.id ?
+          <form onSubmit={event=>void withdraw(event)} className="mt-2 space-y-2 rounded border border-amber-700 p-2">
+            <p>Отзыв сохраняется в истории и исключает эту ссылку из сравнения. Статус партии и исходный журнал не меняются.</p>
+            <label className="block">Причина отзыва
+              <textarea aria-label="Причина отзыва ссылки" required maxLength={2000} rows={2}
+                className={inputClass} value={withdrawal.reason} disabled={busy}
+                onChange={event=>setWithdrawal({...withdrawal,reason:event.target.value,withdrawalId:crypto.randomUUID()})}/>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button type="submit" disabled={busy||!withdrawal.reason.trim()}
+                className="min-h-11 rounded border border-amber-600 px-3 py-2 disabled:opacity-40">Записать отзыв</button>
+              <button type="button" disabled={busy} onClick={()=>setWithdrawal(null)}
+                className="min-h-11 rounded border border-slate-600 px-3 py-2">Отмена отзыва</button>
+            </div>
+          </form> : <button type="button" disabled={busy||loading}
+            onClick={()=>{setWithdrawal({linkId:link.id,withdrawalId:crypto.randomUUID(),reason:''});setError('');}}
+            className="mt-2 min-h-11 rounded border border-slate-600 px-3 py-2 disabled:opacity-40">Отозвать ссылку</button>)}
       </li>)}
     </ol>}
     {!loading && !links.length && !error &&

@@ -218,7 +218,16 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         FROM production_local_journal_links
         WHERE organization_id=$1 AND batch_id=$4 AND route_id=$2 AND route_version=$3
           AND source_measure_kind IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM production_local_journal_withdrawals w
+            WHERE w.organization_id=production_local_journal_links.organization_id
+              AND w.link_id=production_local_journal_links.id)
         GROUP BY step_number
+      ), withdrawn_sources AS (
+        SELECT l.step_number,count(*)::int AS withdrawn_count
+        FROM production_local_journal_links l
+        JOIN production_local_journal_withdrawals w ON w.organization_id=l.organization_id AND w.link_id=l.id
+        WHERE l.organization_id=$1 AND l.batch_id=$4 AND l.source_measure_kind IS NOT NULL
+        GROUP BY l.step_number
       ), source_values AS (
         SELECT measured_sources.*,
           CASE source_metric WHEN 'calendered_length_m' THEN 'm'
@@ -233,7 +242,8 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         (r.handoff_id IS NOT NULL) AS received,
         CASE WHEN e.quantity_unit=h.quantity_unit
           THEN (e.quantity-h.quantity)::text ELSE NULL END AS quantity_difference,
-        COALESCE(l.source_count,0) AS source_count,l.source_link_id,l.source_entry_id,
+        COALESCE(l.source_count,0) AS source_count,COALESCE(w.withdrawn_count,0) AS withdrawn_count,
+        l.source_link_id,l.source_entry_id,
         l.source_summary,l.source_metric,l.source_quantity::text,l.comparison_unit,
         CASE WHEN l.source_count=1 AND e.quantity_unit=l.comparison_unit
           THEN (e.quantity-l.source_quantity)::text ELSE NULL END AS source_difference
@@ -247,6 +257,7 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
       LEFT JOIN production_stage_receipts r
         ON r.organization_id=h.organization_id AND r.handoff_id=h.id
       LEFT JOIN source_values l ON l.step_number=s.step_number
+      LEFT JOIN withdrawn_sources w ON w.step_number=s.step_number
       ORDER BY s.step_number`,
       [actor.organization_id,b.route_id,b.route_version,batchId,
         b.material_line === 'cell' ? 'common' : b.material_line]);
@@ -271,6 +282,7 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
           : row.output_quantity===null ? 'output_missing'
           : row.comparison_unit!==row.output_unit ? 'unit_mismatch' : 'compared',
         sourceCount:row.source_count,
+        withdrawnSourceCount:row.withdrawn_count,
         source:row.source_count===1 ? {
           linkId:row.source_link_id,sourceEntryId:row.source_entry_id,
           summary:row.source_summary,

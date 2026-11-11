@@ -362,6 +362,18 @@ declaration comparison, not a material balance, stock movement, verified yield
 or QA decision. PostgreSQL, client-validation, UI and phone/desktop browser
 checks passed; physical production acceptance remains open.
 
+**M2 local-reference correction checkpoint (2026-11-11):**
+Chiefs can withdraw an incorrect manual journal reference with a mandatory
+reason. Additive migration `018` keeps the original reference and appends an
+immutable actor/time/reason record. Exact retries are safe; concurrent attempts
+cannot rewrite the decision. Withdrawn values are excluded from advisory output
+comparisons and counted explicitly. The Android/web history retains the source
+and reason, and refreshes comparisons after correction. This does not reopen a
+completed batch or alter its evidence, quality decisions or inventory. Existing
+source identities remain reserved; snapshot replacement is not implemented.
+Automated PostgreSQL, rendered UI and phone/desktop browser checks passed;
+physical acceptance remains outstanding.
+
 **Remaining for M2:** integration of actual stage journals and inspection
 results, reconciling documented route-step quantities and units,
 broader workshop-scoped sender/operator permissions,
