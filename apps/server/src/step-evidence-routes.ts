@@ -168,7 +168,8 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
   app.get('/planning/batches/:id/steps', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error:'unauthorized' });
-    if (actor.role !== 'chief') return reply.code(403).send({ error:'forbidden' });
+    if (!['chief','master'].includes(actor.role))
+      return reply.code(403).send({ error:'forbidden' });
     const params = batchParam.safeParse(request.params);
     if (!params.success) return reply.code(400).send({ error:'invalid_batch_id' });
     const batch = await pool.query(`SELECT b.id,b.material_line,o.route_id,o.route_version
@@ -186,9 +187,18 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
           AND e.batch_id=$4
       WHERE s.organization_id=$1 AND s.route_id=$2 AND s.route_version=$3
         AND s.electrode_line=$5
+        AND ($6::boolean OR EXISTS (
+          SELECT 1 FROM user_workshop_memberships m
+          WHERE m.organization_id=s.organization_id AND m.user_id=$7
+            AND m.workshop_id=s.workshop_id
+        ))
       ORDER BY s.step_number,e.recorded_at,e.id LIMIT 500`,
       [actor.organization_id,b.route_id,b.route_version,params.data.id,
-        b.material_line === 'cell' ? 'common' : b.material_line]);
+        b.material_line === 'cell' ? 'common' : b.material_line,
+        actor.role === 'chief',actor.id]);
+    // Do not disclose batch existence when a master has no matching steps.
+    if (actor.role === 'master' && !rows.rowCount)
+      return reply.code(404).send({ error:'batch_not_found' });
     return { batchId:params.data.id, steps:rows.rows.map(row=>({
       number:row.step_number,name:row.name,stage:row.stage,
       workshopId:row.workshop_id,

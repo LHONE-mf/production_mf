@@ -85,7 +85,8 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
 
   it('requires a chief, active batch and a valid step in its branch', async () => {
     expect((await app.inject({method:'GET',url:'/planning/batches/'+batchId+'/steps'})).statusCode).toBe(401);
-    expect((await read(1)).statusCode).toBe(403);
+    expect((await read(1)).statusCode).toBe(200);
+    expect((await read(1)).json().steps.map((s:{number:number})=>s.number)).toEqual([2]);
     expect((await read(2)).statusCode).toBe(404);
     expect((await step(1,'started',randomUUID(),{},1)).statusCode).toBe(403);
     expect((await step(1,'started',randomUUID(),{},2)).statusCode).toBe(404);
@@ -155,6 +156,12 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
       .map((s:{evidence:{kind:string}})=>s.evidence.kind)).toEqual(['started','completed']);
     expect(response.json().steps[0].name).toBe('Cathode coating');
     expect(response.json().steps.at(-1).name).toBe('Cathode cutting');
+    const scoped = await read(1);
+    expect(scoped.statusCode).toBe(200);
+    expect(scoped.json().steps.map((s:{number:number;evidence:{kind:string}|null})=>
+      [s.number,s.evidence?.kind])).toEqual([
+      [2,'started'],[2,'completed'],
+    ]);
   });
 
   it('denies cross-workshop and revoked master writes, including old retries', async () => {
@@ -164,6 +171,7 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
       .toMatchObject({error:'step_workshop_access_denied'});
     await pool.query(`DELETE FROM user_workshop_memberships
       WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,master]);
+    expect((await read(1)).statusCode).toBe(404);
     expect((await step(2,'started',cuttingStartId,{},1)).json())
       .toMatchObject({error:'step_workshop_access_denied'});
     expect((await step(2,'deviation',randomUUID(),{note:'Revoked'},1)).statusCode).toBe(403);
@@ -172,6 +180,7 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
     expect(after.rows[0].count).toBe(before.rows[0].count);
     await pool.query(`INSERT INTO user_workshop_memberships
       (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,master]);
+    expect((await read(1)).statusCode).toBe(200);
     expect((await step(2,'started',cuttingStartId,{},1)).json())
       .toMatchObject({alreadyRecorded:true});
     const audit = await pool.query(`SELECT actor_id,workshop_id FROM production_step_evidence
