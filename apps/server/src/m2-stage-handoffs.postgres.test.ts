@@ -23,6 +23,10 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     method:'POST',url:'/planning/batches/'+batch+'/handoffs',headers:auth(index),
     payload:{handoffId,fromStep,toStep,quantity,quantityUnit,note:'Transfer ticket'},
   });
+  const candidate = (index = 4, batch = batchId) => app.inject({
+    method:'GET',url:'/planning/workshop-batches/'+batch+'/handoff-candidate',
+    headers:auth(index),
+  });
   const receive = (handoffId: string, index = 1) => app.inject({
     method:'POST',url:'/planning/handoffs/'+handoffId+'/receive',headers:auth(index),
     payload:{note:'Count and label checked'},
@@ -121,11 +125,32 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
       .toMatchObject({error:'handoff_exceeds_recorded_output'});
   });
 
+  it('returns a minimal current handoff option only to the source workshop master', async () => {
+    expect((await app.inject({method:'GET',
+      url:'/planning/workshop-batches/'+batchId+'/handoff-candidate'})).statusCode).toBe(401);
+    expect((await candidate(0)).statusCode).toBe(403);
+    expect((await candidate(3)).statusCode).toBe(404);
+    expect((await candidate(2)).statusCode).toBe(404);
+    expect((await candidate(1)).json()).toEqual({batchId,candidate:null});
+    const response = await candidate();
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({batchId,candidate:{
+      fromStep:1,toStep:2,fromName:'Coat cathode',toName:'Cut cathode',quantityUnit:'kg',
+    }});
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='coating'`,[org,sender]);
+    expect((await candidate()).statusCode).toBe(404);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'coating')`,[org,sender]);
+    expect((await candidate()).json().candidate).toMatchObject({fromStep:1,toStep:2});
+  });
+
   it('sends an append-only transfer, blocks self receipt, and scopes the master inbox', async () => {
     const created = await send(firstId,1,2,4);
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({id:firstId,batchId,status:'sent'});
     expect((await send(firstId,1,2,4)).json()).toMatchObject({status:'already_sent'});
+    expect((await candidate()).json()).toEqual({batchId,candidate:null});
     expect((await send(firstId,1,3,4)).json()).toMatchObject({error:'handoff_id_reused'});
     expect((await send(firstId,1,2,0)).json()).toMatchObject({error:'handoff_id_reused'});
     // Membership changes immediately invalidate write access and even
@@ -178,7 +203,11 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
       .toMatchObject({error:'source_step_not_completed'});
     expect((await evidence(2,'started')).statusCode).toBe(201);
     expect((await evidence(2,'completed')).statusCode).toBe(201);
+    expect((await candidate(1)).json().candidate).toMatchObject({
+      fromStep:2,toStep:3,fromName:'Cut cathode',toName:'Sort cathode',quantityUnit:'kg',
+    });
     expect((await send(secondId,2,3)).statusCode).toBe(201);
+    expect((await candidate(1)).json()).toEqual({batchId,candidate:null});
     expect((await inbox()).json().handoffs).toEqual(expect.arrayContaining([
       expect.objectContaining({id:secondId,toWorkshopId:'sorting'}),
     ]));

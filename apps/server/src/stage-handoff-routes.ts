@@ -31,6 +31,62 @@ function pgCode(error: unknown) {
  * The server keeps both declarations immutable with tenant-owned identities.
  */
 export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
+  // Minimal master-only transfer option. This is read-only; every handoff
+  // POST rechecks membership, activity, completion and receipt under a lock.
+  app.get('/planning/workshop-batches/:id/handoff-candidate', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error:'unauthorized' });
+    if (actor.role !== 'master') return reply.code(403).send({ error:'forbidden' });
+    const params = batchParam.safeParse(request.params);
+    if (!params.success) return reply.code(400).send({ error:'invalid_batch_id' });
+    const batchId = params.data.id;
+    const batch = await pool.query(`SELECT b.status,b.material_line,b.quantity_unit,
+        o.route_id,o.route_version,o.status AS order_status
+      FROM production_batches b JOIN production_orders o
+        ON o.organization_id=b.organization_id AND o.id=b.order_id
+      WHERE b.organization_id=$1 AND b.id=$2`,[actor.organization_id,batchId]);
+    if (!batch.rowCount) return reply.code(404).send({ error:'batch_not_found' });
+    const record = batch.rows[0];
+    const stepsResult = await pool.query(`SELECT s.step_number,s.name,
+        EXISTS(SELECT 1 FROM user_workshop_memberships m
+          WHERE m.organization_id=s.organization_id AND m.workshop_id=s.workshop_id
+            AND m.user_id=$5) AS assigned
+      FROM process_route_steps s
+      WHERE s.organization_id=$1 AND s.route_id=$2 AND s.route_version=$3
+        AND s.electrode_line=$4 ORDER BY s.step_number`,[
+      actor.organization_id,record.route_id,record.route_version,
+      record.material_line === 'cell' ? 'common' : record.material_line,actor.id,
+    ]);
+    const steps = stepsResult.rows as Array<{step_number:number;name:string;assigned:boolean}>;
+    if (!steps.some(step => step.assigned))
+      return reply.code(404).send({ error:'batch_not_found' });
+    const unavailable = {batchId,candidate:null};
+    if (record.status!=='in_progress' ||
+        !['released','in_progress'].includes(record.order_status)) return unavailable;
+    const last = await pool.query(`SELECT h.to_step,
+        (r.handoff_id IS NOT NULL) AS received
+      FROM production_stage_handoffs h
+      LEFT JOIN production_stage_receipts r ON r.organization_id=h.organization_id
+        AND r.handoff_id=h.id
+      WHERE h.organization_id=$1 AND h.batch_id=$2
+      ORDER BY h.from_step DESC LIMIT 1`,[actor.organization_id,batchId]);
+    if (last.rowCount && !last.rows[0].received) return unavailable;
+    const from = last.rowCount ? last.rows[0].to_step : steps[0].step_number;
+    const index = steps.findIndex(step => step.step_number === from);
+    if (index<0 || index+1>=steps.length || !steps[index].assigned) return unavailable;
+    const completed = await pool.query(`SELECT 1 FROM production_step_evidence
+      WHERE organization_id=$1 AND batch_id=$2 AND step_number=$3
+        AND kind='completed' AND quantity_unit=$4 LIMIT 1`,[
+      actor.organization_id,batchId,from,record.quantity_unit,
+    ]);
+    if (!completed.rowCount) return unavailable;
+    return {batchId,candidate:{
+      fromStep:steps[index].step_number,toStep:steps[index+1].step_number,
+      fromName:steps[index].name,toName:steps[index+1].name,
+      quantityUnit:record.quantity_unit,
+    }};
+  });
+
   app.post('/planning/batches/:id/handoffs', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
