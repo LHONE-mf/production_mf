@@ -191,6 +191,56 @@ describe('Workshop execution list',()=>{
     expect(screen.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it('automatically refreshes outbound audit after a master sends a handoff',async()=>{
+    let sent=false;
+    const outbound={
+      id:'transfer-1',fromStep:2,toStep:3,
+      fromWorkshopId:'cutting',toWorkshopId:'sorting',
+      quantity:'12.500000',quantityUnit:'kg',sentBy:'master-1',
+      sentAt:'2026-11-11T05:00:00Z',note:null,
+      receivedBy:null,receivedAt:null,receiptNote:null,
+    };
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>{
+      if(url.endsWith('/planning/workshop-batches'))return {ok:true,json:async()=>({
+        batches:[{id:'batch-1',batchCode:'CATH-001',status:'in_progress',quantityUnit:'kg'}],
+        hasMore:false,nextAfter:null,
+      })};
+      if(url.endsWith('/handoff-candidate'))return {ok:true,json:async()=>({
+        batchId:'batch-1',candidate:sent?null:{
+          fromStep:2,toStep:3,fromName:'Cutting',toName:'Sorting',quantityUnit:'kg',
+        },
+      })};
+      if(url.endsWith('/outbound-handoffs'))return {ok:true,json:async()=>({
+        batchId:'batch-1',handoffs:sent?[outbound]:[],hasMore:false,
+      })};
+      if(url.endsWith('/planning/batches/batch-1/handoffs') && options.method==='POST'){
+        sent=true;
+        const body=JSON.parse(String(options.body));
+        return {ok:true,json:async()=>({id:body.handoffId,status:'sent'})};
+      }
+      return {ok:true,json:async()=>({batchId:'batch-1',steps:[]})};
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount();
+    const open=[...screen.querySelectorAll('button')].find(b=>b.textContent==='Открыть журнал')!;
+    await act(async()=>{open.click();await Promise.resolve();});
+    expect(screen.textContent).toContain('Исходящих передач пока нет');
+    const quantity=screen.querySelector('input[aria-label="Количество передачи цеха"]')!;
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(quantity,'12.5');
+      quantity.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    const send=[...screen.querySelectorAll('button')].find(b=>b.textContent==='Отправить передачу')!;
+    await act(async()=>{send.click();await Promise.resolve();});
+    expect(screen.textContent).toContain('Передача записана');
+    expect(screen.textContent).toContain('Ожидает приёмки');
+    expect(screen.textContent).toContain('12.500000 kg');
+    expect(fetchMock.mock.calls.filter(call=>String(call[0]).endsWith('/outbound-handoffs')))
+      .toHaveLength(2);
+    expect(fetchMock.mock.calls.some(call=>String(call[0]).endsWith('/planning/orders')))
+      .toBe(false);
+  });
+
   it('rejects malformed server batch lists before rendering untrusted data',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({
       batches:[{id:'batch-1',batchCode:'CATH-001',status:'invalid',quantityUnit:'kg'}],
