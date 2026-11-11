@@ -34,8 +34,8 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/planning/batches/:id/handoffs', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
-    // Send is chief-only until workshop-specific write scopes are implemented.
-    if (actor.role !== 'chief') return reply.code(403).send({ error: 'forbidden' });
+    if (!['chief','master'].includes(actor.role))
+      return reply.code(403).send({ error: 'forbidden' });
     const params = batchParam.safeParse(request.params);
     const parsed = sendSchema.safeParse(request.body);
     if (!params.success || !parsed.success) return reply.code(400).send({ error: 'invalid_handoff' });
@@ -55,6 +55,27 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
         return reply.code(404).send({ error: 'batch_not_found' });
       }
       const record = batch.rows[0];
+      // Masters may send only *from* their currently assigned route workshop.
+      // Enforce this before even acknowledging an old handoff ID, so a revoked
+      // master cannot use retries to read or write transfer history. FOR SHARE
+      // prevents membership deletion while the transfer transaction commits.
+      if (actor.role === 'master') {
+        const source = await client.query(`SELECT 1 FROM process_route_steps s
+          JOIN user_workshop_memberships m
+            ON m.organization_id=s.organization_id AND m.workshop_id=s.workshop_id
+            AND m.user_id=$2
+          WHERE s.organization_id=$1 AND s.route_id=$3 AND s.route_version=$4
+            AND s.electrode_line=$5 AND s.step_number=$6
+          FOR SHARE OF m`, [
+          actor.organization_id,actor.id,record.route_id,record.route_version,
+          record.material_line === 'cell' ? 'common' : record.material_line,
+          data.fromStep,
+        ]);
+        if (!source.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.code(403).send({ error:'source_workshop_access_denied' });
+        }
+      }
       // Retried requests are safe even after the batch has advanced, but never
       // let the same UUID mean a different physical transfer.
       const previousId = await client.query(`SELECT id,batch_id,from_step,to_step,

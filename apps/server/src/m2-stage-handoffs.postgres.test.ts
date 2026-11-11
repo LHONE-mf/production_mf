@@ -10,8 +10,9 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
   const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
   const app = buildApp(pool);
   const org = randomUUID(), foreignOrg = randomUUID();
-  const chief = randomUUID(), receiver = randomUUID(), excludedMaster = randomUUID(), foreignChief = randomUUID();
-  const actors = [chief, receiver, excludedMaster, foreignChief];
+  const chief = randomUUID(), receiver = randomUUID(), excludedMaster = randomUUID();
+  const foreignChief = randomUUID(), sender = randomUUID();
+  const actors = [chief, receiver, excludedMaster, foreignChief, sender];
   const tokens = actors.map(() => randomBytes(32).toString('base64url'));
   const auth = (i: number) => ({ authorization: 'Bearer ' + tokens[i] });
   const code = () => randomUUID().slice(0,8);
@@ -61,7 +62,7 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     await pool.query(`INSERT INTO workshops(organization_id,id,name)
       VALUES ($1,'coating','Coating'),($1,'cutting','Cutting'),($1,'sorting','Sorting')`,[org]);
     await pool.query(`INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id)
-      VALUES($1,$2,'cutting'),($1,$2,'sorting')`,[org,receiver]);
+      VALUES($1,$2,'cutting'),($1,$2,'sorting'),($1,$3,'coating')`,[org,receiver,sender]);
     const route = await app.inject({method:'POST',url:'/planning/routes',headers:auth(0),
       payload:{code:'HND-'+code(),name:'Three-step cathode line',
         steps:[
@@ -94,7 +95,10 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
       method:'POST',url:'/planning/batches/'+batchId+'/handoffs',
       payload:{handoffId:randomUUID(),fromStep:1,toStep:2,quantity:'20',quantityUnit:'kg'},
     })).statusCode).toBe(401);
-    expect((await send(randomUUID(),1,2,1)).statusCode).toBe(403);
+    expect((await send(randomUUID(),1,2,1)).json())
+      .toMatchObject({error:'source_workshop_access_denied'});
+    expect((await send(randomUUID(),1,2,2)).json())
+      .toMatchObject({error:'source_workshop_access_denied'});
     expect((await send(randomUUID(),1,2,3)).statusCode).toBe(404);
     expect((await send(randomUUID(),1,2,0,'20','kg',randomUUID())).statusCode).toBe(404);
     expect((await send(randomUUID(),1,2)).json()).toMatchObject({error:'batch_not_active'});
@@ -118,11 +122,22 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
   });
 
   it('sends an append-only transfer, blocks self receipt, and scopes the master inbox', async () => {
-    const created = await send(firstId,1,2);
+    const created = await send(firstId,1,2,4);
     expect(created.statusCode).toBe(201);
     expect(created.json()).toMatchObject({id:firstId,batchId,status:'sent'});
-    expect((await send(firstId,1,2)).json()).toMatchObject({status:'already_sent'});
-    expect((await send(firstId,1,3)).json()).toMatchObject({error:'handoff_id_reused'});
+    expect((await send(firstId,1,2,4)).json()).toMatchObject({status:'already_sent'});
+    expect((await send(firstId,1,3,4)).json()).toMatchObject({error:'handoff_id_reused'});
+    expect((await send(firstId,1,2,0)).json()).toMatchObject({error:'handoff_id_reused'});
+    // Membership changes immediately invalidate write access and even
+    // acknowledgements of the immutable original ID.
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='coating'`,[org,sender]);
+    expect((await send(firstId,1,2,4)).json())
+      .toMatchObject({error:'source_workshop_access_denied'});
+    expect((await send(randomUUID(),1,2,4)).statusCode).toBe(403);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'coating')`,[org,sender]);
+    expect((await send(firstId,1,2,4)).json()).toMatchObject({status:'already_sent'});
     expect((await send(randomUUID(),1,2)).json())
       .toMatchObject({error:'previous_handoff_not_received'});
     const pending = (await inbox()).json().handoffs;
@@ -131,7 +146,7 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     ]));
     expect((await inbox(2)).json().handoffs).toEqual([]);
     expect((await inbox(3)).json().handoffs).toEqual([]);
-    expect((await receive(firstId,0)).json()).toMatchObject({error:'same_actor_cannot_receive'});
+    expect((await receive(firstId,4)).json()).toMatchObject({error:'same_actor_cannot_receive'});
     expect((await receive(firstId,2)).json()).toMatchObject({error:'destination_workshop_access_denied'});
     expect((await receive(firstId,3)).statusCode).toBe(404);
     expect((await history(1)).statusCode).toBe(403);
@@ -143,7 +158,7 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     const audit = (await history()).json().handoffs;
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({id:firstId,fromStep:1,toStep:2,
-      sentBy:chief,receivedBy:receiver,quantity:'20.000000',quantityUnit:'kg'});
+      sentBy:sender,receivedBy:receiver,quantity:'20.000000',quantityUnit:'kg'});
     await expect(pool.query(`UPDATE production_stage_handoffs SET note='rewritten'
       WHERE organization_id=$1 AND id=$2`,[org,firstId])).rejects.toThrow('append-only');
     await expect(pool.query(`DELETE FROM production_stage_receipts
