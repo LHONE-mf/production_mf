@@ -83,6 +83,29 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
     await pool.end();
   });
 
+  it('discovers only currently assigned master batches without exposing orders', async () => {
+    const url='/planning/workshop-batches';
+    expect((await app.inject({method:'GET',url})).statusCode).toBe(401);
+    expect((await app.inject({method:'GET',url,headers:auth(0)})).statusCode).toBe(403);
+    expect((await app.inject({method:'GET',url,headers:auth(2)})).statusCode).toBe(403);
+    const list=await app.inject({method:'GET',url,headers:auth(1)});
+    expect(list.statusCode).toBe(200);
+    expect(list.json().batches).toContainEqual({
+      id:batchId,batchCode:expect.any(String),status:'created',quantityUnit:'kg',
+    });
+    expect(list.json().hasMore).toBe(false);
+    expect(Object.keys(list.json().batches.find((b:{id:string})=>b.id===batchId)).sort())
+      .toEqual(['batchCode','id','quantityUnit','status']);
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,master]);
+    expect((await app.inject({method:'GET',url,headers:auth(1)})).json().batches)
+      .not.toContainEqual(expect.objectContaining({id:batchId}));
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,master]);
+    expect((await app.inject({method:'GET',url,headers:auth(1)})).json().batches)
+      .toContainEqual(expect.objectContaining({id:batchId}));
+  });
+
   it('requires a chief, active batch and a valid step in its branch', async () => {
     expect((await app.inject({method:'GET',url:'/planning/batches/'+batchId+'/steps'})).statusCode).toBe(401);
     expect((await read(1)).statusCode).toBe(200);

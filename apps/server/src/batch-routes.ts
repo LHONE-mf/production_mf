@@ -101,6 +101,34 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
     } finally { client.release(); }
   });
 
+  // Master-facing discovery intentionally excludes order, product, quantity
+  // and other workshops' details. The full batch listing remains chief-only.
+  app.get('/planning/workshop-batches', async (request, reply) => {
+    const actor = await authenticate(pool, request.headers.authorization);
+    if (!actor) return reply.code(401).send({ error: 'unauthorized' });
+    if (actor.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
+    const result = await pool.query(`SELECT b.id,b.batch_code,b.status,b.quantity_unit
+      FROM production_batches b
+      JOIN production_orders o
+        ON o.organization_id=b.organization_id AND o.id=b.order_id
+      WHERE b.organization_id=$1 AND EXISTS (
+        SELECT 1 FROM process_route_steps s
+        JOIN user_workshop_memberships m
+          ON m.organization_id=s.organization_id
+          AND m.workshop_id=s.workshop_id AND m.user_id=$2
+        WHERE s.organization_id=b.organization_id
+          AND s.route_id=o.route_id AND s.route_version=o.route_version
+          AND s.electrode_line=CASE WHEN b.material_line='cell'
+            THEN 'common' ELSE b.material_line END
+      )
+      ORDER BY b.created_at DESC,b.id DESC LIMIT 101`,
+      [actor.organization_id,actor.id]);
+    return { batches:result.rows.slice(0,100).map(row => ({
+      id:row.id,batchCode:row.batch_code,status:row.status,
+      quantityUnit:row.quantity_unit,
+    })), hasMore:result.rows.length>100 };
+  });
+
   app.get('/planning/orders/:id/batches', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
