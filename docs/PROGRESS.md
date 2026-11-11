@@ -1,3 +1,47 @@
+## 2026-11-11 — Declaration-bound filling handover and explicit room receipt
+
+- Revalidated clean remote `29a7fdc` and green exact-head CI. A declared assembly
+  output can now be durably assigned to one explicit filling room. The pending
+  instruction freezes the full source/declaration snapshot, serial range, cell
+  format/count, preparer/role/time and destination before packet preview.
+- Assignment and its journal commit together. Same-destination retries resume
+  the original instruction; competing destinations, changed sources, duplicate
+  declaration/job IDs and ambiguous legacy history preserve the original and
+  block allocation. Availability is checked across both rooms. The rooms are
+  alternative destinations; no dry-room -> 705 sequence is inferred.
+- A packet instruction remains pending: no fabricated `receivedAt` or receipt.
+  A different active local account explicitly records the full counted quantity
+  and receipt basis in the assigned room. Receipt and journal commit together;
+  failed drafts retain their ID for retry. Identical replay preserves a saved
+  receipt; older pending packets do not erase it. Different receipt content,
+  wrong rooms/counts, copied/stripped provenance and forced legacy bypass fail.
+- Typed and generic forced `electrolyte-in` use the same guards and enforce
+  packet-stage/destination agreement. First instruction receipt requires a
+  permitted signed supervisor role; a worker can return their receipt against
+  the already-known immutable instruction. These local transport/account roles
+  are not server workshop authority or physical/QA acceptance.
+- A validated transfer carrying the exact assembly snapshot is the same serial
+  lineage, not a second reservation. The assembly snapshot may arrive later
+  without colliding with its own transfer; unrelated or malformed claims still
+  block it. Historical incoming rows are preserved, not silently overwritten.
+- Room UI distinguishes pending/received history, persists before export,
+  exposes retry/receipt packets, and resets room-local state on destination
+  changes. New handover results cannot bypass source/receipt binding through
+  the old manual form. Linked filling-result entry is the next slice.
+- **407 frontend tests**, typecheck and PWA build passed. IndexedDB/component/
+  receipt checks cover cross-room races, rollback, source snapshots, actor/count
+  policy, exact retry/reopen, old-pending replay, forced/legacy bypass, late
+  upstream import and state isolation. Removing the allocation guard causes
+  regressions to fail. Chromium **390×844 / 1365×900** passed real chief and
+  assigned-worker login, instruction rollback, offline double-submit retry,
+  other-room exclusion, explicit different-account receipt/count rejection,
+  failed-receipt retained ID/draft, offline acceptance and exact reopen with no
+  overflow/errors. Phone receipt layout was inspected.
+- No schema/dependency/backend/native/signing/automatic-sync change. Physical
+  OnePlus, installed upgrade/restore, emulator, real BLE/QR and two-device TLS
+  acceptance were not run. Full-source/no-split allocation is a recorded claim,
+  not reconciled stock, verified material balance or a completed server route.
+
 ## 2026-11-11 — Separate declared cell output and protected serial ranges
 
 - Continued from `2b665ac`, whose exact-head frontend/server CI passed. Cell

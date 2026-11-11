@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../core/db';
-import { TaskPriority, TaskStatus, UserRole, type SyncPacket, type Task } from '../core/types';
+import { TaskPriority, TaskStatus, UserRole, StageId, type SyncPacket, type Task } from '../core/types';
 import { encodeTask } from '../core/sync/taskDto';
 import { applyPacket } from './apply';
 
@@ -177,4 +177,20 @@ it('requires a permitted envelope role for cell-output declarations and protects
  expect((await applyPacket(packet('forced-push',{...legacy,serialRange:undefined,updatedAt:'2099-01-01'},true))).ok).toBe(false);expect(await db.assemblyRuns.get(legacy.id)).toEqual(legacy);await db.assemblyRuns.delete(legacy.id);
  expect(await db.assemblyRuns.get(base.id)).toEqual(saved);
  await db.assemblyRuns.delete(base.id);await db.users.delete('output-master');await db.journal.bulkDelete([operation.id,output.id]);
+});
+
+it('routes typed/forced filling transfers through declaration allocation and preserves recorded receipts',async()=>{
+ const {prepareFillingHandover,acceptFillingHandover}=await import('../core/manufacturing/fillingHandover');
+ const source={id:'filling-source',batchName:'Filling packet fixture',cellType:'unassigned' as const,ops:[{id:'filling-cells',source:{kind:'declared' as const,reference:'filling-counted-source'},substation:'crimp-cyl' as const,workerId:'operator',recordedAt:'2026-11-11T12:00:00Z',finishedAt:'2026-11-11T12:00:00Z',qtyIn:5,qtyOut:4,qtyScrap:1,units:{input:'cells' as const,output:'cells' as const,scrap:'cells' as const},params:{},defects:[]}],sourceLedger:1 as const,operationLedger:1 as const,cellsOut:0,cellsScrap:0,defects:[],workerId:'operator',createdAt:'2026-11-11T10:00:00Z',updatedAt:'2026-11-11T13:00:00Z',cellOutput:{id:'filling-output',operationId:'filling-cells',count:4,cellType:'cylindrical' as const,serialRange:{prefix:'FILL-',start:100,end:103},recordedBy:actorId,recordedRole:UserRole.MASTER,recordedAt:'2026-11-11T13:00:00Z',note:'Counted cells'}};
+ await db.users.bulkPut([{id:actorId,login:'filling-master',fullName:'Master',password:'test-only',role:UserRole.MASTER,isActive:true,createdAt:new Date()},{id:'filling-receiver',login:'filling-receiver',fullName:'Receiver',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}]);await db.assemblyRuns.put(source);
+ const pending=await prepareFillingHandover(source,'dry-room',actorId,'filling-transfer');
+ const typed={...packet('electrolyte-in',pending),stage:StageId.ELECTROLYTE};
+ expect((await applyPacket(typed)).ok).toBe(true);expect((await db.electrolyteIncoming.get(pending.id))?.receipt).toBeUndefined();
+ expect((await applyPacket({...typed,stage:StageId.ELECTROLYTE_705})).ok).toBe(false);
+ expect((await applyPacket({...typed,payload:{...pending,cellsIn:3},forced:true})).ok).toBe(false);
+ for(const payload of [{...pending,id:'filling-duplicate',box:'floor7-room5'},{...pending,id:'filling-duplicate',box:'floor7-room5',handover:undefined,sourceAssembly:undefined}])expect((await applyPacket({...packet('forced-push',payload,true),stage:StageId.ELECTROLYTE_705})).ok).toBe(false);
+ expect(await db.tasks.get('filling-duplicate')).toBeUndefined();expect(await db.electrolyteIncoming.get('filling-duplicate')).toBeUndefined();
+ const accepted=await acceptFillingHandover(pending,'dry-room','filling-receiver',4,'Count verified','filling-receipt');
+ expect((await applyPacket(typed)).ok).toBe(true);expect(await db.electrolyteIncoming.get(pending.id)).toEqual(accepted);
+ await db.electrolyteIncoming.delete(pending.id);await db.assemblyRuns.delete(source.id);await db.users.bulkDelete([actorId,'filling-receiver']);await db.journal.bulkDelete([pending.id,'filling-receipt']);
 });

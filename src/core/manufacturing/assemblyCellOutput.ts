@@ -29,11 +29,13 @@ export function validateAssemblyCellOutput(run:AssemblyRun,output:AssemblyCellOu
  if(!current.source)throw new Error('Источник выхода не подтверждён записью');
  if(run.serialRange&&!same(run.serialRange,output.serialRange))throw new Error('Старый диапазон номеров не заменяется заявлением выхода');
 }
-export async function assertAssemblySerialAvailability(run:AssemblyRun,rangeToAssign:SerialRange,outputId?:string):Promise<void>{
+export async function assertAssemblySerialAvailability(run:AssemblyRun,rangeToAssign:SerialRange,outputId?:string,originSnapshot?:AssemblyRun):Promise<void>{
  if(!validRange(rangeToAssign))throw new Error('Диапазон номеров должен быть целым, неотрицательным и явно заданным');
  const rows=await Promise.all([db.assemblyRuns.toArray(),db.electrolyteIncoming.toArray(),db.fillRuns.toArray(),db.walzingIncoming.toArray(),db.walzRuns.toArray(),db.formationIncoming.toArray(),db.formationRuns.toArray()]);
  for(const [tableIndex,table] of rows.entries())for(const row of table){
   if(tableIndex===0&&row.id===run.id)continue;
+  // A validated transfer carries the same reserved cells, not a new serial claim.
+  if(tableIndex===1&&originSnapshot&&'sourceAssembly' in row&&row.sourceAssembly&&same(row.sourceAssembly,originSnapshot)&&'handover' in row&&row.handover?.outputId===outputId&&'fromAssemblyRunId' in row&&row.fromAssemblyRunId===run.id&&'cellsIn' in row&&row.cellsIn===originSnapshot.cellOutput?.count&&'cellType' in row&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign)&&'box' in row&&['dry-room','floor7-room5'].includes(row.box))continue;
   if('cellOutput' in row&&outputId&&row.cellOutput?.id===outputId)throw new Error('ID заявления уже принадлежит другой партии');
   const ranges=[row.serialRange,...('cellOutput' in row?[row.cellOutput?.serialRange]:[])];
   for(const range of ranges){
@@ -52,7 +54,7 @@ export async function declareAssemblyCellOutput(expected:AssemblyRun,output:Asse
   if(!current)throw new Error('Партия не найдена');
   if(current.cellOutput!==undefined){if(same(current.cellOutput,output))return current;throw new Error('Выход уже заявлен; исходная запись сохранена');}
   if(!same(current,expected))throw new Error('Партия изменена. Проверьте журнал перед заявлением выхода');
-  validateAssemblyCellOutput(current,output);await assertAssemblySerialAvailability(current,output.serialRange,output.id);
+  validateAssemblyCellOutput(current,output);await assertAssemblySerialAvailability(current,output.serialRange,output.id,{...current,cellOutput:output,updatedAt:output.recordedAt});
   const next={...current,cellOutput:output,updatedAt:output.recordedAt};await db.assemblyRuns.put(next);
   await db.journal.add({id:output.id,stage:StageId.ASSEMBLY,workerId:actorId,createdAt:new Date(output.recordedAt),summary:`Заявленный выход ячеек: ${current.batchName}`,
    params:{'Партия сборки':current.id,'Операция':output.operationId,'Заявлено ячеек':output.count,'Формат':output.cellType,'Начальный номер':output.serialRange.start,'Конечный номер':output.serialRange.end,'Префикс':output.serialRange.prefix??'','Основание':output.note,'QA':'не подтверждено'}});
@@ -67,7 +69,7 @@ export async function receiveAssemblyCellOutput(run:AssemblyRun,senderRole?:User
   if(!run.cellOutput||!senderRole||!CELL_OUTPUT_ROLES.includes(senderRole))throw new Error('Пакет заявления выхода требует роли технолога, мастера или начальника');
   const {cellOutput,...base}=run;
   const accepted=await receiveAssemblyOperationRun(old?{...base,updatedAt:old.updatedAt}:base);
-  validateAssemblyCellOutput(accepted,cellOutput);await assertAssemblySerialAvailability(accepted,cellOutput.serialRange,cellOutput.id);
+  validateAssemblyCellOutput(accepted,cellOutput);await assertAssemblySerialAvailability(accepted,cellOutput.serialRange,cellOutput.id,run);
   await db.assemblyRuns.put(run);return run;
  });
 }

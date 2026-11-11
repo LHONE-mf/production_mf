@@ -123,8 +123,8 @@ operation identity, actor/time and atomic journal persistence. Failed saves reta
 the in-memory draft/identity; receipt permits only replay or immutable-prefix
 append. New observations preserve historical totals without converting station
 counts to cells or summing scrap across units. Undeclared cell output stays unknown; those observation ledgers are excluded
-from KPI cell output and assembled-cell source measures. New ledgers remain
-excluded from filling pending its declaration-bound handover. Unsaved drafts are not persisted across navigation
+from KPI cell output and assembled-cell source measures. New ledgers now enter filling only through a saved declaration-bound handover
+and an explicit receipt in the assigned destination. Unsaved drafts are not persisted across navigation
 or restart. New observations must name the intake, an earlier same-job
 predecessor, or an explicit external reference for legacy jobs. Full-source
 allocation is one-time: quantity/unit must match the predecessor or frozen
@@ -139,8 +139,14 @@ serial history. Legacy serial edits/replacements cannot bypass these checks.
 First receipt requires a permitted signed role; conflicting, stripped or malformed
 declarations preserve the original. New operation append closes after declaration.
 KPI/source measures use the declared count, labelled as reported local data.
-Filling remains gated until declaration-bound, destination-specific allocation
-and receipt exist. Complete cathode/anode pairing, physical reconciliation,
+Filling handover now assigns the whole frozen declaration to one room and
+commits its instruction/journal before packet preparation. Local creation and
+packet receipt reject cross-room duplicate allocation, changed sources and
+legacy bypass attempts. Instructions stay pending until a different active
+account records exact-count receipt in that destination; its journal is atomic,
+and packet replay cannot erase it. Both rooms are alternative locations, not
+implicitly consecutive stages. Result recording for new transfers still requires
+a separate source/receipt-bound save path; the old manual form cannot bypass it. Complete cathode/anode pairing, physical reconciliation,
 QA approval, installed upgrade/restore and two-device acceptance remain open.
 This is not actual yield, stock reconciliation or physical consumption acceptance.
 

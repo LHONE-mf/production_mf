@@ -1,3 +1,4 @@
+import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
 import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
@@ -260,12 +261,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         // Входящая партия ячеек со сборки в бокс заливки (сухая комната / 7 эт. к.5)
         const ei = p.payload as ElectrolyteIncoming;
         if (!ei.id || !ei.batchName || !ei.box) return { ok: false, message: 'Партия для заливки повреждена' };
-        const existing = await db.electrolyteIncoming.get(ei.id);
-        if (existing && !p.forced && existing.updatedAt >= ei.updatedAt) {
-          return { ok: true, message: `Партия «${ei.batchName}» уже принята в бокс — пропущено` };
-        }
-        await db.electrolyteIncoming.put(ei);
-        return { ok: true, message: `💧 Принято в заливку: «${ei.batchName}», ячеек ${ei.cellsIn}` };
+        const accepted=await receiveFillingHandover(ei,p.role,p.from,p.stage);
+        return {ok:true,message:accepted.receipt?'Передача и записанная квитанция сохранены':'Передача сохранена; явная приёмка записывается отдельно'};
       }
       case 'fill-run': {
         // Результат заливки электролита → master / формирование
@@ -338,10 +335,13 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming;
         if ('buckets' in payload && 'specId' in payload) {
           await receiveSortingAllocation(payload as SortRun);
           return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
+        }
+        if ('cellsIn' in payload && 'box' in payload) {
+          await receiveFillingHandover(payload as ElectrolyteIncoming,p.role,p.from,p.stage);return {ok:true,message:'Передача заливки принята без замены истории'};
         }
         if ('ops' in payload && 'cellType' in payload) {
           await receiveAssemblyIntake(payload as AssemblyRun,p.role);return {ok:true,message:'Приёмка сборки сохранена без замены источника'};

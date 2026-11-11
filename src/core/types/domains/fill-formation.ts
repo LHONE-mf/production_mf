@@ -21,6 +21,9 @@ export type ElectrolyteBox = 'dry-room' | 'floor7-room5';
 
 /** Входящая партия ячеек со сборки в один из боксов заливки */
 export interface ElectrolyteIncoming {
+  sourceAssembly?:import('./assembly').AssemblyRun;
+  handover?:{outputId:string;preparedBy:string;preparedRole:import('../index').UserRole;preparedAt:string};
+  receipt?:{id:string;count:number;recordedBy:string;recordedAt:string;note:string};
   id: string;
   box: ElectrolyteBox;               // куда пришла партия (помещение)
   batchName: string;
@@ -28,7 +31,7 @@ export interface ElectrolyteIncoming {
   cellType?: CellType;               // тип ячейки (цилиндрическая/призматическая)
   cellsIn: number;                   // сколько ячеек принято
   fromAssemblyRunId?: string;        // связь с AssemblyRun
-  receivedAt: string;
+  receivedAt?: string; // New instructions stay pending until explicit receipt.
   updatedAt: string;
 }
 

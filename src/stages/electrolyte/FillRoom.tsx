@@ -1,3 +1,5 @@
+import {prepareFillingHandover,hasFillingHandover,fillingStage} from '../../core/manufacturing/fillingHandover';
+import {FillingHandoverCard} from './FillingHandoverCard';
 // Комната «Заливка электролита» — ОДНО помещение (боксы).
 // Инстанцируется дважды в StageRouter:
 //   <FillRoom box="dry-room" />     — бокс сухой комнаты;
@@ -7,7 +9,7 @@
 // выдержка, температура, влажность) + дефекты. Результат уходит master'у /
 // на формирование пакетом fill-run. Детали помещений будут расширены позже.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
@@ -32,11 +34,14 @@ interface Props { box: ElectrolyteBox; }
 
 type Tab = 'incoming' | 'new' | 'journal' | 'comments';
 
-export function FillRoom({ box }: Props) {
+export function FillRoom({box}:Props){return <FillRoomContent key={box} box={box}/>;}
+function FillRoomContent({ box }: Props) {
   const meta = BOX_META[box];
   const currentUser = useAuthStore((s) => s.currentUser);
   const isMaster = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
+  const transferIds=useRef(new Map<string,string>());
+  const transferLock=useRef(false);const [transferBusy,setTransferBusy]=useState(false),[transferError,setTransferError]=useState('');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
 
   // Входящие партии именно этого помещения
@@ -52,26 +57,20 @@ export function FillRoom({ box }: Props) {
 
   // Ячейки со сборки, ещё не отправленные ни в один бокс заливки
   const assemblyRuns = useLiveQuery(() => db.assemblyRuns.toArray(), []);
-  const notSentYet = useMemo(() => {
-    const sentNames = new Set((incoming ?? []).map((i) => i.batchName));
-    return (assemblyRuns ?? []).filter((r) => !r.intake && !r.operationLedger && r.cellType !== 'unassigned' && r.cellsOut > 0 && !sentNames.has(r.batchName));
-  }, [assemblyRuns, incoming]);
-
-  const sendToBox = (arId: string) => {
-    if (!currentUser) return;
-    const ar = (assemblyRuns ?? []).find((x) => x.id === arId);
-    if (!ar || ar.intake || ar.operationLedger || ar.cellType === 'unassigned' || ar.cellsOut <= 0) return;
-    const ei: ElectrolyteIncoming = {
-      id: uuidv4(), box, batchName: ar.batchName, cellType: ar.cellType,
-      serialRange: ar.serialRange,   // номера аккумуляторов мигрируют со сборки
-      cellsIn: ar.cellsOut, fromAssemblyRunId: ar.id,
-      receivedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-    };
-    const packet: SyncPacket = {
-      v: 1, type: 'electrolyte-in', stage: meta.stage, payload: ei,
-      from: currentUser.id, ts: Date.now(), forced: isMaster || undefined,
-    };
-    setOutPacket(packet);
+  const allIncoming=useLiveQuery(()=>db.electrolyteIncoming.toArray(),[]);
+  const notSentYet = useMemo(() => (assemblyRuns??[]).filter(run=>run.cellOutput&&!(allIncoming??[]).some(row=>row.handover?.outputId===run.cellOutput!.id)),[assemblyRuns,allIncoming]);
+  const showHandoverPacket=(row:ElectrolyteIncoming)=>{
+    if(!currentUser)return;
+    setOutPacket({v:1,type:'electrolyte-in',stage:fillingStage(row.box),payload:row,from:currentUser.id,role:currentUser.role,ts:Date.now()});
+  };
+  const sendToBox=async(arId:string)=>{
+    if(!currentUser||transferLock.current)return;transferLock.current=true;setTransferBusy(true);setTransferError('');
+    try{
+      const source=(assemblyRuns??[]).find(row=>row.id===arId);if(!source)throw new Error('Источник не найден');
+      if(!transferIds.current.has(source.id))transferIds.current.set(source.id,uuidv4());
+      const row=await prepareFillingHandover(source,box,currentUser.id,transferIds.current.get(source.id)!);showHandoverPacket(row);
+    }catch(cause){setTransferError(cause instanceof Error?cause.message:'Передача не сохранена');}
+    finally{transferLock.current=false;setTransferBusy(false);}
   };
 
   // ------- форма записи заливки -------
@@ -86,6 +85,7 @@ export function FillRoom({ box }: Props) {
 
   const saveRun = async (sendAfter: boolean) => {
     if (!currentUser || !form.batchName.trim()) return;
+    if((allIncoming??[]).some(row=>hasFillingHandover(row)&&row.batchName===form.batchName.trim())){setTransferError('Для новой передачи сначала запишите приёмку. Результат должен сохранять её источник; ручная запись без связи не разрешена.');return;}
     const now = new Date().toISOString();
     const ss = Number(form.serialStart); const se = Number(form.serialEnd);
     const sr = (Number.isFinite(ss) && Number.isFinite(se) && se >= ss)
@@ -124,7 +124,7 @@ export function FillRoom({ box }: Props) {
   const num = (v?: number, unit = '') => (v === undefined || Number.isNaN(v) ? '—' : `${v}${unit}`);
 
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: 'incoming', label: `📥 Принято со сборки (${(incoming ?? []).length})` },
+    { id: 'incoming', label: `📥 Передачи со сборки (${(incoming ?? []).length})` },
     { id: 'new', label: '✍️ Новая заливка' },
     { id: 'journal', label: `📒 Журнал (${(runs ?? []).length})` },
     { id: 'comments', label: '💬 Комментарии' },
@@ -137,6 +137,7 @@ export function FillRoom({ box }: Props) {
         <h2 className="text-white font-semibold">{meta.title}</h2>
       </div>
 
+      {transferError&&tab!=='incoming'&&<p role="alert" className="text-red-300 text-sm">{transferError}</p>}
       <div className="flex flex-wrap gap-1 overflow-x-auto">
         {tabs.map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -148,33 +149,34 @@ export function FillRoom({ box }: Props) {
 
       {tab === 'incoming' && (
         <div className="space-y-3">
-          <p className="text-xs text-slate-400">Партии со сборки можно отправить в этот бокс прямо здесь (офлайн-пакет electrolyte-in через Bluetooth/QR/текст).</p>
+          <p className="text-xs text-slate-400">Назначьте весь заявленный выход в этот бокс. Получение пакета не означает приёмку; два бокса — альтернативные назначения, не последовательность.</p>
+          {transferError&&<p role="alert" className="text-sm text-red-300">{transferError}</p>}
           {notSentYet.length > 0 && (
             <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 space-y-2">
               <h3 className="text-white text-sm font-medium">🔋 Готовы на сборке (ещё не отправлены):</h3>
               {notSentYet.map((ar) => (
                 <div key={ar.id} className="flex items-center justify-between gap-2 bg-slate-900 rounded-lg px-3 py-2">
-                  <span className="text-slate-200 text-sm truncate">{ar.batchName} · {ar.cellsOut} яч.</span>
-                  <button onClick={() => sendToBox(ar.id)}
-                    className="shrink-0 text-xs bg-cyan-700 hover:bg-cyan-600 text-white rounded px-2 py-1">
-                    Отправить в этот бокс ▸
+                  <span className="text-slate-200 text-sm truncate">{ar.batchName} · заявлено {ar.cellOutput!.count} яч.</span>
+                  <button disabled={transferBusy||!isMaster} onClick={() => void sendToBox(ar.id)}
+                    className="min-h-11 shrink-0 text-xs bg-cyan-700 hover:bg-cyan-600 text-white rounded px-2 py-1">
+                    Назначить в этот бокс ▸
                   </button>
                 </div>
               ))}
             </div>
           )}
           {(incoming ?? []).length === 0 ? (
-            <p className="text-slate-500 text-sm">Пока ничего не принято в этот бокс.</p>
+            <p className="text-slate-500 text-sm">Передач в этот бокс пока нет.</p>
           ) : (
             <div className="grid gap-2">
-              {incoming!.map((i) => (
+              {incoming!.map((i) => hasFillingHandover(i)?<FillingHandoverCard key={i.id} row={i} box={box} actor={currentUser} onPacket={showHandoverPacket}/>:(
                 <div key={i.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm">
                   <div className="flex items-center justify-between">
                     <span className="text-white font-medium">{i.batchName}</span>
                     <span className="text-cyan-300">{i.cellsIn} ячеек</span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
-                    {i.cellType === 'cylindrical' ? 'цилиндрические' : i.cellType === 'prismatic' ? 'призматические' : 'тип не указан'} · принято {new Date(i.receivedAt).toLocaleString('ru-RU')}
+                    {i.cellType === 'cylindrical' ? 'цилиндрические' : i.cellType === 'prismatic' ? 'призматические' : 'тип не указан'} · принято {i.receivedAt?new Date(i.receivedAt).toLocaleString('ru-RU'):'время неизвестно'}
                   </div>
                   <button onClick={() => { setForm((f) => ({ ...f, batchName: i.batchName, cellsFilled: String(i.cellsIn) })); setTab('new'); }}
                     className="mt-2 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded px-2 py-1">
