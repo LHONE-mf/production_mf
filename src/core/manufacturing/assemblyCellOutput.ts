@@ -36,6 +36,7 @@ export async function assertAssemblySerialAvailability(run:AssemblyRun,rangeToAs
   if(tableIndex===0&&row.id===run.id)continue;
   // A validated transfer carries the same reserved cells, not a new serial claim.
   if(tableIndex===1&&originSnapshot&&'sourceAssembly' in row&&row.sourceAssembly&&same(row.sourceAssembly,originSnapshot)&&'handover' in row&&row.handover?.outputId===outputId&&'fromAssemblyRunId' in row&&row.fromAssemblyRunId===run.id&&'cellsIn' in row&&row.cellsIn===originSnapshot.cellOutput?.count&&'cellType' in row&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign)&&'box' in row&&['dry-room','floor7-room5'].includes(row.box))continue;
+  if(tableIndex===2&&originSnapshot&&'sourceReceipt' in row&&row.resultVersion===1&&same(row.sourceReceipt?.sourceAssembly,originSnapshot)&&row.sourceReceipt?.handover?.outputId===outputId&&row.sourceReceipt?.receipt?.count===originSnapshot.cellOutput?.count&&row.box===row.sourceReceipt?.box&&row.batchName===originSnapshot.batchName&&row.cellsIn===originSnapshot.cellOutput?.count&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign))continue;
   if('cellOutput' in row&&outputId&&row.cellOutput?.id===outputId)throw new Error('ID заявления уже принадлежит другой партии');
   const ranges=[row.serialRange,...('cellOutput' in row?[row.cellOutput?.serialRange]:[])];
   for(const range of ranges){

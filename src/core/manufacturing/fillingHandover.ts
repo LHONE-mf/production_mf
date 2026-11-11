@@ -19,7 +19,7 @@ export function validateFillingHandover(row:ElectrolyteIncoming):void {
   if(!receipt||!text(receipt.id)||receipt.id===row.id||!text(receipt.recordedBy)||receipt.recordedBy===transfer.preparedBy||!time(receipt.recordedAt)||!text(receipt.note)||receipt.note.length>1000||receipt.count!==row.cellsIn||row.receivedAt!==receipt.recordedAt||row.updatedAt!==receipt.recordedAt)throw new Error('Приёмка требует другого получателя, полного количества, времени и основания');
  }else if(row.receivedAt!==undefined||row.updatedAt!==transfer.preparedAt)throw new Error('Передача без квитанции остаётся ожидающей приёмки');
 }
-async function checkSourceAndAllocation(row:ElectrolyteIncoming):Promise<void>{
+export async function checkFillingSourceAndAllocation(row:ElectrolyteIncoming):Promise<void>{
  const source=row.sourceAssembly!;
  const current=await db.assemblyRuns.get(source.id);
  if(current&&!same(current,source))throw new Error('Сохранённая сборка отличается от снимка передачи; история сохранена');
@@ -44,7 +44,7 @@ export async function prepareFillingHandover(source:AssemblyRun,box:ElectrolyteB
   if(!current||!same(current,source))throw new Error('Источник изменён или отсутствует. Обновите выбор');
   const now=new Date().toISOString();
   const row:ElectrolyteIncoming={id,box,batchName:source.batchName,fromAssemblyRunId:source.id,sourceAssembly:source,cellsIn:output.count,cellType:output.cellType,serialRange:output.serialRange,handover:{outputId:output.id,preparedBy:actorId,preparedRole:actor.role,preparedAt:now},updatedAt:now};
-  validateFillingHandover(row);await checkSourceAndAllocation(row);
+  validateFillingHandover(row);await checkFillingSourceAndAllocation(row);
   await db.electrolyteIncoming.add(row);await db.journal.add({id,stage:StageId.ASSEMBLY,workerId:actorId,createdAt:new Date(now),summary:`Назначена передача в заливку: ${source.batchName}`,params:{'Сборка':source.id,'Заявление выхода':output.id,'Бокс':box,'Ячеек назначено':row.cellsIn,'Приёмка':'ожидается'}});
   return row;
  });
@@ -57,7 +57,7 @@ export async function acceptFillingHandover(expected:ElectrolyteIncoming,box:Ele
   if(row.receipt){if(row.receipt.recordedBy===actorId&&row.receipt.count===count&&row.receipt.note===note.trim())return row;throw new Error('Приёмка уже записана; исходная квитанция сохранена');}
   if(!same(row,expected))throw new Error('Передача изменена. Обновите журнал');
   const now=new Date().toISOString(),accepted={...row,receipt:{id:receiptId,count,recordedBy:actorId,recordedAt:now,note:note.trim()},receivedAt:now,updatedAt:now};
-  validateFillingHandover(accepted);await checkSourceAndAllocation(accepted);
+  validateFillingHandover(accepted);await checkFillingSourceAndAllocation(accepted);
   await db.electrolyteIncoming.put(accepted);await db.journal.add({id:receiptId,stage:fillingStage(box),workerId:actorId,createdAt:new Date(now),summary:`Записана приёмка в заливку: ${row.batchName}`,params:{'Передача':row.id,'Заявление выхода':row.handover!.outputId,'Бокс':box,'Ячеек принято':count,'Основание':note.trim()}});
   return accepted;
  });
@@ -76,7 +76,7 @@ export async function receiveFillingHandover(row:ElectrolyteIncoming,role?:UserR
     if(!row.receipt)throw new Error('Изменён ожидающий снимок передачи');
     if(!role||(!CELL_OUTPUT_ROLES.includes(role)&&(role!==UserRole.WORKER||senderId!==row.receipt.recordedBy)))throw new Error('Подписант квитанции не совпадает с получателем');
    }else if(!role||!CELL_OUTPUT_ROLES.includes(role))throw new Error('Первый пакет передачи требует роли технолога, мастера или начальника');
-   await checkSourceAndAllocation(row);await db.electrolyteIncoming.put(row);return row;
+   await checkFillingSourceAndAllocation(row);await db.electrolyteIncoming.put(row);return row;
   }
   if(old){if(same(old,row))return old;throw new Error('Старая входящая запись сохранена; автоматическая замена не разрешена');}
   const incoming=await db.electrolyteIncoming.toArray();

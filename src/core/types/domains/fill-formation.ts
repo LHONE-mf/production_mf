@@ -37,6 +37,16 @@ export interface ElectrolyteIncoming {
 
 /** Запись журнала заливки электролита (одна операция/партия в боксе) */
 export interface FillRun {
+  /** Additive receipt-bound observations. Absent on retained historical rows. */
+  resultVersion?: 1;
+  sourceReceipt?: ElectrolyteIncoming;
+  cellType?: CellType;
+  cellsIn?: number;
+  cellsUnknown?: number;
+  measurementUnits?: {dose:'mg';vacuum:'kPa';pressure:'kPa';duration:'min';temperature:'°C';humidity:'ppm'};
+  machineNo?: string;
+  measurementBasis?: string;
+  recordedRole?: import('../index').UserRole;
   id: string;
   box: ElectrolyteBox;               // помещение заливки
   batchName: string;                 // партия (из входящей или вручную)
@@ -48,7 +58,7 @@ export interface FillRun {
   pressureKpa?: number;              // давление впрыска, кПа
   dwellMin?: number;                 // выдержка (время пропитки), мин
   temperatureC?: number;             // температура в боксе / электролита, °C
-  humidityPpm?: number;              // точка росы / влажность бокса, °C т.р. или ppm
+  humidityPpm?: number;              // new results: measured ppm only; legacy basis may be unknown
   cellsFilled: number;               // залито ячеек (годных)
   cellsScrap: number;                // брак (недолив/перелив/пузыри/подтекание)
   defects: string[];                 // дефекты по реестру

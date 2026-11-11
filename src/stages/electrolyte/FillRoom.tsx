@@ -1,4 +1,6 @@
 import {prepareFillingHandover,hasFillingHandover,fillingStage} from '../../core/manufacturing/fillingHandover';
+import {FillingResultForm} from './FillingResultForm';
+import {hasFillingResult} from '../../core/manufacturing/fillingResults';
 import {FillingHandoverCard} from './FillingHandoverCard';
 // Комната «Заливка электролита» — ОДНО помещение (боксы).
 // Инстанцируется дважды в StageRouter:
@@ -21,10 +23,6 @@ import { useAuthStore } from '../../core/store/authStore';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { CommentsSection } from '../_common/CommentsSection';
 
-const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500';
-const labelCls = 'block text-xs text-slate-400 mb-1';
-
 export const BOX_META: Record<ElectrolyteBox, { title: string; icon: string; stage: StageId }> = {
   'dry-room':      { title: 'Заливка электролита · сухая комната', icon: '💧', stage: StageId.ELECTROLYTE },
   'floor7-room5':  { title: 'Заливка электролита · 7 этаж, к.5',   icon: '🏭', stage: StageId.ELECTROLYTE_705 },
@@ -34,7 +32,7 @@ interface Props { box: ElectrolyteBox; }
 
 type Tab = 'incoming' | 'new' | 'journal' | 'comments';
 
-export function FillRoom({box}:Props){return <FillRoomContent key={box} box={box}/>;}
+export function FillRoom({box}:Props){const actorId=useAuthStore(s=>s.currentUser?.id);return <FillRoomContent key={box+actorId} box={box}/>;}
 function FillRoomContent({ box }: Props) {
   const meta = BOX_META[box];
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -73,53 +71,13 @@ function FillRoomContent({ box }: Props) {
     finally{transferLock.current=false;setTransferBusy(false);}
   };
 
-  // ------- форма записи заливки -------
-  const [form, setForm] = useState({
-    batchName: '', serialPrefix: '', serialStart: '', serialEnd: '',
-    electrolyteName: '', doseMin: '', doseActual: '',
-    vacuumKpa: '', pressureKpa: '', dwellMin: '', temperatureC: '', humidityPpm: '',
-    cellsFilled: '', cellsScrap: '', defects: '', comment: '',
-  });
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const saveRun = async (sendAfter: boolean) => {
-    if (!currentUser || !form.batchName.trim()) return;
-    if((allIncoming??[]).some(row=>hasFillingHandover(row)&&row.batchName===form.batchName.trim())){setTransferError('Для новой передачи сначала запишите приёмку. Результат должен сохранять её источник; ручная запись без связи не разрешена.');return;}
-    const now = new Date().toISOString();
-    const ss = Number(form.serialStart); const se = Number(form.serialEnd);
-    const sr = (Number.isFinite(ss) && Number.isFinite(se) && se >= ss)
-      ? { prefix: form.serialPrefix.trim() || undefined, start: ss, end: se } : undefined;
-    const run: FillRun = {
-      id: uuidv4(), box, batchName: form.batchName.trim(),
-      serialRange: sr,
-      electrolyteName: form.electrolyteName.trim() || undefined,
-      doseMin: form.doseMin ? Number(form.doseMin) : undefined,
-      doseActual: form.doseActual ? Number(form.doseActual) : undefined,
-      vacuumKpa: form.vacuumKpa ? Number(form.vacuumKpa) : undefined,
-      pressureKpa: form.pressureKpa ? Number(form.pressureKpa) : undefined,
-      dwellMin: form.dwellMin ? Number(form.dwellMin) : undefined,
-      temperatureC: form.temperatureC ? Number(form.temperatureC) : undefined,
-      humidityPpm: form.humidityPpm ? Number(form.humidityPpm) : undefined,
-      cellsFilled: Number(form.cellsFilled) || 0,
-      cellsScrap: Number(form.cellsScrap) || 0,
-      defects: form.defects.split(',').map((s) => s.trim()).filter(Boolean),
-      comment: form.comment.trim() || undefined,
-      workerId: currentUser.id, createdAt: now, updatedAt: now,
-    };
-    await db.fillRuns.add(run);
-    // дублируем в общий журнал комнат (единица учёта для KPI)
-    await db.journal.add({
-      id: uuidv4(), stage: meta.stage, taskId: undefined, workerId: currentUser.id,
-      params: { ...run }, defects: run.defects, createdAt: new Date(),
-    } as any);
-    if (sendAfter) setOutPacket({
-      v: 1, type: 'fill-run', stage: meta.stage, payload: run,
-      from: currentUser.id, ts: Date.now(), forced: isMaster || undefined,
-    });
-    setForm({ batchName: '', serialPrefix: '', serialStart: '', serialEnd: '', electrolyteName: '', doseMin: '', doseActual: '', vacuumKpa: '', pressureKpa: '', dwellMin: '', temperatureC: '', humidityPpm: '', cellsFilled: '', cellsScrap: '', defects: '', comment: '' });
-    setTab('journal');
+  const [selected,setSelected]=useState<ElectrolyteIncoming|null>(null);
+  const available=(incoming??[]).filter(row=>row.receipt&&hasFillingHandover(row)&&!(runs??[]).some(run=>run.sourceReceipt?.id===row.id||!hasFillingResult(run)&&run.batchName===row.batchName));
+  const choose=(row:ElectrolyteIncoming)=>{setSelected(row);setOutPacket(null);setTab('new');};
+  const resultPacket=(row:FillRun)=>{
+    if(currentUser)setOutPacket({v:1,type:'fill-run',stage:meta.stage,payload:row,from:currentUser.id,role:currentUser.role,ts:Date.now()});
   };
+  const saved=(row:FillRun,send:boolean)=>{setSelected(null);setTab('journal');if(send)resultPacket(row);};
 
   const num = (v?: number, unit = '') => (v === undefined || Number.isNaN(v) ? '—' : `${v}${unit}`);
 
@@ -169,19 +127,16 @@ function FillRoomContent({ box }: Props) {
             <p className="text-slate-500 text-sm">Передач в этот бокс пока нет.</p>
           ) : (
             <div className="grid gap-2">
-              {incoming!.map((i) => hasFillingHandover(i)?<FillingHandoverCard key={i.id} row={i} box={box} actor={currentUser} onPacket={showHandoverPacket}/>:(
+              {incoming!.map((i) => hasFillingHandover(i)?<div key={i.id} className="space-y-2"><FillingHandoverCard row={i} box={box} actor={currentUser} onPacket={showHandoverPacket}/>{currentUser&&available.some(row=>row.id===i.id)&&<button className="min-h-11 px-3 rounded bg-cyan-700 text-white text-sm" onClick={()=>choose(i)}>Записать результат заливки</button>}</div>:(
                 <div key={i.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-white font-medium">{i.batchName}</span>
                     <span className="text-cyan-300">{i.cellsIn} ячеек</span>
                   </div>
                   <div className="text-xs text-slate-400 mt-1">
                     {i.cellType === 'cylindrical' ? 'цилиндрические' : i.cellType === 'prismatic' ? 'призматические' : 'тип не указан'} · принято {i.receivedAt?new Date(i.receivedAt).toLocaleString('ru-RU'):'время неизвестно'}
                   </div>
-                  <button onClick={() => { setForm((f) => ({ ...f, batchName: i.batchName, cellsFilled: String(i.cellsIn) })); setTab('new'); }}
-                    className="mt-2 text-xs bg-slate-700 hover:bg-slate-600 text-white rounded px-2 py-1">
-                    Взять в заливку ✍️
-                  </button>
+                  <p className="mt-2 text-xs text-amber-200">Историческая приёмка без защищённого источника. Запись сохранена; новый результат требует заявления выхода и независимой квитанции.</p>
                 </div>
               ))}
             </div>
@@ -189,65 +144,25 @@ function FillRoomContent({ box }: Props) {
         </div>
       )}
 
-      {tab === 'new' && (
-        <div className="bg-slate-800/60 border border-slate-700 rounded-xl p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className={labelCls}>Партия (название)</label>
-              <input className={inputCls} value={form.batchName} onChange={set('batchName')} placeholder="напр. ПАРТ-2026-041" /></div>
-            <div><label className={labelCls}>Номера АК: префикс / нач. / кон.</label>
-              <span className="flex gap-1">
-                <input className={inputCls + ' w-20'} value={form.serialPrefix} onChange={set('serialPrefix')} placeholder="MF-" />
-                <input className={inputCls + ' w-24'} type="number" value={form.serialStart} onChange={set('serialStart')} placeholder="1001" />
-                <input className={inputCls + ' w-24'} type="number" value={form.serialEnd} onChange={set('serialEnd')} placeholder="1200" />
-              </span></div>
-            <div><label className={labelCls}>Марка электролита</label>
-              <input className={inputCls} value={form.electrolyteName} onChange={set('electrolyteName')} placeholder="напр. LiPF6 EC/DMC" /></div>
-            <div><label className={labelCls}>Доза целевая, мг</label>
-              <input className={inputCls} type="number" value={form.doseMin} onChange={set('doseMin')} /></div>
-            <div><label className={labelCls}>Доза фактическая, мг</label>
-              <input className={inputCls} type="number" value={form.doseActual} onChange={set('doseActual')} /></div>
-            <div><label className={labelCls}>Вакуум пропитки, кПа</label>
-              <input className={inputCls} type="number" value={form.vacuumKpa} onChange={set('vacuumKpa')} /></div>
-            <div><label className={labelCls}>Давление впрыска, кПа</label>
-              <input className={inputCls} type="number" value={form.pressureKpa} onChange={set('pressureKpa')} /></div>
-            <div><label className={labelCls}>Выдержка, мин</label>
-              <input className={inputCls} type="number" value={form.dwellMin} onChange={set('dwellMin')} /></div>
-            <div><label className={labelCls}>Температура, °C</label>
-              <input className={inputCls} type="number" value={form.temperatureC} onChange={set('temperatureC')} /></div>
-            <div><label className={labelCls}>Влажность бокса (точка росы/ppm)</label>
-              <input className={inputCls} type="number" value={form.humidityPpm} onChange={set('humidityPpm')} /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className={labelCls}>Залито годных</label>
-                <input className={inputCls} type="number" value={form.cellsFilled} onChange={set('cellsFilled')} /></div>
-              <div><label className={labelCls}>Брак</label>
-                <input className={inputCls} type="number" value={form.cellsScrap} onChange={set('cellsScrap')} /></div>
-            </div>
-          </div>
-          <div><label className={labelCls}>Дефекты (через запятую: недолив, пузыри, подтекание…)</label>
-            <input className={inputCls} value={form.defects} onChange={set('defects')} /></div>
-          <div><label className={labelCls}>Примечание</label>
-            <input className={inputCls} value={form.comment} onChange={set('comment')} /></div>
-          <div className="flex gap-2">
-            <button onClick={() => saveRun(false)} className="bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg px-3 py-2">
-              💾 Сохранить в журнал
-            </button>
-            <button onClick={() => saveRun(true)} className="bg-cyan-700 hover:bg-cyan-600 text-white text-sm rounded-lg px-3 py-2">
-              💾 Сохранить и передать ▸
-            </button>
-          </div>
-        </div>
-      )}
+      {tab === 'new' && <div className="space-y-3 min-w-0">
+        {selected&&currentUser?<FillingResultForm key={selected.id+currentUser.id} source={selected} actor={currentUser} onSaved={saved}/>:<>
+          <p className="text-sm text-slate-300">Выберите сохранённую независимую приёмку в этом боксе. Источник и номера не вводятся вручную.</p>
+          {available.map(row=><button key={row.id} onClick={()=>choose(row)} className="block min-h-11 w-full rounded bg-cyan-800 p-3 text-left text-white break-all">Записать результат: {row.batchName} · принято {row.cellsIn}</button>)}
+          {!available.length&&<p className="text-xs text-slate-400">Нет неиспользованных квитанций. Сначала назначьте выход со сборки и отдельно запишите приёмку.</p>}
+        </>}
+        {selected&&<button className="min-h-11 px-3 rounded bg-slate-700 text-white text-sm" onClick={()=>setSelected(null)}>Отменить выбор и очистить черновик</button>}
+      </div>}
 
       {tab === 'journal' && (
         <div className="grid gap-2">
           {(runs ?? []).length === 0 && <p className="text-slate-500 text-sm">Журнал пуст.</p>}
           {runs!.map((r) => (
             <div key={r.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm space-y-1">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-white font-medium">{r.batchName}</span>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {/* только бокс 7 эт./к.5 передаёт залитые ячейки на вальцовку */}
-                  {box === 'floor7-room5' && r.cellsFilled > 0 && (
+                  {box === 'floor7-room5' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0) && (
                     <button onClick={() => {
                       if (!currentUser) return;
                       const now = new Date().toISOString();
@@ -262,7 +177,7 @@ function FillRoomContent({ box }: Props) {
                       className="text-xs bg-amber-800 hover:bg-amber-700 text-white rounded px-2 py-1"
                       title="Отправить партию залитых ячеек на вальцовку">🎡 На вальцовку ▸</button>
                   )}
-                  {box === 'dry-room' && r.cellsFilled > 0 && (
+                  {box === 'dry-room' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0) && (
                     <button onClick={() => {
                       if (!currentUser) return;
                       const now = new Date().toISOString();
@@ -276,7 +191,7 @@ function FillRoomContent({ box }: Props) {
                       className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
                       title="Отправить партию (с номерами АК) на формирование">⚡ На формовку ▸</button>
                   )}
-                  <button onClick={() => setOutPacket({ v: 1, type: 'fill-run', stage: meta.stage, payload: r, from: currentUser?.id ?? 'unknown', ts: Date.now(), forced: isMaster || undefined })}
+                  <button onClick={() => resultPacket(r)}
                     className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>
                 </div>
               </div>
@@ -284,8 +199,9 @@ function FillRoomContent({ box }: Props) {
                 {r.electrolyteName ?? 'электролит не указан'} · доза {num(r.doseActual)} / {num(r.doseMin, ' мг')} · вакуум {num(r.vacuumKpa, ' кПа')} · давление {num(r.pressureKpa, ' кПа')}
               </div>
               <div className="text-xs text-slate-300">
-                выдержка {num(r.dwellMin, ' мин')} · t {num(r.temperatureC, ' °C')} · влажн. {num(r.humidityPpm)} · залито <b className="text-emerald-300">{r.cellsFilled}</b> · брак <b className="text-rose-300">{r.cellsScrap}</b>
+                выдержка {num(r.dwellMin, ' мин')} · t {num(r.temperatureC, ' °C')} · влажн. {num(r.humidityPpm)} {hasFillingResult(r)?'ppm':'(единица старой записи не подтверждена)'} · залито (без QA) <b className="text-emerald-300">{r.cellsFilled}</b> · отклонено <b className="text-rose-300">{r.cellsScrap}</b>
               </div>
+              {hasFillingResult(r)&&<div className="text-xs text-slate-300 break-all">Подано: {r.cellsIn} · Не определено: {r.cellsUnknown} · квитанция {r.sourceReceipt?.receipt?.id} · автор {r.workerId} · {r.machineNo??'оборудование не указано'}<p>Основание измерений: {r.measurementBasis}</p>{(r.cellsScrap!==0||r.cellsUnknown!==0)&&<p className="text-amber-200">Номера залитой части не определены. Передача частичного диапазона заблокирована.</p>}</div>}
               {r.defects.length > 0 && <div className="text-xs text-rose-300">Дефекты: {r.defects.join(', ')}</div>}
               {r.comment && <div className="text-xs text-slate-400">«{r.comment}»</div>}
               <div className="text-[11px] text-slate-500">{new Date(r.createdAt).toLocaleString('ru-RU')}</div>

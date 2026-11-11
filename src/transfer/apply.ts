@@ -1,4 +1,5 @@
 import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
+import {receiveFillingResult} from '../core/manufacturing/fillingResults';
 import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
@@ -268,11 +269,7 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         // Результат заливки электролита → master / формирование
         const fr = p.payload as FillRun;
         if (!fr.id || !fr.batchName || !fr.box) return { ok: false, message: 'Запись заливки повреждена' };
-        const existing = await db.fillRuns.get(fr.id);
-        if (existing && !p.forced && existing.updatedAt >= fr.updatedAt) {
-          return { ok: true, message: `Заливка «${fr.batchName}» уже новее — пропущено` };
-        }
-        await db.fillRuns.put(fr);
+        await receiveFillingResult(fr,p.stage,p.role,p.from);
         return { ok: true, message: `💧 Заливка «${fr.batchName}» принята: залито ${fr.cellsFilled}, брак ${fr.cellsScrap}` };
       }
       case 'walzing-in': {
@@ -339,6 +336,9 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         if ('buckets' in payload && 'specId' in payload) {
           await receiveSortingAllocation(payload as SortRun);
           return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
+        }
+        if ('box' in payload && ('cellsFilled' in payload || 'resultVersion' in payload || 'sourceReceipt' in payload)) {
+          await receiveFillingResult(payload as FillRun,p.stage,p.role,p.from);return {ok:true,message:'Результат заливки сохранён без замены истории'};
         }
         if ('cellsIn' in payload && 'box' in payload) {
           await receiveFillingHandover(payload as ElectrolyteIncoming,p.role,p.from,p.stage);return {ok:true,message:'Передача заливки принята без замены истории'};

@@ -1,3 +1,54 @@
+## 2026-11-11 — Receipt-bound filling observations and atomic saved export
+
+- Resumed from clean remote `43bb1a579ebeca7f401a0807fbe05ec9242664a4`;
+  its CI and Run Tests runs were confirmed successful before implementation.
+- Both alternative filling rooms now open result entry from a **saved independent
+  receipt**. The result freezes the complete assembly/declaration/instruction/
+  receipt, destination, format, full count/range, local author/role and record time.
+  Missing receipts, wrong destinations, changed upstream snapshots, competing
+  allocation, ambiguous historical results and inactive/changed actors are blocked.
+- Measured dose mg, vacuum/pressure kPa, duration min, temperature °C and humidity
+  ppm are entered explicitly; a required basis describes dose scope, pressure
+  convention and environment. Optional equipment stays unknown when blank.
+  No machine settings, calibration, predictions or QA acceptance are fabricated.
+  Decimal comma is supported. Missing, nonfinite, invalid-unit and fractional
+  values are rejected; entered zero is distinct from missing.
+- **Product decision:** one result accounts for the full saved receipt as filled
+  + rejected + unknown whole cells. No split operation is invented. Any rejects
+  or unknown cells leave the filled subset's serial identities unresolved and
+  block downstream subset export; the original full range is retained as source
+  provenance only. All-filled output retains the exact full range. Rejected here
+  is an operator observation, not an authorized inventory/QA disposition.
+- Result and attributed journal commit in one Dexie transaction. Stable draft IDs,
+  frozen retry values and a synchronous submit lock protect failure/retry and
+  duplicate clicks. Export uses only the committed snapshot. Typed and generic
+  forced packets share immutable result/allocation checks and require the exact
+  saved receipt before first import; first authors or permitted local supervisor
+  relays are checked. Result import and its journal also commit atomically.
+- Historical rows and their original uncertain measurement units remain readable
+  and exportable. New result creation requires the protected receipt workflow;
+  older unlinked rows are not silently promoted into it or deleted. Exact old
+  packet replay is retained; conflicting replacement is rejected. The matching
+  filling result is part of its original serial lineage, so an exact upstream
+  declaration can arrive later without reserving its own cells twice.
+- Local verification: **414 frontend tests**, typecheck and PWA build passed.
+  Focused IndexedDB/component/transfer tests cover invalid measurements/units,
+  wrong room, missing/changed receipt, stale source/actor, simultaneous claims,
+  rollback, exact replay/reopen, serial collision, stripped/forced legacy bypass
+  and late upstream import. Disabling the allocation guard makes the concurrent
+  claim regression fail (two results instead of one); the guard was restored.
+- Chromium **390×844 and 1365×900** passed actual chief/assigned-worker login,
+  independent receipt, blank validation, decimal comma, injected real IndexedDB
+  journal failure/rollback, retained draft, offline double-submit retry, saved
+  journal/export, unknown-range downstream gate and exact record reopen. No
+  overflow or runtime errors; phone form and journal screenshots inspected.
+  Screenshots are session evidence under `/tmp/production-mf-evidence/`.
+- No schema/dependency/server/native/signing or automatic-sync change. Emulator,
+  physical OnePlus/equipment/QR/BLE, installed APK upgrade/restore and deployed
+  two-device TLS acceptance were not performed. M0/M1 release and M2 factory
+  pilot gates remain open. Next: source-bound walzing/formation with safe units,
+  whole counts, transactional journal and immutable downstream provenance.
+
 ## 2026-11-11 — Declaration-bound filling handover and explicit room receipt
 
 - Revalidated clean remote `29a7fdc` and green exact-head CI. A declared assembly

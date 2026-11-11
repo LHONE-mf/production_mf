@@ -25,5 +25,15 @@ it('persists a pending destination before preview and retries receipt with the s
   try{await click('Записать приёмку');await vi.waitFor(()=>expect(node.textContent).toContain('Receipt journal failed'));}finally{db.journal.hook('creating').unsubscribe(failReceipt);}
   expect(node.querySelector<HTMLInputElement>('input[aria-label="Фактически принято, ячеек"]')!.value).toBe('4');
   await click('Записать приёмку');await vi.waitFor(()=>expect(node.textContent).toContain('Приёмка записана: 4'));expect((await db.electrolyteIncoming.toArray())[0].receipt?.id).toBe(failedId);
+  await click('Записать результат');
+  await click('Сохранить и передать');await vi.waitFor(()=>expect(node.textContent).toContain('Пустое значение не считается нулём'));expect(await db.fillRuns.count()).toBe(0);
+  for(const [label,value] of [['Электролит','Test electrolyte'],['Основание измерений: доза на что, база давления, среда','Per-cell dose; gauge pressure; measured room environment'],['Доза фактическая, мг','2.5'],['Вакуум, кПа (измерено)','0'],['Давление, кПа (измерено)','10'],['Выдержка, мин (измерено)','3'],['Температура, °C (измерено)','20'],['Влажность, ppm (измерено)','0'],['Подано, ячеек','4'],['Залито, ячеек (без QA)','3'],['Отклонено, ячеек','0'],['Не определено, ячеек','1']])await fill(label,value);
+  let resultId='';const failResult=(_key:unknown,record:{id:string})=>{resultId=record.id;throw Error('Filling result journal failed');};db.journal.hook('creating',failResult);
+  try{await click('Сохранить и передать');await vi.waitFor(()=>expect(node.textContent).toContain('Filling result journal failed'));expect(await db.fillRuns.count()).toBe(0);}finally{db.journal.hook('creating').unsubscribe(failResult);}
+  expect(node.querySelector<HTMLInputElement>('input[aria-label="Доза фактическая, мг"]')!.value).toBe('2.5');
+  await act(async()=>{const button=[...node.querySelectorAll('button')].find(button=>button.textContent?.includes('Сохранить и передать'))!;button.click();button.click();});
+  await vi.waitFor(()=>expect(node.textContent).toContain('Не определено: 1'));const saved=(await db.fillRuns.toArray())[0];expect(saved.id).toBe(resultId);expect(saved.sourceReceipt?.receipt?.id).toBe(failedId);expect(await db.fillRuns.count()).toBe(1);
+  expect(node.textContent).not.toContain('На формовку');
+  await act(async()=>root.render(<FillRoom box="floor7-room5"/>));await vi.waitFor(()=>expect(node.textContent).toContain('Передач в этот бокс пока нет'));expect(node.textContent).not.toContain('Saved packet preview');
  }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
 });
