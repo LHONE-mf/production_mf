@@ -6,7 +6,7 @@ export class AuthService {
   static async login(login: string, password: string): Promise<User | null> {
     const user = await db.users
       .where('login')
-      .equals(login)
+      .equals(login.trim().toLowerCase())
       .first();
 
     if (!user || !user.isActive) return null;
