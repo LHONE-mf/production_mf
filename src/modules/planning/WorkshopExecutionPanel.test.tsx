@@ -194,6 +194,85 @@ describe('Workshop execution list',()=>{
     expect(screen.querySelector('[role="alert"]')).toBeNull();
   });
 
+  it('refreshes transfer eligibility and quantity comparison after a confirmed step completion',async()=>{
+    let completed=false;
+    const started={
+      id:'started-1',kind:'started',actorId:'master-1',recordedAt:'2026-11-11T06:00:00Z',
+      quantity:null,quantityUnit:null,equipmentCode:null,note:null,
+    };
+    const finished={
+      id:'finish-1',kind:'completed',actorId:'master-1',recordedAt:'2026-11-11T06:01:00Z',
+      quantity:'20.000000',quantityUnit:'kg',equipmentCode:null,note:null,
+    };
+    const fetchMock=vi.fn(async(url:string,options:RequestInit)=>{
+      if(url.endsWith('/planning/workshop-batches'))return {ok:true,json:async()=>({
+        batches:[{id:'batch-1',batchCode:'CATH-001',status:'in_progress',quantityUnit:'kg'}],
+        hasMore:false,nextAfter:null,
+      })};
+      if(url.endsWith('/handoff-candidate'))return {ok:true,json:async()=>({
+        batchId:'batch-1',candidate:completed?{
+          fromStep:2,toStep:3,fromName:'Cutting',toName:'Sorting',quantityUnit:'kg',
+        }:null,
+      })};
+      if(url.endsWith('/quantity-comparison'))return {ok:true,json:async()=>({
+        batchId:'batch-1',hasMore:false,steps:[{
+          number:2,name:'Cutting',workshopId:'cutting',nextStep:3,
+          output:completed?{quantity:'20.000000',unit:'kg'}:null,
+          handoff:null,difference:null,
+        }],
+      })};
+      if(url.endsWith('/outbound-handoffs'))return {ok:true,json:async()=>({
+        batchId:'batch-1',handoffs:[],hasMore:false,
+      })};
+      if(url.endsWith('/planning/batches/batch-1/steps/2/evidence') && options.method==='POST'){
+        const body=JSON.parse(String(options.body));
+        expect(body).toMatchObject({kind:'completed',quantity:'20',quantityUnit:'kg'});
+        completed=true;
+        return {ok:true,json:async()=>({
+          id:body.eventId,batchId:'batch-1',stepNumber:2,kind:'completed',alreadyRecorded:false,
+        })};
+      }
+      if(url.endsWith('/planning/batches/batch-1/steps'))return {ok:true,json:async()=>({
+        batchId:'batch-1',steps:[
+          {number:2,name:'Cutting',stage:'cutting',workshopId:'cutting',evidence:started},
+          ...(completed?[{number:2,name:'Cutting',stage:'cutting',workshopId:'cutting',evidence:finished}]:[]),
+        ],
+      })};
+      throw Error('Unexpected workshop request: '+url);
+    });
+    vi.stubGlobal('fetch',fetchMock);setServerConnection(connection);
+    const screen=await mount();
+    const open=[...screen.querySelectorAll('button')]
+      .find(button=>button.textContent==='Открыть журнал')!;
+    await act(async()=>{open.click();await Promise.resolve();});
+    expect(screen.textContent).toContain('Нет доступной передачи');
+    expect(screen.textContent).toContain('Нет записи о завершении');
+    expect(screen.querySelector('input[aria-label="Количество передачи цеха"]')).toBeNull();
+    const completionQuantity=screen.querySelector('input[aria-label="Зафиксированное количество"]')!;
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!
+        .call(completionQuantity,'20');
+      completionQuantity.dispatchEvent(new Event('input',{bubbles:true}));
+    });
+    await act(async()=>{
+      const save=[...screen.querySelectorAll('button')]
+        .find(button=>button.textContent==='Записать событие')!;
+      save.click();
+      await Promise.resolve();
+    });
+    expect(completed).toBe(true);
+    expect(screen.textContent).toContain('Cutting');
+    expect(screen.textContent).toContain('Sorting');
+    expect(screen.querySelector('input[aria-label="Количество передачи цеха"]')).toBeTruthy();
+    expect(screen.textContent).toContain('20.000000 kg');
+    expect(fetchMock.mock.calls.filter(call=>String(call[0]).endsWith('/handoff-candidate')))
+      .toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(call=>String(call[0]).endsWith('/quantity-comparison')))
+      .toHaveLength(2);
+    expect(fetchMock.mock.calls.some(call=>String(call[0]).endsWith('/planning/orders')))
+      .toBe(false);
+  });
+
   it('automatically refreshes outbound audit after a master sends a handoff',async()=>{
     let sent=false;
     const outbound={

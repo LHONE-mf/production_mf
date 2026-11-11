@@ -40,6 +40,7 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
   const pendingMore=useRef<AbortController|null>(null);
   const [selectedId,setSelectedId]=useState<string|null>(null);
   const [outboundVersion,setOutboundVersion]=useState(0);
+  const [completionVersion,setCompletionVersion]=useState(0);
   const [refreshKey,setRefreshKey]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -123,14 +124,16 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
         </button>
       </div>
       {selected?.id===batch.id && <>
-        <StepEvidencePanel key={'evidence:'+batch.id} connection={connection} batch={batch} />
+        <StepEvidencePanel key={'evidence:'+batch.id} connection={connection} batch={batch}
+          onCompleted={()=>setCompletionVersion(value=>value+1)} />
         {batch.status==='in_progress' &&
           <WorkshopHandoffPanel key={'handoff:'+batch.id} connection={connection}
-            batchId={batch.id} onSent={()=>setOutboundVersion(value=>value+1)} />}
+            batchId={batch.id} onSent={()=>setOutboundVersion(value=>value+1)}
+            refreshVersion={completionVersion} />}
         <WorkshopOutboundHistoryPanel key={'outbound:'+batch.id} connection={connection}
           batchId={batch.id} refreshVersion={outboundVersion} />
         <WorkshopQuantityPanel key={'quantity:'+batch.id} connection={connection}
-          batchId={batch.id} refreshVersion={outboundVersion} />
+          batchId={batch.id} refreshVersion={outboundVersion+completionVersion} />
       </>}
     </div>)}
     {nextAfter && <button type="button" className={buttonClass} disabled={loading||loadingMore}

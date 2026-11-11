@@ -23,8 +23,8 @@ function validResponse(data:unknown,batchId:string):data is {batchId:string;cand
 }
 
 /** A transfer declaration is not stock movement; receiver acknowledgement is separate. */
-export function WorkshopHandoffPanel({connection,batchId,onSent}:{
-  connection:ServerConnection;batchId:string;onSent?:()=>void;
+export function WorkshopHandoffPanel({connection,batchId,onSent,refreshVersion=0}:{
+  connection:ServerConnection;batchId:string;onSent?:()=>void;refreshVersion?:number;
 }){
   const [candidate,setCandidate]=useState<WorkshopHandoffCandidate|null>(null);
   const [quantity,setQuantity]=useState('');
@@ -54,7 +54,7 @@ export function WorkshopHandoffPanel({connection,batchId,onSent}:{
       })
       .finally(()=>{if(!controller.signal.aborted && active())setLoading(false);});
     return ()=>controller.abort();
-  },[connection.session.accessToken,batchId,refresh]);
+  },[connection.session.accessToken,batchId,refresh,refreshVersion]);
   const canSend=Boolean(candidate) && quantityPattern.test(quantity.trim()) &&
     (!['cells','pieces'].includes(candidate?.quantityUnit ?? '') || /^\d+$/.test(quantity.trim()));
   async function submit(event:React.FormEvent){
