@@ -23,8 +23,8 @@ function validResponse(data:unknown,batchId:string):data is {batchId:string;cand
 }
 
 /** A transfer declaration is not stock movement; receiver acknowledgement is separate. */
-export function WorkshopHandoffPanel({connection,batchId}:{
-  connection:ServerConnection;batchId:string;
+export function WorkshopHandoffPanel({connection,batchId,onSent}:{
+  connection:ServerConnection;batchId:string;onSent?:()=>void;
 }){
   const [candidate,setCandidate]=useState<WorkshopHandoffCandidate|null>(null);
   const [quantity,setQuantity]=useState('');
@@ -74,6 +74,7 @@ export function WorkshopHandoffPanel({connection,batchId}:{
       setMessage('Передача записана. Другой сотрудник должен подтвердить приёмку.');
       setQuantity('');setNote('');setHandoffId(crypto.randomUUID());
       setRefresh(value=>value+1);
+      onSent?.();
     }catch(cause){
       if(!active())return;
       const problem=cause instanceof Error?cause.message:'Не удалось записать передачу';

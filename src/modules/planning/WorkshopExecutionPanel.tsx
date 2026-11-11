@@ -3,6 +3,7 @@ import { clearServerConnection, getServerConnection, type ServerConnection } fro
 import { planningApi, type BatchStatus, type WorkshopBatch } from '../../core/planning/planningClient';
 import { StepEvidencePanel } from './StepEvidencePanel';
 import { WorkshopHandoffPanel } from './WorkshopHandoffPanel';
+import { WorkshopOutboundHistoryPanel } from './WorkshopOutboundHistoryPanel';
 
 const statusNames: Record<BatchStatus,string> = {
   created: 'Создана', in_progress: 'В работе', hold: 'Приостановлена',
@@ -37,6 +38,7 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
   const epoch=useRef(0);
   const pendingMore=useRef<AbortController|null>(null);
   const [selectedId,setSelectedId]=useState<string|null>(null);
+  const [outboundVersion,setOutboundVersion]=useState(0);
   const [refreshKey,setRefreshKey]=useState(0);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -122,7 +124,10 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
       {selected?.id===batch.id && <>
         <StepEvidencePanel key={'evidence:'+batch.id} connection={connection} batch={batch} />
         {batch.status==='in_progress' &&
-          <WorkshopHandoffPanel key={'handoff:'+batch.id} connection={connection} batchId={batch.id} />}
+          <WorkshopHandoffPanel key={'handoff:'+batch.id} connection={connection}
+            batchId={batch.id} onSent={()=>setOutboundVersion(value=>value+1)} />}
+        <WorkshopOutboundHistoryPanel key={'outbound:'+batch.id} connection={connection}
+          batchId={batch.id} refreshVersion={outboundVersion} />
       </>}
     </div>)}
     {nextAfter && <button type="button" className={buttonClass} disabled={loading||loadingMore}

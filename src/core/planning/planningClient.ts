@@ -236,6 +236,9 @@ export const planningApi = {
   batchHandoffs: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; handoffs: BatchHandoff[] }>(
       c, '/planning/batches/' + id(batchId) + '/handoffs', { signal }),
+  workshopOutboundHandoffs: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId: string; handoffs: BatchHandoff[]; hasMore: boolean }>(
+      c, '/planning/workshop-batches/' + id(batchId) + '/outbound-handoffs', { signal }),
   sendHandoff: (c: PlanningSession, batchId: string, input: {
     handoffId: string; fromStep: number; toStep: number;
     quantity: string; quantityUnit: QuantityUnit; note?: string;
