@@ -114,6 +114,12 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
     expect((await post('/planning/batches/'+batchId+'/handoffs',{
       handoffId,fromStep:1,toStep:2,quantity:'65.125999',quantityUnit:'kg',
     })).statusCode).toBe(201);
+    const pendingInput=(await workshopFlow()).json().steps;
+    expect(pendingInput).toEqual([expect.objectContaining({
+      number:2,output:null,input:{
+        id:handoffId,quantity:'65.125999',unit:'kg',received:false,
+      },inputDifference:null,
+    })]);
     const sent = (await read()).json().steps;
     expect(sent[0]).toMatchObject({
       output:{quantity:'70.250001',unit:'kg'},
@@ -145,7 +151,9 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
     expect(scoped.statusCode).toBe(200);
     expect(scoped.json()).toEqual({batchId,hasMore:false,steps:[
       {number:2,name:'Cutting',workshopId:'cutting',nextStep:null,
-        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null},
+        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null,
+        input:{id:expect.any(String),quantity:'65.125999',unit:'kg',received:true},
+        inputDifference:'5.125999'},
     ]});
     await pool.query(`INSERT INTO user_workshop_memberships
       (organization_id,user_id,workshop_id) VALUES($1,$2,'coating')`,[org,master]);
@@ -155,9 +163,11 @@ integration('M2 batch quantity flow audit (PostgreSQL)', () => {
       {number:1,name:'Coating',workshopId:'coating',nextStep:2,
         output:{quantity:'70.250001',unit:'kg'},
         handoff:{id:expect.any(String),quantity:'65.125999',unit:'kg',received:true},
-        difference:'5.124002'},
+        difference:'5.124002',input:null,inputDifference:null},
       {number:2,name:'Cutting',workshopId:'cutting',nextStep:null,
-        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null},
+        output:{quantity:'60.000000',unit:'kg'},handoff:null,difference:null,
+        input:{id:expect.any(String),quantity:'65.125999',unit:'kg',received:true},
+        inputDifference:'5.125999'},
     ]);
     expect(shared.json().steps.every((row:object)=>
       !('sourceComparison' in row) && !('sourceEntryId' in row))).toBe(true);

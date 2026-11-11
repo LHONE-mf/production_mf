@@ -229,7 +229,8 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
     const b=batch.rows[0];
     const rows = await pool.query(`WITH route_steps AS (
       SELECT s.step_number,s.name,s.workshop_id,
-        LEAD(s.step_number) OVER (ORDER BY s.step_number) AS next_step
+        LEAD(s.step_number) OVER (ORDER BY s.step_number) AS next_step,
+        LAG(s.step_number) OVER (ORDER BY s.step_number) AS previous_step
       FROM process_route_steps s
       WHERE s.organization_id=$1 AND s.route_id=$2 AND s.route_version=$3
         AND s.electrode_line=$4
@@ -239,7 +240,12 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
       h.id AS handoff_id,h.quantity::text AS handoff_quantity,
       h.quantity_unit AS handoff_unit,(r.handoff_id IS NOT NULL) AS received,
       CASE WHEN e.quantity_unit=h.quantity_unit
-        THEN (e.quantity-h.quantity)::text ELSE NULL END AS difference
+        THEN (e.quantity-h.quantity)::text ELSE NULL END AS difference,
+      incoming.id AS input_id,incoming.quantity::text AS input_quantity,
+      incoming.quantity_unit AS input_unit,
+      (accepted.handoff_id IS NOT NULL) AS input_received,
+      CASE WHEN accepted.handoff_id IS NOT NULL AND incoming.quantity_unit=e.quantity_unit
+        THEN (incoming.quantity-e.quantity)::text ELSE NULL END AS input_difference
     FROM route_steps s
     JOIN user_workshop_memberships m
       ON m.organization_id=$1 AND m.user_id=$6 AND m.workshop_id=s.workshop_id
@@ -251,6 +257,11 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         AND h.from_step=s.step_number AND h.to_step=s.next_step
     LEFT JOIN production_stage_receipts r
       ON r.organization_id=h.organization_id AND r.handoff_id=h.id
+    LEFT JOIN production_stage_handoffs incoming
+      ON incoming.organization_id=$1 AND incoming.batch_id=$5
+        AND incoming.from_step=s.previous_step AND incoming.to_step=s.step_number
+    LEFT JOIN production_stage_receipts accepted
+      ON accepted.organization_id=incoming.organization_id AND accepted.handoff_id=incoming.id
     ORDER BY s.step_number LIMIT 201`,[
       actor.organization_id,b.route_id,b.route_version,
       b.material_line==='cell'?'common':b.material_line,batchId,actor.id,
@@ -268,6 +279,11 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         unit:row.handoff_unit,received:row.received,
       },
       difference:row.difference,
+      input:row.input_id===null?null:{
+        id:row.input_id,quantity:row.input_quantity,
+        unit:row.input_unit,received:row.input_received,
+      },
+      inputDifference:row.input_difference,
     })),hasMore:rows.rows.length>200};
   });
 
