@@ -211,6 +211,47 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
     expect(audit.rows[0]).toMatchObject({actor_id:master,workshop_id:'cutting'});
   });
 
+  it('pages more than 100 workshop batches without leaking inaccessible cursors', async () => {
+    const extraIds = Array.from({length:104},()=>randomUUID());
+    // All extra rows share a timestamp to exercise the UUID tie-breaker.
+    await pool.query(`INSERT INTO production_batches
+      (organization_id,id,order_id,batch_code,material_line,
+        planned_quantity,quantity_unit,created_by,created_at)
+      SELECT $1,items.id,$2,'PAGE-'||items.id::text,
+        'cathode',10,'kg',$4,now()-interval '1 hour'
+      FROM unnest($3::uuid[]) AS items(id)`,
+      [org,orderId,extraIds,chief]);
+    const path='/planning/workshop-batches';
+    const first=await app.inject({method:'GET',url:path,headers:auth(1)});
+    expect(first.statusCode).toBe(200);
+    expect(first.json().batches).toHaveLength(100);
+    expect(first.json().hasMore).toBe(true);
+    expect(first.json().nextAfter).toBe(first.json().batches[99].id);
+    const second=await app.inject({method:'GET',
+      url:path+'?after='+first.json().nextAfter,headers:auth(1)});
+    expect(second.statusCode).toBe(200);
+    expect(second.json().batches).toHaveLength(5);
+    expect(second.json().hasMore).toBe(false);
+    expect(second.json().nextAfter).toBeNull();
+    const all=[...first.json().batches,...second.json().batches]
+      .map((b:{id:string})=>b.id);
+    expect(new Set(all).size).toBe(105);
+    expect(new Set(all)).toEqual(new Set([batchId,...extraIds]));
+    expect((await app.inject({method:'GET',url:path+'?after=not-a-uuid',
+      headers:auth(1)})).statusCode).toBe(400);
+    expect((await app.inject({method:'GET',
+      url:path+'?after='+randomUUID(),headers:auth(1)})).json().batches).toEqual([]);
+    // Removing a membership invalidates both the list and older cursors.
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,master]);
+    expect((await app.inject({method:'GET',url:path,headers:auth(1)})).json().batches)
+      .toEqual([]);
+    expect((await app.inject({method:'GET',url:path+'?after='+first.json().nextAfter,
+      headers:auth(1)})).json().batches).toEqual([]);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,master]);
+  });
+
   it('rejects direct rewrites and cross-workshop route evidence even with valid UUIDs', async () => {
     await expect(pool.query(`UPDATE production_step_evidence SET note='altered'
       WHERE organization_id=$1 AND id=$2`,[org,startId]))

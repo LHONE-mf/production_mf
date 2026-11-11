@@ -9,6 +9,7 @@ import { hasWholeCount } from './quantities.js';
 // planning slice. Only a server-authenticated chief may release orders or
 // change a batch. M1 task synchronization never touches these tables.
 const uuidParam = z.object({ id: z.guid() }).strict();
+const workshopPageQuery = z.object({ after: z.guid().optional() }).strict();
 const quantity = z.string().regex(/^(?=.*[1-9])(?:0|[1-9][0-9]{0,11})(?:\.[0-9]{1,6})?$/);
 const batchSchema = z.object({
   batchCode: z.string().trim().min(1).max(100),
@@ -107,7 +108,13 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error: 'unauthorized' });
     if (actor.role !== 'master') return reply.code(403).send({ error: 'forbidden' });
-    const result = await pool.query(`SELECT b.id,b.batch_code,b.status,b.quantity_unit
+    const parsed = workshopPageQuery.safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({ error: 'invalid_batch_cursor' });
+    // The cursor is only an opaque batch UUID, never client-supplied ordering
+    // metadata. Anchor and page are both resolved from *current* membership.
+    // Keyset ordering stays stable when new batches arrive between requests.
+    const result = await pool.query(`WITH visible AS (
+      SELECT b.id,b.batch_code,b.status,b.quantity_unit,b.created_at
       FROM production_batches b
       JOIN production_orders o
         ON o.organization_id=b.organization_id AND o.id=b.order_id
@@ -121,12 +128,19 @@ export function registerBatchRoutes(app: FastifyInstance, pool: Pool) {
           AND s.electrode_line=CASE WHEN b.material_line='cell'
             THEN 'common' ELSE b.material_line END
       )
-      ORDER BY b.created_at DESC,b.id DESC LIMIT 101`,
-      [actor.organization_id,actor.id]);
-    return { batches:result.rows.slice(0,100).map(row => ({
+    )
+    SELECT id,batch_code,status,quantity_unit
+    FROM visible
+    WHERE ($3::uuid IS NULL OR (created_at,id) <
+      (SELECT anchor.created_at,anchor.id FROM visible anchor WHERE anchor.id=$3))
+    ORDER BY created_at DESC,id DESC LIMIT 101`,
+      [actor.organization_id,actor.id,parsed.data.after ?? null]);
+    const page = result.rows.slice(0,100);
+    const hasMore = result.rows.length>100;
+    return { batches:page.map(row => ({
       id:row.id,batchCode:row.batch_code,status:row.status,
       quantityUnit:row.quantity_unit,
-    })), hasMore:result.rows.length>100 };
+    })), hasMore, nextAfter:hasMore ? page[page.length-1].id : null };
   });
 
   app.get('/planning/orders/:id/batches', async (request, reply) => {
