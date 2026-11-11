@@ -39,7 +39,7 @@ describe('real local employee management',()=>{
     });
     useAuthStore.getState().login(chief);
     const screen=await mount();
-    expect(screen.textContent).toContain('Production Admin');
+    await vi.waitFor(()=>expect(screen.textContent).toContain('Production Admin'));
     expect(screen.textContent).not.toContain('Козлов Д.С.');
     await act(async()=>{
       [...screen.querySelectorAll('button')].find(x=>x.textContent?.includes('Добавить сотрудника'))!.click();
@@ -55,10 +55,9 @@ describe('real local employee management',()=>{
       form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));
       await new Promise(resolve=>setTimeout(resolve,100));
     });
-    expect(await db.users.count()).toBe(2);
+    await vi.waitFor(async()=>expect(await db.users.count()).toBe(2));
     expect((await AuthService.login('WORKER.REAL','worker-secret-2026'))?.fullName).toBe('Worker Real');
-    await act(async()=>{await Promise.resolve();});
-    expect(screen.textContent).toContain('Worker Real');
+    await vi.waitFor(()=>expect(screen.textContent).toContain('Worker Real'));
     expect(screen.textContent).not.toContain('Козлов Д.С.');
   });
 });

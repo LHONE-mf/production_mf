@@ -151,21 +151,21 @@ function UserEditor({user,actorId,activeChiefCount,onClose}:{
       <form className="space-y-3" onSubmit={event=>void submit(event)}>
         <label className="block text-sm text-slate-200">Имя
           <input required minLength={2} maxLength={120} className={inputClass+' mt-1'}
-            value={draft.fullName} onChange={e=>setDraft({...draft,fullName:e.target.value})}/>
+            value={draft.fullName} onChange={e=>setDraft(previous=>({...previous,fullName:e.target.value}))}/>
         </label>
         <label className="block text-sm text-slate-200">Логин
           <input required minLength={3} maxLength={40} className={inputClass+' mt-1'}
             value={draft.login} autoComplete="off"
-            onChange={e=>setDraft({...draft,login:e.target.value})}/>
+            onChange={e=>setDraft(previous=>({...previous,login:e.target.value}))}/>
         </label>
         <label className="block text-sm text-slate-200">{user?'Новый пароль (необязательно)':'Пароль (от 10 символов)'}
           <input type="password" minLength={10} required={!user}
             className={inputClass+' mt-1'} value={draft.password}
-            autoComplete="new-password" onChange={e=>setDraft({...draft,password:e.target.value})}/>
+            autoComplete="new-password" onChange={e=>setDraft(previous=>({...previous,password:e.target.value}))}/>
         </label>
         <label className="block text-sm text-slate-200">Роль
           <select className={inputClass+' mt-1'} value={draft.role}
-            onChange={e=>setDraft({...draft,role:e.target.value as UserRole})}>
+            onChange={e=>setDraft(previous=>({...previous,role:e.target.value as UserRole}))}>
             {Object.values(UserRole).map(role=><option key={role} value={role}>{ROLE_LABELS[role]}</option>)}
           </select>
         </label>
