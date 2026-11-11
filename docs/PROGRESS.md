@@ -1,3 +1,34 @@
+## 2026-11-11 — Physical-length cutting estimates and durable whole-count records
+
+- Revalidated clean remote `3fc842a` and its successful exact-head CI before
+  changes. Reproduced A+B coating coverage being counted as two physical webs,
+  and a fractional actual piece count being saved/exported.
+- Cutting estimates now require entered physical usable length in metres and
+  explicit kerf in mm. Plate estimates require separate length/width and usable
+  web width. The conservative rectangular model includes kerf in each pitch;
+  no side-coverage sum, square-plate assumption, edge salvage or layout
+  optimization is inferred. Unknown geometry gives no estimate, while actual
+  counts can still be recorded alone. An instruction dimension is distinguished
+  from an entered actual dimension. Saved geometry/estimate survives reopen;
+  malformed/inconsistent imported estimate metadata is not displayed as valid.
+- New good/reject/break counts require nonnegative safe whole integers and a
+  nonzero actual total. A stable ID and in-flight guard prevent repeated-click
+  duplicates. The existing `cuttingRuns` table is appended before opening the
+  outgoing packet. Failed writes retain the form and never expose a nonexistent
+  export; export no longer rewrites saved records. Changing source rolls resets
+  the draft. Separate runs remain declarations, not reconciled stock allocation.
+- Full local frontend checks passed: **302 tests**, typecheck and PWA build.
+  Regressions cover double-sided rolls, nonsquare plates, kerf, zero valid
+  estimate, overflow, invalid counts, unknown geometry, storage failure/retry,
+  duplicate clicks, source reset and real IndexedDB close/reopen. Mutation
+  checks prove count guards are exercised. Chromium **390×844 / 1365×900**
+  passed offline save, durable geometry/counts, both layouts, input rejection,
+  source reset, 44px Save target, no overflow and no browser exceptions.
+- Updated the room audit and canonical checkpoint. No server, schema, signing,
+  task-outbox or production change. Next: measured dry-electrode thickness in
+  coating-to-calender handover. Physical/M1 TLS/upgrade acceptance stays open;
+  automatic sync remains disabled and no physical packet delivery was claimed.
+
 ## 2026-11-11 — Validated, atomic coating journal with reproducible estimates
 
 - Completed a code-based inventory of all **11 registered rooms** in

@@ -83,8 +83,12 @@ from estimated wet thickness. Intermittent coverage requires valid lengths and
 a gap smaller than pitch, with its start-of-segment assumption shown. Small
 positive flow estimates retain their precision. IndexedDB rollback/retry/reopen,
 component and phone/desktop browser checks passed. Physical coating/calibration
-acceptance and measured dry-roll handover remain open; cutting must distinguish
-physical web length from summed A+B face coverage before reliable yield claims.
+acceptance and measured dry-roll handover remain open. Cutting now uses explicit
+physical web length for advisory layout estimates, excluding A+B face coverage.
+Independent rectangular plate dimensions, safe whole counts, save-before-export,
+source-change isolation and persisted estimate inputs have unit, IndexedDB,
+component and phone/desktop browser evidence. This is not actual yield, stock
+reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.
 - [ ] Validate Android upgrades, system insets, data retention, backup/restore.

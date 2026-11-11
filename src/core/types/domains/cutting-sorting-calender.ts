@@ -32,6 +32,22 @@ export interface CuttingIncoming {
   createdAt: number;
 }
 
+/** Explicit physical cutting geometry. Face coating coverage is not web length. */
+export interface CuttingGeometry {
+  physicalLengthM:number;
+  electrodeLengthMm:number;
+  kerfMm:number;
+  electrodeWidthMm?:number;
+  usableWebWidthMm?:number;
+}
+export interface CuttingYield extends CuttingGeometry {
+  electrodeLengthSource?:'entered'|'incoming_spec';
+  rows:number;
+  columns:number;
+  expected:number;
+  perMeter:number;
+}
+
 // Запись журнала нарезки (результат оператора) → далее на сортировку
 export interface CutRun {
   id: string;
@@ -40,6 +56,7 @@ export interface CutRun {
   electrodeType: ElectrodeShape;
   coatingType?: string;
   electrodeLengthMm?: number;  // фактическая длина, мм
+  yieldCalculation?: CuttingYield; // saved advisory geometry and estimate, never a physical yield sign-off
   goodCount: number;           // количество нарезанных годных электродов
   defectCount: number;         // количество с дефектами
   defects?: string;            // виды дефектов / обрывы
