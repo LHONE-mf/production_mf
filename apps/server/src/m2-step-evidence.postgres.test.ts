@@ -16,7 +16,7 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
   const auth = (i: number) => ({ authorization: 'Bearer ' + tokens[i] });
   const code = (label: string) => label + '-' + randomUUID().slice(0,8);
   let routeId = '', orderId = '', batchId = '';
-  let startId = '', finishId = '';
+  let startId = '', finishId = '', cuttingStartId = '';
   const step = (number: number, kind: 'started'|'completed'|'deviation', id: string = randomUUID(),
     extra: Record<string,string> = {}, i = 0, batch = batchId) =>
     app.inject({
@@ -143,15 +143,40 @@ integration('M2 append-only route-step evidence (PostgreSQL)', () => {
     expect((await app.inject({method:'POST',
       url:'/planning/handoffs/'+handoffId+'/receive',headers:auth(1),
       payload:{note:'Identities checked'}})).statusCode).toBe(200);
-    expect((await step(2,'started')).statusCode).toBe(201);
+    cuttingStartId = randomUUID();
+    expect((await step(2,'started',cuttingStartId,{},1)).statusCode).toBe(201);
+    expect((await step(2,'started',cuttingStartId,{},1)).json())
+      .toMatchObject({alreadyRecorded:true});
     expect((await step(2,'completed',randomUUID(),
-      {quantity:'48.000000',quantityUnit:'kg'})).statusCode).toBe(201);
+      {quantity:'48.000000',quantityUnit:'kg'},1)).statusCode).toBe(201);
     const response = await read();
     expect(response.statusCode).toBe(200);
     expect(response.json().steps.filter((s:{number:number})=>s.number===2)
       .map((s:{evidence:{kind:string}})=>s.evidence.kind)).toEqual(['started','completed']);
     expect(response.json().steps[0].name).toBe('Cathode coating');
     expect(response.json().steps.at(-1).name).toBe('Cathode cutting');
+  });
+
+  it('denies cross-workshop and revoked master writes, including old retries', async () => {
+    const before = await pool.query(`SELECT count(*)::int AS count FROM production_step_evidence
+      WHERE organization_id=$1 AND batch_id=$2`,[org,batchId]);
+    expect((await step(1,'deviation',randomUUID(),{note:'Wrong workshop'},1)).json())
+      .toMatchObject({error:'step_workshop_access_denied'});
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,master]);
+    expect((await step(2,'started',cuttingStartId,{},1)).json())
+      .toMatchObject({error:'step_workshop_access_denied'});
+    expect((await step(2,'deviation',randomUUID(),{note:'Revoked'},1)).statusCode).toBe(403);
+    const after = await pool.query(`SELECT count(*)::int AS count FROM production_step_evidence
+      WHERE organization_id=$1 AND batch_id=$2`,[org,batchId]);
+    expect(after.rows[0].count).toBe(before.rows[0].count);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,master]);
+    expect((await step(2,'started',cuttingStartId,{},1)).json())
+      .toMatchObject({alreadyRecorded:true});
+    const audit = await pool.query(`SELECT actor_id,workshop_id FROM production_step_evidence
+      WHERE organization_id=$1 AND id=$2`,[org,cuttingStartId]);
+    expect(audit.rows[0]).toMatchObject({actor_id:master,workshop_id:'cutting'});
   });
 
   it('rejects direct rewrites and cross-workshop route evidence even with valid UUIDs', async () => {

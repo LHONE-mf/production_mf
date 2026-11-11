@@ -30,13 +30,14 @@ function pgCode(error: unknown) {
 /**
  * Additive route-step evidence only. It never drives production equipment,
  * mutates task outboxes, completes batches, or posts material consumption.
- * Chief-only until workshop actor/operation permissions are implemented.
+ * Chief writes remain tenant-wide; master writes require current membership
+ * in the selected route step's workshop. Other roles remain denied.
  */
 export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
   app.post('/planning/batches/:id/steps/:stepNumber/evidence', async (request, reply) => {
     const actor = await authenticate(pool, request.headers.authorization);
     if (!actor) return reply.code(401).send({ error:'unauthorized' });
-    if (actor.role !== 'chief') return reply.code(403).send({ error:'forbidden' });
+    if (!['chief','master'].includes(actor.role)) return reply.code(403).send({ error:'forbidden' });
     const params = paramsSchema.safeParse(request.params);
     const parsed = inputSchema.safeParse(request.body);
     if (!params.success || !parsed.success)
@@ -73,6 +74,17 @@ export function registerStepEvidenceRoutes(app: FastifyInstance, pool: Pool) {
         return reply.code(409).send({ error:'step_not_in_batch_route' });
       }
       const workshopId = steps[index].workshop_id;
+      // Check the route-owned workshop, never a client-supplied scope.
+      // Lock membership against revocation until the evidence commits.
+      if (actor.role === 'master') {
+        const membership = await client.query(`SELECT 1 FROM user_workshop_memberships
+          WHERE organization_id=$1 AND user_id=$2 AND workshop_id=$3 FOR SHARE`,
+          [actor.organization_id,actor.id,workshopId]);
+        if (!membership.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.code(403).send({ error:'step_workshop_access_denied' });
+        }
+      }
       const existing = await client.query(`SELECT
           batch_id=$3 AND order_id=$4 AND route_id=$5 AND route_version=$6
             AND step_number=$7 AND workshop_id=$8 AND kind=$9
