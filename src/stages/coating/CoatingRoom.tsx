@@ -203,7 +203,8 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
   const [targetDry, setTargetDry] = useState<number | ''>(28);
   const [widthCm, setWidthCm] = useState<number | ''>(50);
   const [webSpeed, setWebSpeed] = useState<number | ''>(8);
-  const [supplyCm3Rev, setSupplyCm3Rev] = useState<number | ''>(25);
+  const [supplyCm3Rev, setSupplyCm3Rev] = useState<number | ''>(''); // verified pump calibration only
+  const [gapSetpoint, setGapSetpoint] = useState<number | ''>('');
   const [mode, setMode] = useState<'continuous' | 'intermittent'>('continuous');
   const [gapWidth, setGapWidth] = useState<number | ''>('');
   const [gapPitch, setGapPitch] = useState<number | ''>('');
@@ -218,17 +219,18 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
 
   // ── Расчёты из данных замеса ──
   const calc = useMemo(() => {
-    const wet = mix?.pasteDensity && mix?.solidsPctVol && targetDry
-      ? wetThicknessUm(Number(targetDry), Number(mix.pasteDensity), Number(mix.solidsPctVol))
+    const wet = mix?.pasteDensity && mix?.solidsPctMass && targetDry
+      ? wetThicknessUm(Number(targetDry), Number(mix.pasteDensity), Number(mix.solidsPctMass))
       : null;
     const flow = widthCm && wet && webSpeed
       ? requiredScrewFlowLpm(Number(widthCm), wet, Number(webSpeed))
       : null;
-    const rpm = flow ? screwRpmFromFlow(flow, Number(supplyCm3Rev) || 25) : null;
-    const gap = wet !== null && wet !== undefined ? Math.round(wet * 1.05 * 10) / 10 : null; // зазор ≈ мокрая толщина +5%
+    const rpm = flow ? screwRpmFromFlow(flow, supplyCm3Rev===''?undefined:Number(supplyCm3Rev)) : null;
+    // A physical machine gap cannot be inferred from wet film thickness.
+    const gap = gapSetpoint!=='' && Number.isFinite(gapSetpoint) && gapSetpoint>0 ? gapSetpoint : null;
     const cov = intermittentCoverage(segs, mode === 'intermittent' ? Number(gapWidth) || undefined : undefined, mode === 'intermittent' ? Number(gapPitch) || undefined : undefined);
     return { wet, flow, rpm, gap, cov };
-  }, [mix, targetDry, widthCm, webSpeed, supplyCm3Rev, segs, mode, gapWidth, gapPitch]);
+  }, [mix, targetDry, widthCm, webSpeed, supplyCm3Rev, segs, mode, gapWidth, gapPitch, gapSetpoint]);
 
   const save = async () => {
     if (!currentUser) return;
@@ -307,8 +309,13 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
             <input type="number" step="0.1" className={inputCls} value={webSpeed} onChange={(e) => setWebSpeed(numOrNull(e.target.value))} />
           </div>
           <div>
-            <label className={labelCls}>Подача шнека, см³/об (справ.)</label>
-            <input type="number" className={inputCls} value={supplyCm3Rev} onChange={(e) => setSupplyCm3Rev(numOrNull(e.target.value))} />
+            <label className={labelCls}>Калиброванная подача насоса, см³/об</label>
+            <input type="number" min="0" step="any" className={inputCls} value={supplyCm3Rev} onChange={(e) => setSupplyCm3Rev(numOrNull(e.target.value))} />
+          </div>
+          <div>
+            <label className={labelCls}>Заданный зазор головки, мкм (по техкарте/настройке)</label>
+            <input type="number" min="0" step="any" className={inputCls} value={gapSetpoint}
+              onChange={event=>setGapSetpoint(numOrNull(event.target.value))} />
           </div>
         </div>
 
@@ -389,14 +396,15 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
       <div className="space-y-3">
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 space-y-2">
           <h3 className="text-white font-semibold text-sm">🧮 Расчёт подстройки из данных замеса</h3>
-          {!mix && <p className="text-xs text-amber-400">Выберите замес — расчёты зазора и шнека используют вязкость, φ и ρ пасты.</p>}
-          <ResultRow label="Мокрая толщина (из сухой плотности и СВ)" value={calc.wet} unit="мкм" hint="h_wet = σ_сух / (ρ·φ)" />
-          <ResultRow label="Зазор фильера–фольга (≈ h_мокрая + 5%)" value={calc.gap} unit="мкм" hint="slot-die, контактное нанесение" />
-          <ResultRow label="Расход шнекового насоса" value={calc.flow} unit="л/мин" hint="Q = w · h · v" />
-          <ResultRow label="Обороты шнекового насоса" value={calc.rpm} unit="об/мин" hint="rpm = Q / подача_за_об" />
+          {!mix && <p className="text-xs text-amber-400">Выберите замес с известными массовой долей СВ и плотностью пасты.</p>}
+          <ResultRow label="Оценка мокрой толщины" value={calc.wet} unit="мкм" hint="h = 10·σ_сух / (ρ_пасты · массовая доля СВ)" />
+          <ResultRow label="Заданный зазор головки (не расчёт)" value={calc.gap} unit="мкм" hint="Ввод из настроек оборудования" />
+          <ResultRow label="Расчётный объёмный расход" value={calc.flow} unit="л/мин" hint="Q = w · h · v" />
+          <ResultRow label="Обороты (при известной калибровке)" value={calc.rpm} unit="об/мин" hint="rpm = Q / подача_за_об" />
           <p className="text-[11px] text-slate-500">
-            Вязкость замеса: <b className="text-slate-300">{mix?.viscosity ?? '—'} сП</b>. Чем выше вязкость, тем больше фактический
-            расход при тех же оборотах — после пробного промера скорректируйте справочную подачу шнека.
+            Мокрая толщина и расход — оценки по материальному балансу, а не измеренные настройки.
+            Реальный зазор головки требует калибровки оборудования. Обороты насоса не рассчитываются,
+            пока не введена измеренная подача за один оборот.
           </p>
         </div>
 
@@ -410,7 +418,7 @@ function SetupTab({ mixes, onSaved }: { mixes: CoatingMixSnapshot[]; onSaved: ()
             </>
           )}
           <ResultRow label="Сторона B" value={numOrUndef(sideB) ?? null} unit="м" />
-          <ResultRow label="Итого покрытие (A + B)" value={round2((calc.cov.coatedM ?? 0) + (numOrUndef(sideB) ?? 0))} unit="м" />
+          <ResultRow label="Сумма покрытия двух сторон (не длина рулона)" value={round2((calc.cov.coatedM ?? 0) + (numOrUndef(sideB) ?? 0))} unit="м" />
         </div>
       </div>
     </div>
