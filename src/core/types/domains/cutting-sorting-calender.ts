@@ -127,6 +127,9 @@ export interface SortBucket {
 
 // Результат сортировки партии (запись журнала оператора)
 export interface SortRun {
+  cutRunId?:string;
+  cutRunSnapshot?:CutRun;
+  specSnapshot?:SortSpec;
   id: string;
   specId: string;             // SortSpec.id по которой сортировали
   batchName: string;          // название партии (пришла с нарезки)

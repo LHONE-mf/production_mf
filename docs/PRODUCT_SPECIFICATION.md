@@ -102,7 +102,13 @@ accounts can now explicitly assign a complete saved calender result to cutting,
 with shape/dimensions, frozen source/version and actor/time. The instruction is
 stored before packet preparation; retries and receipt preserve conflicting
 originals, including against forced replacement. Operator measurements remain
-separate from assigned dimensions. This is not actual yield, stock
+separate from assigned dimensions. Sorting now validates whole-count full
+partitions and protects one allocation per explicit cut-run identity, freezing
+source and specification snapshots. Creation and receipt serialize duplicate
+checks; forced/legacy packets cannot bypass explicit allocations. Ambiguous
+legacy history is retained for review. All-reject results stay in sorting
+history and do not create assembly input; assembly uses frozen criteria for
+new records. This is not actual yield, stock
 reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

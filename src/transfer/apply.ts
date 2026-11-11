@@ -1,9 +1,10 @@
+import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
 // Применение входящегоSyncPacket к локальной базе (офлайн-синхронизация).
-// Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
+// Legacy tables may use freshness; protected source/task/allocation records reject conflicting replacement, including forced packets.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole } from '../core/types';
+import { SyncPacket, Task, TaskStatus, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole } from '../core/types';
 import { verifyPacketSig } from '../core/security';
 
 export interface ApplyResult {
@@ -225,16 +226,12 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         return { ok: true, message: `📐 Технолог задал сортировку «${ss.batchName}»: ${ss.parameterName}, категорий: ${ss.categories.length}` };
       }
       case 'sort-run': {
-        // Результат сортировки партии → мастер/технолог (master). Свежесть по updatedAt; forced — безусловно.
+        // Sorting allocations are immutable; signed/forced packets cannot reallocate a cut run.
         const sr = p.payload as SortRun;
         if (!sr.id || !Array.isArray(sr.buckets)) {
           return { ok: false, message: 'Запись сортировки повреждена' };
         }
-        const existing = await db.sortRuns.get(sr.id);
-        if (existing && !p.forced && existing.updatedAt >= sr.updatedAt) {
-          return { ok: true, message: `Сортировка партии «${sr.batchName}» уже новее — пропущено` };
-        }
-        await db.sortRuns.put(sr);
+        await receiveSortingAllocation(sr);
         return { ok: true, message: `🔀 Сортировка «${sr.batchName}» принята: категорий ${sr.buckets.length}, отбраковано ${sr.rejected}` };
       }
       case 'defect-entry': {
@@ -344,7 +341,11 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun;
+        if ('buckets' in payload && 'specId' in payload) {
+          await receiveSortingAllocation(payload as SortRun);
+          return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
+        }
         if ('login' in payload) {
           await db.users.put(payload as User);
           return { ok: true, message: `(forced) пользователь обновлён: ${(payload as User).login}` };
@@ -365,6 +366,10 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           await db.mixBatches.put(payload as MixBatch);
           return { ok: true, message: `(forced) журнал замеса применён: ${(payload as MixBatch).recipeName}` };
         }
+        const candidate=payload as Task;
+        if(typeof candidate.title!=='string'||typeof candidate.description!=='string'||
+          !Object.values(TaskStatus).includes(candidate.status)||typeof candidate.assignedTo!=='string'||typeof candidate.createdBy!=='string')
+          return {ok:false,message:'Неизвестный forced-пакет: данные не являются задачей и не будут записаны в задачи'};
         return applyLocalOnlyTask((payload as Task).id, async () => {
           await db.tasks.put(payload as Task);
           return { ok: true, message: `(forced) задание применено: ${(payload as Task).title}` };

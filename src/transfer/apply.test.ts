@@ -105,3 +105,25 @@ describe('explicit cutting instruction receipt',()=>{
     await db.cuttingRolls.delete(id);
   });
 });
+
+it('does not allow forced or legacy packets to duplicate an explicit sorting allocation',async()=>{
+ const id='sorting-receipt';await db.sortRuns.delete(id);await db.sortRuns.delete('sorting-bypass');
+ const source={id:'cut-receipt',incomingId:'roll-sort',electrodeType:'strip' as const,goodCount:10,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1};
+ const spec={id:'spec-receipt',batchName:'roll-sort',cutRunId:source.id,electrodeType:'strip' as const,parameterName:'Thickness',unit:'um',categories:[{name:'A',criteria:'Entered criterion'}],authorId:'tech',createdAt:1,updatedAt:1};
+ const payload={id,cutRunId:source.id,cutRunSnapshot:source,specSnapshot:spec,specId:spec.id,batchName:source.incomingId,goodCount:10,buckets:[{categoryName:'A',count:8}],rejected:2,workerId:'sorter',createdAt:1,updatedAt:1};
+ expect((await applyPacket(packet('sort-run',payload))).ok).toBe(true);
+ expect((await applyPacket(packet('sort-run',payload,true))).ok).toBe(true);
+ expect((await applyPacket(packet('sort-run',{...payload,id:'sorting-bypass'},true))).ok).toBe(false);
+ expect((await applyPacket(packet('sort-run',{...payload,id:'sorting-bypass',cutRunId:undefined,cutRunSnapshot:undefined,specSnapshot:undefined},true))).ok).toBe(false);
+ expect((await applyPacket(packet('forced-push',{...payload,id:'sorting-bypass'},true))).ok).toBe(false);
+ expect(await db.tasks.get('sorting-bypass')).toBeUndefined();
+ expect(await db.sortRuns.get(id)).toEqual(payload);await db.sortRuns.delete(id);
+});
+
+it('does not misroute other unsupported forced manufacturing payloads into tasks',async()=>{
+ for(const payload of [{id:'not-task',incomingId:'roll',goodCount:10,defectCount:0},
+   {id:'not-task',rollId:'roll',gapsMm:[0.35],totalLengthM:10,thicknessAfterUm:80}]){
+  expect((await applyPacket(packet('forced-push',payload,true))).ok).toBe(false);
+  expect(await db.tasks.get('not-task')).toBeUndefined();
+ }
+});

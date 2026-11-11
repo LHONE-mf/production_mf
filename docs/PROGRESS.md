@@ -1,3 +1,43 @@
+## 2026-11-11 — Whole-count sorting partitions and protected source allocation
+
+- Revalidated remote `a2f56a5` and its passing exact-head CI. A rendered
+  regression reproduced fractional categories/rejects being saved and exported
+  when their arithmetic total happened to equal the incoming count.
+- New sorting records require nonnegative safe whole counts, a positive input
+  and an exact full partition. All-reject results are valid. Optional means
+  remain unknown when blank; negative/nonfinite observations and means for
+  empty categories are rejected. Classification is not formal QA acceptance.
+- New records explicitly identify the cut run and freeze its snapshot and the
+  directly linked specification. Batch-name guessing is removed from new
+  sorting selection. Source/spec changes require an explicit draft reset;
+  conflicting versions do not silently relabel observations.
+- Transactional creation and receipt serialize allocation checks and writes.
+  A cut run can be fully allocated once, even across competing IDs or forced
+  packets. Exact stable-ID retries retain timestamps/content, including after
+  upstream criteria change. Ambiguous legacy history is preserved and blocks
+  new allocation pending review; new distinct cut runs from the same roll remain
+  independently sortable. Failed writes keep the form and produce no export.
+- Review also reproduced generic forced sorting packets being misrouted into
+  the task store. Sorting now sends its typed packet and legacy forced sorting
+  payloads use the allocation guard. Unsupported generic manufacturing payloads
+  are rejected instead of falling through to task creation. Regression tests
+  verify no task is created.
+- Exports no longer modify saved results. Assembly uses frozen specifications
+  for new results, and all-reject groups are not offered as assembly input.
+  Existing records are retained; no historical source links are invented.
+- Full frontend checks passed: **351 tests**, typecheck and PWA build.
+  IndexedDB/component/receipt tests cover invalid partitions, empty means,
+  concurrency, rollback/retry, frozen snapshots, stale criteria, legacy/forced
+  bypass attempts, same-roll distinct cuts and reopen. Mutation tests prove
+  allocation guards are exercised. Chromium **390×844 / 1365×900** passed
+  fractional rejection, failure/no export, retained form, offline retry,
+  exact-source snapshots/counts after reload, duplicate-allocation rejection,
+  no overflow and no browser exceptions.
+- Room audit and canonical checkpoint updated. No schema, server, signing or
+  automatic-sync change. Next: assembly source consumption/duplicate take-in
+  controls and local recorded-data reports. Physical stock, yield/QA approval,
+  installed APK upgrade/restore, BLE/QR and two-device/TLS acceptance stay open.
+
 ## 2026-11-11 — Explicit, durable calender-to-cutting instructions
 
 - Revalidated clean remote `a8b4f89` and successful exact-head CI. The calender

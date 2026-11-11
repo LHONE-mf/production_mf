@@ -44,7 +44,7 @@ export function AssemblyModule() {
   }, []);
 
   // Партии, готовые принять в сборку: результаты сортировки ещё не взятые в работу
-  const sortRuns = useLiveQuery(() => db.sortRuns.toArray(), []);
+  const sortRuns = useLiveQuery(async()=> (await db.sortRuns.toArray()).filter(row=>row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0)), []);
 
   const selected = useMemo(
     () => (runs ?? []).find((r) => r.id === selectedId) ?? null,
@@ -76,7 +76,7 @@ export function AssemblyModule() {
     if (!currentUser) return;
     const sr = (sortRuns ?? []).find((x) => x.id === srId);
     if (!sr) return;
-    const spec = await db.sortSpecs.get(sr.specId);
+    const spec = sr.specSnapshot ?? await db.sortSpecs.get(sr.specId);
     const run: AssemblyRun = {
       id: uuidv4(),
       batchName: sr.batchName,
@@ -194,7 +194,7 @@ export function AssemblyModule() {
       {tab === 'incoming' && (
         <div className="space-y-2">
           <p className="text-xs text-slate-400">Результаты сортировки (партии годных электродов). Нажмите «Взять в сборку».</p>
-          {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Пока нет партий с сортировки.</p>}
+          {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Нет партий с электродами для сборки. Полностью отбракованные результаты остаются в журнале сортировки.</p>}
           {(sortRuns ?? []).map((sr) => (
             <div key={sr.id} className="bg-slate-900 border border-slate-800 rounded p-3 flex items-center justify-between gap-3 flex-wrap">
               <div className="text-xs text-slate-300">

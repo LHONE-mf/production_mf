@@ -6,7 +6,7 @@
 // по категориям (толщина/масса из КД, допустимые дефекты из реестра) →
 // результат (sort-run) передаётся мастеру/технологу (master) и дальше на сборку.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -17,12 +17,13 @@ import {
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
+import { saveSortingAllocation, validateSortPartition } from '../../core/manufacturing/sortingAllocation';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 
 type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments';
 
 const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
+  'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
 const shapeLabel = (s: ElectrodeShape) =>
@@ -127,14 +128,9 @@ export function SortingModule() {
           defects={defects ?? []}
           selectedBatchId={selectedBatchId}
           onSelectBatch={setSelectedBatchId}
-          hasUser={!!currentUser}
-          onSave={(run) => {
-            const fresh = { ...run, workerId: currentUser!.id, updatedAt: Date.now() };
-            db.sortRuns.put(fresh);
-            setOutPacket({
-              v: 1, type: 'sort-run', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(),
-            });
+          workerId={currentUser?.id}
+          onSave={(saved) => {
+            setOutPacket({v:1,type:'sort-run',stage:StageId.SORTING,payload:saved,from:currentUser!.id,ts:Date.now()});
           }}
         />
       )}
@@ -157,12 +153,11 @@ export function SortingModule() {
       {tab === 'journal' && (
         <JournalTab
           runs={runs ?? []}
-          canForce={isTechManager}
+          canForce={!!currentUser&&[UserRole.MASTER,UserRole.CHIEF].includes(currentUser.role)}
           onSend={(r, forced) => {
-            const fresh = { ...r, updatedAt: Date.now() };
-            db.sortRuns.put(fresh);
+            const fresh = r;
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'sort-run', stage: StageId.SORTING,
+              v: 1, type: 'sort-run', stage: StageId.SORTING,
               payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
             });
           }}
@@ -205,7 +200,7 @@ function BatchesTab({ items, specs, onSort }: {
   return (
     <div className="space-y-3">
       {items.map((cr) => {
-        const spec = specs.find((s) => s.cutRunId === cr.id || s.batchName === cr.incomingId);
+        const spec = specs.find(s=>s.cutRunId===cr.id);
         return (
           <div key={cr.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -477,20 +472,22 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, 
 }
 
 // ---------- 🔀 Сортировка: разнос по категориям ----------
-function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasUser, onSave }: {
+function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, workerId, onSave }: {
   batches: CutRun[]; specs: SortSpec[]; defects: DefectEntry[];
   selectedBatchId: string | null; onSelectBatch: (id: string) => void;
-  hasUser: boolean;
+  workerId?:string;
   onSave: (run: SortRun) => void;
 }) {
   const [batchId, setBatchId] = useState<string | null>(selectedBatchId);
   const batch = batches.find((b) => b.id === batchId) ?? null;
   const spec = useMemo(() => {
     if (!batch) return null;
-    return specs.find((s) => s.cutRunId === batch.id)
-      ?? specs.find((s) => s.batchName === batch.incomingId) ?? null;
+    return specs.find(s=>s.cutRunId===batch.id)??null;
   }, [batch, specs]);
 
+  const [busy,setBusy]=useState(false);const inFlight=useRef(false);
+  const [error,setError]=useState('');const [requestId,setRequestId]=useState(uuidv4);
+  const [basis,setBasis]=useState<{source:CutRun;spec:SortSpec}|null>(null);
   const [counts, setCounts] = useState<Record<number, string>>({});
   const [avgUm, setAvgUm] = useState<Record<number, string>>({});
   const [avgMass, setAvgMass] = useState<Record<number, string>>({});
@@ -498,45 +495,46 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
   const [defectIds, setDefectIds] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
 
-  const pickBatch = (id: string) => { setBatchId(id); onSelectBatch(id); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes(''); };
+  const pickBatch = (id: string) => { setBasis(null);setError('');setRequestId(uuidv4()); setBatchId(id); onSelectBatch(id); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes(''); };
 
   if (batches.length === 0) {
     return <p className="text-slate-500 text-sm">Нет партий для сортировки — дождитесь данных с нарезки (вкладка «📥 Партии с нарезки»).</p>;
   }
 
+  const changed=()=>{if(!basis&&batch&&spec)setBasis({source:batch,spec});setRequestId(uuidv4());};
+  const countValues=[...Object.values(counts).map(v=>v===''?0:Number(v)),rejected===''?NaN:Number(rejected)];
+  const validCounts=countValues.every(v=>Number.isSafeInteger(v)&&v>=0)&&Number.isSafeInteger(batch?.goodCount)&&batch!.goodCount>0;
   const totalSorted = Object.values(counts).reduce((s, v) => s + (Number(v) || 0), 0);
   const goodIn = batch?.goodCount ?? 0;
   const accounted = totalSorted + (Number(rejected) || 0);
   const diff = goodIn - accounted;
-  const balanceOk = batch != null && diff === 0 && totalSorted > 0;
+  const balanceOk = batch != null && diff === 0 && validCounts;
 
-  const save = () => {
-    if (!batch || !spec || !balanceOk) return;
-    const buckets: SortBucket[] = spec.categories
-      .map((c, i): SortBucket => ({
-        categoryName: c.name, count: Number(counts[i]) || 0,
-        avgThicknessUm: avgUm[i] ? Number(avgUm[i]) : undefined,
-        avgMassG: avgMass[i] ? Number(avgMass[i]) : undefined,
-      }))
-      .filter((b) => b.count > 0);
-    const defectTitles = defectIds.map((id) => defects.find((d) => d.id === id)?.title ?? id).join(', ');
-    onSave({
-      id: uuidv4(), specId: spec.id, batchName: batch.incomingId,
-      goodCount: batch.goodCount, buckets, rejected: Number(rejected) || 0,
-      defects: defectTitles || undefined, notes: notes.trim() || undefined,
-      workerId: '', createdAt: Date.now(), updatedAt: Date.now(),
-    });
-    setBatchId(null); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes('');
+  const save = async () => {
+    if (!batch || !spec || !balanceOk || !workerId || inFlight.current) return;
+    inFlight.current=true;setBusy(true);setError('');
+    try{
+      const selected=basis??{source:batch,spec};
+      const buckets=selected.spec.categories.map((c,i)=>({categoryName:c.name,count:counts[i]?Number(counts[i]):0,
+        avgThicknessUm:avgUm[i]?Number(avgUm[i]):undefined,avgMassG:avgMass[i]?Number(avgMass[i]):undefined}));
+      const saved=await saveSortingAllocation(selected.source,selected.spec,{id:requestId,buckets,rejected:Number(rejected),
+        defects:defectIds.map(id=>defects.find(d=>d.id===id)?.title??id).join(', ')||undefined,notes:notes.trim()||undefined},workerId);
+      onSave(saved);pickBatch('');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Сортировка не сохранена');}
+    finally{inFlight.current=false;setBusy(false);}
   };
 
   return (
     <div className="space-y-3">
+      {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+      <p className="text-xs text-slate-400">Полный разнос одной партии нарезки: только целые количества. Нужна спецификация, явно связанная с этой партией. Пустая категория — без выделенных электродов; число отбракованных укажите явно, включая ноль. Это запись наблюдений, не приёмка ОТК и не складская операция.</p>
+      <button disabled={busy} onClick={()=>pickBatch(batchId??'')} className="min-h-11 text-sm text-slate-300">Сбросить черновик и перечитать источник</button>
       <div>
         <label className={labelCls}>Партия с нарезки</label>
-        <select className={inputCls} value={batchId ?? ''} onChange={(e) => pickBatch(e.target.value)}>
+        <select disabled={busy} aria-label="Партия для сортировки" className={inputCls} value={batchId ?? ''} onChange={(e) => pickBatch(e.target.value)}>
           <option value="">— выберите партию —</option>
           {batches.map((b) => (
-            <option key={b.id} value={b.id}>{b.incomingId} · годных {b.goodCount} шт</option>
+            <option key={b.id} value={b.id}>{b.id} · источник {b.incomingId} · годных {b.goodCount} шт</option>
           ))}
         </select>
       </div>
@@ -569,18 +567,18 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
                 <div className="mt-2 grid grid-cols-3 gap-2">
                   <div>
                     <label className={labelCls}>Кол-во, шт</label>
-                    <input className={inputCls} type="number" min="0" value={counts[i] ?? ''}
-                      onChange={(e) => setCounts({ ...counts, [i]: e.target.value })} placeholder="0" />
+                    <input aria-label={`Количество категории ${c.name}`} disabled={busy} className={inputCls} type="number" min="0" value={counts[i] ?? ''}
+                      onChange={(e) => {changed();setCounts({ ...counts, [i]: e.target.value });}} placeholder="0" />
                   </div>
                   <div>
                     <label className={labelCls}>Ср. толщина, мкм</label>
-                    <input className={inputCls} type="number" step="any" value={avgUm[i] ?? ''}
-                      onChange={(e) => setAvgUm({ ...avgUm, [i]: e.target.value })} placeholder="—" />
+                    <input disabled={busy} className={inputCls} type="number" step="any" value={avgUm[i] ?? ''}
+                      onChange={(e) => {changed();setAvgUm({ ...avgUm, [i]: e.target.value });}} placeholder="—" />
                   </div>
                   <div>
                     <label className={labelCls}>Ср. масса, г</label>
-                    <input className={inputCls} type="number" step="any" value={avgMass[i] ?? ''}
-                      onChange={(e) => setAvgMass({ ...avgMass, [i]: e.target.value })} placeholder="—" />
+                    <input disabled={busy} className={inputCls} type="number" step="any" value={avgMass[i] ?? ''}
+                      onChange={(e) => {changed();setAvgMass({ ...avgMass, [i]: e.target.value });}} placeholder="—" />
                   </div>
                 </div>
                 {(c.minUm != null || c.maxUm != null) && avgUm[i] && (
@@ -596,8 +594,8 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className={labelCls}>Отбраковано (не подошли ни к одному сорту), шт</label>
-              <input className={inputCls} type="number" min="0" value={rejected}
-                onChange={(e) => setRejected(e.target.value)} placeholder="0" />
+              <input disabled={busy} className={inputCls} type="number" min="0" aria-label="Отбраковано при сортировке" value={rejected}
+                onChange={(e) => {changed();setRejected(e.target.value);}} placeholder="0" />
             </div>
             <div>
               <label className={labelCls}>Замеченные дефекты (из реестра)</label>
@@ -606,7 +604,7 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
                   const on = defectIds.includes(d.id);
                   return (
                     <button key={d.id}
-                      onClick={() => setDefectIds(on ? defectIds.filter((x) => x !== d.id) : [...defectIds, d.id])}
+                      disabled={busy} onClick={() => {changed();setDefectIds(on ? defectIds.filter((x) => x !== d.id) : [...defectIds, d.id]);}}
                       className={`text-[10px] px-1.5 py-0.5 rounded border ${on
                         ? d.severity === 'critical'
                           ? 'bg-rose-900/70 border-rose-600 text-rose-200'
@@ -623,7 +621,7 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
 
           <div>
             <label className={labelCls}>Примечания оператора</label>
-            <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <textarea disabled={busy} className={inputCls} rows={2} value={notes} onChange={(e) => {changed();setNotes(e.target.value);}} />
           </div>
 
           {/* Баланс партии */}
@@ -637,9 +635,9 @@ function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasU
           </div>
 
           <button
-            onClick={save}
-            disabled={!hasUser || !balanceOk}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
+            onClick={()=>void save()}
+            disabled={!workerId || !balanceOk || busy}
+            className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
           >
             💾 Записать в журнал и отправить (sort-run → master)
           </button>
@@ -756,6 +754,7 @@ function JournalTab({ runs, canForce, onSend }: {
                 <span className="ml-2 text-xs font-normal text-slate-400">{new Date(r.createdAt).toLocaleString('ru-RU')}</span>
               </div>
               <div className="mt-1 text-xs text-slate-300">
+                {r.cutRunId&&<p className="break-all">Партия нарезки: {r.cutRunId} · Спецификация: {r.specId} (сохранённая версия)</p>}
                 Пришло годных: <b>{r.goodCount}</b> · Разнесено: {r.buckets.reduce((s, b) => s + b.count, 0)} ·
                 Отбраковано: <b className="text-rose-300">{r.rejected}</b>
               </div>
@@ -779,7 +778,7 @@ function JournalTab({ runs, canForce, onSend }: {
               {canForce && (
                 <button className="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded text-xs text-white"
                   onClick={() => onSend(r, true)}>
-                  👑 Принудительно всем (master)
+                  👑 Повторить передачу (master)
                 </button>
               )}
             </div>
