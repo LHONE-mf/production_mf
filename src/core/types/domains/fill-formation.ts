@@ -78,6 +78,11 @@ export interface FillRun {
 
 /** Входящая партия залитых ячеек на вальцовку (из бокса 7 эт./к.5) */
 export interface WalzingIncoming {
+  sourceFill?: FillRun;
+  destination?: StageId.WALZING;
+  preparedBy?: string;
+  preparedRole?: import('../index').UserRole;
+  preparedAt?: string;
   id: string;                        // = fillRunId
   batchName: string;
   serialRange?: SerialRange;            // номера аккумуляторов партии (миграция со сборки)
@@ -85,12 +90,18 @@ export interface WalzingIncoming {
   cellsIn: number;                   // сколько ячеек принято под вальцовку
   electrolyteName?: string;          // марка электролита (из заливки)
   fromFillRunId?: string;            // связь с FillRun
-  receivedAt: string;
+  receivedAt?: string;                // protected instructions do not assert physical receipt
   updatedAt: string;
 }
 
 /** Запись журнала вальцовки (одна операция/партия на станке) */
 export interface WalzRun {
+  sourceLedger?: 1;
+  inputSnapshot?: WalzingIncoming;
+  legacyInputSnapshot?: WalzingIncoming;
+  cellsUnknown?: number;
+  recordedRole?: import('../index').UserRole;
+  measurementUnits?: {diameter:'mm';force:'kgf';speed:'rpm';temperature:'°C';passes:'count'};
   id: string;
   batchName: string;                 // партия (из входящей или вручную)
   machineNo?: string;                // номер вальцовочного станка

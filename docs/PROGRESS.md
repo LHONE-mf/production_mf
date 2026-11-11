@@ -1,3 +1,54 @@
+## 2026-11-11 — Source-bound walzing observations and framed QR export
+
+- Continued after filling commit `cc91d7a33c025f3ea1ca1bda8bdc847f1be26531`:
+  exact-head [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43091490070),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43091489628)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43091480553)
+  passed. [Signed development APK artifact](https://github.com/LHONE-mf/production_mf/actions/runs/43091480553/artifacts/13888657685).
+- A saved all-filled cylindrical output in room 705 can now create one durable
+  walzing instruction with the exact filling/receipt/assembly snapshot, serials,
+  count/format, explicit destination and preparer/time. Instruction and journal
+  commit before export. Repeated intent returns the original; wrong room/format,
+  rejected/unknown subsets, changed sources and ambiguous legacy history fail.
+  The instruction has **no fabricated physical receipt timestamp**.
+- Walzing results freeze the saved input and require the full counted input to
+  partition into processed + rejected + unknown whole cells. Explicit optional
+  diameters mm, force kgf, speed rpm, temperature °C and whole pass counts are
+  validated; blanks remain unknown. No machine calibration or QA pass is inferred.
+- Result/journal and packet import share transactional immutable insertion.
+  Competing claims, changed inputs/authors and typed/generic forced stripped
+  packets cannot replace history or allocate the source twice. Failed drafts
+  retain values and identity; rapid submit and exact offline/reopen retries
+  produce one result. New pending data renders safely before live queries load.
+- Legacy history remains stored. New legacy observations validate explicit whole
+  partitions, optional measurements and duplicate history, with atomic journal.
+  Ambiguous serial claims are blocked for review rather than inferred as lineage.
+  Protected walzing results currently stop at the saved result: a source-bound
+  formation instruction/result is the immediate next slice, not yet implemented.
+- Real signed source snapshots exceed a single QR's capacity. Packet modal/chat
+  QR now reuse the existing `toQrChunks`/receiver format with explicit previous/
+  next frames. Small packets remain one QR. A regression reproduces the original
+  oversized-QR failure and verifies framing/navigation/reset plus reconstruction.
+  This is browser rendering/codec evidence, not physical camera/BLE transport.
+- **422 frontend tests**, typecheck and PWA build passed. IndexedDB/component/
+  transfer tests cover full-source counts/units, pending instruction rollback,
+  stale inputs, serial conflicts, competing claims, journal rollback, replay,
+  immutable snapshots, preserved legacy data and forced-packet bypasses.
+  Removing the allocation guard makes the concurrent-allocation regression fail;
+  it was restored. No dependency/schema/server/native/signing/background-sync change.
+- Chromium **390×844 / 1365×900** passed independent 705 receipt/filling result ->
+  durable walzing instruction -> exact source/serial-bound result, explicit blank
+  rejection, real IndexedDB journal rollback, retained draft, offline double-submit,
+  saved export, actual signed multi-frame QR rendering/navigation, offline DB
+  close/open and full-page reopen. No overflow/runtime errors; phone journal and
+  QR screenshots inspected. A fresh server with hot reload disabled isolated
+  development WebSocket/module-version effects during fault injection.
+- Physical OnePlus/equipment/scanner/BLE, installed upgrade/restore and deployed
+  two-device TLS validation remain open. M0/M1 release gates and the M2 factory
+  pilot remain unpassed. Next: full-source formation with immutable input/ranges,
+  explicit dates/units/counts and atomic result/journal; then slurry/storage and
+  cross-polarity lineage. Recorded observations remain separate from QA/inventory.
+
 ## 2026-11-11 — Receipt-bound filling observations and atomic saved export
 
 - Resumed from clean remote `43bb1a579ebeca7f401a0807fbe05ec9242664a4`;

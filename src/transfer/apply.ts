@@ -1,5 +1,6 @@
 import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
 import {receiveFillingResult} from '../core/manufacturing/fillingResults';
+import {receiveWalzingIncoming,receiveWalzingResult} from '../core/manufacturing/walzingResults';
 import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
@@ -7,7 +8,7 @@ import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufactur
 // Legacy tables may use freshness; protected source/task/allocation records reject conflicting replacement, including forced packets.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, TaskStatus, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole } from '../core/types';
+import { SyncPacket, Task, TaskStatus, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole,StageId } from '../core/types';
 import { verifyPacketSig } from '../core/security';
 
 export interface ApplyResult {
@@ -276,23 +277,16 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         // Залитые ячейки с 7 этажа/к.5 → входящие партии на вальцовку
         const wi = p.payload as WalzingIncoming;
         if (!wi.id || !wi.batchName) return { ok: false, message: 'Партия на вальцовку повреждена' };
-        const existing = await db.walzingIncoming.get(wi.id);
-        if (existing && !p.forced && existing.updatedAt >= wi.updatedAt) {
-          return { ok: true, message: `Партия «${wi.batchName}» на вальцовке уже новее — пропущено` };
-        }
-        await db.walzingIncoming.put(wi);
-        return { ok: true, message: `🎡 На вальцовку принята партия «${wi.batchName}»: ${wi.cellsIn} яч.` };
+        await receiveWalzingIncoming(wi,p.stage,p.role,p.from);
+        return { ok: true, message: `🎡 Запись входа вальцовки сохранена: «${wi.batchName}», ${wi.cellsIn} яч.; пакет не подтверждает физическую приёмку` };
       }
       case 'walz-run': {
         // Результат вальцовки → master / формирование
         const wr = p.payload as WalzRun;
         if (!wr.id || !wr.batchName) return { ok: false, message: 'Запись вальцовки повреждена' };
-        const existing = await db.walzRuns.get(wr.id);
-        if (existing && !p.forced && existing.updatedAt >= wr.updatedAt) {
-          return { ok: true, message: `Вальцовка «${wr.batchName}» уже новее — пропущено` };
-        }
-        await db.walzRuns.put(wr);
-        return { ok: true, message: `🎡 Вальцовка «${wr.batchName}» принята: годных ${wr.cellsOut}, брак ${wr.cellsScrap}` };
+        if(p.stage!==StageId.WALZING)return {ok:false,message:'Неверный этап результата вальцовки'};
+        await receiveWalzingResult(wr,p.role,p.from);
+        return { ok: true, message: `🎡 Вальцовка «${wr.batchName}» записана: обработано ${wr.cellsOut}, отклонено ${wr.cellsScrap}; QA не подтверждено` };
       }
       case 'formation-in': {
         // Партия на формировку (из сухой комнаты заливки или с вальцовки), с номерами АК
@@ -332,7 +326,14 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun;
+        if ('destination' in payload && payload.destination===StageId.WALZING || 'fromFillRunId' in payload && !('sourceBox' in payload)&&!('box' in payload)) {
+          await receiveWalzingIncoming(payload as WalzingIncoming,p.stage,p.role,p.from);return {ok:true,message:'Задание вальцовки сохранено'};
+        }
+        if (!('box' in payload)&&('inputSnapshot' in payload || 'cellsOut' in payload&&'cellsIn' in payload&&!('mode' in payload)&&!('ops' in payload))) {
+          if(p.stage!==StageId.WALZING)return {ok:false,message:'Неверный этап результата вальцовки'};
+          await receiveWalzingResult(payload as WalzRun,p.role,p.from);return {ok:true,message:'Результат вальцовки сохранён'};
+        }
         if ('buckets' in payload && 'specId' in payload) {
           await receiveSortingAllocation(payload as SortRun);
           return {ok:true,message:'Результат сортировки принят без замены существующей истории'};

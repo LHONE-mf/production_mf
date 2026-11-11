@@ -1,6 +1,7 @@
 import {prepareFillingHandover,hasFillingHandover,fillingStage} from '../../core/manufacturing/fillingHandover';
 import {FillingResultForm} from './FillingResultForm';
 import {hasFillingResult} from '../../core/manufacturing/fillingResults';
+import {prepareWalzingHandover} from '../../core/manufacturing/walzingResults';
 import {FillingHandoverCard} from './FillingHandoverCard';
 // Комната «Заливка электролита» — ОДНО помещение (боксы).
 // Инстанцируется дважды в StageRouter:
@@ -78,6 +79,11 @@ function FillRoomContent({ box }: Props) {
     if(currentUser)setOutPacket({v:1,type:'fill-run',stage:meta.stage,payload:row,from:currentUser.id,role:currentUser.role,ts:Date.now()});
   };
   const saved=(row:FillRun,send:boolean)=>{setSelected(null);setTab('journal');if(send)resultPacket(row);};
+  const toWalzing=async(row:FillRun)=>{
+    if(!currentUser||transferLock.current)return;transferLock.current=true;setTransferBusy(true);setTransferError('');
+    try{const instruction=await prepareWalzingHandover(row,currentUser.id);setOutPacket({v:1,type:'walzing-in',stage:StageId.WALZING,payload:instruction,from:currentUser.id,role:currentUser.role,ts:Date.now()});}
+    catch(cause){setTransferError(cause instanceof Error?cause.message:'Задание вальцовки не сохранено');}finally{transferLock.current=false;setTransferBusy(false);}
+  };
 
   const num = (v?: number, unit = '') => (v === undefined || Number.isNaN(v) ? '—' : `${v}${unit}`);
 
@@ -162,9 +168,10 @@ function FillRoomContent({ box }: Props) {
                 <span className="text-white font-medium">{r.batchName}</span>
                 <div className="flex flex-wrap gap-1">
                   {/* только бокс 7 эт./к.5 передаёт залитые ячейки на вальцовку */}
-                  {box === 'floor7-room5' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0) && (
+                  {box === 'floor7-room5' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0&&r.cellType==='cylindrical') && (
                     <button onClick={() => {
                       if (!currentUser) return;
+                      if(hasFillingResult(r)){void toWalzing(r);return;}
                       const now = new Date().toISOString();
                       const wi: WalzingIncoming = {
                         id: r.id, batchName: r.batchName, cellType: undefined,
@@ -175,7 +182,7 @@ function FillRoomContent({ box }: Props) {
                       setOutPacket({ v: 1, type: 'walzing-in', stage: StageId.WALZING, payload: wi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
                     }}
                       className="text-xs bg-amber-800 hover:bg-amber-700 text-white rounded px-2 py-1"
-                      title="Отправить партию залитых ячеек на вальцовку">🎡 На вальцовку ▸</button>
+                      disabled={transferBusy} title="Сохранить задание для вальцовки без подтверждения физической приёмки">🎡 На вальцовку ▸</button>
                   )}
                   {box === 'dry-room' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0) && (
                     <button onClick={() => {
