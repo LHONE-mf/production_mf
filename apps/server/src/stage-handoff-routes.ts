@@ -330,8 +330,11 @@ export function registerStageHandoffRoutes(app: FastifyInstance, pool: Pool) {
         return reply.code(404).send({ error:'handoff_not_found' });
       }
       const h = handoff.rows[0];
+      // Lock membership throughout the receipt commit, so a concurrent
+      // revocation cannot complete between access validation and receipt.
       const permitted = actor.role === 'chief' || (await client.query(`SELECT 1 FROM user_workshop_memberships
-        WHERE organization_id=$1 AND user_id=$2 AND workshop_id=$3`,
+        WHERE organization_id=$1 AND user_id=$2 AND workshop_id=$3
+        FOR SHARE`,
         [actor.organization_id,actor.id,h.to_workshop_id])).rowCount === 1;
       if (!permitted) {
         await client.query('ROLLBACK');

@@ -188,10 +188,29 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     expect((await receive(firstId,2)).json()).toMatchObject({error:'destination_workshop_access_denied'});
     expect((await receive(firstId,3)).statusCode).toBe(404);
     expect((await history(1)).statusCode).toBe(403);
+    // The receiver loses the right to accept this transfer immediately
+    // after destination workshop membership is revoked.
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,receiver]);
+    expect((await receive(firstId)).json())
+      .toMatchObject({error:'destination_workshop_access_denied'});
+    expect((await inbox()).json().handoffs).toEqual([]);
+    const noReceipt=await pool.query(`SELECT count(*)::int AS count FROM production_stage_receipts
+      WHERE organization_id=$1 AND handoff_id=$2`,[org,firstId]);
+    expect(noReceipt.rows[0].count).toBe(0);
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,receiver]);
     const accepted = await receive(firstId);
     expect(accepted.statusCode).toBe(200);
     expect(accepted.json()).toMatchObject({status:'received'});
     expect((await receive(firstId)).json()).toMatchObject({error:'handoff_already_received'});
+    // Access is checked before a historical, already-received response too.
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,receiver]);
+    expect((await receive(firstId)).json())
+      .toMatchObject({error:'destination_workshop_access_denied'});
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,receiver]);
     expect((await inbox()).json().handoffs).toEqual([]);
     const audit = (await history()).json().handoffs;
     expect(audit).toHaveLength(1);
