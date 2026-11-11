@@ -15,10 +15,10 @@ logins/passwords**. The app asks you to create the first *local* administrator
 (name, login and a password of at least 10 characters). The password is
 stored as a salted PBKDF2 hash in the device's local database.
 
-On upgrade, installations containing **only the six original built-in demo
-accounts** are cleared automatically once, including sample material records
-and pending offline task changes. Other local account installations are not
-silently wiped.
+Upgrades preserve all local records, including installations that still use
+legacy demo account IDs. Those IDs cannot establish whether measurements,
+attachments or pending offline changes are examples. Nothing is automatically
+erased; deliberate cleanup requires the confirmed reset below.
 
 To intentionally start over: sign out, choose **Начать заново на этом
 устройстве** on the login screen, and type **УДАЛИТЬ** to confirm.
@@ -40,8 +40,8 @@ create and manage local accounts. **Local accounts are not server accounts.**
   when that workflow succeeds.
 
 Never uninstall an APK with data that you still need until you have verified
-a backup and upgrade process. This clean-start release intentionally removes
-the built-in demo installation state as described above.
+a backup and upgrade process. Startup does not remove existing records; use only the confirmed reset
+when every local record can be discarded.
 
 ## Current architecture and boundaries
 

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from './core/store/authStore';
 import { db, initializeDatabase } from './core/db';
-import { clearServerConnection } from './core/sync/serverConnection';
 import { FirstRunSetup } from './modules/auth/components/FirstRunSetup';
 import { LoginForm } from './modules/auth/components/LoginForm';
 import { AppLayout } from './shared/layouts/AppLayout';
@@ -45,13 +44,7 @@ function App() {
   }, [offlineEditLease?.expiresAt]);
 
   useEffect(() => {
-    void initializeDatabase().then(demoReset => {
-      if(demoReset){
-        clearServerConnection();
-        useAuthStore.getState().logout();
-        localStorage.removeItem('lip_calender_params_v1');
-        localStorage.removeItem('workshop-hmac-key-v1');
-      }
+    void initializeDatabase().then(() => {
       setIsDbReady(true);
     }).catch(cause=>setDbError(cause instanceof Error?cause.message:'Ошибка базы данных'));
   }, []);

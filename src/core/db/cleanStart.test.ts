@@ -11,14 +11,14 @@ afterEach(async()=>{
 
 describe('clean manufacturing first-run',()=>{
   it('does not populate example users, batches, journals, tasks or templates on a fresh device or restart',async()=>{
-    expect(await initializeDatabase()).toBe(false);
+    expect(await initializeDatabase()).toBeUndefined();
     for(const table of db.tables)expect(await table.count(),table.name).toBe(0);
     db.close();
-    expect(await initializeDatabase()).toBe(false);
+    expect(await initializeDatabase()).toBeUndefined();
     for(const table of db.tables)expect(await table.count(),table.name).toBe(0);
   });
 
-  it('automatically purges a legacy demo-only device, including cached server task changes',async()=>{
+  it('preserves records and pending sync even when only legacy demo account IDs remain',async()=>{
     await db.open();
     await db.users.bulkPut([{
       id:'chief-001',login:'chief',fullName:'Demo Chief',password:'admin123',
@@ -37,15 +37,19 @@ describe('clean manufacturing first-run',()=>{
     });
     await db.table('journal').put({
       id:'jr-001',workerId:'master-001',stage:'slurry',
-      summary:'Sample mixing',createdAt:new Date(),
+      summary:'Operator measured real slurry batch',createdAt:new Date(),
     });
     await db.table('hybridTaskOutbox').put({
       operationId:'test-outbox',entityId:'task-001',state:'pending',queuedAt:1,
     });
-    expect(await initializeDatabase()).toBe(true);
-    for(const table of db.tables)expect(await table.count(),table.name).toBe(0);
-    expect(await initializeDatabase()).toBe(false);
-    for(const table of db.tables)expect(await table.count(),table.name).toBe(0);
+    const before=await Promise.all(db.tables.map(async table=>[table.name,await table.count()] as const));
+    await initializeDatabase();
+    for(const [name,count] of before)expect(await db.table(name).count(),name).toBe(count);
+    db.close();
+    await initializeDatabase();
+    for(const [name,count] of before)expect(await db.table(name).count(),name).toBe(count);
+    expect(await db.hybridTaskOutbox.get('test-outbox')).toMatchObject({entityId:'task-001',state:'pending'});
+    expect(await db.journal.get('jr-001')).toMatchObject({summary:'Operator measured real slurry batch'});
   });
 
   it('does not silently purge an installation containing a real local user',async()=>{
@@ -57,7 +61,7 @@ describe('clean manufacturing first-run',()=>{
       id:'real-admin',login:'operator',fullName:'Real local chief',password:'placeholder',
       role:UserRole.CHIEF,createdAt:new Date(),isActive:true,
     }]);
-    expect(await initializeDatabase()).toBe(false);
+    expect(await initializeDatabase()).toBeUndefined();
     expect(await db.users.count()).toBe(2);
     // Legacy plaintext passwords on preserved installations are migrated.
     expect((await db.users.get('real-admin'))?.password.startsWith('pbkdf2$')).toBe(true);
@@ -83,7 +87,7 @@ describe('clean manufacturing first-run',()=>{
     expect(await db.users.count()).toBe(1);
     expect(await db.tasks.count()).toBe(0);
     db.close();
-    expect(await initializeDatabase()).toBe(false);
+    expect(await initializeDatabase()).toBeUndefined();
     expect(await db.users.count()).toBe(1);
   });
 
@@ -99,7 +103,7 @@ describe('clean manufacturing first-run',()=>{
     await db.table('mixComponents').put({id:'component-1',name:'Actual test',kind:'binder',updatedAt:1});
     await clearLocalDatabase();
     for(const table of db.tables)expect(await table.count(),table.name).toBe(0);
-    expect(await initializeDatabase()).toBe(false);
+    expect(await initializeDatabase()).toBeUndefined();
     expect(await db.users.count()).toBe(0);
   });
 

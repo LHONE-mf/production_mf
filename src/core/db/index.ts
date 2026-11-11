@@ -201,22 +201,11 @@ export async function clearLocalDatabase(): Promise<void> {
   });
 }
 
-const LEGACY_DEMO_USERS = new Set([
-  'chief-001','master-001','tech-001','worker-001','worker-002','worker-003',
-]);
-
-/** No sample users, recipes, tasks, measurements or production runs are seeded.
- * Existing devices containing *only* the original built-in demo identities
- * are automatically cleared once. Other devices are never silently erased:
- * a deliberate local reset is available from the login screen.
- * Returns true if a legacy demo installation was reset. */
-export async function initializeDatabase(): Promise<boolean> {
+/** Open preserved local records and upgrade password storage, without seeding
+ * examples or deleting data. Legacy demo account IDs cannot prove that their
+ * tasks, journals, attachments or pending sync changes are still examples.
+ * Destructive cleanup is available only through the confirmed local reset. */
+export async function initializeDatabase(): Promise<void> {
   await db.open();
-  const users = await db.users.toArray();
-  if (users.length > 0 && users.every(user => LEGACY_DEMO_USERS.has(user.id))) {
-    await clearLocalDatabase();
-    return true;
-  }
   await migratePasswords(db.users);
-  return false;
 }

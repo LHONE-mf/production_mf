@@ -1,3 +1,24 @@
+## 2026-11-11 — Preserve upgrade data regardless of legacy account IDs
+
+- Fetched and fast-forwarded to the actual remote `ff2c97e` (34 newer commits),
+  preserving completed workshop execution and M0/coating changes. Its CI
+  `42988485927`, Run Tests `42988486014`, and APK `42988475506` passed.
+- Reproduced startup deleting all tables when only old demo account IDs remain,
+  even if their journals were edited by operators and pending sync exists.
+  Account IDs cannot prove that records are disposable. Startup now only opens
+  the database and migrates password hashes. It never silently clears records,
+  auth settings or pending operations. New installations still contain no demo
+  data. Destructive local reset still requires typed confirmation at login.
+- Real IndexedDB regression preserves per-table counts, edited journal content
+  and a queued operation across initialization and close/reopen. It failed
+  before the change. All **259 frontend tests**, typecheck and PWA build passed.
+  No backend/schema/signing change; physical in-place Android upgrade/restore
+  acceptance remains open. Updated README, product spec and Android notes to
+  remove the obsolete automatic-purge claim.
+- Next: room inventory with evidence labels, then validated atomic coating
+  journal persistence and reproducible calculation inputs; room utility is the
+  owner's current priority, alongside the existing gated M1/M2 work.
+
 ## 2026-11-11 — Preserve newer logins across obsolete Planning failures
 
 - Continued after source replacement commit `1b423f4`. Its exact-head web/server
