@@ -74,7 +74,7 @@ it('retains untouched result fields when editing one measured value',async()=>{
   const length=inputs.find(i=>i.value==='10')!;
   await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(length,'12');length.dispatchEvent(new Event('input',{bubbles:true}));});
   expect([...node.querySelectorAll<HTMLInputElement>('input')].some(i=>i.value==='80')).toBe(true);
-  const send=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Результат на нарезку'))!;
+  const send=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить и передать результат'))!;
   const fail=()=>{throw new Error('Journal unavailable');};db.journal.hook('creating',fail);
   try{
     await act(async()=>{send.click();});
@@ -86,4 +86,12 @@ it('retains untouched result fields when editing one measured value',async()=>{
   await vi.waitFor(()=>expect(node!.querySelector('[data-testid="packet"]')?.textContent).toContain('"totalLengthM":12'));
   await vi.waitFor(async()=>expect(await db.calenderRuns.get('result')).toMatchObject({totalLengthM:12,thicknessAfterUm:80,gapsMm:[0.35]}));
   expect(await db.journal.count()).toBe(1);
+});
+
+it('offers a separate explicit cutting instruction rather than guessing a strip shape',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'tech',login:'tech',fullName:'Technologist',password:'test-only',role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  expect([...node.querySelectorAll('button')].some(b=>b.textContent==='✂️ Задание на нарезку')).toBe(true);
 });

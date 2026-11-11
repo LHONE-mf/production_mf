@@ -162,6 +162,7 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
                 <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200">{shapeLabel(ci.electrodeType)}</span>
                 {ci.coatingType && <span>Покрытие: <b className="text-white">{ci.coatingType}</b></span>}
                 {ci.electrodeLengthMm ? <span>L электрода: <b className="text-white">{ci.electrodeLengthMm} мм</b></span> : null}
+                {ci.electrodeWidthMm ? <span>Ширина пластины (задание): <b className="text-white">{ci.electrodeWidthMm} мм</b></span> : null}
                 {ci.webWidthMm ? <span>Ширина полотна: <b className="text-white">{ci.webWidthMm} мм</b></span> : null}
               </div>
               <div className="mt-1 text-xs text-slate-400">
@@ -169,6 +170,7 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
                 Длина A: {ci.roll.sideALengthM ?? '—'} м · B: {ci.roll.sideBLengthM ?? '—'} м
                 {ci.calender?.hasDefects ? <span className="text-amber-400"> · ⚠ дефекты прокатки</span> : null}
               </div>
+              {ci.instruction && <p className="text-xs text-slate-400 break-all">Задание: {ci.instruction.recordedBy} · {new Date(ci.instruction.recordedAt).toLocaleString('ru-RU')}</p>}
               {ci.techNotes && <div className="mt-1 text-xs text-emerald-300">📝 Технолог: {ci.techNotes}</div>}
             </div>
             <button
@@ -257,8 +259,9 @@ function CutTab({
             Покрытие: <b className="text-white">{ci.coatingType ?? '—'}</b><br />
             L электрода (задание): <b className="text-white">{ci.electrodeLengthMm ?? '—'} мм</b> ·
             Ширина полотна: <b className="text-white">{ci.webWidthMm ?? '—'} мм</b><br />
+            {ci.electrodeType==='prismatic' && <>Ширина пластины (задание): <b className="text-white">{ci.electrodeWidthMm??'—'} мм</b><br/></>}
             Толщина после прокатки: <b className="text-white">{ci.thicknessAfterUm ?? '—'} мкм</b> ·
-            Покрытие A+B (не длина полотна): <b className="text-white">{(ci.roll.sideALengthM ?? 0) + (ci.roll.sideBLengthM ?? 0)} м</b>
+            Покрытие A / B (не длина полотна): <b className="text-white">{ci.roll.sideALengthM ?? '—'} / {ci.roll.sideBLengthM ?? '—'} м</b>
             {ci.calender?.hasDefects && <span className="text-amber-400"> · ⚠ дефекты прокатки</span>}
           </div>
         </div>

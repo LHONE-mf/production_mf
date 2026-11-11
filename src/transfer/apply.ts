@@ -1,3 +1,4 @@
+import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
 // Применение входящегоSyncPacket к локальной базе (офлайн-синхронизация).
 // Конфликты: побеждает более свежий ts; forced-пакеты master'а применяются безусловно.
 
@@ -172,18 +173,30 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         return { ok: true, message: `Результат прокатки получен${c.hasDefects ? ' ⚠ с дефектами' : ''} → доступен для нарезки` };
       }
       case 'cutting-roll': {
+        return await db.transaction('rw',db.cuttingRolls,async()=>{
         // Рулон + задание технолога → нарезка. Сохраняем входящий рулон целиком.
         const ci = p.payload as CuttingIncoming;
+        if(ci?.instruction&&![UserRole.MASTER,UserRole.CHIEF,UserRole.TECHNOLOGIST].includes(p.role!))
+          return {ok:false,message:'Новое задание нарезки принимает только технолог, мастер или начальник'};
+        try{validateCuttingIncoming(ci);}catch{
+          return {ok:false,message:'Пакет задания нарезки повреждён или содержит неверный источник'};
+        }
         if (!ci?.roll || !ci.electrodeType) {
           return { ok: false, message: 'Пакет нарезки повреждён (нет рулона или типа электродов)' };
         }
         const prev = await db.cuttingRolls.get(ci.id);
+        if(prev?.instruction){
+          if(sameCuttingInstruction(prev,ci))return {ok:true,message:'Идентичное задание уже сохранено'};
+          return {ok:false,message:'Конфликт задания нарезки: исходная запись сохранена'};
+        }
+        if(prev&&ci.instruction)return {ok:false,message:'Конфликт с существующим входящим рулоном: запись сохранена'};
         if (prev && !p.forced && prev.createdAt >= ci.createdAt) {
           return { ok: true, message: `Рулон «${ci.roll.mixName}» уже принят ранее — пропущено` };
         }
         await db.cuttingRolls.put(ci);
         const typeLabel = ci.electrodeType === 'strip' ? 'полосы (цилиндрические)' : 'призматические пластины';
         return { ok: true, message: `📥 На нарезку: «${ci.roll.mixName}» · ${typeLabel}${ci.electrodeLengthMm ? ` · L=${ci.electrodeLengthMm} мм` : ''}` };
+        });
       }
       case 'cut-run': {
         // Журнал нарезки → сортировка / master. Свежесть по updatedAt; forced — безусловно.

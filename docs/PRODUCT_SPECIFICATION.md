@@ -97,7 +97,12 @@ compression, porosity or physical acceptance. Cutting now uses explicit
 physical web length for advisory layout estimates, excluding A+B face coverage.
 Independent rectangular plate dimensions, safe whole counts, save-before-export,
 source-change isolation and persisted estimate inputs have unit, IndexedDB,
-component and phone/desktop browser evidence. This is not actual yield, stock
+component and phone/desktop browser evidence. Local technologist/master/chief
+accounts can now explicitly assign a complete saved calender result to cutting,
+with shape/dimensions, frozen source/version and actor/time. The instruction is
+stored before packet preparation; retries and receipt preserve conflicting
+originals, including against forced replacement. Operator measurements remain
+separate from assigned dimensions. This is not actual yield, stock
 reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.

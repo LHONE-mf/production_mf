@@ -86,3 +86,22 @@ describe('legacy packet boundary for authoritative server tasks', () => {
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 });
+
+describe('explicit cutting instruction receipt',()=>{
+  it('retains frozen instructions across duplicate and competing forced packets',async()=>{
+    const id='cut-instruction-receipt';await db.cuttingRolls.delete(id);
+    const payload={id,electrodeType:'prismatic',electrodeLengthMm:100,electrodeWidthMm:50,webWidthMm:120,
+      roll:{id:'roll-receipt',mixName:'Fixture',segLengthsM:[10],createdAt:1},
+      calender:{id,rollId:'roll-receipt',gapsMm:[0.35],totalLengthM:10,thicknessAfterUm:80,hasDefects:false,workerId:actorId,createdAt:1,updatedAt:1},
+      thicknessAfterUm:80,instruction:{recordedBy:actorId,recordedAt:1,calenderUpdatedAt:1},createdAt:1};
+    expect((await applyPacket({...packet('cutting-roll',payload),role:UserRole.WORKER})).ok).toBe(false);
+    const attempts=await Promise.all([applyPacket(packet('cutting-roll',payload)),applyPacket(packet('cutting-roll',{...payload,electrodeWidthMm:60},true))]);
+    expect(attempts.filter(r=>r.ok)).toHaveLength(1);
+    const stored=await db.cuttingRolls.get(id);expect(stored).toBeDefined();
+    expect((await applyPacket(packet('cutting-roll',stored))).ok).toBe(true);
+    expect((await applyPacket(packet('cutting-roll',{...stored,electrodeLengthMm:200},true))).ok).toBe(false);
+    expect((await applyPacket(packet('cutting-roll',{...stored,instruction:undefined},true))).ok).toBe(false);
+    expect(await db.cuttingRolls.get(id)).toEqual(stored);
+    await db.cuttingRolls.delete(id);
+  });
+});

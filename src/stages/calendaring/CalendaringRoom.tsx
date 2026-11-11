@@ -13,6 +13,7 @@ import {
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
+import { CuttingInstructionPanel } from './CuttingInstructionPanel';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { saveCalenderAssignment, saveCalenderResult, validateCalenderResult, hasCalenderResult } from './calenderJournal';
 import { measuredDryThicknessUm, plannedThicknessReductionPct } from '../_common/rollThickness';
@@ -30,7 +31,7 @@ function loadLocalCalParams(): Record<string, CalenderParams> {
 }
 
 
-type Tab = 'rolls' | 'params' | 'journal' | 'comments';
+type Tab = 'rolls' | 'params' | 'journal' | 'comments' | 'cutting';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -77,6 +78,7 @@ export function CalendaringModule() {
     { id: 'rolls', label: `📥 Рулоны (${rolls?.length ?? 0})` },
     { id: 'params', label: '⚙️ Параметры прокатки' },
     { id: 'journal', label: `📒 Журнал прокатки (${runs?.length ?? 0})` },
+    ...(isTechManager?[{id:'cutting' as const,label:'✂️ Задание на нарезку'}]:[]),
     { id: 'comments', label: '💬 Комментарии' },
   ];
 
@@ -142,6 +144,7 @@ export function CalendaringModule() {
         />
       )}
 
+      {tab==='cutting'&&isTechManager&&<CuttingInstructionPanel runs={runs??[]} onPrepared={payload=>setOutPacket({v:1,type:'cutting-roll',stage:StageId.CUTTING,payload,from:currentUser!.id,ts:Date.now()})}/>}
       {tab === 'comments' && <CommentsSection stage={StageId.CALENDARING} onAdd={addComment} />}
 
       <details className="bg-slate-800/60 border border-slate-700 rounded-lg p-3">
@@ -219,7 +222,7 @@ function RollsTab({
                   )}
                   {run && hasCalenderResult(run) && canSendToCutting && !run.hasDefects && (
                     <button onClick={() => onSendResult(run, false)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Результат прокатки → нарезка (QR/текст/Bluetooth)">
-                      ✂️ На нарезку
+                      Передать результат (без задания)
                     </button>
                   )}
                 </div>
@@ -474,7 +477,7 @@ function JournalTab({
                 <div className="flex gap-2 flex-wrap">
                   <button disabled={busy} onClick={() => void save(r)} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
                   <button disabled={busy} onClick={() => void save(r,true)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
-                    ✂️ Результат на нарезку (QR/текст/BT)
+                    Сохранить и передать результат (без задания)
                   </button>
                   <button disabled={busy} onClick={()=>resetDraft(r.id)} className="min-h-11 px-3 text-sm text-slate-300">Сбросить черновик</button>
                   {canForce && (

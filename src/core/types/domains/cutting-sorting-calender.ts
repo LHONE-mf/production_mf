@@ -20,6 +20,8 @@ export type ElectrodeShape = 'strip' | 'prismatic'; // полосы (цилин�
 
 // Входящий рулон на нарезку: спецификация рулона + прокатка + задание технолога
 export interface CuttingIncoming {
+  instruction?:{recordedBy:string;recordedAt:number;calenderUpdatedAt:number};
+  electrodeWidthMm?:number; // explicitly assigned plate width, not an inferred square
   id: string;                 // = calenderRunId (или rollId, если прокатки нет)
   roll: RollSpec;             // данные рулона с намазки (название замеса, толщины, длины)
   calender?: CalenderRun;     // результат прокатки (зазоры, толщина после, дефекты)

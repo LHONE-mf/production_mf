@@ -1,3 +1,37 @@
+## 2026-11-11 — Explicit, durable calender-to-cutting instructions
+
+- Revalidated clean remote `a8b4f89` and successful exact-head CI. The calender
+  room now has a separate instruction form for local technologist/master/chief
+  accounts: source result, explicit strip/rectangular shape, longitudinal length,
+  web width, independent plate width, optional coating identity and notes.
+  No shape, material, dimensions or actual operator measurement is invented.
+- The full source/roll snapshot, result version, instruction actor and recording
+  time persist in `cuttingRolls` before packet preparation. Source must have
+  complete measured results without marked defects. Invalid dimensions, worker
+  creation, stale source versions and changed stable-ID retries are rejected;
+  identical concurrent retries reuse the original. Failed writes preserve the
+  form/source and permit retry. New instructions do not overwrite legacy inputs.
+- Receipt validates new provenance and snapshot consistency, checks permitted
+  local packet roles and serializes duplicate/conflict checks with writes.
+  Forced or legacy packets cannot replace a frozen explicit instruction.
+  Existing shared-key signing and server/device authority boundaries remain;
+  a local role or signed local instruction is not a server permission or QA pass.
+- Cutting displays the assigned plate width and attribution while keeping
+  measured geometry/counts separate. Unknown coverage remains unknown. Result
+  export labels now distinguish a result packet from a cutting instruction.
+- Full local frontend verification: **334 tests**, typecheck and PWA build.
+  A rendered regression failed before the new form. IndexedDB and receipt tests
+  cover role/geometry validation, concurrency, stale sources, defective results,
+  rollback/retry, reopen and forced conflict preservation. Mutation checks prove
+  the role guard is exercised. Chromium **390×844 / 1365×900** passed explicit
+  rectangular entry, no default shape, storage failure/no export, offline retry,
+  stable duplicate retry, source/provenance retention, reopen into Cutting,
+  separately entered measured geometry, no overflow/browser exceptions.
+- Room audit and specification updated. No schema, server, signing, automatic
+  sync or production change. Next: sorting whole-count partitions and preventing
+  repeated allocation of the same cut run. Physical BLE/QR delivery, process,
+  installed APK upgrade/restore and M1 two-device/TLS acceptance remain open.
+
 ## 2026-11-11 — Atomic calender results, conflict recovery and save-before-export
 
 - Revalidated clean remote `ac12a2f` and successful exact-head CI. Reproduced
