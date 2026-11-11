@@ -34,6 +34,8 @@ export type WorkshopQuantityStep = {
   output:{quantity:string;unit:QuantityUnit}|null;
   handoff:{id:string;quantity:string;unit:QuantityUnit;received:boolean}|null;
   difference:string|null;
+  input:{id:string;quantity:string;unit:QuantityUnit;received:boolean}|null;
+  inputDifference:string|null;
 };
 export type BatchEvent = {
   number: number; fromStatus: BatchStatus | null; toStatus: BatchStatus;

@@ -218,7 +218,7 @@ describe('Workshop execution list',()=>{
         batchId:'batch-1',hasMore:false,steps:[{
           number:2,name:'Cutting',workshopId:'cutting',nextStep:3,
           output:completed?{quantity:'20.000000',unit:'kg'}:null,
-          handoff:null,difference:null,
+          handoff:null,difference:null,input:null,inputDifference:null,
         }],
       })};
       if(url.endsWith('/outbound-handoffs'))return {ok:true,json:async()=>({
@@ -301,6 +301,7 @@ describe('Workshop execution list',()=>{
           output:{quantity:'20.000000',unit:'kg'},
           handoff:sent?{id:'transfer-1',quantity:'12.500000',unit:'kg',received:false}:null,
           difference:sent?'7.500000':null,
+          input:null,inputDifference:null,
         }],
       })};
       if(url.endsWith('/planning/batches/batch-1/handoffs') && options.method==='POST'){

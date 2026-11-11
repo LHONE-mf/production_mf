@@ -38,12 +38,24 @@ function validComparison(data:unknown,batchId:string):data is Comparison{
       if(s.handoff!==null && (!amount(s.handoff) ||
         typeof s.handoff.id!=='string' || !s.handoff.id ||
         typeof s.handoff.received!=='boolean'))return false;
+      if(s.input!==null && (!amount(s.input) ||
+        typeof s.input.id!=='string' || !s.input.id ||
+        typeof s.input.received!=='boolean'))return false;
       if(s.difference!==null && (typeof s.difference!=='string' ||
         !decimal.test(s.difference)))return false;
-      if(s.output && s.handoff && s.output.unit===s.handoff.unit)
-        return s.difference!==null &&
-          scaled(s.output.quantity)-scaled(s.handoff.quantity)===scaled(s.difference);
-      return s.difference===null;
+      if(s.inputDifference!==null && (typeof s.inputDifference!=='string' ||
+        !decimal.test(s.inputDifference)))return false;
+      const outboundOk=s.output && s.handoff && s.output.unit===s.handoff.unit
+        ? s.difference!==null &&
+          scaled(s.output.quantity)-scaled(s.handoff.quantity)===scaled(s.difference)
+        : s.difference===null;
+      // A sent-but-not-received quantity is not yet accepted material input.
+      const incomingOk=s.output && s.input && s.input.received &&
+        s.output.unit===s.input.unit
+        ? s.inputDifference!==null &&
+          scaled(s.input.quantity)-scaled(s.output.quantity)===scaled(s.inputDifference)
+        : s.inputDifference===null;
+      return outboundOk && incomingOk;
     });
 }
 
@@ -82,9 +94,10 @@ export function WorkshopQuantityPanel({connection,batchId,refreshVersion=0}:{
       <button className={buttonClass} type="button" disabled={loading}
         onClick={()=>setRefresh(value=>value+1)}>Обновить сверку</button>
     </div>
-    <p className="text-xs text-slate-400">Только ваши этапы. Разность между заявленным выходом
-      операции и заявленной передачей не доказывает потери, брак или движение склада.
-      Нет автоматического суммирования разных единиц измерения.</p>
+    <p className="text-xs text-slate-400">Только ваши этапы. Разности между
+      принятым входом, заявленным выходом операции и исходящей передачей
+      не доказывают потери, брак или движение склада. Передача без приёмки
+      не считается принятым входом. Разные единицы не пересчитываются.</p>
     {loading && <p role="status" className="text-sm text-slate-400">Проверяем количества…</p>}
     {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
     {!loading && !error && steps.length===0 &&
@@ -93,6 +106,14 @@ export function WorkshopQuantityPanel({connection,batchId,refreshVersion=0}:{
     {steps.map(step=><div key={step.number} className="space-y-1 rounded-md bg-slate-950/50 p-2 text-sm">
       <p className="font-medium text-slate-200">{step.number}. {step.name}</p>
       <p className="text-xs text-slate-400">{step.workshopId}</p>
+      <p className="text-slate-300">Входящая передача: {step.input?
+        step.input.quantity+' '+step.input.unit:'Не зарегистрирована'}</p>
+      {step.input && <p className="text-xs text-slate-400">
+        {step.input.received?'Входящая приёмка подтверждена':'Входящая приёмка ожидается'}
+      </p>}
+      {step.inputDifference!==null && <p className="text-sky-200">
+        Разность принятого входа и выхода: {step.inputDifference} {step.input?.unit}
+      </p>}
       <p className="text-slate-300">Заявленный выход: {step.output?
         step.output.quantity+' '+step.output.unit:'Нет записи о завершении'}</p>
       <p className="text-slate-300">{step.nextStep===null?'Конечный этап маршрута':
