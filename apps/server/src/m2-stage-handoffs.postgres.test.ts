@@ -146,7 +146,15 @@ integration('M2 stage handover and acknowledgement (PostgreSQL)', () => {
     ]));
     expect((await inbox(2)).json().handoffs).toEqual([]);
     expect((await inbox(3)).json().handoffs).toEqual([]);
+    expect((await receive(firstId,4)).json())
+      .toMatchObject({error:'destination_workshop_access_denied'});
+    // When an actor is assigned to both workshops, a separate self-receipt
+    // check still forbids confirming their own immutable transfer.
+    await pool.query(`INSERT INTO user_workshop_memberships
+      (organization_id,user_id,workshop_id) VALUES($1,$2,'cutting')`,[org,sender]);
     expect((await receive(firstId,4)).json()).toMatchObject({error:'same_actor_cannot_receive'});
+    await pool.query(`DELETE FROM user_workshop_memberships
+      WHERE organization_id=$1 AND user_id=$2 AND workshop_id='cutting'`,[org,sender]);
     expect((await receive(firstId,2)).json()).toMatchObject({error:'destination_workshop_access_denied'});
     expect((await receive(firstId,3)).statusCode).toBe(404);
     expect((await history(1)).statusCode).toBe(403);
