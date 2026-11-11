@@ -1,3 +1,4 @@
+import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
 // Применение входящегоSyncPacket к локальной базе (офлайн-синхронизация).
@@ -252,12 +253,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         if (!ar.id || !ar.batchName || !Array.isArray(ar.ops)) {
           return { ok: false, message: 'Партия сборки повреждена' };
         }
-        const existing = await db.assemblyRuns.get(ar.id);
-        if (existing && !p.forced && existing.updatedAt >= ar.updatedAt) {
-          return { ok: true, message: `Сборка «${ar.batchName}» уже новее — пропущено` };
-        }
-        await db.assemblyRuns.put(ar);
-        return { ok: true, message: `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
+        await receiveAssemblyIntake(ar);
+        return { ok: true, message: ar.intake ? `Приёмка электродов «${ar.batchName}» сохранена; выход ячеек не определён` : `🔋 Сборка «${ar.batchName}» принята: операций ${ar.ops.length}, ячеек годных ${ar.cellsOut}` };
       }
       case 'electrolyte-in': {
         // Входящая партия ячеек со сборки в бокс заливки (сухая комната / 7 эт. к.5)
@@ -341,10 +338,13 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun;
         if ('buckets' in payload && 'specId' in payload) {
           await receiveSortingAllocation(payload as SortRun);
           return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
+        }
+        if ('ops' in payload && 'cellType' in payload) {
+          await receiveAssemblyIntake(payload as AssemblyRun);return {ok:true,message:'Приёмка сборки сохранена без замены источника'};
         }
         if ('login' in payload) {
           await db.users.put(payload as User);

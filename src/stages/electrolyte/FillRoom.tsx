@@ -54,13 +54,13 @@ export function FillRoom({ box }: Props) {
   const assemblyRuns = useLiveQuery(() => db.assemblyRuns.toArray(), []);
   const notSentYet = useMemo(() => {
     const sentNames = new Set((incoming ?? []).map((i) => i.batchName));
-    return (assemblyRuns ?? []).filter((r) => r.cellsOut > 0 && !sentNames.has(r.batchName));
+    return (assemblyRuns ?? []).filter((r) => !r.intake && r.cellType !== 'unassigned' && r.cellsOut > 0 && !sentNames.has(r.batchName));
   }, [assemblyRuns, incoming]);
 
   const sendToBox = (arId: string) => {
     if (!currentUser) return;
     const ar = (assemblyRuns ?? []).find((x) => x.id === arId);
-    if (!ar) return;
+    if (!ar || ar.intake || ar.cellType === 'unassigned' || ar.cellsOut <= 0) return;
     const ei: ElectrolyteIncoming = {
       id: uuidv4(), box, batchName: ar.batchName, cellType: ar.cellType,
       serialRange: ar.serialRange,   // номера аккумуляторов мигрируют со сборки

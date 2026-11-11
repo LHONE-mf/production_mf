@@ -127,3 +127,17 @@ it('does not misroute other unsupported forced manufacturing payloads into tasks
   expect(await db.tasks.get('not-task')).toBeUndefined();
  }
 });
+
+it('protects an assembly intake against forced and stripped-source replacement',async()=>{
+ const {takeAssemblySource}=await import('../core/manufacturing/assemblyIntake');
+ const cut={id:'assembly-cut',incomingId:'assembly-roll',electrodeType:'strip' as const,goodCount:10,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1};
+ const spec={id:'assembly-spec',cutRunId:cut.id,batchName:cut.incomingId,electrodeType:'strip' as const,parameterName:'Thickness',unit:'um',categories:[{name:'A',criteria:'Entered criterion'}],authorId:'tech',createdAt:1,updatedAt:1};
+ const sorted={id:'assembly-sorted',cutRunId:cut.id,cutRunSnapshot:cut,specSnapshot:spec,specId:spec.id,batchName:cut.incomingId,goodCount:10,buckets:[{categoryName:'A',count:8}],rejected:2,workerId:'sorter',createdAt:1,updatedAt:1};
+ await db.sortRuns.put(sorted);
+ const run=await takeAssemblySource(sorted,'assembler','assembly-intake');
+ expect((await applyPacket(packet('assembly-run',run))).ok).toBe(true);
+ expect((await applyPacket(packet('assembly-run',{...run,cellsOut:4},true))).ok).toBe(false);
+ expect((await applyPacket(packet('forced-push',{...run,intake:undefined,sourceSort:undefined},true))).ok).toBe(false);
+ expect(await db.assemblyRuns.get(run.id)).toEqual(run);expect(await db.tasks.get(run.id)).toBeUndefined();
+ await db.assemblyRuns.delete(run.id);await db.sortRuns.delete(sorted.id);await db.journal.delete(run.id);
+});

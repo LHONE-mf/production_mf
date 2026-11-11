@@ -1,3 +1,4 @@
+import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
 // Каркас комнаты «Сборка» (AssemblyRoom). Полностью офлайн.
 // Структура: сверху выбор партии (AssemblyRun), ниже — вкладки-подсекции, каждая
 // станция живёт в СВОЁМ файле (LiElectrodesStation, ZStackingStation, ...), чтобы
@@ -7,7 +8,7 @@
 //          🔦 B-с6 Лазер (призм.) · 📒 Журнал · 💬 Комментарии
 // Станции B-с3..B-с6 подключим в шаге Б2b отдельными файлами.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -36,6 +37,8 @@ export function AssemblyModule() {
   const isTechManager = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const intakeRef=useRef(false);const [intakeBusy,setIntakeBusy]=useState(false);
+  const [intakeError,setIntakeError]=useState('');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
 
   const runs = useLiveQuery(async () => {
@@ -55,7 +58,7 @@ export function AssemblyModule() {
   const [serialForm, setSerialForm] = useState({ prefix: '', start: '', end: '' });
 
   const saveSerialRange = async () => {
-    if (!selected) return;
+    if (!selected || selected.intake) return;
     const start = Number(serialForm.start);
     const end = Number(serialForm.end);
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
@@ -71,35 +74,24 @@ export function AssemblyModule() {
     });
   };
 
-  // Взять партию с сортировки в работу: создаём AssemblyRun по названию партии
+  // Принять полный положительный выход конкретной записи сортировки
   const takeBatch = async (srId: string) => {
     if (!currentUser) return;
     const sr = (sortRuns ?? []).find((x) => x.id === srId);
     if (!sr) return;
-    const spec = sr.specSnapshot ?? await db.sortSpecs.get(sr.specId);
-    const run: AssemblyRun = {
-      id: uuidv4(),
-      batchName: sr.batchName,
-      serialRange: undefined,        // номера аккумуляторов задаёт сборщик при взятии партии (мигрируют на заливку → формовку)
-      cellType: (spec?.electrodeType === 'strip' ? 'cylindrical' : 'prismatic') as CellType,
-      electrodeType: spec?.electrodeType,
-      coatingType: spec?.coatingType,
-      ops: [],
-      cellsOut: 0,
-      cellsScrap: 0,
-      defects: [],
-      workerId: currentUser.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await db.assemblyRuns.put(run);
-    setSelectedId(run.id);
-    setTab('li-electrodes');
+    if(intakeRef.current)return;
+    intakeRef.current=true;setIntakeBusy(true);setIntakeError('');
+    try{
+      const run=await takeAssemblySource(sr,currentUser.id,uuidv4());
+      setSelectedId(run.id);setTab('journal');
+    }catch(cause){setIntakeError(cause instanceof Error?cause.message:'Приёмка не сохранена');}
+    finally{intakeRef.current=false;setIntakeBusy(false);}
+
   };
 
   // Станция добавляет операцию в партию + пересчитывает итоги
   const addOp = async (op: AssemblyOp) => {
-    if (!selected || !currentUser) return;
+    if (!selected || !currentUser || selected.intake) return;
     const ops = [...selected.ops, op];
     const lastBySub = ops.filter((o) => o.substation === op.substation).slice(-1)[0];
     void lastBySub;
@@ -116,8 +108,7 @@ export function AssemblyModule() {
 
   const sendToMaster = (run: AssemblyRun, forced: boolean) => {
     if (!currentUser) return;
-    const fresh = { ...run, workerId: currentUser.id, updatedAt: new Date().toISOString() };
-    db.assemblyRuns.put(fresh);
+    const fresh = run;
     setOutPacket({
       v: 1, type: 'assembly-run', stage: StageId.ASSEMBLY,
       payload: fresh, from: currentUser.id, ts: Date.now(), forced,
@@ -140,9 +131,11 @@ export function AssemblyModule() {
     <div className="p-4 space-y-4">
       <h2 className="text-lg font-bold text-white">🔋 Сборка элементов и батареек</h2>
       <p className="text-xs text-slate-400">
-        Каждая подсекция — отдельный файл в <code>src/stages/assembly/</code>. Данные приходят
-        с сортировки (название партии), результат уходит на формовку / master-устройства.
+        Принимается весь годный выход одной записи сортировки без разделения. Электроды не пересчитываются в ячейки.
+        Станции и серийные номера для новой приёмки недоступны до определения единиц и модели сборки.
       </p>
+
+      {intakeError && <p role="alert" className="text-red-300 text-sm">{intakeError}</p>}
 
       {/* Выбор активной партии для станций */}
       {(runs ?? []).length > 0 && tab !== 'incoming' && tab !== 'journal' && tab !== 'comments' && (
@@ -153,11 +146,11 @@ export function AssemblyModule() {
             <option value="">— выберите —</option>
             {(runs ?? []).map((r) => (
               <option key={r.id} value={r.id}>
-                {r.batchName} ({r.cellType === 'cylindrical' ? 'цилиндрич.' : 'призмат.'}, операций: {r.ops.length})
+                {r.batchName} ({r.intake?'тип ячейки не задан':r.cellType === 'cylindrical' ? 'цилиндрич.' : 'призмат.'}, операций: {r.ops.length})
               </option>
             ))}
           </select>
-          {selected && (() => {
+          {selected && !selected.intake && (() => {
             const sr = selected.serialRange;
             return (
               <span className="flex items-center gap-1.5 flex-wrap">
@@ -203,8 +196,9 @@ export function AssemblyModule() {
                 {sr.buckets.reduce((s, b) => s + b.count, 0)}, отбраковано: {sr.rejected}
                 <br /><span className="text-slate-500">{new Date(sr.createdAt).toLocaleString()}</span>
               </div>
-              <button onClick={() => takeBatch(sr.id)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
+              <p className="text-xs text-slate-400 break-all">Источник: {sr.id}</p>
+              <button disabled={intakeBusy} onClick={() => void takeBatch(sr.id)}
+                className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
                 ➡️ Взять в сборку
               </button>
             </div>
@@ -212,29 +206,29 @@ export function AssemblyModule() {
         </div>
       )}
 
-      {tab === 'li-electrodes' && (selected ? (
+      {tab === 'li-electrodes' && (selected && !selected.intake ? (
         <LiElectrodesStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
-      {tab === 'z-stacking' && (selected ? (
+      {tab === 'z-stacking' && (selected && !selected.intake ? (
         <ZStackingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
-      {tab === 'winding' && (selected ? (
+      {tab === 'winding' && (selected && !selected.intake ? (
         <WindingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
-      {tab === 'crimp-cyl' && (selected ? (
+      {tab === 'crimp-cyl' && (selected && !selected.intake ? (
         <CrimpCylStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
-      {tab === 'us-prismatic' && (selected ? (
+      {tab === 'us-prismatic' && (selected && !selected.intake ? (
         <UsPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
-      {tab === 'laser-prismatic' && (selected ? (
+      {tab === 'laser-prismatic' && (selected && !selected.intake ? (
         <LaserPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      ) : selected?.intake ? <p className="text-amber-200 text-sm">Источник принят. Станционный учёт недоступен до определения единиц и модели электродов/ячеек.</p> : <NoBatch />)}
 
       {tab === 'journal' && (
         <div className="space-y-2">
@@ -244,14 +238,15 @@ export function AssemblyModule() {
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div className="text-xs text-slate-300">
                   <span className="text-white font-semibold">🔋 {r.batchName}</span>
-                  {' '}· {r.cellType === 'cylindrical' ? 'цилиндрическая' : 'призматическая'}
+                  {' '}· {r.intake?'тип ячейки не задан':r.cellType === 'cylindrical' ? 'цилиндрическая' : 'призматическая'}
                   {r.coatingType && <> · покрытие: {r.coatingType}</>}
-                  <br />операций: {r.ops.length} · ячеек годных: <b className="text-emerald-400">{r.cellsOut}</b> · брак: <span className="text-red-400">{r.cellsScrap}</span>
+                  {r.intake&&<p className="break-all">Источник сортировки: {r.intake.sortRunId} · принято {r.intake.electrodeCount} электродов · {r.intake.recordedBy} · {new Date(r.intake.recordedAt).toLocaleString()}</p>}
+                  <br />операций: {r.ops.length} · ячеек годных: <b className="text-emerald-400">{r.intake?'не определён':r.cellsOut}</b> · брак: <span className="text-red-400">{r.intake?'не определён':r.cellsScrap}</span>
                   {r.defects.length > 0 && <><br /><span className="text-red-400">⚠ {r.defects.join(', ')}</span></>}
                   <br /><span className="text-slate-500">{new Date(r.updatedAt).toLocaleString()}</span>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => { setSelectedId(r.id); setTab('li-electrodes'); }}
+                  <button onClick={() => { setSelectedId(r.id); setTab(r.intake?'journal':'li-electrodes'); }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-white">Открыть</button>
                   <button onClick={() => sendToMaster(r, false)}
                     className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">📤 Отправить</button>

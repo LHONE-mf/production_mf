@@ -52,11 +52,13 @@ export interface AssemblyOp {
 
 // Партия сборки: пришла с сортировки (название партии), идёт по подсекциям, результат уходит на формовку
 export interface AssemblyRun {
+  sourceSort?:import('./cutting-sorting-calender').SortRun;
+  intake?:{sortRunId:string;electrodeCount:number;recordedBy:string;recordedAt:string};
   id: string;
   batchName: string;                 // название партии с сортировки (приходит из sort-run)
   serialRange?: SerialRange;         // номера аккумуляторов партии — мигрируют далее:
                                      // сборка → заливка → вальцовка → формирование
-  cellType: CellType;                // тип ячейки (задаёт технолог)
+  cellType: CellType | 'unassigned';                // тип ячейки (задаёт технолог)
   electrodeType?: string;            // перенос из задания технолога (полосы / призматические)
   coatingType?: string;              // тип электродного покрытия
   electrodesPerCell?: number;        // сколько электродов в одной ячейке (для расчёта выхода ячеек)

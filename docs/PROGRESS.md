@@ -1,3 +1,34 @@
+## 2026-11-11 — Protected full-source assembly intake (first slice)
+
+- Revalidated clean remote `2903d06` and exact-head green CI before work.
+  A rendered regression reproduced repeated take-in creating duplicate jobs.
+- `core/manufacturing/assemblyIntake.ts` now accepts the entire positive output
+  of one explicit sorting record, freezing its source/specification, electrode
+  count, actor and time. Intake and journal commit atomically. Concurrent or
+  repeated local take-in resumes the original; stale sources and ambiguous
+  legacy batches block creation while retaining history. No split is supported.
+- Typed and generic forced assembly receipt use the same allocation checks;
+  changed/duplicate records and stripped provenance cannot replace an intake.
+  Exact replay is acknowledged. Export no longer changes actor/time or storage.
+- Cell format is explicitly unassigned; electrode counts are not cell counts.
+  The UI shows cell output/scrap as unknown (legacy numeric fields remain zero
+  for compatibility). New intakes cannot enter station operations, serials or
+  filling until units, cathode/anode pairing and conversion rules are defined.
+  This is recorded allocation, not evidence of physical consumption or QA.
+- Visible save errors preserve the source and permit retry. **357 frontend
+  tests**, typecheck and PWA build pass. IndexedDB/component/receipt tests cover
+  concurrency, rollback, reopen, legacy ambiguity and forced bypass rejection.
+  Removing the allocation guard causes two regressions to fail. Chromium
+  **390×844 / 1365×900** passes real login, failed-journal rollback, offline
+  retry, source/count retention, reload resume, station gate, no overflow/errors.
+- Audit and canonical checkpoint updated. No schema/server/signing/sync change.
+  Legacy station logic is unchanged: last operation still sets output and scrap
+  accumulates. Assembly station integrity is **not complete**. Next: explicit
+  station units, operation identity and source reconciliation without inventing
+  cell conversion; then serial/count integrity and downstream handover.
+  Physical OnePlus/stock acceptance, installed upgrade/restore, emulator,
+  BLE/QR and two-device/TLS acceptance were not run for this slice.
+
 ## 2026-11-11 — Whole-count sorting partitions and protected source allocation
 
 - Revalidated remote `a2f56a5` and its passing exact-head CI. A rendered

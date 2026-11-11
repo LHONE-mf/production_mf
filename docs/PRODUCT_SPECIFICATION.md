@@ -108,8 +108,15 @@ source and specification snapshots. Creation and receipt serialize duplicate
 checks; forced/legacy packets cannot bypass explicit allocations. Ambiguous
 legacy history is retained for review. All-reject results stay in sorting
 history and do not create assembly input; assembly uses frozen criteria for
-new records. This is not actual yield, stock
-reconciliation or physical consumption acceptance.
+new records. Assembly now offers full intake of one exact sorting result,
+with frozen source/specification, electrode count, actor/time and atomic journal.
+Concurrent take-in resumes the original; receipt rejects duplicate allocation,
+changed snapshots and stripped provenance. Legacy ambiguity is preserved and
+blocks intake. No split or cathode/anode pairing is implemented. Cell format
+remains unassigned, cell output unknown; new intakes have no station/serial
+entry or filling handover until units and conversion rules exist. Legacy station
+logic remains unchanged and needs reconciliation/operation-integrity work.
+This is not actual yield, stock reconciliation or physical consumption acceptance.
 
 - [ ] Canonical documentation and code inventory; flag historical documents.
 - [ ] Validate Android upgrades, system insets, data retention, backup/restore.
