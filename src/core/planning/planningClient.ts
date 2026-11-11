@@ -29,6 +29,12 @@ export type WorkshopBatch = Pick<Batch, 'id' | 'batchCode' | 'status' | 'quantit
 export type WorkshopHandoffCandidate = {
   fromStep:number;toStep:number;fromName:string;toName:string;quantityUnit:QuantityUnit;
 };
+export type WorkshopQuantityStep = {
+  number:number;name:string;workshopId:string;nextStep:number|null;
+  output:{quantity:string;unit:QuantityUnit}|null;
+  handoff:{id:string;quantity:string;unit:QuantityUnit;received:boolean}|null;
+  difference:string|null;
+};
 export type BatchEvent = {
   number: number; fromStatus: BatchStatus | null; toStatus: BatchStatus;
   actorId: string; reason: string | null; occurredAt: string;
@@ -239,6 +245,9 @@ export const planningApi = {
   workshopOutboundHandoffs: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
     planningRequest<{ batchId: string; handoffs: BatchHandoff[]; hasMore: boolean }>(
       c, '/planning/workshop-batches/' + id(batchId) + '/outbound-handoffs', { signal }),
+  workshopQuantityComparison: (c: PlanningSession, batchId: string, signal?: AbortSignal) =>
+    planningRequest<{ batchId:string;steps:WorkshopQuantityStep[];hasMore:boolean }>(
+      c, '/planning/workshop-batches/' + id(batchId) + '/quantity-comparison', { signal }),
   sendHandoff: (c: PlanningSession, batchId: string, input: {
     handoffId: string; fromStep: number; toStep: number;
     quantity: string; quantityUnit: QuantityUnit; note?: string;

@@ -36,6 +36,9 @@ describe('Workshop execution list',()=>{
       if(url.endsWith('/outbound-handoffs'))return {ok:true,json:async()=>({
         batchId:'batch-1',handoffs:[],hasMore:false,
       })};
+      if(url.endsWith('/quantity-comparison'))return {ok:true,json:async()=>({
+        batchId:'batch-1',steps:[],hasMore:false,
+      })};
       return {ok:true,json:async()=>({batchId:'batch-1',steps:[
         {number:2,name:'Cutting',stage:'cutting',workshopId:'cutting',evidence:null},
       ]})};
@@ -48,7 +51,7 @@ describe('Workshop execution list',()=>{
     const open=[...screen.querySelectorAll('button')].find(b=>b.textContent==='Открыть журнал')!;
     await act(async()=>{open.click();await Promise.resolve();});
     expect(screen.textContent).toContain('Cutting');
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock.mock.calls.every(call=>!String(call[0]).endsWith('/planning/orders'))).toBe(true);
   });
 
@@ -213,6 +216,14 @@ describe('Workshop execution list',()=>{
       if(url.endsWith('/outbound-handoffs'))return {ok:true,json:async()=>({
         batchId:'batch-1',handoffs:sent?[outbound]:[],hasMore:false,
       })};
+      if(url.endsWith('/quantity-comparison'))return {ok:true,json:async()=>({
+        batchId:'batch-1',hasMore:false,steps:[{
+          number:2,name:'Cutting',workshopId:'cutting',nextStep:3,
+          output:{quantity:'20.000000',unit:'kg'},
+          handoff:sent?{id:'transfer-1',quantity:'12.500000',unit:'kg',received:false}:null,
+          difference:sent?'7.500000':null,
+        }],
+      })};
       if(url.endsWith('/planning/batches/batch-1/handoffs') && options.method==='POST'){
         sent=true;
         const body=JSON.parse(String(options.body));
@@ -235,7 +246,10 @@ describe('Workshop execution list',()=>{
     expect(screen.textContent).toContain('Передача записана');
     expect(screen.textContent).toContain('Ожидает приёмки');
     expect(screen.textContent).toContain('12.500000 kg');
+    expect(screen.textContent).toContain('7.500000 kg');
     expect(fetchMock.mock.calls.filter(call=>String(call[0]).endsWith('/outbound-handoffs')))
+      .toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(call=>String(call[0]).endsWith('/quantity-comparison')))
       .toHaveLength(2);
     expect(fetchMock.mock.calls.some(call=>String(call[0]).endsWith('/planning/orders')))
       .toBe(false);

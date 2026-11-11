@@ -4,6 +4,7 @@ import { planningApi, type BatchStatus, type WorkshopBatch } from '../../core/pl
 import { StepEvidencePanel } from './StepEvidencePanel';
 import { WorkshopHandoffPanel } from './WorkshopHandoffPanel';
 import { WorkshopOutboundHistoryPanel } from './WorkshopOutboundHistoryPanel';
+import { WorkshopQuantityPanel } from './WorkshopQuantityPanel';
 
 const statusNames: Record<BatchStatus,string> = {
   created: 'Создана', in_progress: 'В работе', hold: 'Приостановлена',
@@ -127,6 +128,8 @@ export function WorkshopExecutionPanel({connection}:{connection:ServerConnection
           <WorkshopHandoffPanel key={'handoff:'+batch.id} connection={connection}
             batchId={batch.id} onSent={()=>setOutboundVersion(value=>value+1)} />}
         <WorkshopOutboundHistoryPanel key={'outbound:'+batch.id} connection={connection}
+          batchId={batch.id} refreshVersion={outboundVersion} />
+        <WorkshopQuantityPanel key={'quantity:'+batch.id} connection={connection}
           batchId={batch.id} refreshVersion={outboundVersion} />
       </>}
     </div>)}
