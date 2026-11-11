@@ -194,7 +194,11 @@ describe('M2 online planning screen', () => {
       ok: true,
       json: async () => url.endsWith('/planning/workshops') ? { workshops: [] }
         : url.endsWith('/planning/routes') ? { routes: [] }
-        : { handoffs: [ticket] },
+        : url.endsWith('/planning/workshop-batches') ? {
+          batches: [{id:'batch-1',batchCode:'CATH-001',status:'in_progress',quantityUnit:'kg'}],
+          hasMore:false,
+        } : url.endsWith('/planning/handoffs/inbox') ? { handoffs: [ticket] }
+        : { steps:[] },
     }));
     vi.stubGlobal('fetch', fetchMock);
     setServerConnection({
@@ -211,7 +215,9 @@ describe('M2 online planning screen', () => {
     expect(app.textContent).toContain('CATH-001');
     expect(app.textContent).toContain('Подтвердить приёмку');
     expect(app.textContent).not.toContain('Новый производственный заказ');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(app.textContent).toContain('Операции цеха');
+    expect(app.textContent).toContain('Открыть журнал');
     expect(fetchMock).toHaveBeenCalledWith(
       'https://mes.example.org/planning/handoffs/inbox',
       expect.objectContaining({

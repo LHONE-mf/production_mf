@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StepEvidencePanel } from './StepEvidencePanel';
+import { WorkshopExecutionPanel } from './WorkshopExecutionPanel';
 import { QuantityFlowPanel } from './QuantityFlowPanel';
 import { BatchGenealogyPanel } from './BatchGenealogyPanel';
 import { LocalJournalLinkPanel } from './LocalJournalLinkPanel';
@@ -340,7 +341,7 @@ function PlanningWorkspace({ connection, onOpenSync }: {
     </div>
     <div className="flex gap-2" role="tablist">
       <button role="tab" aria-selected={tab === 'orders'} className={tab === 'orders' ? buttonClass : secondaryClass}
-        onClick={() => setTab('orders')}>Заказы и партии</button>
+        onClick={() => setTab('orders')}>{connection.serverRole === 'master' ? 'Операции цеха' : 'Заказы и партии'}</button>
       <button role="tab" aria-selected={tab === 'routes'} className={tab === 'routes' ? buttonClass : secondaryClass}
         onClick={() => setTab('routes')}>Маршруты</button>
       <button role="tab" aria-selected={tab === 'handoffs'} className={tab === 'handoffs' ? buttonClass : secondaryClass}
@@ -455,7 +456,9 @@ function PlanningWorkspace({ connection, onOpenSync }: {
       </div>}
     </div>}
 
-    {tab === 'orders' && !isChief && <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-4">
+    {tab === 'orders' && connection.serverRole === 'master' &&
+      <WorkshopExecutionPanel connection={connection} />}
+    {tab === 'orders' && !isChief && connection.serverRole !== 'master' && <div className="rounded-xl border border-slate-700 bg-slate-800/70 p-4">
       <p className="text-slate-200">Управление заказами и партиями пока доступно только начальнику производства на сервере.</p>
       <button className={secondaryClass + ' mt-3'} onClick={onOpenSync}>Проверить серверную учётную запись</button>
     </div>}

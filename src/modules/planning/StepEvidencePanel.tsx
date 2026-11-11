@@ -11,7 +11,7 @@ const labels: Record<StepEvidenceKind, string> = {
   started: 'Начало операции', completed: 'Завершение операции', deviation: 'Отклонение',
 };
 
-type Props = { connection: ServerConnection; batch: Batch };
+type Props = { connection: ServerConnection; batch: Pick<Batch, 'id' | 'status' | 'quantityUnit'> };
 
 /** Online-only, append-only evidence panel; never mirrors legacy local journals. */
 export function StepEvidencePanel({ connection, batch }: Props) {

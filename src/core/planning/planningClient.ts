@@ -24,6 +24,8 @@ export type Batch = {
   id: string; batchCode: string; materialLine: MaterialLine;
   status: BatchStatus; plannedQuantity: string; quantityUnit: QuantityUnit;
 };
+// Minimal fields returned to a master for their own workshop route steps.
+export type WorkshopBatch = Pick<Batch, 'id' | 'batchCode' | 'status' | 'quantityUnit'>;
 export type BatchEvent = {
   number: number; fromStatus: BatchStatus | null; toStatus: BatchStatus;
   actorId: string; reason: string | null; occurredAt: string;
@@ -198,6 +200,9 @@ export const planningApi = {
       { method: 'POST' }),
   orders: (c: PlanningSession, signal?: AbortSignal) =>
     planningRequest<{ orders: ProductionOrder[] }>(c, '/planning/orders', { signal }),
+  workshopBatches: (c: PlanningSession, signal?: AbortSignal) =>
+    planningRequest<{ batches: WorkshopBatch[]; hasMore: boolean }>(
+      c, '/planning/workshop-batches', { signal }),
   createOrder: (c: PlanningSession, input: {
     orderCode: string; productCode: string; routeId: string; routeVersion: number;
     plannedQuantity: string; quantityUnit: QuantityUnit;
