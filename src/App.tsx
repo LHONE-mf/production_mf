@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from './core/store/authStore';
 import { db, initializeDatabase } from './core/db';
+import { clearServerConnection } from './core/sync/serverConnection';
+import { FirstRunSetup } from './modules/auth/components/FirstRunSetup';
 import { LoginForm } from './modules/auth/components/LoginForm';
 import { AppLayout } from './shared/layouts/AppLayout';
 import { Dashboard } from './modules/dashboard/Dashboard';
@@ -18,8 +20,10 @@ import { ErrorBoundary } from './shared/ErrorBoundary';
 
 function App() {
   const { isAuthenticated } = useAuthStore();
+  const localUsersCount = useLiveQuery(() => db.users.count(), []);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDbReady, setIsDbReady] = useState(false);
+  const [dbError,setDbError]=useState('');
 
   // Task visibility is limited by an offline grant. Without a timed
   // invalidation, an already-open screen could keep showing cached server
@@ -41,10 +45,22 @@ function App() {
   }, [offlineEditLease?.expiresAt]);
 
   useEffect(() => {
-    initializeDatabase().then(() => setIsDbReady(true));
+    void initializeDatabase().then(demoReset => {
+      if(demoReset){
+        clearServerConnection();
+        useAuthStore.getState().logout();
+        localStorage.removeItem('lip_calender_params_v1');
+        localStorage.removeItem('workshop-hmac-key-v1');
+      }
+      setIsDbReady(true);
+    }).catch(cause=>setDbError(cause instanceof Error?cause.message:'Ошибка базы данных'));
   }, []);
 
-  if (!isDbReady) {
+  if (dbError) return <main className="min-h-screen bg-slate-900 p-6 text-red-200">
+    Не удалось открыть локальную базу данных: {dbError}
+  </main>;
+
+  if (!isDbReady || localUsersCount===undefined) {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="text-center">
@@ -55,6 +71,8 @@ function App() {
       </div>
     );
   }
+
+  if (localUsersCount===0) return <FirstRunSetup />;
 
   if (!isAuthenticated) {
     return <LoginForm />;

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../../../core/store/authStore';
 import { AuthService } from '../services/AuthService';
-import { User } from '../../../core/types';
-import { ROLE_LABELS, ROLE_COLORS } from '../../../core/permissions';
+import { clearLocalDatabase } from '../../../core/db';
+import { clearServerConnection } from '../../../core/sync/serverConnection';
 import { Battery, Lock, User as UserIcon, AlertCircle, Loader2 } from 'lucide-react';
 
 export function LoginForm() {
@@ -10,6 +10,8 @@ export function LoginForm() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [resetOpen,setResetOpen]=useState(false);
+  const [resetConfirm,setResetConfirm]=useState('');
   const { login: authLogin } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,20 +33,19 @@ export function LoginForm() {
     }
   };
 
-  const quickLogin = async (loginName: string, pass: string) => {
-    setLogin(loginName);
-    setPassword(pass);
-    setIsLoading(true);
-    try {
-      const user = await AuthService.login(loginName, pass);
-      if (user) {
-        authLogin(user);
-      }
-    } catch (err) {
-      setError('Ошибка входа');
-    } finally {
-      setIsLoading(false);
-    }
+  const resetAllLocalData = async () => {
+    if(resetConfirm.trim()!=='УДАЛИТЬ')return;
+    setIsLoading(true);setError('');
+    try{
+      await clearLocalDatabase();
+      clearServerConnection();
+      useAuthStore.getState().logout();
+      localStorage.removeItem('lip_calender_params_v1');
+      localStorage.removeItem('workshop-hmac-key-v1');
+      // App observes the empty users table and opens first-run setup.
+    }catch(cause){
+      setError('Не удалось очистить данные: '+(cause instanceof Error?cause.message:'Ошибка'));
+    }finally{setIsLoading(false);}
   };
 
   return (
@@ -123,35 +124,23 @@ export function LoginForm() {
             </button>
           </form>
 
-          {/* Quick login */}
-          <div className="mt-6 pt-6 border-t border-white/10">
-            <p className="text-xs text-blue-200/70 text-center mb-3">Быстрый вход (демо):</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => quickLogin('chief', 'admin123')}
-                className="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-400/30 rounded-lg text-red-200 text-xs font-medium transition"
-              >
-                👑 Нач. производства
-              </button>
-              <button
-                onClick={() => quickLogin('master', 'master123')}
-                className="px-3 py-2 bg-orange-500/20 hover:bg-orange-500/30 border border-orange-400/30 rounded-lg text-orange-200 text-xs font-medium transition"
-              >
-                ⛑️ Мастер цеха
-              </button>
-              <button
-                onClick={() => quickLogin('technologist', 'tech123')}
-                className="px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-400/30 rounded-lg text-purple-200 text-xs font-medium transition"
-              >
-                🧪 Технолог
-              </button>
-              <button
-                onClick={() => quickLogin('worker', 'worker123')}
-                className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/30 rounded-lg text-blue-200 text-xs font-medium transition"
-              >
-                🔧 Работник
-              </button>
-            </div>
+          <div className="mt-6 pt-5 border-t border-white/10 space-y-3">
+            <button type="button" className="text-sm text-blue-200 underline"
+              onClick={()=>{setResetOpen(!resetOpen);setResetConfirm('');}}>
+              Начать заново на этом устройстве
+            </button>
+            {resetOpen && <div className="space-y-2 rounded-lg border border-red-400/30 p-3">
+              <p className="text-sm text-red-100">Будут удалены ВСЕ локальные пользователи,
+                замесы, рулоны, журналы, задачи и несинхронизированные изменения.
+                Данные на сервере не удаляются.</p>
+              <label className="block text-sm text-white">Введите УДАЛИТЬ для подтверждения
+                <input className="mt-1 w-full rounded-lg bg-slate-900 p-2 text-white"
+                  value={resetConfirm} onChange={event=>setResetConfirm(event.target.value)}/>
+              </label>
+              <button type="button" className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:opacity-40"
+                disabled={isLoading||resetConfirm.trim()!=='УДАЛИТЬ'}
+                onClick={()=>void resetAllLocalData()}>Стереть локальные данные</button>
+            </div>}
           </div>
         </div>
 
