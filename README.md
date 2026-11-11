@@ -1,106 +1,69 @@
-# Li-Ion Production — Система управления производством
+# Production MF — Li-ion manufacturing workspace
 
-## Описание
+Production MF is a work-in-progress manufacturing execution app for Li-ion
+production. It uses React/TypeScript, Vite, Dexie/IndexedDB, a Capacitor Android
+client and a separate Fastify/PostgreSQL backend.
 
-Веб-приложение для управления работами в цеху по производству литий-ионных аккумуляторов. Поддерживает работу как в браузере (включая офлайн-режим), так и в виде APK-приложения на Android.
+**Current state:** Engineering features are under development. Web, server and
+APK CI do not replace real workshop acceptance. Do not treat the app as a
+validated inventory, MES, QA or equipment-control system yet.
 
-## Быстрый старт
+## First start: no demo data
 
-```bash
-npm install
-npm run dev      # Запуск в режиме разработки
-npm run build    # Сборка для продакшена
-```
+New installations begin with **no sample production records and no default
+logins/passwords**. The app asks you to create the first *local* administrator
+(name, login and a password of at least 10 characters). The password is
+stored as a salted PBKDF2 hash in the device's local database.
 
-### Демо-аккаунты
+On upgrade, installations containing **only the six original built-in demo
+accounts** are cleared automatically once, including sample material records
+and pending offline task changes. Other local account installations are not
+silently wiped.
 
-| Роль | Логин | Пароль |
-|------|-------|--------|
-| Начальник производства | chief | admin123 |
-| Мастер цеха | master | master123 |
-| Технолог | technologist | tech123 |
-| Работник | worker | worker123 |
+To intentionally start over: sign out, choose **Начать заново на этом
+устройстве** on the login screen, and type **УДАЛИТЬ** to confirm.
+**This permanently deletes all local users, journals, recipes, material
+records, tasks and unsynchronized changes on that device.** Remote PostgreSQL
+records are not deleted, and each other device retains its own local copy.
+The first-run setup will then appear.
 
-## Архитектура
+The local user list is now backed by actual IndexedDB records; chiefs can
+create and manage local accounts. **Local accounts are not server accounts.**
 
-### Модули
+## Running and testing
 
-| Модуль | Путь | Описание |
-|--------|------|----------|
-| **Core** | `src/core/` | Ядро: типы, БД (IndexedDB), хранилище (Zustand), права доступа |
-| **Auth** | `src/modules/auth/` | Авторизация, управление сессиями |
-| **Users** | `src/modules/users/` | CRUD сотрудников, назначение ролей |
-| **Tasks** | `src/modules/tasks/` | Управление заданиями, статусы, приоритеты |
-| **Dashboard** | `src/modules/dashboard/` | Ролевые дашборды с KPI |
-| **Communication** | `src/modules/communication/` | Bluetooth, QR-коды, deep links |
-| **Sync** | `src/modules/sync/` | Master-Slave синхронизация, Mesh-сеть |
-| **Reports** | `src/modules/reports/` | Аналитика, KPI, отчёты |
-| **Shared** | `src/shared/` | Общие UI-компоненты, layout |
+- Development: `npm ci && npm run dev`
+- Type check: `npm run typecheck`
+- Tests: `npm test`
+- Web build: `npm run build`
+- Android APK: Actions → **Build Android APK (Capacitor)** → signed artifact,
+  when that workflow succeeds.
 
-### Роли и права
+Never uninstall an APK with data that you still need until you have verified
+a backup and upgrade process. This clean-start release intentionally removes
+the built-in demo installation state as described above.
 
-```
-Начальник производства (Chief)
-├── Мастер цеха (Master)
-│   ├── Технолог (Technologist)
-│   └── Работники (Workers)
-```
+## Current architecture and boundaries
 
-Каждая роль имеет ограниченный доступ к функциям системы согласно матрице прав.
+- **Local rooms:** slurry, coating, calendaring, cutting, sorting, assembly,
+  two electrolyte filling rooms, rolling and formation. These currently
+  write operational forms to **local IndexedDB**. Several calculators and
+  production form validations still need engineering review.
+- **M1 task sync:** shared tasks are transferred to a server only through
+  the explicit device-proven sync flow with scoped authorization. This is
+  not background synchronization; the physical two-device acceptance gate
+  remains open.
+- **M2 planning:** server-side orders, batches, route steps, workshop transfer
+  evidence, inspection records and read-only quantity comparisons require a
+  configured backend and authorized **server** login. They are separate from
+  legacy local room data; automatic local→server manufacturing sync is not
+  implemented.
+- **Inventory:** no verified real stock posting; quantity differences are
+  comparisons of declarations, not proof of material loss or accepted yield.
 
-### Хранение данных
-
-- **IndexedDB** (через Dexie.js) — основное хранилище для офлайн-работы
-- **Zustand** — управление состоянием с персистентностью
-- Данные синхронизируются между устройствами через Bluetooth Mesh
-
-### Bluetooth Mesh
-
-```
-[Master] ←BLE→ [Slave 1] ←BLE→ [Slave 2]
-    ↑                              ↑
-    └────── [Slave 3] ←BLE→ [Slave 4]
-```
-
-- Master может принудительно отправлять данные на Slave
-- Slave устройства ретранслируют сообщения
-- При потере связи — автономная работа с последующей синхронизацией
-
-## PWA / Офлайн
-
-Приложение работает как Progressive Web App:
-- Установка на домашний экран (iOS/Android/Desktop)
-- Полная работа без интернета
-- Service Worker для кеширования
-- IndexedDB для хранения данных
-
-## Android APK
-
-Для сборки APK используется Capacitor или TWA (Trusted Web Activity):
-
-```bash
-# Через Capacitor
-npx cap add android
-npx cap sync
-npx cap open android
-```
-
-## Технологии
-
-- React 18 + TypeScript
-- Tailwind CSS 4
-- Zustand (state management)
-- Dexie.js (IndexedDB wrapper)
-- QR Code (qrcode.react + html5-qrcode)
-- Web Bluetooth API
-- Vite (build tool)
-
-## Структура модулей (plug-in)
-
-Каждый модуль имеет:
-- `components/` — UI-компоненты
-- `hooks/` — кастомные хуки
-- `services/` — бизнес-логика
-- `index.ts` — публичный API
-
-Модули подключаются независимо через barrel exports.
+For requirements and current acceptance gates consult
+[Product Specification](docs/PRODUCT_SPECIFICATION.md),
+[M1 Release Checklist](docs/M1_RELEASE_CHECKLIST.md) and
+[Android Build Instructions](docs/ANDROID_BUILD.md).
+The older `docs/DEVELOPMENT_PLAN.md` and
+`docs/ARCHITECTURE_PRINCIPLES.md` document superseded architectures.

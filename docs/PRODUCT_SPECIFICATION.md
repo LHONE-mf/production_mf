@@ -59,6 +59,20 @@ Key constraints: every record organization-scoped; immutable UUID identifiers; u
 
 ## Prioritized backlog and acceptance gates
 ### M0 — Architecture/reliability (P0)
+**M0 clean-start checkpoint (2026-11-11, development branch only):**
+The application no longer creates built-in demo users, sample tasks,
+recipes, batches, material runs, defect criteria or imaginary work records
+when an IndexedDB table is empty. A device with only the six original demo
+user IDs is cleared once during initialization, including its **local** pending
+task-sync operations. Installations containing other local user IDs are not
+silently erased; a typed-confirmation reset at local login clears all local
+tables. First run now creates a user-selected local chief with a salted PBKDF2
+password; the local directory supports actual create/edit/activation and the
+role dashboards/reports read local data instead of static sample statistics.
+No server-side PostgreSQL records are affected, and no offline MES auto-sync
+has been added. The reset is intentionally destructive to local data and
+requires installed-APK upgrade acceptance before a production rollout.
+
 - [ ] Canonical documentation and code inventory; flag historical documents.
 - [ ] Validate Android upgrades, system insets, data retention, backup/restore.
 - [ ] Test Dexie schema upgrades and critical navigation/workflows.
