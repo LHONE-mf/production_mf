@@ -1,3 +1,61 @@
+## 2026-11-11 — Source-bound formation observations complete the local recorded chain
+
+- Continued after `f491e7c108953dc9cc20ef7e31e7bedb5a1d5487`, whose exact-head
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43093718899),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43093719039) and
+  [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43093709638)
+  all passed. No production deployment or merge was performed.
+- Complete, serial-identified dry-room filling output can now create a durable
+  formation instruction directly. Complete protected walzing output can create
+  the alternative instruction. Both freeze their entire predecessor/receipt/
+  assembly snapshots, format/count/range, explicit destination and preparer/time.
+  The instruction and journal commit before preview; stable retries preserve it.
+  Wrong destinations, altered/missing sources, rejected/unknown subsets and
+  duplicate/ambiguous allocations fail. No physical receipt time is invented.
+- Formation observations freeze the saved instruction and require explicit
+  cycle count, actual start date and whole full-source partition: processed +
+  rejected + unknown = counted input. No assumed five cycles or today's start
+  date remains. Calendar dates (including leap days) and chronological end date
+  are checked. The preserved full range describes the input; subset identities
+  are not invented from totals.
+- Optional entered current A (including signed discharge observations), voltage V,
+  fifth-cycle capacity Ah and efficiency % are validated in fixed units. Fifth-
+  cycle capacity requires at least five recorded cycles. Missing readings stay
+  unknown and efficiency is not calculated. A basis identifies the observed phase/
+  method; optional equipment/channel stays unknown when absent. New observations
+  are explicitly distinct from an approved machine program, final QC or release.
+- Result + attributed journal save/import atomically under the shared source/
+  serial transaction. Stable frozen retries, a synchronous submit lock, exact
+  saved export and actor/source rechecks cover offline failure/recovery. Typed
+  and generic forced packets cannot overwrite/strip protected history or bypass
+  allocation through legacy shapes. Existing recipes with a `mode` field still
+  dispatch as recipes, covered by a dedicated regression. Legacy records remain
+  available; new historical writes validate explicit counts/dates/measurements.
+- Exact upstream assembly snapshots can arrive after full formation history
+  without colliding with their own serial lineage; unrelated overlaps still
+  block new claims. The source-bound local observation chain is engineered, not
+  proof of physical movement, material balance, inventory disposition or QA.
+- Local verification: **431 frontend tests**, typecheck and PWA build passed.
+  IndexedDB/component/transfer coverage includes real calendar/unit/count errors,
+  dry-room and walzing alternatives, atomic instruction/result journal rollback,
+  competing claims, inactive/stale actors and sources, preserved legacy records,
+  replay/forced bypass and late upstream declaration. Removing the formation
+  allocation guard makes the concurrent-claim regression fail; it was restored.
+- Chromium **390×844 / 1365×900** passed **both** complete paths: independent
+  dry-room receipt/filling -> formation, and independent 705 receipt/filling ->
+  walzing -> formation. Checks cover blank cycles/dates, explicit observations,
+  fixed source/range, real journal rollback/retained draft, offline double-submit,
+  atomic saved journal, signed export matching the saved JSON snapshot (optional
+  undefined properties are omitted by JSON), multi-frame QR navigation, offline
+  DB reopen and full-page reopen. No overflow/runtime errors; phone journal
+  screenshots inspected under `/tmp/production-mf-evidence/`.
+- No schema/dependency/server/native/signing/background-sync change. No emulator,
+  physical OnePlus/equipment/camera/BLE, installed APK upgrade/restore or deployed
+  two-device TLS validation. M0/M1 release, M2 factory pilot, server-authoritative
+  M3 integration, M4 QA/inventory and M5 rollout remain open. Next P1: slurry
+  planned-versus-weighed integrity, validated mass balance and atomic journal;
+  storage lot/location history and complete cathode/anode pairing follow.
+
 ## 2026-11-11 — Source-bound walzing observations and framed QR export
 
 - Continued after filling commit `cc91d7a33c025f3ea1ca1bda8bdc847f1be26531`:

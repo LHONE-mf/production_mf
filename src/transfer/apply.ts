@@ -1,3 +1,4 @@
+import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
 import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
 import {receiveFillingResult} from '../core/manufacturing/fillingResults';
 import {receiveWalzingIncoming,receiveWalzingResult} from '../core/manufacturing/walzingResults';
@@ -292,23 +293,14 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         // Партия на формировку (из сухой комнаты заливки или с вальцовки), с номерами АК
         const fi = p.payload as FormationIncoming;
         if (!fi.id || !fi.batchName) return { ok: false, message: 'Партия на формировку повреждена' };
-        const existing = await db.formationIncoming.get(fi.id);
-        if (existing && !p.forced && existing.updatedAt >= fi.updatedAt) {
-          return { ok: true, message: `Партия «${fi.batchName}» на формировке уже новее — пропущено` };
-        }
-        await db.formationIncoming.put(fi);
-        return { ok: true, message: `⚡ На формировку принята партия «${fi.batchName}»: ${fi.cellsIn} яч.` };
+        await receiveFormationIncoming(fi,p.stage,p.role,p.from);
+        return {ok:true,message:'Вход формирования сохранён; пакет не подтверждает физическую приёмку'};
       }
       case 'formation-run': {
-        // Результат формировки → master / старение
-        const fr = p.payload as FormationRun;
-        if (!fr.id || !fr.batchName) return { ok: false, message: 'Запись формировки повреждена' };
-        const existing = await db.formationRuns.get(fr.id);
-        if (existing && !p.forced && existing.updatedAt >= fr.updatedAt) {
-          return { ok: true, message: `Формировка «${fr.batchName}» уже новее — пропущено` };
-        }
-        await db.formationRuns.put(fr);
-        return { ok: true, message: `⚡ Формировка «${fr.batchName}» принята: годных ${fr.cellsOut}, КЭ ${fr.coulombEfficiencyPct ?? '—'}%` };
+        const fr=p.payload as FormationRun;
+        if(p.stage!==StageId.FORMATION)return {ok:false,message:'Неверный этап результата формирования'};
+        await receiveFormationResult(fr,p.role,p.from);
+        return {ok:true,message:'Наблюдение формирования сохранено; QA не подтверждено'};
       }
       case 'chat': {
         // Меш-чат: id детерминированный (from:ts) — повторная ретрансляция того же
@@ -326,7 +318,14 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun;
+        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
+        if('sourceBox' in payload||p.stage===StageId.FORMATION&&'destination' in payload){
+          await receiveFormationIncoming(payload as FormationIncoming,p.stage,p.role,p.from);return {ok:true,message:'Вход формирования сохранён'};
+        }
+        if('startDate' in payload||'mode' in payload&&'cellsIn' in payload){
+          if(p.stage!==StageId.FORMATION)return {ok:false,message:'Неверный этап результата формирования'};
+          await receiveFormationResult(payload as FormationRun,p.role,p.from);return {ok:true,message:'Результат формирования сохранён'};
+        }
         if ('destination' in payload && payload.destination===StageId.WALZING || 'fromFillRunId' in payload && !('sourceBox' in payload)&&!('box' in payload)) {
           await receiveWalzingIncoming(payload as WalzingIncoming,p.stage,p.role,p.from);return {ok:true,message:'Задание вальцовки сохранено'};
         }

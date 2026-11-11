@@ -37,6 +37,12 @@ beforeEach(async () => {
   });
 });
 
+it('keeps mode-bearing slurry recipes out of formation packet dispatch',async()=>{
+ const recipe={id:'recipe-with-mode',name:'Retained recipe',dryMassKg:1,lines:[],mode:[],updatedBy:actorId,updatedAt:1};
+ try{expect((await applyPacket(packet('forced-push',recipe,true))).ok).toBe(true);expect(await db.mixRecipes.get(recipe.id)).toEqual(recipe);expect(await db.formationRuns.get(recipe.id)).toBeUndefined();}
+ finally{await db.mixRecipes.delete(recipe.id);}
+});
+
 describe('legacy packet boundary for authoritative server tasks', () => {
   it('rejects task, result, and forced packets for a known server revision across restart', async () => {
     await db.tasks.put(task());

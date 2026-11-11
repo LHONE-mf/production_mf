@@ -2,6 +2,7 @@ import {prepareFillingHandover,hasFillingHandover,fillingStage} from '../../core
 import {FillingResultForm} from './FillingResultForm';
 import {hasFillingResult} from '../../core/manufacturing/fillingResults';
 import {prepareWalzingHandover} from '../../core/manufacturing/walzingResults';
+import {prepareFormationHandover} from '../../core/manufacturing/formationResults';
 import {FillingHandoverCard} from './FillingHandoverCard';
 // Комната «Заливка электролита» — ОДНО помещение (боксы).
 // Инстанцируется дважды в StageRouter:
@@ -83,6 +84,11 @@ function FillRoomContent({ box }: Props) {
     if(!currentUser||transferLock.current)return;transferLock.current=true;setTransferBusy(true);setTransferError('');
     try{const instruction=await prepareWalzingHandover(row,currentUser.id);setOutPacket({v:1,type:'walzing-in',stage:StageId.WALZING,payload:instruction,from:currentUser.id,role:currentUser.role,ts:Date.now()});}
     catch(cause){setTransferError(cause instanceof Error?cause.message:'Задание вальцовки не сохранено');}finally{transferLock.current=false;setTransferBusy(false);}
+  };
+  const toFormation=async(row:FillRun)=>{
+    if(!currentUser||transferLock.current)return;transferLock.current=true;setTransferBusy(true);setTransferError('');
+    try{const instruction=await prepareFormationHandover(row,currentUser.id);setOutPacket({v:1,type:'formation-in',stage:StageId.FORMATION,payload:instruction,from:currentUser.id,role:currentUser.role,ts:Date.now()});}
+    catch(cause){setTransferError(cause instanceof Error?cause.message:'Задание формирования не сохранено');}finally{transferLock.current=false;setTransferBusy(false);}
   };
 
   const num = (v?: number, unit = '') => (v === undefined || Number.isNaN(v) ? '—' : `${v}${unit}`);
@@ -187,6 +193,7 @@ function FillRoomContent({ box }: Props) {
                   {box === 'dry-room' && r.cellsFilled > 0 && (!hasFillingResult(r)||r.cellsScrap===0&&r.cellsUnknown===0) && (
                     <button onClick={() => {
                       if (!currentUser) return;
+                      if(hasFillingResult(r)){void toFormation(r);return;}
                       const now = new Date().toISOString();
                       const fi: FormationIncoming = {
                         id: r.id, sourceBox: box, batchName: r.batchName,
@@ -196,7 +203,7 @@ function FillRoomContent({ box }: Props) {
                       setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
                     }}
                       className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
-                      title="Отправить партию (с номерами АК) на формирование">⚡ На формовку ▸</button>
+                      disabled={transferBusy} title="Сохранить задание формирования без подтверждения физической приёмки">⚡ На формовку ▸</button>
                   )}
                   <button onClick={() => resultPacket(r)}
                     className="text-xs bg-cyan-800 hover:bg-cyan-700 text-white rounded px-2 py-1">Передать ▸</button>

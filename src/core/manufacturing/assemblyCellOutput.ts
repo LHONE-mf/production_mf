@@ -1,5 +1,5 @@
 import {db} from '../db';
-import {StageId,UserRole,type AssemblyRun,type AssemblyCellOutput,type SerialRange} from '../types';
+import {StageId,UserRole,type AssemblyRun,type AssemblyCellOutput,type SerialRange,type FormationIncoming,type FormationRun} from '../types';
 import {validateAssemblyOperationRun,receiveAssemblyOperationRun} from './assemblyOperations';
 
 export const CELL_OUTPUT_ROLES=[UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF];
@@ -39,6 +39,12 @@ export async function assertAssemblySerialAvailability(run:AssemblyRun,rangeToAs
   if(tableIndex===2&&originSnapshot&&'sourceReceipt' in row&&row.resultVersion===1&&same(row.sourceReceipt?.sourceAssembly,originSnapshot)&&row.sourceReceipt?.handover?.outputId===outputId&&row.sourceReceipt?.receipt?.count===originSnapshot.cellOutput?.count&&row.box===row.sourceReceipt?.box&&row.batchName===originSnapshot.batchName&&row.cellsIn===originSnapshot.cellOutput?.count&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign))continue;
   if(tableIndex===3&&originSnapshot&&'sourceFill' in row&&row.destination===StageId.WALZING&&row.sourceFill?.box==='floor7-room5'&&row.fromFillRunId===row.sourceFill.id&&same(row.sourceFill.sourceReceipt?.sourceAssembly,originSnapshot)&&row.cellsIn===originSnapshot.cellOutput?.count&&same(row.serialRange,rangeToAssign))continue;
   if(tableIndex===4&&originSnapshot&&'inputSnapshot' in row&&row.sourceLedger===1&&row.inputSnapshot?.destination===StageId.WALZING&&same(row.inputSnapshot.sourceFill?.sourceReceipt?.sourceAssembly,originSnapshot)&&row.cellsIn===originSnapshot.cellOutput?.count&&same(row.serialRange,rangeToAssign))continue;
+  if(originSnapshot&&(tableIndex===5||tableIndex===6)){
+   const formation=row as FormationIncoming|FormationRun;
+   const input='mode' in formation?formation.inputSnapshot:formation;
+   const fill=input?.sourceFill??input?.sourceWalz?.inputSnapshot?.sourceFill;
+   if(input?.destination===StageId.FORMATION&&same(fill?.sourceReceipt?.sourceAssembly,originSnapshot)&&formation.cellsIn===originSnapshot.cellOutput?.count&&same(formation.serialRange,rangeToAssign))continue;
+  }
   if('cellOutput' in row&&outputId&&row.cellOutput?.id===outputId)throw new Error('ID заявления уже принадлежит другой партии');
   const ranges=[row.serialRange,...('cellOutput' in row?[row.cellOutput?.serialRange]:[])];
   for(const range of ranges){

@@ -38,6 +38,20 @@ Navigation should be role-aware, but hiding UI is **not** authorization. Enforce
 ## Production model
 Existing stages in `src/stages/registry.ts`: storage, slurry, coating, calendaring, cutting, sorting, assembly, electrolyte (dry room), electrolyte-705, walzing, formation. Two filling rooms are locations/route variants, not automatically consecutive stages. Cathode and anode have separate material lineages that converge at assembly. Aging, final QC, finished goods, and format-specific branches are proposed future capabilities; do not claim they already exist.
 
+**Local observation boundary (2026-11-11):** filling results require the saved
+independent receipt of a declared assembly output. Filling, walzing and formation
+currently account for one complete source as processed/filled, rejected and
+unknown whole cells. Partial processing does not authorize a split, infer which
+serials passed, post stock or grant QA disposition. Reject/unknown subsets block
+onward serial allocation pending an approved identity/correction workflow.
+Complete dry-room output may be recorded through formation directly; complete
+705 cylindrical output may be recorded through walzing and then formation.
+Saved instructions capture provenance, not proof of physical receipt. New
+formation values are entered observations, not an approved machine program or
+final QC/release. This engineering boundary does not complete M3–M5 or the
+physical M0/M1/M2 acceptance gates.
+
+
 ## Proposed server data model (introduce incrementally)
 Identity: organizations, users, devices, sessions, sites, workshops, shifts.
 Planning: products, production_orders, process_routes, route_steps, specification_versions.

@@ -5,6 +5,7 @@
 // Параметры станка — первичная структура, будет расширена по описанию процесса.
 
 import {hasWalzingSource,hasWalzingResult,saveWalzingResult,validateWalzingResult,WALZING_UNITS} from '../../core/manufacturing/walzingResults';
+import {prepareFormationHandover} from '../../core/manufacturing/formationResults';
 import React, { useRef,useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -56,6 +57,11 @@ function WalzingRoomContent() {
     attempt.current=null;setError('');setForm({...emptyForm,batchName:wi.batchName});setSelected(wi);setOutPacket(null);setTab('new');
   };
   const packet=(run:WalzRun)=>{if(currentUser)setOutPacket({v:1,type:'walz-run',stage,payload:run,from:currentUser.id,role:currentUser.role,ts:Date.now()});};
+  const toFormation=async(run:WalzRun)=>{
+    if(!currentUser||lock.current)return;lock.current=true;setBusy(true);setError('');
+    try{const instruction=await prepareFormationHandover(run,currentUser.id);setOutPacket({v:1,type:'formation-in',stage:StageId.FORMATION,payload:instruction,from:currentUser.id,role:currentUser.role,ts:Date.now()});}
+    catch(cause){setError(cause instanceof Error?cause.message:'Задание формирования не сохранено');}finally{lock.current=false;setBusy(false);}
+  };
   const saveRun=async(sendAfter:boolean)=>{
     if(!currentUser||lock.current)return;lock.current=true;setBusy(true);setError('');
     try{
@@ -103,6 +109,7 @@ function WalzingRoomContent() {
           </button>
         ))}
       </div>
+      {error&&tab!=='new'&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
 
       {tab === 'incoming' && (
         <div className="grid gap-2">
@@ -185,8 +192,9 @@ function WalzingRoomContent() {
             <div key={r.id} className="bg-slate-800/60 border border-slate-700 rounded-xl p-3 text-sm space-y-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-white font-medium">{r.batchName}</span>
-                {!hasWalzingResult(r)&&<button onClick={() => {
+                {r.cellsOut>0&&(!hasWalzingResult(r)||r.cellsOut===r.cellsIn&&r.cellsScrap===0&&r.cellsUnknown===0)&&<button disabled={busy} onClick={() => {
                     if (!currentUser) return;
+                    if(hasWalzingResult(r)){void toFormation(r);return;}
                     const now = new Date().toISOString();
                     const fi: FormationIncoming = {
                       id: r.id, sourceBox: 'walzing', batchName: r.batchName,
@@ -206,7 +214,7 @@ function WalzingRoomContent() {
               <div className="text-xs text-slate-300">
                 подано {r.cellsIn} · обработано (без QA) <b className="text-emerald-300">{r.cellsOut}</b> · отклонено <b className="text-rose-300">{r.cellsScrap}</b>
               </div>
-              {hasWalzingResult(r)&&<p className="text-xs text-slate-400 break-all">Источник заливки {r.inputSnapshot?.fromFillRunId} · автор {r.workerId} · не определено {r.cellsUnknown}. Передача на формирование требует защищённого задания; частичные диапазоны не назначаются.</p>}
+              {hasWalzingResult(r)&&<p className="text-xs text-slate-400 break-all">Источник заливки {r.inputSnapshot?.fromFillRunId} · автор {r.workerId} · не определено {r.cellsUnknown}. На формирование назначается только весь определённый выход; частичные диапазоны не назначаются.</p>}
               {r.defects.length > 0 && <div className="text-xs text-rose-300">Дефекты: {r.defects.join(', ')}</div>}
               {r.comment && <div className="text-xs text-slate-400">«{r.comment}»</div>}
               <div className="text-[11px] text-slate-500">{new Date(r.createdAt).toLocaleString('ru-RU')}</div>

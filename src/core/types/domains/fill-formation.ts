@@ -59,7 +59,7 @@ export interface FillRun {
   dwellMin?: number;                 // выдержка (время пропитки), мин
   temperatureC?: number;             // температура в боксе / электролита, °C
   humidityPpm?: number;              // new results: measured ppm only; legacy basis may be unknown
-  cellsFilled: number;               // залито ячеек (годных)
+  cellsFilled: number;               // reported filled count; not QA acceptance
   cellsScrap: number;                // брак (недолив/перелив/пузыри/подтекание)
   defects: string[];                 // дефекты по реестру
   comment?: string;
@@ -113,7 +113,7 @@ export interface WalzRun {
   speedRpm?: number;                 // скорость вращения/подачи, об/мин
   temperatureC?: number;             // температура ячейки/окружения, °C
   cellsIn: number;                   // подано ячеек
-  cellsOut: number;                  // годных после вальцовки
+  cellsOut: number;                  // reported processed count; not QA acceptance
   cellsScrap: number;                // брак (разрыв,мятость,недобор диаметра)
   defects: string[];                 // дефекты по реестру
   comment?: string;
@@ -169,6 +169,12 @@ export interface FormationMode {
 
 /** Входящая партия на формировку (из сухой комнаты / вальцовки / вручную) */
 export interface FormationIncoming {
+  sourceFill?: FillRun;
+  sourceWalz?: WalzRun;
+  destination?: StageId.FORMATION;
+  preparedBy?: string;
+  preparedRole?: import('../index').UserRole;
+  preparedAt?: string;
   id: string;                        // = fillRunId (заливка в сухой комнате) или walzRunId
   sourceBox: ElectrolyteBox | 'walzing'; // откуда пришла партия
   batchName: string;                 // название партии
@@ -177,22 +183,30 @@ export interface FormationIncoming {
   cellsIn: number;
   fromFillRunId?: string;
   fromWalzRunId?: string;
-  receivedAt: string;
+  receivedAt?: string;
   updatedAt: string;
 }
 
 /** Запись журнала формировки одной партии */
 export interface FormationRun {
+  sourceLedger?: 1;
+  inputSnapshot?: FormationIncoming;
+  legacyInputSnapshot?: FormationIncoming;
+  cellsUnknown?: number;
+  recordedRole?: import('../index').UserRole;
+  equipmentRef?: string;
+  measurementBasis?: string;
+  measurementUnits?: {current:'A';voltage:'V';capacity:'Ah';efficiency:'%';cycles:'count'};
   id: string;
   batchName: string;
   serialRange?: SerialRange;         // номера аккумуляторов (приходят из входящей партии)
-  mode: FormationMode;               // выбранный режим формировки (ток/напряжение/циклы)
+  mode: FormationMode;               // sourceLedger=1: entered observations, not an approved machine program; legacy mode retained
   startDate: string;                 // дата начала формировки (ISO yyyy-mm-dd)
   endDate?: string;                  // дата окончания (необязательно)
   coulombEfficiencyPct?: number;     // кулоновская эффективность, %
   capacityCycle5Ah?: number;         // ёмкость пятого цикла формировки, А·ч
   cellsIn: number;                   // подано ячеек
-  cellsOut: number;                  // годных после формировки
+  cellsOut: number;                  // reported processed count; final QC/release is separate
   cellsScrap: number;                // брак (вздутие, потеря контакта, недобор ёмкости)
   defects: string[];
   comment?: string;
