@@ -217,7 +217,17 @@ describe('M2 online planning screen', () => {
     expect(app.textContent).not.toContain('Новый производственный заказ');
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(app.textContent).toContain('Операции цеха');
+    expect(app.textContent).not.toContain('Открыть журнал');
+    const operations = [...app.querySelectorAll('button')]
+      .find(button => button.textContent === 'Операции цеха')!;
+    await act(async () => { operations.click(); await Promise.resolve(); });
     expect(app.textContent).toContain('Открыть журнал');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/workshop-batches',
+      expect.objectContaining({headers:expect.objectContaining({
+        Authorization:'Bearer master-token',
+      })}),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       'https://mes.example.org/planning/handoffs/inbox',
       expect.objectContaining({
