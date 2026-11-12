@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AuthService } from '../services/AuthService';
 import { useAuthStore } from '../../../core/store/authStore';
+import { restoreLocalBackup } from '../../../core/db/localBackup';
 
 /** Local-only setup: shared accounts and workshop membership require
  * independent server provisioning before M1/M2 can be used online. */
@@ -11,6 +12,20 @@ export function FirstRunSetup(){
   const [repeat,setRepeat]=useState('');
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
+  const restore=async(event:React.ChangeEvent<HTMLInputElement>)=>{
+    const input=event.currentTarget;
+    const file=input.files?.[0];
+    if(!file||busy)return;
+    setBusy(true);setError('');
+    try{
+      if(file.size>80_000_000)throw new Error('Файл слишком велик');
+      await restoreLocalBackup(await file.text());
+      // Restored profiles must authenticate with their original local password.
+      useAuthStore.getState().logout();
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Не удалось восстановить резервную копию');
+    }finally{setBusy(false);input.value='';}
+  };
   const save=async(event:React.FormEvent)=>{
     event.preventDefault();
     if(busy)return;
@@ -58,6 +73,18 @@ export function FirstRunSetup(){
           {busy?'Создаём профиль…':'Создать локальный профиль'}
         </button>
       </form>
+      <details className="border-t border-slate-700 pt-4 text-sm text-slate-200">
+        <summary className="cursor-pointer font-medium">Восстановить локальные данные из файла</summary>
+        <p className="mt-2 text-slate-300">
+          Только для полностью пустой базы этой же версии приложения.
+          Выберите собственный JSON-архив Production MF. Учетные записи и записи
+          восстановятся вместе; войдите со старым локальным паролем.
+          Серверные задания и разрешения синхронизации автоматически не восстанавливаются.
+        </p>
+        <input aria-label="Выбрать резервную копию" type="file" accept=".json,application/json"
+          disabled={busy} onChange={event=>void restore(event)}
+          className="mt-3 block w-full text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-blue-600 file:p-2 file:text-white disabled:opacity-50"/>
+      </details>
     </section>
   </main>;
 }
