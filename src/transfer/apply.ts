@@ -1,4 +1,4 @@
-import {isStorageJournal,receiveStorageJournal} from '../core/manufacturing/storageReceipts';
+import {isStorageJournal,receiveStorageJournal,isStorageHistory,receiveStorageHistory} from '../core/manufacturing/storageReceipts';
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
 import {receiveSlurryBatch,receiveSlurryHandover} from '../core/manufacturing/slurryBatch';
 import {receiveSlurryComponent,receiveSlurryRecipe} from '../core/manufacturing/slurryCatalog';
@@ -81,6 +81,10 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           await db.tasks.put({ ...t, status: status as Task['status'], updatedAt: new Date(p.ts) });
           return { ok: true, message: `Результат принят: «${t.title}» → ${status}` };
         });
+      }
+      case 'storage-history': {
+        await receiveStorageHistory(p.payload,p.stage,p.role,p.from);
+        return {ok:true,message:'Поступление и сохранённая история мест приняты атомарно; остаток не подтверждён'};
       }
       case 'journal': {
         const j = p.payload as JournalEntry;
@@ -311,6 +315,7 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
         const payload = p.payload as JournalEntry | Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
+        if(isStorageHistory(payload)){await receiveStorageHistory(payload,p.stage,p.role,p.from);return {ok:true,message:'Сохранённая история партии принята атомарно'};}
         if(isStorageJournal(payload)||'id' in payload&&isStorageJournal(await db.journal.get(payload.id))){await receiveStorageJournal(payload as JournalEntry,p.stage,p.role,p.from);return {ok:true,message:'Поступление/место записано без замены истории'};}
         if('mixBatchId' in payload&&!('segLengthsM' in payload)&&!('foilType' in payload)){
           await receiveSlurryHandover(payload as CoatingMixSnapshot,p.stage,p.role,p.from);return {ok:true,message:'Передача замеса сохранена'};

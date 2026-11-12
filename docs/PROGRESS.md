@@ -1,3 +1,36 @@
+## 2026-11-12 — Read-only saved receipt/history transfer
+
+- Storage history now exports the exact viewed saved receipt plus all location
+  predecessors through the existing signed text/multi-frame QR/Bluetooth packet
+  UI. Export rechecks the active local sender and saved history in a read-only
+  transaction; stale snapshots require explicit refresh. Source actor/time,
+  quantity/unit, evidence, IDs and location events are not modified.
+- New `storage-history` v1 payloads identify the receipt and latest event and
+  validate one complete, ordered chain. Typed and generic forced packets share
+  signature/stage/sender and immutable history guards. Receipt+all missing events
+  import in one transaction; interrupted import rolls the new rows back. Replay
+  preserves later local successors. Broken, mixed, reordered, changed and
+  divergent histories fail without replacing originals. This is manual local
+  provenance transfer, not server sync or physical/stock authority. Receiving
+  installations need support for this new packet type; older applications reject
+  an unknown type rather than gaining the workflow automatically.
+- **458 frontend tests** in 64 files passed, plus typecheck/PWA build. Focused
+  tests were rerun after final boundary review. Chromium **390×844 / 1365×900**
+  additionally passed real signed export without journal writes, QR navigation,
+  five-frame reconstruction through the actual receive UI in an independent
+  browser profile, interrupted first-import rollback, offline retry/replay,
+  exact saved provenance and DB close/open. Both complete storage scenarios were
+  rerun; no room overflow/runtime errors. These are browser profiles, not M1
+  independently enrolled physical phones or camera/BLE hardware tests.
+- Final exact-head CI/APK status is recorded on draft PR #3 after push. Previous
+  slurry/storage commit checks passed (links below); those results do not stand
+  in for the new commit's checks. No physical/native/server authority, schema,
+  signing, automatic-sync, deployment or merge change. M0–M5 remain open at their
+  existing physical/release/authoritative-operation gates. Pairing decisions are
+  documented in ASSEMBLY_PAIRING_POLICY.md. A safe next local reliability slice
+  is recovery of unfinished slurry/receipt forms after app termination; current
+  failed drafts survive room tabs and retries in memory only.
+
 ## 2026-11-12 — Recorded material lot receipts and append-only location history
 
 - Storage now records explicit material/reference, lot, known supplier/document,
@@ -26,6 +59,12 @@
   tab conflict and explicit refresh, legacy preservation, DB close/open and page
   reload without overflow/runtime errors. Removing the duplicate-lot guard made
   its concurrency regression fail; it passed again after restoration.
+- Exact-head storage commit `fc1d80707d7ad58b2bdd4f9104e020b4f32e33aa`
+  passed [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43154899757),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43154899768)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43154893851).
+  The unexpired `app-release-signed` artifact was present. These are build/test
+  results, not an installed Android or factory acceptance.
 - Reviewed local assembly intake and M2 genealogy. The physical pairing policy,
   explicit sourced polarity and allocation rules are not specified. Recorded the
   required decisions in [ASSEMBLY_PAIRING_POLICY.md](ASSEMBLY_PAIRING_POLICY.md)

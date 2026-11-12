@@ -99,8 +99,12 @@ rows, with positive explicit quantity/unit and evidence. No stock balance,
 consumption, QA approval or physical transfer is inferred. Duplicate material/
 lot claims with the same or unknown supplier and competing place successors are
 rejected; partial receipts/splits require an explicit later policy. Frontend,
-IndexedDB/component and Chromium phone/desktop checks passed; physical workshop
-acceptance remains open. See [pairing decisions](ASSEMBLY_PAIRING_POLICY.md) for
+IndexedDB/component and Chromium phone/desktop checks passed. Saved receipt/location chains now export
+read-only through signed `storage-history` v1 packets; receipt and missing
+predecessors import atomically, preserve newer local history and reject divergent
+successors. Independent browser-profile QR reconstruction/failure/replay checks
+passed. This explicit transfer is not automatic server sync; receiving app versions
+must implement the new packet type. Physical workshop acceptance remains open. See [pairing decisions](ASSEMBLY_PAIRING_POLICY.md) for
 unresolved cathode/anode source identity and allocation rules before extending
 assembly pairing.
 

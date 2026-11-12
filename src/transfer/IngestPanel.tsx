@@ -229,7 +229,7 @@ export function IngestPanel({ buildOutgoing }: Props) {
         )}
       </div>
       <p className="text-xs text-slate-500">
-        Отправитель: {currentUser?.fullName ?? '—'}. Пакеты master'а с флагом forced применяются безусловно.
+        Отправитель: {currentUser?.fullName ?? '—'}. Подпись и роль проверяются; защищённая история не заменяется даже forced-пакетом.
       </p>
     </div>
   );

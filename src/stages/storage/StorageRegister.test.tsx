@@ -5,6 +5,8 @@ import {db} from '../../core/db';
 import {UserRole,type User} from '../../core/types';
 import {useAuthStore} from '../../core/store/authStore';
 import {StorageModule} from './StorageModule';
+const outgoing=vi.hoisted(()=>({packet:null as unknown}));
+vi.mock('../_ui/PacketOutModal',()=>({PacketOutModal:({packet}:{packet:unknown})=>{outgoing.packet=packet;return <p>Saved storage history packet</p>;}}));
 it('retains receipt fields and failed identity, saves once, and searches recorded lot/location history',async()=>{
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
  const worker:User={id:'worker',login:'worker',fullName:'Worker',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()};await db.users.add(worker);useAuthStore.setState({currentUser:worker});
@@ -22,5 +24,7 @@ it('retains receipt fields and failed identity, saves once, and searches recorde
   await act(async()=>{const b=[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Записать поступление'))!;b.click();b.click();});await wait(()=>expect(node.textContent).toContain('Поступление записано'));
   expect(await db.journal.count()).toBe(1);expect((await db.journal.toArray())[0].id).toBe(failedId);
   await fill('Поиск поступлений','not-found');await wait(()=>expect(node.textContent).toContain('Совпадений нет'));await fill('Поиск поступлений','lot-1');await wait(()=>expect(node.textContent).toContain('Recorded powder'));await click('История и место');await fill('Новое место','Shelf 2');await fill('Основание смены места','Observed placement');await click('Записать место');await wait(()=>expect(node.textContent).toContain('Место записано'));expect(await db.journal.count()).toBe(2);
+  await click('Обновить историю явно');const failExport=()=>{throw Error('Export must not write');};db.journal.hook('creating',failExport);
+  try{await click('Передать сохранённую историю');await wait(()=>expect(node.textContent).toContain('Saved storage history packet'));expect((outgoing.packet as {payload:{entries:unknown[]}}).payload.entries).toHaveLength(2);expect(await db.journal.count()).toBe(2);}finally{db.journal.hook('creating').unsubscribe(failExport);}
  }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
 });

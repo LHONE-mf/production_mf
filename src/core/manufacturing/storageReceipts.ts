@@ -86,3 +86,30 @@ export async function receiveStorageJournal(row:JournalEntry,stage?:StageId,role
   return insertJournal(row);
  });
 }
+
+export interface StorageHistoryPacket {
+ storageHistoryVersion:1;receiptId:string;latestEventId:string;entries:JournalEntry[];
+ exportedBy:string;exportedRole:UserRole;exportedAt:number;
+}
+export const isStorageHistory=(value:unknown):boolean=>!!value&&typeof value==='object'&&'storageHistoryVersion' in value;
+function validateStorageHistory(value:unknown):asserts value is StorageHistoryPacket {
+ const packet=value as StorageHistoryPacket;
+ if(!packet||packet.storageHistoryVersion!==1||!text(packet.receiptId)||!text(packet.latestEventId)||!text(packet.exportedBy)||!Object.values(UserRole).includes(packet.exportedRole)||!Number.isFinite(packet.exportedAt)||packet.exportedAt<=0||!Number.isFinite(new Date(packet.exportedAt).getTime())||!Array.isArray(packet.entries)||!packet.entries.length)throw Error('Передача требует версию, автора/время и полную сохранённую историю партии');
+ const result=inspectStorageJournal(packet.entries);const lot=result.lots[0];
+ if(result.problems.length||result.lots.length!==1||lot.receipt.id!==packet.receiptId||lot.history[lot.history.length-1].id!==packet.latestEventId||lot.history.length!==packet.entries.length||lot.history.some((event,i)=>event.id!==packet.entries[i].id))throw Error('Передача должна содержать поступление и всю последовательную историю одной партии без разрывов/ветвлений');
+}
+/** Read-only export rechecks the viewed snapshot; it never updates event times. */
+export async function exportStorageHistory(expected:StorageEvent[],actorId:string):Promise<StorageHistoryPacket> {
+ return db.transaction('r',[db.users,db.journal],async()=>{
+  const actor=await db.users.get(actorId);if(!actor?.isActive)throw Error('Нужен активный локальный профиль отправителя');
+  const result=inspectStorageJournal(await db.journal.toArray());const lot=result.lots.find(row=>row.receipt.id===expected[0]?.id);
+  if(result.problems.length||!lot||!same(lot.history,expected))throw Error('Сохранённая история отсутствует, изменилась или требует проверки. Обновите выбор явно');
+  const packet:StorageHistoryPacket={storageHistoryVersion:1,receiptId:lot.receipt.id,latestEventId:lot.history[lot.history.length-1].id,entries:lot.history.map(toStorageJournal),exportedBy:actor.id,exportedRole:actor.role,exportedAt:Date.now()};
+  validateStorageHistory(packet);return packet;
+ });
+}
+export async function receiveStorageHistory(packet:unknown,stage?:StageId,role?:UserRole,senderId?:string):Promise<void> {
+ validateStorageHistory(packet);
+ if(stage!==StageId.STORAGE||role!==UserRole.MASTER&&role!==UserRole.CHIEF&&(senderId!==packet.exportedBy||role!==packet.exportedRole))throw Error('Этап или подписант не совпадает с отправителем сохранённой истории');
+ await db.transaction('rw',db.journal,async()=>{for(const row of packet.entries)await insertJournal(row);});
+}

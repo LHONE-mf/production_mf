@@ -2,8 +2,10 @@ import React,{useRef,useState} from 'react';
 import {useLiveQuery} from 'dexie-react-hooks';
 import {v4 as uuidv4} from 'uuid';
 import {db} from '../../core/db';
+import {StageId,type SyncPacket} from '../../core/types';
+import {PacketOutModal} from '../_ui/PacketOutModal';
 import {useAuthStore} from '../../core/store/authStore';
-import {STORAGE_UNITS,inspectStorageJournal,saveStorageEvent,type StorageEvent,type StorageReceipt,type RecordedLot} from '../../core/manufacturing/storageReceipts';
+import {STORAGE_UNITS,inspectStorageJournal,saveStorageEvent,exportStorageHistory,type StorageEvent,type StorageReceipt,type RecordedLot} from '../../core/manufacturing/storageReceipts';
 
 const inputClass='w-full min-h-[44px] rounded border border-slate-600 bg-slate-900 px-3 py-2 text-white';
 const buttonClass='min-h-[44px] rounded bg-blue-600 px-4 py-2 text-white disabled:opacity-50';
@@ -22,6 +24,7 @@ export function StorageRegister(){
 function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthStore.getState>['currentUser']>}){
  const register=useLiveQuery(async()=>inspectStorageJournal(await db.journal.toArray()),[]);
  const [draft,setDraft]=useState<ReceiptDraft>(emptyReceipt);const [query,setQuery]=useState('');
+ const [packet,setPacket]=useState<SyncPacket|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');
  const [pending,setPending]=useState(false);const busy=useRef(false);
  const [attempt,setAttempt]=useState<StorageEvent>();const [saved,setSaved]=useState<StorageEvent>();
@@ -34,6 +37,12 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
    const result=await saveStorageEvent(event,actor.id);setSaved(result);
    setMessage(result.kind==='receipt'?'Поступление записано':'Место записано');
   }catch(e){setError(e instanceof Error?e.message:String(e));}
+  finally{busy.current=false;setPending(false);}
+ }
+ async function sendHistory(lot:RecordedLot){
+  if(busy.current)return;busy.current=true;setPending(true);setError('');
+  try{const payload=await exportStorageHistory(lot.history,actor.id);setPacket({v:1,type:'storage-history',stage:StageId.STORAGE,from:payload.exportedBy,role:payload.exportedRole,ts:payload.exportedAt,payload});}
+  catch(e){setError(e instanceof Error?e.message:String(e));}
   finally{busy.current=false;setPending(false);}
  }
  function resetAttempt(){setAttempt(undefined);setSaved(undefined);setError('');setMessage('');}
@@ -72,6 +81,7 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
    <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={pending||!!saved||!selected.location} onClick={()=>void persist(()=>({version:1,kind:'location',id:`storage:${uuidv4()}`,receiptId:selected.receipt.id,previousEventId:selected.history[selected.history.length-1].id,fromLocation:selected.location!,location:place.trim(),evidence:basis.trim(),actorId:actor.id,actorRole:actor.role,recordedAt:Date.now()}))}>Записать место</button>
     {attempt&&!saved&&<button className={buttonClass} disabled={pending} onClick={resetAttempt}>Редактировать попытку</button>}
     <button className={buttonClass} disabled={pending} onClick={()=>{const latest=register?.lots.find(lot=>lot.receipt.id===selected.receipt.id);if(latest){resetAttempt();setSelected(latest);}}}>Обновить историю явно</button>
+    <button className={buttonClass} disabled={pending||!selected.location} onClick={()=>void sendHistory(selected)}>Передать сохранённую историю</button>
     <button className={buttonClass} disabled={pending} onClick={()=>{resetAttempt();setSelected(undefined);}}>К поступлениям</button>
    </div>
   </section>}
@@ -82,6 +92,7 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
     <button className={buttonClass} disabled={pending} onClick={()=>openLot(lot)}>История и место</button>
    </article>)}
   </section>
+  {packet&&<PacketOutModal packet={packet} onClose={()=>setPacket(null)}/>}
   <p className="text-xs text-slate-400">Неотправленные формы хранятся в памяти до выхода из комнаты; переключение вкладок их сохраняет. Сохранённые записи доступны офлайн; роль локального профиля не предоставляет серверные полномочия.</p>
  </div>;
 }
