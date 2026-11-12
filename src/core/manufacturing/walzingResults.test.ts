@@ -46,7 +46,7 @@ it('serializes competing allocations, atomically rolls result/journal back, and 
  db.close();await db.open();expect(await saveWalzingResult(run,'worker')).toEqual(run);expect((await db.journal.get(run.id))?.params?.['Снимок результата']).toBe(JSON.stringify(run));
 });
 it('guards typed and generic forced packet paths against wrong destinations, overwritten sources, stripping and replay',async()=>{
- const packet=(type:'walzing-in'|'walz-run'|'forced-push',payload:unknown)=>({v:1 as const,type,stage:StageId.WALZING,payload,from:'master',role:UserRole.MASTER,forced:true,ts:Date.now()});
+ const packet=(type:'walzing-in'|'walz-run'|'forced-push',payload:unknown)=>({v:1 as const,type,stage:StageId.WALZING,payload,from:'master',role:UserRole.MASTER,forced:type==='forced-push',ts:Date.now()});
  expect((await applyPacket(packet('walzing-in',incoming))).ok).toBe(true);
  for(const type of ['walzing-in','forced-push'] as const)expect((await applyPacket(packet(type,{...incoming,cellsIn:3}))).ok).toBe(false);
  await saveWalzingResult(run,'worker');

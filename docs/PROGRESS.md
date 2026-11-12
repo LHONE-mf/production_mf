@@ -1,3 +1,23 @@
+## 2026-11-12 — Audit follow-up: shared-key transfer authority and input limits
+
+- Reject account/catalog/technologist-parameter and forced writes regardless of
+  signed role claims. Shared HMAC verifies group-key possession, not individual
+  identity or authority. Keep local editors and nonforced protected observations;
+  retain legacy archive decoding with explicit blocked-state explanations.
+- Validate local task/result shapes and dates before writes; preserve atomic
+  server-task revision/outbox guards. Never overwrite a differing roll snapshot.
+- Bound packet bytes, QR frames, indices, cache size/memory and expiry; reject
+  conflicting frame metadata. Wire format and already signed ordinary archives
+  remain compatible. No database migration, data deletion or dependency change.
+- **500 frontend tests / 72 files**, typecheck/build passed. Actual-HMAC spoofing
+  regressions failed before correction. Existing immutable-history tests now
+  exercise nonforced typed paths as well as rejected generic forced paths.
+- `60ac88f` exact CI/tests/APK succeeded; downloaded provenance/source and actual
+  APK digest verified, public-development certificate. Details in the release
+  audit. Native Android/BLE/file-share/upgrade acceptance remains unperformed.
+- Next: truthful independent KPI/report totals and live refresh. Draft PR #3;
+  no merge, release, deployment, sync activation or signing change.
+
 ## 2026-11-12 — Audit follow-up: local session and stale-chief access
 
 - Fast-forwarded from `09371a0` to the audited remote `141cfd8`, preserving

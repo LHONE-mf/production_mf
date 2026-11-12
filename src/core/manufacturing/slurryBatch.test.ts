@@ -42,7 +42,7 @@ it('rolls coating preparation back on journal failure and prevents typed/generic
  await saveSlurryBatch(batch,'worker');const fail=()=>{throw Error('Handover journal failed');};db.journal.hook('creating',fail);
  try{await expect(prepareSlurryHandover(batch,'worker')).rejects.toThrow('Handover journal failed');}finally{db.journal.hook('creating').unsubscribe(fail);}
  expect(await db.coatIncomingMixes.count()).toBe(0);const snap=await prepareSlurryHandover(batch,'worker');
- const packet=(type:'mix-batch'|'coating-mix'|'forced-push',payload:unknown,stage=StageId.SLURRY)=>({v:1 as const,type,payload,stage,from:'master',role:UserRole.MASTER,forced:true,ts:Date.now()});
+ const packet=(type:'mix-batch'|'coating-mix'|'forced-push',payload:unknown,stage=StageId.SLURRY)=>({v:1 as const,type,payload,stage,from:'master',role:UserRole.MASTER,forced:type==='forced-push',ts:Date.now()});
  for(const type of ['mix-batch','forced-push'] as const)for(const payload of [{...batch,notes:'Altered'},{...batch,measurementVersion:undefined,componentSnapshots:undefined,recipeSnapshot:undefined,recipePlan:undefined,massBalance:undefined,measurementUnits:undefined}])expect((await applyPacket(packet(type,payload))).ok).toBe(false);
  for(const payload of [{...snap,pasteDensity:5},{mixBatchId:batch.id,recipeName:batch.recipeName,createdAt:Date.now()}])expect((await applyPacket(packet('coating-mix',payload,StageId.COATING))).ok).toBe(false);
  expect(await receiveSlurryHandover(snap,StageId.COATING,UserRole.MASTER,'master')).toEqual(snap);

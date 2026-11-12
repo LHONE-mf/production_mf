@@ -99,8 +99,8 @@ export interface SyncPacket {
   payload: unknown;         // Task | JournalEntry | StageComment | User ...
   from: string;             // id отправителя (User.id)
   ts: number;               // timestamp миллисекунды
-  forced?: boolean;         // пакет от master, применяется безусловно
-  role?: UserRole;          // роль отправителя (для проверки forced)
+  forced?: boolean;         // legacy flag; unsafe forced writes are rejected
+  role?: UserRole;          // unverified sender attribution, never an entitlement
   sig?: string;             // подпись пакета (HMAC-SHA256, base64url), см. security.ts
 }
 

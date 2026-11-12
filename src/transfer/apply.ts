@@ -1,8 +1,7 @@
-import {receiveCoatingRun,hasRecordedCoatingRun} from '../stages/coating/coatingJournal';
-import {isStorageJournal,receiveStorageJournal,isStorageHistory,receiveStorageHistory} from '../core/manufacturing/storageReceipts';
+import {receiveCoatingRun} from '../stages/coating/coatingJournal';
+import {isStorageJournal,receiveStorageJournal,receiveStorageHistory} from '../core/manufacturing/storageReceipts';
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
 import {receiveSlurryBatch,receiveSlurryHandover} from '../core/manufacturing/slurryBatch';
-import {receiveSlurryComponent,receiveSlurryRecipe} from '../core/manufacturing/slurryCatalog';
 import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
 import {receiveFillingResult} from '../core/manufacturing/fillingResults';
 import {receiveWalzingIncoming,receiveWalzingResult} from '../core/manufacturing/walzingResults';
@@ -10,19 +9,17 @@ import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
 // Применение входящегоSyncPacket к локальной базе (офлайн-синхронизация).
-// Legacy tables may use freshness; protected source/task/allocation records reject conflicting replacement, including forced packets.
+// Legacy data may use freshness; protected records reject replacement. Forced and administrative writes are blocked at this boundary.
 
 import { db } from '../core/db';
-import { SyncPacket, Task, TaskStatus, JournalEntry, StageComment, User, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole,StageId } from '../core/types';
+import { SyncPacket, Task, TaskStatus, JournalEntry, StageComment, MixBatch, CoatRun, CoatingMixSnapshot, RollToTechPacket, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun, UserRole,StageId } from '../core/types';
 import { verifyPacketSig } from '../core/security';
+import { validEnvelope, validId, dateEpoch, incomingTask, unsafeLegacyWrite, MAX_PACKET_BYTES } from './packetPolicy';
 
 export interface ApplyResult {
   ok: boolean;
   message: string;
 }
-
-/** Пакеты, которые обязан подтверждать мастер или начальник производства. */
-const PRIVILEGED_TYPES = new Set<string>(['user', 'mix-recipe', 'sort-spec']);
 
 /** Legacy signed QR/BLE packets are not authoritative server sync operations.
  * Check ownership and perform the write in the SAME Dexie transaction so a
@@ -47,36 +44,35 @@ async function applyLocalOnlyTask(
 
 export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
   try {
-    // ── Безопасность (офлайн-подпись пакетов) ────────────────────────────────
-    // 1) forced (принудительная допись master→slave) допускается только с ролью master/chief.
-    if (p.forced && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
-      return { ok: false, message: 'Отклонено: forced-пакет без роли мастера/начальника' };
+    if (!validEnvelope(p) || new TextEncoder().encode(JSON.stringify(p)).length > MAX_PACKET_BYTES) {
+      return { ok: false, message: 'Некорректный или слишком большой пакет' };
     }
-    // 2) Подпись обязательна: пакеты без sig или с чужой подписью отклоняются.
-    //    (Устройства без ключа цеха не смогут ни подписать, ни принять пакет.)
+    const blocked = unsafeLegacyWrite(p);
+    if (blocked) return { ok: false, message: blocked };
     if (!(await verifyPacketSig(p))) {
       return { ok: false, message: p.sig ? 'Отклонено: подпись пакета не совпадает с ключом цеха' : 'Отклонено: пакет не подписан (нет sig). Проверьте ключ цеха на обоих устройствах' };
-    }
-    if (PRIVILEGED_TYPES.has(p.type) && p.role !== UserRole.MASTER && p.role !== UserRole.CHIEF) {
-      return { ok: false, message: `Отклонено: тип «${p.type}» принимает только мастер/начальник производства` };
     }
 
     switch (p.type) {
       case 'task': {
-        const t = p.payload as Task;
+        const t = incomingTask(p.payload);
+        if (!t) return { ok: false, message: 'Некорректные поля задания' };
         return applyLocalOnlyTask(t?.id, async existing => {
-          if (existing && !p.forced && existing.updatedAt >= new Date(t.updatedAt)) {
+          if (existing && !Number.isFinite(dateEpoch(existing.updatedAt))) return { ok: false, message: 'Неизвестная дата существующего задания; запись сохранена' };
+          if (existing && dateEpoch(existing.updatedAt) >= t.updatedAt.getTime()) {
             return { ok: true, message: `Задание «${t.title}» уже новее — пропущено` };
           }
           await db.tasks.put(t);
-          return { ok: true, message: `Задание получено: ${p.forced ? '(принудительно) ' : ''}«${t.title}»` };
+          return { ok: true, message: `Задание получено: «${t.title}»` };
         });
       }
       case 'result': {
-        const { taskId, status } = p.payload as { taskId: string; status: string; note?: string };
+        const { taskId, status, note } = p.payload as { taskId: string; status: TaskStatus; note?: string };
+        if (!validId(taskId) || !Object.values(TaskStatus).includes(status) || (note !== undefined && (typeof note !== 'string' || note.length > 100_000))) return { ok: false, message: 'Некорректный результат задания' };
         return applyLocalOnlyTask(taskId, async t => {
           if (!t) return { ok: false, message: 'Задание не найдено на этом устройстве' };
-          if (t.updatedAt >= new Date(p.ts)) {
+          if (!Number.isFinite(dateEpoch(t.updatedAt))) return { ok: false, message: 'Неизвестная дата задания; запись сохранена' };
+          if (dateEpoch(t.updatedAt) >= p.ts) {
             return { ok: true, message: `Результат по «${t.title}» устарел — пропущен` };
           }
           await db.tasks.put({ ...t, status: status as Task['status'], updatedAt: new Date(p.ts) });
@@ -98,27 +94,12 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         if (!(await db.stageComments.get(c.id))) await db.stageComments.add(c);
         return { ok: true, message: 'Комментарий добавлен' };
       }
-      case 'user': {
-        const u = p.payload as User;
-        await db.users.put(u);
-        return { ok: true, message: `Пользователь обновлён: ${u.login}` };
-      }
       case 'mix-batch': {
         // Журнал замеса: slave присылает результат master'у.
-        // Побеждает более свежий updatedAt; forced (от master) — безусловно.
+        // Protected source snapshots and immutable history are checked below.
         const b = p.payload as MixBatch;
         await receiveSlurryBatch(b,p.stage,p.role,p.from);
         return {ok:true,message:'Замес сохранён без замены исходных навесок и версий'};
-      }
-      case 'mix-component': {
-        const c = p.payload as MixComponent;
-        await receiveSlurryComponent(c,p.role);
-        return { ok: true, message: `Компонент обновлён: ${c.name}` };
-      }
-      case 'mix-recipe': {
-        const r = p.payload as MixRecipe;
-        await receiveSlurryRecipe(r,p.role);
-        return { ok: true, message: `Стандартный замес обновлён: ${r.name}${p.forced ? ' (forced master→slave)' : ''}` };
       }
       case 'coating-mix': {
         // Данные замеса → участку нанесения: кладём в «входящие замесы» комнаты намазки.
@@ -132,32 +113,21 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'roll-spec': {
         // Рулон с намазки → технологу (master) → каландрирование.
-        // Сохраняем спецификацию рулона и (если пришли) параметры прокатки от технолога.
+        // A declared roll snapshot cannot supply verified technologist parameters.
         const rp = p.payload as RollToTechPacket;
         if (!rp?.roll || !Array.isArray(rp.roll.segLengthsM)) {
           return { ok: false, message: 'Пакет рулона повреждён (нет спецификации)' };
         }
-        await db.rollSpecs.put(rp.roll);
-        let msg = `Рулон принят на каландрирование: «${rp.roll.mixName}»`;
-        if (rp.calenderParams) {
-          // параметры от технолога (master) — записываем в задание прокатки на slave
-          const existing = await db.calenderRuns.get(rp.roll.id);
-          if (existing) {
-            await db.calenderRuns.put({ ...existing, params: rp.calenderParams, updatedAt: Math.max(Date.now(), existing.updatedAt + 1) });
-          } else {
-            await db.calenderRuns.add({
-              id: rp.roll.id, rollId: rp.roll.id, params: rp.calenderParams,
-              gapsMm: [], hasDefects: false, workerId: p.from, createdAt: Date.now(), updatedAt: Date.now(),
-            });
-          }
-          msg += ` · параметры прокатки заданы технологом (цель ${rp.calenderParams.targetThicknessUm ?? '—'} мкм)`;
-        } else {
-          msg += ' · ждёт параметров прокатки от технолога';
-        }
-        return { ok: true, message: msg };
+        return db.transaction('rw', db.rollSpecs, async () => {
+          if (!validId(rp.roll.id)) return { ok: false, message: 'Некорректный ID рулона' };
+          const existing = await db.rollSpecs.get(rp.roll.id);
+          if (existing && JSON.stringify(existing) !== JSON.stringify(rp.roll)) return { ok: false, message: 'Конфликт спецификации рулона: исходная запись сохранена' };
+          if (!existing) await db.rollSpecs.add(rp.roll);
+          return { ok: true, message: 'Спецификация рулона сохранена как заявленные данные; параметры технолога задаются локально' };
+        });
       }
       case 'calender-result': {
-        // Результат прокатки → нарезка / master. Свежесть по updatedAt; forced — безусловно.
+        // Legacy declared calender result; freshness by updatedAt.
         const c = p.payload as CalenderRun;
         if (!Array.isArray(c.gapsMm)) c.gapsMm = [];
         const existing = await db.calenderRuns.get(c.id);
@@ -194,7 +164,7 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         });
       }
       case 'cut-run': {
-        // Журнал нарезки → сортировка / master. Свежесть по updatedAt; forced — безусловно.
+        // Legacy declared cutting result; freshness by updatedAt.
         const cr = p.payload as CutRun;
         if (!cr.id || typeof cr.goodCount !== 'number') {
           return { ok: false, message: 'Запись нарезки повреждена' };
@@ -205,19 +175,6 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.cuttingRuns.put(cr);
         return { ok: true, message: `✂️ Партия нарезки получена: годных ${cr.goodCount}, дефектных ${cr.defectCount} → на сортировку` };
-      }
-      case 'sort-spec': {
-        // Спецификация сортировки от технолога (параметры из КД) → комната сортировки.
-        const ss = p.payload as SortSpec;
-        if (!ss.id || !ss.batchName || !Array.isArray(ss.categories) || ss.categories.length === 0) {
-          return { ok: false, message: 'Спецификация сортировки повреждена (нет партии или категорий)' };
-        }
-        const prev = await db.sortSpecs.get(ss.id);
-        if (prev && !p.forced && prev.updatedAt >= ss.updatedAt) {
-          return { ok: true, message: `Спецификация «${ss.batchName}» уже новее — пропущено` };
-        }
-        await db.sortSpecs.put(ss);
-        return { ok: true, message: `📐 Технолог задал сортировку «${ss.batchName}»: ${ss.parameterName}, категорий: ${ss.categories.length}` };
       }
       case 'sort-run': {
         // Sorting allocations are immutable; signed/forced packets cannot reallocate a cut run.
@@ -304,70 +261,6 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.chatMessages.put(m);
         return { ok: true, message: `💬 Сообщение от ${m.fromName}` };
-      }
-      case 'forced-push': {
-        // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as JournalEntry | Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
-        if(isStorageHistory(payload)){await receiveStorageHistory(payload,p.stage,p.role,p.from);return {ok:true,message:'Сохранённая история партии принята атомарно'};}
-        if(isStorageJournal(payload)||'id' in payload&&isStorageJournal(await db.journal.get(payload.id))){await receiveStorageJournal(payload as JournalEntry,p.stage,p.role,p.from);return {ok:true,message:'Поступление/место записано без замены истории'};}
-        if('mixBatchId' in payload&&!('segLengthsM' in payload)&&!('foilType' in payload)){
-          await receiveSlurryHandover(payload as CoatingMixSnapshot,p.stage,p.role,p.from);return {ok:true,message:'Передача замеса сохранена'};
-        }
-        if('sourceBox' in payload||p.stage===StageId.FORMATION&&'destination' in payload){
-          await receiveFormationIncoming(payload as FormationIncoming,p.stage,p.role,p.from);return {ok:true,message:'Вход формирования сохранён'};
-        }
-        if('startDate' in payload||'mode' in payload&&'cellsIn' in payload){
-          if(p.stage!==StageId.FORMATION)return {ok:false,message:'Неверный этап результата формирования'};
-          await receiveFormationResult(payload as FormationRun,p.role,p.from);return {ok:true,message:'Результат формирования сохранён'};
-        }
-        if ('destination' in payload && payload.destination===StageId.WALZING || 'fromFillRunId' in payload && !('sourceBox' in payload)&&!('box' in payload)) {
-          await receiveWalzingIncoming(payload as WalzingIncoming,p.stage,p.role,p.from);return {ok:true,message:'Задание вальцовки сохранено'};
-        }
-        if (!('box' in payload)&&('inputSnapshot' in payload || 'cellsOut' in payload&&'cellsIn' in payload&&!('mode' in payload)&&!('ops' in payload))) {
-          if(p.stage!==StageId.WALZING)return {ok:false,message:'Неверный этап результата вальцовки'};
-          await receiveWalzingResult(payload as WalzRun,p.role,p.from);return {ok:true,message:'Результат вальцовки сохранён'};
-        }
-        if ('buckets' in payload && 'specId' in payload) {
-          await receiveSortingAllocation(payload as SortRun);
-          return {ok:true,message:'Результат сортировки принят без замены существующей истории'};
-        }
-        if ('box' in payload && ('cellsFilled' in payload || 'resultVersion' in payload || 'sourceReceipt' in payload)) {
-          await receiveFillingResult(payload as FillRun,p.stage,p.role,p.from);return {ok:true,message:'Результат заливки сохранён без замены истории'};
-        }
-        if ('cellsIn' in payload && 'box' in payload) {
-          await receiveFillingHandover(payload as ElectrolyteIncoming,p.role,p.from,p.stage);return {ok:true,message:'Передача заливки принята без замены истории'};
-        }
-        if ('ops' in payload && 'cellType' in payload) {
-          await receiveAssemblyIntake(payload as AssemblyRun,p.role);return {ok:true,message:'Приёмка сборки сохранена без замены источника'};
-        }
-        if ('login' in payload) {
-          await db.users.put(payload as User);
-          return { ok: true, message: `(forced) пользователь обновлён: ${(payload as User).login}` };
-        }
-        if (hasRecordedCoatingRun(payload as CoatRun)||'id' in payload&&hasRecordedCoatingRun(await db.coatRuns.get(payload.id))||'segLengthsM' in payload && 'ovenTempsC' in payload) {
-          await receiveCoatingRun(payload as CoatRun,p.stage,p.role,p.from,true);
-          return { ok: true, message: '(forced) журнал нанесения применён' };
-        }
-        if ('lines' in payload && 'dryMassKg' in payload) {
-          await receiveSlurryRecipe(payload as MixRecipe,p.role);
-          return { ok: true, message: `(forced) стандартный замес применён: ${(payload as MixRecipe).name}` };
-        }
-        if ('kind' in payload) {
-          await receiveSlurryComponent(payload as MixComponent,p.role);
-          return { ok: true, message: `(forced) компонент применён: ${(payload as MixComponent).name}` };
-        }
-        if ('weighings' in payload) {
-          await receiveSlurryBatch(payload as MixBatch,p.stage,p.role,p.from);
-          return { ok: true, message: `(forced) журнал замеса применён: ${(payload as MixBatch).recipeName}` };
-        }
-        const candidate=payload as Task;
-        if(typeof candidate.title!=='string'||typeof candidate.description!=='string'||
-          !Object.values(TaskStatus).includes(candidate.status)||typeof candidate.assignedTo!=='string'||typeof candidate.createdBy!=='string')
-          return {ok:false,message:'Неизвестный forced-пакет: данные не являются задачей и не будут записаны в задачи'};
-        return applyLocalOnlyTask((payload as Task).id, async () => {
-          await db.tasks.put(payload as Task);
-          return { ok: true, message: `(forced) задание применено: ${(payload as Task).title}` };
-        });
       }
       default:
         return { ok: false, message: 'Неизвестный тип пакета' };

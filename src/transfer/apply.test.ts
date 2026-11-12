@@ -39,7 +39,7 @@ beforeEach(async () => {
 
 it('keeps mode-bearing slurry recipes out of formation packet dispatch',async()=>{
  const recipe={id:'recipe-with-mode',name:'Retained recipe',dryMassKg:1,lines:[],mode:[],updatedBy:actorId,updatedAt:1};
- try{expect((await applyPacket(packet('forced-push',recipe,true))).ok).toBe(true);expect(await db.mixRecipes.get(recipe.id)).toEqual(recipe);expect(await db.formationRuns.get(recipe.id)).toBeUndefined();}
+ try{expect((await applyPacket(packet('forced-push',recipe,true))).ok).toBe(false);expect(await db.mixRecipes.get(recipe.id)).toBeUndefined();expect(await db.formationRuns.get(recipe.id)).toBeUndefined();}
  finally{await db.mixRecipes.delete(recipe.id);}
 });
 
@@ -55,7 +55,7 @@ describe('legacy packet boundary for authoritative server tasks', () => {
     for (const incoming of attempted) {
       const result = await applyPacket(incoming);
       expect(result.ok).toBe(false);
-      expect(result.message).toContain('Серверное задание');
+      expect(result.message).toContain(incoming.type === 'forced-push' ? 'Общий ключ' : 'Серверное задание');
       expect((await db.tasks.get(taskId))?.title).toBe('Protected server assignment');
       expect((await db.tasks.get(taskId))?.status).toBe(TaskStatus.ASSIGNED);
     }
@@ -87,8 +87,8 @@ describe('legacy packet boundary for authoritative server tasks', () => {
     expect((await db.tasks.get(localTask.id))?.title).toBe('Legacy QR edit');
     expect((await applyPacket(packet('result', { taskId: localTask.id, status: TaskStatus.CHECKED }))).ok).toBe(true);
     expect((await db.tasks.get(localTask.id))?.status).toBe(TaskStatus.CHECKED);
-    expect((await applyPacket(packet('forced-push', { ...localTask, title: 'Legacy forced edit' }, true))).ok).toBe(true);
-    expect((await db.tasks.get(localTask.id))?.title).toBe('Legacy forced edit');
+    expect((await applyPacket(packet('forced-push', { ...localTask, title: 'Legacy forced edit' }, true))).ok).toBe(false);
+    expect((await db.tasks.get(localTask.id))?.title).toBe('Legacy QR edit');
     expect(await db.hybridTaskOutbox.count()).toBe(0);
   });
 });
@@ -118,7 +118,7 @@ it('does not allow forced or legacy packets to duplicate an explicit sorting all
  const spec={id:'spec-receipt',batchName:'roll-sort',cutRunId:source.id,electrodeType:'strip' as const,parameterName:'Thickness',unit:'um',categories:[{name:'A',criteria:'Entered criterion'}],authorId:'tech',createdAt:1,updatedAt:1};
  const payload={id,cutRunId:source.id,cutRunSnapshot:source,specSnapshot:spec,specId:spec.id,batchName:source.incomingId,goodCount:10,buckets:[{categoryName:'A',count:8}],rejected:2,workerId:'sorter',createdAt:1,updatedAt:1};
  expect((await applyPacket(packet('sort-run',payload))).ok).toBe(true);
- expect((await applyPacket(packet('sort-run',payload,true))).ok).toBe(true);
+ expect((await applyPacket(packet('sort-run',payload))).ok).toBe(true);expect((await applyPacket(packet('sort-run',payload,true))).ok).toBe(false);
  expect((await applyPacket(packet('sort-run',{...payload,id:'sorting-bypass'},true))).ok).toBe(false);
  expect((await applyPacket(packet('sort-run',{...payload,id:'sorting-bypass',cutRunId:undefined,cutRunSnapshot:undefined,specSnapshot:undefined},true))).ok).toBe(false);
  expect((await applyPacket(packet('forced-push',{...payload,id:'sorting-bypass'},true))).ok).toBe(false);
@@ -142,7 +142,7 @@ it('protects an assembly intake against forced and stripped-source replacement',
  await db.sortRuns.put(sorted);
  const run=await takeAssemblySource(sorted,'assembler','assembly-intake');
  expect((await applyPacket(packet('assembly-run',run))).ok).toBe(true);
- expect((await applyPacket(packet('assembly-run',{...run,cellsOut:4},true))).ok).toBe(false);
+ expect((await applyPacket(packet('assembly-run',{...run,cellsOut:4}))).ok).toBe(false);
  expect((await applyPacket(packet('forced-push',{...run,intake:undefined,sourceSort:undefined},true))).ok).toBe(false);
  expect(await db.assemblyRuns.get(run.id)).toEqual(run);expect(await db.tasks.get(run.id)).toBeUndefined();
  await db.assemblyRuns.delete(run.id);await db.sortRuns.delete(sorted.id);await db.journal.delete(run.id);
@@ -157,7 +157,7 @@ it('protects appended assembly observation history against typed and generic for
  expect((await applyPacket(packet('assembly-run',saved))).ok).toBe(true);
  for(const type of ['assembly-run','forced-push'] as const){
   for(const payload of [{...base,updatedAt:'2099-01-01'}, {...saved,ops:[{...op,qtyOut:10}]},{...saved,operationLedger:undefined}])
-   expect((await applyPacket(packet(type,payload,true))).ok).toBe(false);
+   expect((await applyPacket(packet(type,payload,type==='forced-push'))).ok).toBe(false);
  }
  expect((await applyPacket(packet('forced-push',{...base,id:'stripped-ops-receipt'},true))).ok).toBe(false);
  expect(await db.assemblyRuns.get('stripped-ops-receipt')).toBeUndefined();

@@ -38,8 +38,8 @@ it('rejects missing parent, false prior location, earlier timestamp and altered 
  await expect(receiveStorageJournal({...toStorageJournal(location(receipt)),workerId:'forged'},StageId.STORAGE,UserRole.MASTER,'master')).rejects.toThrow();expect(await db.journal.count()).toBe(1);
 });
 it('routes signed journal and forced packets through immutable history checks, including stripped markers',async()=>{
- const packet=(payload:unknown,type:'journal'|'forced-push'='journal')=>({v:1 as const,type,payload,stage:StageId.STORAGE,from:'master',role:UserRole.MASTER,forced:true,ts:Date.now()});
- const row=toStorageJournal(receipt);expect((await applyPacket(packet(row))).ok).toBe(true);expect((await applyPacket(packet(row,'forced-push'))).ok).toBe(true);
+ const packet=(payload:unknown,type:'journal'|'forced-push'='journal')=>({v:1 as const,type,payload,stage:StageId.STORAGE,from:'master',role:UserRole.MASTER,forced:type==='forced-push',ts:Date.now()});
+ const row=toStorageJournal(receipt);expect((await applyPacket(packet(row))).ok).toBe(true);expect((await applyPacket(packet(row,'forced-push'))).ok).toBe(false);
  for(const payload of [{...row,params:undefined},{...row,summary:'Altered'},{...row,params:{storageEvent:JSON.stringify({...receipt,quantity:9})}}])for(const type of ['journal','forced-push'] as const)expect((await applyPacket(packet(payload,type))).ok).toBe(false);
  expect((await applyPacket({...packet(toStorageJournal(location(receipt))),stage:StageId.SLURRY})).ok).toBe(false);expect(await db.journal.get(receipt.id)).toEqual(row);
 });

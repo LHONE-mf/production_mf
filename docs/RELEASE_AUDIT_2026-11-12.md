@@ -53,6 +53,59 @@ read-only file selection and separate empty-browser-profile restore with the
 original password. No overflow/runtime errors. Browser evidence is not native
 file-share or physical installed-upgrade acceptance.
 
+## P0/P1 legacy transfer boundary correction
+
+A valid shared HMAC no longer grants account, catalog, process-parameter or
+forced-write authority. All `user`, `forced-push`, forced-flag, standalone
+component/recipe/sorting-spec and roll-spec-with-calender-parameters packets are
+rejected on both import and export with an explicit explanation. Their old
+shape-dispatch/account replacement branches were removed. Local authorized
+editors remain available; existing signed archives still decode for a readable
+blocked-state response. A roll-only handover can insert or acknowledge an exact
+snapshot, but cannot replace an existing different specification.
+
+Ordinary typed, nonforced manufacturing observations retain source/history,
+idempotency and transactional guards. Declared actors/roles remain **unverified
+attribution**, not proven technologist/supervisor identity, QA approval, stock or
+server authority. This limited offline channel has no separately verified
+individual entitlement. Server-owned and queued tasks still require protected
+server synchronization; the task/revision/outbox check and local write remain
+in one transaction. Ordinary local tasks/results remain available.
+
+Task/result imports validate known statuses, priority, IDs, essential text,
+arrays, nested comment/attachment fields and finite dates before writing. Dates
+from signed JSON are normalized only after signature verification. Unknown
+existing update timestamps block replacement rather than becoming zero.
+The unchanged LIP/LIPM format now limits decoded JSON to 1 MiB, encoded payload
+to 1.5M characters, parts to 2048 characters, frame count to 1200, incomplete
+assemblies to 16 / 3M characters and age to five minutes. Expiry runs on every
+frame. Invalid indices/totals, conflicting duplicate frames and mismatched
+assembly totals are rejected; old assemblies are evicted at capacity.
+
+Evidence: regression tests first reproduced real signed account/forced
+replacement, malformed task writes and permissive decoding. The correction
+retains positive nonforced storage/coating/walzing/task observations and negative
+source-stripping tests. New tests cover master/chief spoofing with actual HMAC,
+no account/password/task overwrite, Unicode/out-of-order QR, malformed payloads,
+size/count limits, conflicting frames, expiry, flooding and aggregate memory.
+Frontend typecheck, **500 tests / 72 files** and PWA build passed. Native BLE,
+camera and actual WebView behavior still require physical acceptance.
+
+## Exact pushed-commit evidence
+
+| Commit | GitHub checks | APK artifact |
+| --- | --- | --- |
+| `60ac88f046cca2a426dc06584bf943e0c39f4a74` | [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43205196446) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43205196435) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43205188594), artifact `13937746221`, `app-release-signed`, exists and is unexpired |
+
+The downloaded APK archive's `release-provenance.txt` matches that source SHA,
+reports `signing_mode=public-development`, and records successful v1/v2 signature
+verification. Actual APK SHA-256:
+`a9ce0ea48b94e41316301826b027dff5a8a585df13b7119863e016c86f32df18`;
+certificate SHA-256:
+`637331c73bee1ac9f07444a207b9cfd5d8bd9535641e24ad3471082c9d62f51b`.
+This public development key provides no production distribution trust.
+Subsequent commits require their own exact-source evidence on draft PR #3.
+
 ## Dependency audit — lockfiles unchanged
 
 `npm audit --json` at this head: root **8 findings** (2 low, 6 moderate), server
@@ -70,8 +123,6 @@ any newly reachable high/critical advisory before a candidate is distributed.
 
 ## Remaining ordered work
 
-- P0/P1: reject unverified legacy account/forced authority, validate task/status
-  input and bound QR assembly. Keep protected ordinary observations usable.
 - P1: replace cross-stage aggregate yield with unavailable lineage-dependent
   yield and truthful independent observation totals; refresh while open.
 - P1 physical gate: run the [phone smoke procedure](ONE_DAY_RELEASE_GATE.md),

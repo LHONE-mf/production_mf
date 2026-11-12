@@ -66,7 +66,7 @@ export function IngestPanel({ buildOutgoing }: Props) {
       setResult({ ok: false, message: 'Не найден пакет формата LIP:... в тексте' });
       return;
     }
-    // Защита: forced-пакеты принимаем только если отправитель — master/chief
+    // The shared key never authorizes account/configuration or forced writes.
     const res = await applyPacket(p);
     setResult(res);
     setIncomingText('');
@@ -229,7 +229,7 @@ export function IngestPanel({ buildOutgoing }: Props) {
         )}
       </div>
       <p className="text-xs text-slate-500">
-        Отправитель: {currentUser?.fullName ?? '—'}. Подпись и роль проверяются; защищённая история не заменяется даже forced-пакетом.
+        Заявленный отправитель: {currentUser?.fullName ?? '—'}. Общий ключ проверяет целостность, но не личность и роль. Учётные записи, справочники, параметры технолога и forced-запись заблокированы. Наблюдения не подтверждают QA или физическую приёмку.
       </p>
     </div>
   );

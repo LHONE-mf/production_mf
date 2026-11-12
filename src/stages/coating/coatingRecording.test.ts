@@ -26,8 +26,8 @@ it('rejects stale sources, fabricated estimates, unknown mode/units fields and s
 });
 it('protects new runs against altered and stripped typed/forced imports and preserves unrelated legacy history',async()=>{
  const run=prepareRecordedCoatingRun(entry,'worker','run',UserRole.WORKER,Date.now());await savePreparedCoatingRun(run,'worker');
- const packet=(type:'coat-run'|'forced-push',payload:unknown)=>({v:1 as const,type,payload,stage:StageId.COATING,from:'master',role:UserRole.MASTER,forced:true,ts:Date.now()});
- for(const type of ['coat-run','forced-push'] as const){expect((await applyPacket(packet(type,run))).ok).toBe(true);for(const payload of [{...run,foilType:'Changed'},{...run,recordingVersion:undefined,recordedRole:undefined},{...run,ovenTempsC:undefined,segLengthsM:undefined}])expect((await applyPacket(packet(type,payload))).ok).toBe(false);}
+ const packet=(type:'coat-run'|'forced-push',payload:unknown)=>({v:1 as const,type,payload,stage:StageId.COATING,from:'master',role:UserRole.MASTER,forced:type==='forced-push',ts:Date.now()});
+ for(const type of ['coat-run','forced-push'] as const){expect((await applyPacket(packet(type,run))).ok).toBe(type!=='forced-push');for(const payload of [{...run,foilType:'Changed'},{...run,recordingVersion:undefined,recordedRole:undefined},{...run,ovenTempsC:undefined,segLengthsM:undefined}])expect((await applyPacket(packet(type,payload))).ok).toBe(false);}
  const legacy={id:'old',foilType:'Old record',mode:'continuous' as const,segLengthsM:[],ovenTempsC:[],workerId:'historical',createdAt:1,updatedAt:1};await db.coatRuns.add(legacy);expect(await db.coatRuns.get(legacy.id)).toEqual(legacy);expect(await db.coatRuns.get(run.id)).toEqual(run);
 });
 it('imports a late recorded observation atomically without inventing or overwriting its source catalog',async()=>{

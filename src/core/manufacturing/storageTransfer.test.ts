@@ -32,7 +32,7 @@ it('rejects broken/truncated/reordered/mixed chains, altered envelopes, bad send
  await db.journal.delete(move.id);await saveStorageEvent({...move,id:'storage:competing',location:'Shelf 9'},'worker');await expect(receiveStorageHistory(packet,StageId.STORAGE,UserRole.MASTER,'master')).rejects.toThrow();expect(await db.journal.get(move.id)).toBeUndefined();expect(await db.journal.count()).toBe(2);
 });
 it('uses identical safeguards for typed and generic forced saved-history packets',async()=>{
- const payload=await exportStorageHistory([receipt,move],'worker');const packet=(type:'storage-history'|'forced-push')=>({v:1 as const,type,payload,stage:StageId.STORAGE,from:'master',role:UserRole.MASTER,forced:true,ts:Date.now()});
- for(const type of ['storage-history','forced-push'] as const)expect((await applyPacket(packet(type))).ok).toBe(true);
+ const payload=await exportStorageHistory([receipt,move],'worker');const packet=(type:'storage-history'|'forced-push')=>({v:1 as const,type,payload,stage:StageId.STORAGE,from:'master',role:UserRole.MASTER,forced:type==='forced-push',ts:Date.now()});
+ for(const type of ['storage-history','forced-push'] as const)expect((await applyPacket(packet(type))).ok).toBe(type!=='forced-push');
  for(const type of ['storage-history','forced-push'] as const)expect((await applyPacket({...packet(type),payload:{...payload,entries:payload.entries.slice(1)}})).ok).toBe(false);
 });

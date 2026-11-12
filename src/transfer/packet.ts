@@ -4,19 +4,16 @@
 import { SyncPacket, UserRole } from '../core/types';
 import { signPacket, hasWorkshopKey } from '../core/security';
 import { db } from '../core/db';
+import { useAuthStore, currentLocalSession } from '../core/store/authStore';
+import { validEnvelope, unsafeLegacyWrite, MAX_PACKET_BYTES, MAX_ENCODED_CHARS, MAX_FRAME_PART, MAX_FRAMES, MAX_ASSEMBLIES, MAX_ASSEMBLY_CHARS, FRAME_TTL_MS } from './packetPolicy';
 
 export const PACKET_PREFIX = 'LIP:';
 
-/** Роль текущего пользователя из zustand-persist сессии (localStorage). */
+/** Verified local session attribution; this is not remote proof of a role. */
 export function currentSenderRole(): UserRole | undefined {
-  try {
-    const raw = localStorage.getItem('auth-storage');
-    if (!raw) return undefined;
-    const st = JSON.parse(raw)?.state?.session;
-    return st?.user?.role ?? st?.role;
-  } catch {
-    return undefined;
-  }
+  const state = useAuthStore.getState();
+  return state.sessionChecked && state.isAuthenticated && currentLocalSession(state.session)
+    ? state.currentUser?.role : undefined;
 }
 
 /** The legacy HMAC transfer channel cannot grant access to server-owned
@@ -46,12 +43,16 @@ export async function encodePacket(p: SyncPacket): Promise<string> {
       throw new Error('Серверное задание нельзя передавать через QR/Bluetooth: используйте защищённую синхронизацию');
     }
   }
+  if (!validEnvelope(p)) throw new Error('Некорректный пакет');
+  const blocked = unsafeLegacyWrite(p);
+  if (blocked) throw new Error(blocked);
   if (!hasWorkshopKey()) {
     throw new Error('Ключ цеха не задан: задайте его в разделе «Синхронизация», чтобы подписывать пакеты');
   }
   const withRole: SyncPacket = p.role ? p : { ...p, role: currentSenderRole() };
   const signed: SyncPacket = withRole.sig ? withRole : { ...withRole, sig: await signPacket(withRole) };
   const json = JSON.stringify(signed);
+  if (new TextEncoder().encode(json).length > MAX_PACKET_BYTES) throw new Error('Пакет слишком большой');
   // btoa не любит кириллицу — сначала в UTF-8 escape
   const utf8 = unescape(encodeURIComponent(json));
   return PACKET_PREFIX + btoa(utf8);
@@ -60,15 +61,16 @@ export async function encodePacket(p: SyncPacket): Promise<string> {
 /** Текст (из QR/сообщения) → пакет; null если это не наш пакет */
 export function decodePacket(text: string): SyncPacket | null {
   try {
+    if (text.length > MAX_ENCODED_CHARS + 4096) return null;
     const idx = text.indexOf(PACKET_PREFIX);
-    if (idx === -1) return null;
+    if (idx < 0 || idx > 4096) return null;
     let b64 = text.slice(idx + PACKET_PREFIX.length).trim().split(/\s+/)[0];
-    // добить base64 padding
+    if (!b64 || b64.length > MAX_ENCODED_CHARS || !/^[A-Za-z0-9+/]*={0,2}$/.test(b64)) return null;
     while (b64.length % 4) b64 += '=';
-    const json = decodeURIComponent(escape(atob(b64)));
-    const obj = JSON.parse(json) as SyncPacket;
-    if (obj.v !== 1 || !obj.type) return null;
-    return obj;
+    const bytes = atob(b64);
+    if (bytes.length > MAX_PACKET_BYTES) return null;
+    const obj: unknown = JSON.parse(decodeURIComponent(escape(bytes)));
+    return validEnvelope(obj) ? obj : null;
   } catch {
     return null;
   }
@@ -83,7 +85,9 @@ export const QR_CHUNK_SIZE = 1200;
  * Одиночные пакеты (LIP:...) остаются совместимыми со старыми версиями.
  */
 export function toQrChunks(encoded: string, chunkSize = QR_CHUNK_SIZE): string[] {
+  if (!Number.isInteger(chunkSize) || chunkSize < 1 || chunkSize > MAX_FRAME_PART) throw new Error('Некорректный размер кадра QR');
   const body = encoded.startsWith(PACKET_PREFIX) ? encoded.slice(PACKET_PREFIX.length) : encoded;
+  if (body.length > MAX_ENCODED_CHARS || Math.ceil(body.length / chunkSize) > MAX_FRAMES) throw new Error('Слишком большой пакет QR');
   if (body.length <= chunkSize) return [encoded]; // маленький пакет — один кадр, старый формат
   const id = `${body.length.toString(36)}-${body.slice(0, 8)}${body.slice(-8)}`;
   const chunks: string[] = [];
@@ -95,44 +99,44 @@ export function toQrChunks(encoded: string, chunkSize = QR_CHUNK_SIZE): string[]
 }
 
 /** Кэш сборки многокадровых пакетов (id → части по индексам) */
-const multiFrameCache = new Map<string, { total: number; parts: Map<number, string>; startedAt: number }>();
+const multiFrameCache = new Map<string, { total: number; parts: Map<number, string>; startedAt: number; chars: number }>();
 
-/** Собрать кадр(ы) QR/текста в пакет. Поддерживает одиночные LIP:... и многокадровые LIPM:... */
+/** Assemble bounded, consistent frames; an invalid/conflicting assembly is discarded. */
 export function decodePacketFromQr(text: string): SyncPacket | null {
+  const now = Date.now();
+  for (const [id, entry] of multiFrameCache) {
+    if (now - entry.startedAt >= FRAME_TTL_MS) multiFrameCache.delete(id);
+  }
+  if (text.length > MAX_ENCODED_CHARS + 4096) return null;
   const t = text.trim();
   if (!t.startsWith('LIPM:')) return decodePacket(t);
-  try {
-    const rest = t.slice('LIPM:'.length);
-    const sepId = rest.indexOf(':');
-    const sepNum = rest.indexOf(':', sepId + 1);
-    if (sepId === -1 || sepNum === -1) return null;
-    const id = rest.slice(0, sepId);
-    const frac = rest.slice(sepId + 1, sepNum);
-    const part = rest.slice(sepNum + 1).trim().split(/\s+/)[0];
-    const [idxStr, totStr] = frac.split('/');
-    const idx = parseInt(idxStr, 10);
-    const total = parseInt(totStr, 10);
-    if (isNaN(idx) || isNaN(total) || total < 1 || idx >= total) return null;
-    let entry = multiFrameCache.get(id);
-    if (!entry) {
-      entry = { total, parts: new Map(), startedAt: Date.now() };
-      multiFrameCache.set(id, entry);
-      // чистка старых незавершённых сборок (старше 5 минут)
-      for (const [k, v] of multiFrameCache) {
-        if (Date.now() - v.startedAt > 5 * 60 * 1000) multiFrameCache.delete(k);
-      }
-    }
-    entry.parts.set(idx, part);
-    if (entry.parts.size < entry.total) return null; // ждём остальные кадры
-    let b64 = '';
-    for (let i = 0; i < entry.total; i++) {
-      const p = entry.parts.get(i);
-      if (!p) return null;
-      b64 += p;
-    }
+  if (t.length > MAX_FRAME_PART + 128) return null;
+  const match = /^LIPM:([A-Za-z0-9+/_=-]{1,96}):(\d{1,4})\/(\d{1,4}):([A-Za-z0-9+/=]+)$/.exec(t);
+  if (!match) return null;
+  const [, id, indexText, totalText, part] = match;
+  const index = Number(indexText), total = Number(totalText);
+  if (total < 1 || total > MAX_FRAMES || index >= total || part.length > MAX_FRAME_PART) return null;
+  let entry = multiFrameCache.get(id);
+  if (entry && (entry.total !== total || entry.parts.has(index) && entry.parts.get(index) !== part)) {
     multiFrameCache.delete(id);
-    return decodePacket(PACKET_PREFIX + b64);
-  } catch {
     return null;
   }
+  if (!entry) {
+    if (multiFrameCache.size >= MAX_ASSEMBLIES) multiFrameCache.delete(multiFrameCache.keys().next().value!);
+    entry = { total, parts: new Map(), startedAt: now, chars: 0 };
+    multiFrameCache.set(id, entry);
+  }
+  if (!entry.parts.has(index)) {
+    const aggregate = [...multiFrameCache.values()].reduce((sum, item) => sum + item.chars, 0);
+    if (entry.chars + part.length > MAX_ENCODED_CHARS || aggregate + part.length > MAX_ASSEMBLY_CHARS) {
+      multiFrameCache.delete(id);
+      return null;
+    }
+    entry.parts.set(index, part);
+    entry.chars += part.length;
+  }
+  if (entry.parts.size < total) return null;
+  const body = Array.from({ length: total }, (_, i) => entry!.parts.get(i)!).join('');
+  multiFrameCache.delete(id);
+  return decodePacket(PACKET_PREFIX + body);
 }
