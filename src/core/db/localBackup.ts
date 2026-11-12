@@ -118,10 +118,19 @@ export async function exportLocalBackup():Promise<string>{
   return archive;
 }
 
-/** Restore only into a completely empty, same-schema installation. Never
- * resurrect remote authorization, device binding or pending shared task edits.
- * All local writes either commit together or are rolled back. */
-export async function restoreLocalBackup(text:string):Promise<void>{
+export type LocalBackupInspection={
+  createdAt:string;
+  tableCount:number;
+  recordCount:number;
+  userCount:number;
+};
+
+/** Parse and verify a chosen archive without changing any saved work.
+ * Reuse this exact validation path for a later empty-database restore. */
+async function readLocalBackup(text:string):Promise<{
+  restored:Map<string,Record<string,unknown>[]>;
+  summary:LocalBackupInspection;
+}>{
   if(typeof text!=='string'||text.length>MAX_ARCHIVE_CHARS)
     throw new Error('Файл резервной копии слишком велик');
   let value:unknown;
@@ -159,6 +168,34 @@ export async function restoreLocalBackup(text:string):Promise<void>{
   if(restricted.some(name=>(restored.get(name)?.length??0)>0))
     throw new Error('Архив содержит серверную синхронизацию. Перенос на другое устройство требует отдельной безопасной процедуры');
   if(!restored.get('users')?.length)throw new Error('В резервной копии нет локальных пользователей');
+  const createdAt=archive.createdAt;
+  if(typeof createdAt!=='string'){
+    throw new Error('В резервной копии отсутствует дата создания');
+  }
+  const date=new Date(createdAt);
+  if(!Number.isFinite(date.getTime())||date.toISOString()!==createdAt)
+    throw new Error('Некорректная дата создания резервной копии');
+  return {restored,summary:{
+    createdAt,
+    tableCount:names.length,
+    recordCount:Array.from(restored.values()).reduce((total,items)=>total+items.length,0),
+    userCount:restored.get('users')!.length,
+  }};
+}
+
+/** Check the saved file's content, format and checksum without importing it.
+ * This is not a restoration test, authentication of its creator or proof of
+ * external storage; a full restore must still be tested on a separate device. */
+export async function inspectLocalBackup(text:string):Promise<LocalBackupInspection>{
+  return (await readLocalBackup(text)).summary;
+}
+
+/** Restore only into a completely empty, same-schema installation. Never
+ * resurrect remote authorization, device binding or pending shared task edits.
+ * All local writes either commit together or are rolled back. */
+export async function restoreLocalBackup(text:string):Promise<void>{
+  const {restored}=await readLocalBackup(text);
+  const names=tableNames();
   await db.transaction('rw',db.tables,async()=>{
     for(const name of names)
       if(await db.table(name).count())throw new Error('Восстановление возможно только в полностью пустую локальную базу');
