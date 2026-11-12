@@ -30,6 +30,31 @@ The first-run setup will then appear.
 The local user list is now backed by actual IndexedDB records; chiefs can
 create and manage local accounts. **Local accounts are not server accounts.**
 
+
+## Emergency local backup / clean-install restore (engineering candidate)
+
+A local **chief** can select **Сотрудники → Создать резервную копию** to
+prepare a read-only JSON archive of all IndexedDB tables. The Android share
+sheet may appear, or the browser may offer a download. **Confirm the file
+actually exists outside the app before relying on it.** The archive includes
+local password hashes, employees, work and potentially sensitive records; it
+is not encrypted. Do not share it publicly.
+
+On the **first-run screen only**, choose **Восстановить локальные данные из
+файла** on a separate, fully empty installation of the **same database schema
+version**. The archive checksum is checked, unknown formats are rejected, and
+tables restore atomically (all-or-nothing); any existing record blocks restore.
+Sign in using a local password from the saved archive. To avoid reviving
+device/session permissions or bypassing conflicts, restoring archives that
+contain hybrid server synchronization state is deliberately refused.
+Backups are neither automatic nor a substitute for live-server backups.
+
+The same-device real Android file save, in-place upgrade and independent
+restore drill have **not** been validated. Do not reset or uninstall an
+installation containing important data merely to test restoration.
+For the current limited trial release gate, see
+[One-day release gate](docs/ONE_DAY_RELEASE_GATE.md).
+
 ## Running and testing
 
 - Development: `npm ci && npm run dev`
