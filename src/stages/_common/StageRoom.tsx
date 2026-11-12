@@ -18,9 +18,10 @@ interface Props {
   icon?: string;
   /** Специфичный инструмент комнаты (калькулятор, параметры и т.п.) */
   tool?: React.ReactNode;
+  preserveToolDraft?: boolean;
 }
 
-export function StageRoom({ stage, title, icon, tool }: Props) {
+export function StageRoom({ stage, title, icon, tool, preserveToolDraft = false }: Props) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [tab, setTab] = useState<'tool' | 'journal' | 'comments'>('tool');
 
@@ -75,7 +76,7 @@ export function StageRoom({ stage, title, icon, tool }: Props) {
         ))}
       </div>
 
-      {activeTab === 'tool' && tool}
+      {tool && (activeTab === 'tool' || preserveToolDraft) && <div hidden={activeTab !== 'tool'}>{tool}</div>}
 
       {activeTab === 'journal' && (
         <StageJournal stage={stage} onAdd={addJournalEntry} canAdd={!!currentUser} />

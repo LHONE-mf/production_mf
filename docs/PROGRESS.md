@@ -1,3 +1,39 @@
+## 2026-11-12 — Recorded material lot receipts and append-only location history
+
+- Storage now records explicit material/reference, lot, known supplier/document,
+  positive quantity with chosen kg/g/l/m/pieces unit, receiving location, evidence
+  and local author/role/time. Blank is unknown, zero is not a receipt, pieces must
+  be safe whole counts, and no quantity/unit conversion is inferred. Search
+  includes material, lot, known references and all recorded locations.
+- Each immutable `storageEvent` snapshot and its attribution live in one existing
+  journal row, committed under a users+journal transaction. No new table/schema
+  or migration is needed. Location events append a receipt ID, exact predecessor,
+  previous/new place and evidence; they never alter receipt quantities. Different
+  IDs cannot claim the same material/lot with the same or unknown supplier, or
+  the same location predecessor. Repeated partial receipts/splits need a later
+  approved accounting policy. There is no opening balance, on-hand total,
+  physical transfer, consumption or QA claim.
+- Failed writes keep fields and a frozen ID; exact retries are safe, changed intent
+  fails, actor activation/role are rechecked. Room tabs retain drafts in memory.
+  Concurrent place changes require explicit refresh; forms do not silently adopt
+  new predecessors. Typed journal and forced imports share the same immutable
+  chain/envelope validation. Legacy notes remain notes; malformed protected
+  history stays stored for review and blocks further ambiguous writes.
+- **454 frontend tests**, typecheck and PWA build passed. Chromium
+  **390×844 / 1365×900** passed assigned-worker receipt, missing/zero/fractional
+  pieces rejection, real journal rollback, retained ID/draft across room tabs,
+  offline double retry, searchable register, location rollback/retry, competing
+  tab conflict and explicit refresh, legacy preservation, DB close/open and page
+  reload without overflow/runtime errors. Removing the duplicate-lot guard made
+  its concurrency regression fail; it passed again after restoration.
+- Reviewed local assembly intake and M2 genealogy. The physical pairing policy,
+  explicit sourced polarity and allocation rules are not specified. Recorded the
+  required decisions in [ASSEMBLY_PAIRING_POLICY.md](ASSEMBLY_PAIRING_POLICY.md)
+  instead of inventing ratios, stock claims or physical acceptance. No change to
+  assembly behavior or server authority. M0 installed upgrade/restore, M1 separate
+  phones/TLS, M2 factory pilot, M3 authoritative room operations, M4 QA/inventory
+  and M5 remain open. No merge/deployment/native/signing/auto-sync change.
+
 ## 2026-11-12 — Measured slurry weighing and durable coating handover
 
 - Continued from verified remote `db5b9db51baf` on the existing feature branch.
@@ -29,8 +65,11 @@
   tabs in memory; browser termination does not persist unfinished drafts.
 - No schema/native/signing/dependency/server or automatic-sync change. No physical
   receipt, consumption, QA, stock balance or factory acceptance is inferred.
-  Exact-head Actions status is recorded after push; queued checks are not passes.
-  Next implementation: recorded material lot receipts and location history.
+  Exact-head [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43153909903),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43153909885)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43153905120)
+  passed for slurry commit `0f4432e36be58696cb8a61ae44d07a0af271c271`;
+  the `app-release-signed` artifact was present and unexpired at inspection.
 
 ## 2026-11-11 — Final filling/formation review and zero-dose rejection observation
 

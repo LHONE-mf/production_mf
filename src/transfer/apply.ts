@@ -1,3 +1,4 @@
+import {isStorageJournal,receiveStorageJournal} from '../core/manufacturing/storageReceipts';
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
 import {receiveSlurryBatch,receiveSlurryHandover} from '../core/manufacturing/slurryBatch';
 import {receiveSlurryComponent,receiveSlurryRecipe} from '../core/manufacturing/slurryCatalog';
@@ -83,6 +84,7 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'journal': {
         const j = p.payload as JournalEntry;
+        if(isStorageJournal(j)||isStorageJournal(await db.journal.get(j.id))){await receiveStorageJournal(j,p.stage,p.role,p.from);return {ok:true,message:'Поступление/место записано без замены истории'};}
         if (!(await db.journal.get(j.id))) await db.journal.add(j);
         return { ok: true, message: 'Запись журнала добавлена' };
       }
@@ -308,7 +310,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       }
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
-        const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
+        const payload = p.payload as JournalEntry | Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
+        if(isStorageJournal(payload)||'id' in payload&&isStorageJournal(await db.journal.get(payload.id))){await receiveStorageJournal(payload as JournalEntry,p.stage,p.role,p.from);return {ok:true,message:'Поступление/место записано без замены истории'};}
         if('mixBatchId' in payload&&!('segLengthsM' in payload)&&!('foilType' in payload)){
           await receiveSlurryHandover(payload as CoatingMixSnapshot,p.stage,p.role,p.from);return {ok:true,message:'Передача замеса сохранена'};
         }

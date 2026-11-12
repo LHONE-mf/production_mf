@@ -86,6 +86,24 @@ No server-side PostgreSQL records are affected, and no offline MES auto-sync
 has been added. The reset is intentionally destructive to local data and
 requires installed-APK upgrade acceptance before a production rollout.
 
+**Local slurry/storage observation checkpoint (2026-11-12):**
+Slurry records explicit actual ingredient grams separately from planned dry kg,
+with frozen recipe/material versions, declared solids fractions and confirmed
+planning basis (dry-contribution shares total 100%; liquid additions are % of
+target dry mass). Missing actuals stay unknown; known actual masses and declared
+composition support a mass-balance calculation, never inferred measured density
+or viscosity. Immutable batch/journal and explicit coating handover commit before
+packet generation. Legacy uncertainty is retained. Storage records immutable,
+attributed lot receipts and append-only place observations in existing journal
+rows, with positive explicit quantity/unit and evidence. No stock balance,
+consumption, QA approval or physical transfer is inferred. Duplicate material/
+lot claims with the same or unknown supplier and competing place successors are
+rejected; partial receipts/splits require an explicit later policy. Frontend,
+IndexedDB/component and Chromium phone/desktop checks passed; physical workshop
+acceptance remains open. See [pairing decisions](ASSEMBLY_PAIRING_POLICY.md) for
+unresolved cathode/anode source identity and allocation rules before extending
+assembly pairing.
+
 **M0 room utility checkpoint (2026-11-11):**
 The [room workflow audit](ROOM_WORKFLOW_AUDIT.md) inventories all 11 registered
 rooms with actual stores, assumptions, unverified paths and acceptance criteria.
