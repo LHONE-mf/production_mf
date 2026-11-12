@@ -49,6 +49,14 @@ device/session permissions or bypassing conflicts, restoring archives that
 contain hybrid server synchronization state is deliberately refused.
 Backups are neither automatic nor a substitute for live-server backups.
 
+After saving a file, a local chief can use **Сотрудники → Проверить сохранённый файл резервной копии**
+to select that file from the Android picker and verify its checksum, schema,
+contents and user count without importing anything or changing local records.
+A successful file check **does not** replace a real restore drill on an isolated
+empty installation, establish who created the archive, or prove a backup exists
+in durable external storage. An archive containing hybrid server-sync state
+will be refused as unsafe to restore.
+
 The same-device real Android file save, in-place upgrade and independent
 restore drill have **not** been validated. Do not reset or uninstall an
 installation containing important data merely to test restoration.
