@@ -1,7 +1,7 @@
 import {afterEach,describe,expect,it} from 'vitest';
 import {Blob as NativeBlob} from 'node:buffer';
 import {db} from './index';
-import {exportLocalBackup,restoreLocalBackup} from './localBackup';
+import {exportLocalBackup,inspectLocalBackup,restoreLocalBackup} from './localBackup';
 
 afterEach(async()=>{db.close();await db.delete();});
 
@@ -77,6 +77,35 @@ describe('local backup/restore safety',()=>{
     } finally {
       globalThis.Blob=originalBlob;
     }
+  });
+
+  it('verifies a saved backup on a nonempty device without changing any local records',async()=>{
+    await db.open();
+    await db.table('users').put({id:'chief',login:'chief',fullName:'Operator',password:'hash',role:'chief',isActive:true});
+    await db.table('journal').put({id:'receipt',stage:'storage',workerId:'chief'});
+    const saved=await exportLocalBackup();
+    const report=await inspectLocalBackup(saved);
+    expect(report.createdAt).toMatch(/^2026-/);
+    expect(report.tableCount).toBe(db.tables.length);
+    expect(report.recordCount).toBe(2);
+    expect(report.userCount).toBe(1);
+    expect(await db.users.count()).toBe(1);
+    expect(await db.journal.get('receipt')).toMatchObject({id:'receipt',stage:'storage'});
+    // Inspection must not import an archive over existing records.
+    await expect(restoreLocalBackup(saved)).rejects.toThrow(/пустую/i);
+  });
+
+  it('rejects tampering and server-sync archives during non-destructive file verification',async()=>{
+    await db.open();
+    await db.table('users').put({id:'chief',login:'chief',fullName:'Operator',password:'hash',role:'chief',isActive:true});
+    await db.table('journal').put({id:'receipt',stage:'storage',workerId:'chief'});
+    const good=await exportLocalBackup();
+    await expect(inspectLocalBackup(good.replace('receipt','tampered'))).rejects.toThrow(/сумм/i);
+    await db.table('hybridTaskOutbox').put({operationId:'pending',entityId:'t1',state:'pending',queuedAt:1});
+    const unsafe=await exportLocalBackup();
+    await expect(inspectLocalBackup(unsafe)).rejects.toThrow(/синхрон|server/i);
+    expect(await db.table('journal').count()).toBe(1);
+    expect(await db.table('hybridTaskOutbox').count()).toBe(1);
   });
 
   it('rolls back the entire restore if a row violates an IndexedDB key constraint',async()=>{
