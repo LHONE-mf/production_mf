@@ -74,7 +74,7 @@ function unpack(value:unknown,depth=0):unknown{
   }
   if(item.t==='buffer')return fromBase64(item.v).buffer;
   if(item.t==='bytes')return fromBase64(item.v);
-  if(item.t==='blob'&&typeof item.mime==='string')return new Blob([fromBase64(item.v)],{type:item.mime});
+  if(item.t==='blob'&&typeof item.mime==='string')return new Blob([fromBase64(item.v).buffer as ArrayBuffer],{type:item.mime});
   if(item.t==='array'&&Array.isArray(item.v))return item.v.map(part=>unpack(part,depth+1));
   if(item.t==='object'&&Array.isArray(item.v)){
     const obj:Record<string,unknown>={};
@@ -139,9 +139,11 @@ export async function restoreLocalBackup(text:string):Promise<void>{
   const rows=payload.tables as unknown[];
   const names=tableNames();
   if(rows.length!==names.length)throw new Error('Неполный набор таблиц резервной копии');
-  for(let i=0;i<names.length;i++)
-    if(!Array.isArray(rows[i])||rows[i].length!==2||rows[i][0]!==names[i]||!Array.isArray(rows[i][1]))
+  for(let i=0;i<names.length;i++){
+    const entry=rows[i];
+    if(!Array.isArray(entry)||entry.length!==2||entry[0]!==names[i]||!Array.isArray(entry[1]))
       throw new Error('Набор таблиц не соответствует текущей базе');
+  }
   if(await sha256(JSON.stringify(payload))!==archive.sha256)
     throw new Error('Контрольная сумма резервной копии не совпала');
   const restored=new Map<string,Record<string,unknown>[]>();
