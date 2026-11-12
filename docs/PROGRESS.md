@@ -1,3 +1,25 @@
+## 2026-11-12 — Phone slurry save: identify the actual required field
+
+- Reproduced the phone report with a provided valid recipe/material version,
+  explicit batch code and weights, but an empty basis/reference field. One
+  combined metadata check misleadingly requested plan/source/author/time as well.
+- Keep the same required data and measurement guards; return a field-specific
+  error for missing batch code, composition name or weighing/composition basis,
+  including the existing 2000-character limit. The form marks these fields as
+  required, focuses the failed input and explains that a reference to already
+  provided source information is sufficient. Correcting the field clears its old
+  error without resetting weights, source snapshots or the draft.
+- Regression tests failed before the correction. **509 frontend tests / 74
+  files**, typecheck and PWA build passed. Chromium 390×844 / 1365×900 passed
+  recipe and manual entry, required-field focus, retained source/weights,
+  persisted draft reopening, subsequent offline saves, comma decimals and blank
+  optional density/viscosity/fineness. Phone error screenshot inspected.
+- No manufacturing data, measurement defaults, recipe/catalog, password,
+  database schema, server/outbox or synchronization policy changed. The basis
+  remains operator-entered; no fabricated measurement/evidence is supplied.
+  Physical OnePlus/Capacitor acceptance remains unperformed. Exact pushed-head
+  CI and APK evidence follows in draft PR #3; no merge or deployment.
+
 ## 2026-11-12 — KPI review: dry-mass plans and small recorded quantities
 
 - Traced `MixBatch.batchKg` to a planned dry-solids target, not weighed paste

@@ -7,7 +7,7 @@ import type {MixBatch,MixComponent,MixRecipe,SyncPacket} from '../../core/types'
 import {StageId} from '../../core/types';
 import {useAuthStore} from '../../core/store/authStore';
 import {calculateSlurryPlan,parseSlurryNumber,slurryMassBalance,SLURRY_BASIS} from '../../core/manufacturing/slurryMath';
-import {saveSlurryBatch,validateMeasuredSlurryBatch,SLURRY_UNITS} from '../../core/manufacturing/slurryBatch';
+import {saveSlurryBatch,validateMeasuredSlurryBatch,SLURRY_UNITS,SlurryFieldError} from '../../core/manufacturing/slurryBatch';
 import {calcPasteProperties} from './mixMath';
 import {PastePropertiesPanel} from './PastePropertiesPanel';
 import {PacketOutModal} from '../_ui/PacketOutModal';
@@ -38,6 +38,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const setPhi=(phi:string)=>recovery.edit(form=>({...form,phi}));const setShear=(shear:string)=>recovery.edit(form=>({...form,shear}));
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[checking,setChecking]=useState(false);
  const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);const lock=useRef(false);
+ const [invalidField,setInvalidField]=useState<string|null>(null);const fieldInputs=useRef<Record<string,HTMLInputElement|null>>({});
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(null);return;}let active=true;setChecking(true);
   void db.mixBatches.get(attempt.id).then(row=>{if(!active)return;if(row){if(JSON.stringify(row)!==JSON.stringify(attempt))throw Error('Сохранённый замес отличается от восстановленной попытки; история сохранена');setSaved(row);}}).catch(e=>{if(active)setError(String(e));}).finally(()=>{if(active)setChecking(false);});
@@ -47,7 +48,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   if(!presetRecipe||catalog===undefined||!recovery.ready)return;
   recovery.edit({...emptyForm(),source:structuredClone(presetRecipe),draft:{...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
    lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))}});
-  setError('');setSaved(null);setPacket(null);onPresetConsumed?.();
+  setError('');setInvalidField(null);setSaved(null);setPacket(null);onPresetConsumed?.();
  },[presetRecipe,catalog===undefined,recovery.ready]);
  const snapshots=useMemo(()=>draft.lines.flatMap(line=>line.component?[line.component]:[]),[draft.lines]);
  const calculation=useMemo(()=>{
@@ -63,10 +64,13 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const paste=useMemo(()=>{
   try{return calculation.plan?calcPasteProperties(calculation.plan.rows,new Map(snapshots.map(c=>[c.id,c])),{phiMax:parseSlurryNumber(phi),shearRate:parseSlurryNumber(shear)}):null;}catch{return null;}
  },[calculation.plan,snapshots,phi,shear]);
- const change=(key:Exclude<keyof typeof draft,'lines'>)=>(event:React.ChangeEvent<HTMLInputElement>)=>setDraft(d=>({...d,[key]:event.target.value}));
+ const change=(key:Exclude<keyof typeof draft,'lines'>)=>(event:React.ChangeEvent<HTMLInputElement>)=>{
+  const value=event.target.value;setDraft(d=>({...d,[key]:value}));
+  if(invalidField===key){setInvalidField(null);setError('');}
+ };
  const lineChange=(index:number,patch:Partial<Line>)=>setDraft(d=>({...d,lines:d.lines.map((line,i)=>i===index?{...line,...patch}:line)}));
  const save=async()=>{
-  if(!actor||lock.current||saved||checking||!recovery.ready||recovery.error)return;lock.current=true;setBusy(true);setError('');
+  if(!actor||lock.current||saved||checking||!recovery.ready||recovery.error)return;lock.current=true;setBusy(true);setError('');setInvalidField(null);
   try{
    let operation=attempt;
    if(!operation){
@@ -81,10 +85,16 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
    await recovery.checkpoint(form=>({...form,attempt:operation}));
    const committed=await saveSlurryBatch(operation,actor.id);setSaved(committed);
    setPacket({v:1,type:'mix-batch',stage:StageId.SLURRY,payload:committed,from:actor.id,role:actor.role,ts:Date.now()});
-  }catch(cause){setError(cause instanceof Error?cause.message:'Замес не сохранён');}finally{lock.current=false;setBusy(false);}
+  }catch(cause){
+   setError(cause instanceof Error?cause.message:'Замес не сохранён');
+   if(cause instanceof SlurryFieldError){const key=cause.field==='measurementNote'?'note':cause.field;setInvalidField(key);fieldInputs.current[key]?.focus();}
+  }finally{lock.current=false;setBusy(false);}
  };
- const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setError('');}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
- const field=(key:Exclude<keyof typeof draft,'lines'|'basis'>,label:string,decimal=false)=> <label className="block min-w-0 text-xs text-slate-300">{label}<input aria-label={label} className={input} value={draft[key]} inputMode={decimal?'decimal':undefined} onChange={change(key)} disabled={key==='recipeName'&&!!source}/></label>;
+ const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setError('');setInvalidField(null);}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
+ const field=(key:Exclude<keyof typeof draft,'lines'|'basis'>,label:string,decimal=false)=>{
+  const required=key==='batchCode'||key==='recipeName'||key==='note';
+  return <label className="block min-w-0 text-xs text-slate-300">{label}{required&&<span className="text-amber-200"> · обязательно</span>}<input ref={node=>{fieldInputs.current[key]=node;}} aria-label={label} aria-required={required||undefined} aria-invalid={invalidField===key||undefined} aria-describedby={key==='note'?'slurry-basis-help':undefined} className={input+' aria-invalid:border-red-400'} value={draft[key]} inputMode={decimal?'decimal':undefined} onChange={change(key)} disabled={key==='recipeName'&&!!source}/></label>;
+ };
  if(!recovery.ready)return <LocalDraftStatus draft={recovery}/>;
  return <div className="space-y-3 min-w-0">
   <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
@@ -121,6 +131,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
    </div>
    {source?.mode?.length?<details className="text-xs text-slate-400"><summary>Плановый режим исходного рецепта (не фактический)</summary><pre className="whitespace-pre-wrap break-all">{JSON.stringify(source.mode,null,2)}</pre></details>:null}
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('viscosity','Измеренная вязкость, мПа·с',true)}{field('fineness','Измеренный перетир, мкм',true)}{field('density','Измеренная плотность, г/см³',true)}{field('note','Основание навесок и состава')}{field('notes','Примечания / дефекты')}</div>
+   <p id="slurry-basis-help" className="text-xs text-slate-400">Основание обязательно: укажите источник фактических навесок и сведений о составе, например ссылку на запись взвешивания или документ материалов. Уже предоставленные сведения достаточно указать ссылкой; до 2000 символов.</p>
    <p className="text-xs text-slate-400">Неизмеренные свойства оставьте пустыми. Модельная плотность или вязкость не подставляются в измерения и передачу.</p>
    <details className="space-y-2 text-xs text-slate-400"><summary>Отдельная теоретическая оценка плана</summary><div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><label>Введённый φm<input aria-label="φm для модели" className={input} inputMode="decimal" value={phi} onChange={e=>setPhi(e.target.value)}/></label><label>Введённая скорость сдвига, 1/с<input aria-label="Скорость сдвига для модели" className={input} inputMode="decimal" value={shear} onChange={e=>setShear(e.target.value)}/></label></div><PastePropertiesPanel paste={paste} phiMax={Number(phi.replace(',','.'))}/></details>
   </fieldset>

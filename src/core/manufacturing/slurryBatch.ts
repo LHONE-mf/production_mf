@@ -12,8 +12,15 @@ const tables=()=>[db.mixBatches,db.mixRecipes,db.mixComponents,db.journal,db.use
 export const hasMeasuredSlurryBatch=(batch?:MixBatch)=>!!batch&&(batch.measurementVersion!==undefined||batch.batchCode!==undefined||batch.recipePlan!==undefined||batch.componentSnapshots!==undefined||batch.massBalance!==undefined||batch.recipeSnapshot!==undefined||batch.measurementUnits!==undefined);
 export const hasSlurryHandover=(snap?:CoatingMixSnapshot)=>!!snap&&(snap.handoverVersion!==undefined||snap.sourceBatch!==undefined||snap.solidsBasis!==undefined||snap.densityBasis!==undefined);
 
+export class SlurryFieldError extends Error {
+ constructor(readonly field:'batchCode'|'recipeName'|'measurementNote',message:string){super(message);}
+}
 export function validateMeasuredSlurryBatch(batch:MixBatch):void {
- if(!batch||batch.measurementVersion!==1||!text(batch.id)||!text(batch.batchCode)||!text(batch.recipeName)||!text(batch.workerId)||!Object.values(UserRole).includes(batch.recordedRole!)||!time(batch.createdAt)||batch.updatedAt!==batch.createdAt||!text(batch.measurementNote)||batch.measurementNote!.length>2000||!batch.recipePlan||!Array.isArray(batch.componentSnapshots)||!Array.isArray(batch.weighings))throw new Error('Замес требует явного кода партии, плана, версий материалов, автора/времени и основания измерений');
+ if(!batch||batch.measurementVersion!==1||!text(batch.id)||!text(batch.workerId)||!Object.values(UserRole).includes(batch.recordedRole!)||!time(batch.createdAt)||batch.updatedAt!==batch.createdAt||!batch.recipePlan||!Array.isArray(batch.componentSnapshots)||!Array.isArray(batch.weighings))throw new Error('Некорректные служебные данные замеса: ID, автор/роль, время, план или версии материалов.');
+ for(const [field,label] of [['batchCode','Код партии замеса'],['recipeName','Название состава'],['measurementNote','Основание навесок и состава']] as const){
+  if(!text(batch[field]))throw new SlurryFieldError(field,`Заполните поле «${label}». Остальные введённые значения не нужно вводить заново.`);
+ }
+ if(batch.measurementNote!.length>2000)throw new SlurryFieldError('measurementNote','Поле «Основание навесок и состава»: не более 2000 символов; можно указать ссылку на исходную запись или документ.');
  if(!batch.measurementUnits||Object.entries(SLURRY_UNITS).some(([key,unit])=>batch.measurementUnits![key as keyof typeof SLURRY_UNITS]!==unit))throw new Error('Единицы замеса: план СВ кг, навески г, состав массовый; измерения мПа·с, мкм, г/см³');
  if(batch.modeActual!==undefined||batch.pasteCalc!==undefined)throw new Error('Плановый режим и модельные свойства нельзя записать как измеренные данные замеса');
  const source=batch.recipeSnapshot;

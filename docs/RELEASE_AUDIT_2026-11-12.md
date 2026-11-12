@@ -3,6 +3,25 @@
 Scope: limited offline engineering candidate on `feat/hybrid-server-foundation`;
 PR #3 remains draft. No factory, inventory/QA or multi-device acceptance.
 
+## Phone follow-up: slurry save error
+
+A provided recipe and all actual weights can still trigger the old all-in-one
+error when `measurementNote` is blank. The screenshot's basis field is blank;
+this does not establish which other values were entered above the visible area.
+A reproducing test with otherwise valid recipe/material/author/time data isolates
+the misleading message. Required batch code/name/basis fields now receive
+specific errors and focus; required labels and source-reference help make the
+existing contract visible. The supplied plan, source versions and weights stay
+in the draft. A source reference can point to information already provided;
+actual measurements/evidence are never generated to bypass validation.
+
+Local 509 frontend tests, typecheck/build and phone/desktop Chromium passed the
+correction, saved-draft reopening and subsequent offline manual/recipe saves.
+Unmeasured density, viscosity and fineness remain optional/unknown. All existing
+atomic saves, exact retries, source/actor checks and legacy records remain
+unchanged. This is browser evidence, not physical Android acceptance. Exact
+commit/workflow/APK details are recorded on draft PR #3 after push.
+
 ## Confirmed versus unverified at the audit head
 
 - Confirmed: at audit start remote HEAD was `141cfd87f317b3ccbba8e39f3e401ebc74fd8030`;

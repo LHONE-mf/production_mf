@@ -26,6 +26,14 @@ it('rejects missing/negative masses, invalid basis/units, fabricated actual mode
  await db.mixRecipes.update('recipe',{updatedAt:2});await expect(saveSlurryBatch(batch,'worker')).rejects.toThrow();await db.mixRecipes.put(recipe);
  await db.users.update('worker',{isActive:false});await expect(saveSlurryBatch(batch,'worker')).rejects.toThrow();expect(await db.mixBatches.count()).toBe(0);
 });
+it('identifies the missing slurry field instead of asking for already supplied plan/source/author data',async()=>{
+ for(const [field,label] of [['batchCode','Код партии замеса'],['recipeName','Название состава'],['measurementNote','Основание навесок и состава']] as const){
+  await expect(saveSlurryBatch({...batch,[field]:'   '},'worker')).rejects.toMatchObject({field,message:expect.stringContaining(label)});
+ }
+ await expect(saveSlurryBatch({...batch,measurementNote:'x'.repeat(2001)},'worker')).rejects.toMatchObject({field:'measurementNote',message:expect.stringContaining('2000')});
+ expect(await db.mixBatches.count()).toBe(0);expect(await db.journal.count()).toBe(0);
+ expect(await db.mixComponents.bulkGet(components.map(c=>c.id))).toEqual(components);
+});
 it('rolls batch/journal back together and serializes different IDs claiming the same batch identity',async()=>{
  const fail=()=>{throw Error('Slurry journal failed');};db.journal.hook('creating',fail);
  try{await expect(saveSlurryBatch(batch,'worker')).rejects.toThrow('Slurry journal failed');}finally{db.journal.hook('creating').unsubscribe(fail);}

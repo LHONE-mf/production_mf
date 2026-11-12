@@ -43,3 +43,36 @@ it('keeps missing weights unknown, retains a failed draft/ID and exports only on
 
  }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
 });
+
+it('focuses the unmarked required basis field, preserves the provided recipe/weights and saves with unmeasured properties blank',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+ const worker:User={id:'worker',login:'worker',fullName:'Worker',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()};await db.users.add(worker);useAuthStore.setState({currentUser:worker});
+ const material:MixComponent={id:'powder',name:'Provided material',kind:'active',solidsMassFraction:1,updatedAt:1};await db.mixComponents.add(material);
+ const recipe:MixRecipe={id:'provided-recipe',name:'Provided recipe',basis:SLURRY_BASIS,dryMassKg:1,lines:[{componentId:material.id,pct:100}],mode:[],updatedBy:'master',updatedAt:1};await db.mixRecipes.add(recipe);
+ const node=document.createElement('div');document.body.appendChild(node);let root=createRoot(node);
+ const wait=(check:()=>void)=>vi.waitFor(async()=>{await act(async()=>{});check();});
+ const input=(label:string)=>node.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
+ const fill=async(label:string,value:string)=>act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input(label),value);input(label).dispatchEvent(new Event('input',{bubbles:true}));});
+ const save=async()=>act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent==='Записать измеренный замес')!.click();});
+ try{
+  await act(async()=>root.render(<GrammageCalculator presetRecipe={recipe}/>));await wait(()=>expect(input('Название состава')?.value).toBe(recipe.name));
+  await fill('Код партии замеса','TEST-provided');await fill('Фактическая масса 1, г','1000');
+  await save();await wait(()=>expect(node.querySelector('[role="alert"]')?.textContent).toContain('Основание навесок и состава'));
+  expect(node.querySelector('[role="alert"]')?.textContent).not.toContain('автора/времени');
+  expect(document.activeElement).toBe(input('Основание навесок и состава'));
+  expect(input('Основание навесок и состава').getAttribute('aria-required')).toBe('true');
+  expect(input('Основание навесок и состава').getAttribute('aria-invalid')).toBe('true');
+  expect(input('Код партии замеса').value).toBe('TEST-provided');expect(input('Фактическая масса 1, г').value).toBe('1000');
+  expect(await db.mixBatches.count()).toBe(0);
+  await fill('Основание навесок и состава','TEST weighing record; composition from provided material document');
+  expect(node.querySelector('[role="alert"]')).toBeNull();
+  expect(input('Основание навесок и состава').getAttribute('aria-invalid')).not.toBe('true');
+  await wait(()=>expect(node.textContent).toContain('Черновик формы сохранён на устройстве'));
+  await act(async()=>root.unmount());db.close();await db.open();root=createRoot(node);await act(async()=>root.render(<GrammageCalculator/>));
+  await wait(()=>expect(input('Основание навесок и состава')?.value).toContain('TEST weighing record'));
+  await save();await wait(()=>expect(node.textContent).toContain('Сохранён измеренный замес TEST-provided'));
+  const saved=(await db.mixBatches.toArray())[0];expect(saved.recipeSnapshot).toEqual(recipe);expect(saved.componentSnapshots).toEqual([material]);expect(saved.weighings[0].actualG).toBe(1000);
+  expect(saved.viscosity).toBeUndefined();expect(saved.fineness).toBeUndefined();expect(saved.measuredDensity).toBeUndefined();
+  expect(await db.mixBatches.count()).toBe(1);expect(await db.journal.count()).toBe(1);expect(await db.mixComponents.get(material.id)).toEqual(material);
+ }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
+});
