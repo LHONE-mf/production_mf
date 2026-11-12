@@ -1,3 +1,24 @@
+## 2026-11-12 — Coating import author-shape validation
+
+- Final packet review reproduced a privileged import accepting a non-text author
+  ID in an otherwise valid new coating record. New recorded-run preparation now
+  requires a nonblank text author before any write; numbers, objects, null and
+  whitespace-only identities are rejected even when a supervisor signs. Existing
+  historical rows are neither rewritten nor deleted. This tightens data shape,
+  not local/server role authority or authentication policy.
+- The new regression failed before the one-condition correction. Final local
+  **471 frontend tests / 68 files**, typecheck and PWA build passed. Phone/desktop
+  Chromium evidence for the coating feature is recorded below; this correction
+  changes rejection of malformed imports and leaves valid string-author paths.
+- Coating feature commit `83febb2940677bc59c6a101ffced51890b34de9f` passed
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43168340896),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43168340920)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43168334608);
+  the unexpired `app-release-signed` artifact was confirmed. Exact correction-head
+  checks are inspected after push and recorded in draft PR #3. No merge,
+  deployment, native/signing/schema/dependency or automatic-sync change. M0–M5
+  and physical OnePlus/factory gates remain open.
+
 ## 2026-11-12 — Coating draft recovery, frozen attempts and read-only export
 
 - Continued from verified remote `7c1c9887e6c8c837bc244dff413a2d476327177d`,

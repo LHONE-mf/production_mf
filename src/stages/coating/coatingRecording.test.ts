@@ -39,3 +39,8 @@ it('requires a new protected roll handover to use the exact durable coating reco
  const run=prepareRecordedCoatingRun({...entry,measuredDryThicknessUm:100},'worker','run',UserRole.WORKER,Date.now());await expect(saveCoatingRollHandover(run)).rejects.toThrow();expect(await db.rollSpecs.count()).toBe(0);await savePreparedCoatingRun(run,'worker');
  await expect(saveCoatingRollHandover({...run,measuredDryThicknessUm:101})).rejects.toThrow();expect(await db.rollSpecs.count()).toBe(0);const spec=await saveCoatingRollHandover(run);expect(spec.thicknessBeforeUm).toBe(100);expect(await saveCoatingRollHandover(run)).toEqual(spec);
 });
+it('rejects non-text or blank author identities even in privileged signed observation imports',async()=>{
+ const run=prepareRecordedCoatingRun(entry,'worker','untrusted-actor',UserRole.WORKER,Date.now());
+ for(const workerId of [42,'   ',{},null])await expect(receiveCoatingRun({...run,workerId} as typeof run,StageId.COATING,UserRole.MASTER,'master')).rejects.toThrow();
+ expect(await db.coatRuns.count()).toBe(0);expect(await db.journal.count()).toBe(0);
+});

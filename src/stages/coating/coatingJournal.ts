@@ -74,7 +74,7 @@ export function coatingEntryFromRun(run:CoatRun):CoatingEntry {
  return {foilType,mixSnapshot,targetDryMgm2,coatingWidthCm,webSpeedMpm,pumpDeliveryCm3Rev,headGapUm,measuredDryThicknessUm,mode,gapWidthMm,gapPitchMm,segLengthsM,sideBLengthM,ovenTempsC,defects,notes};
 }
 export function prepareRecordedCoatingRun(input:CoatingEntry,workerId:string,id:string,role:UserRole,now=Date.now()):CoatRun {
- if(!id?.trim()||!Object.values(UserRole).includes(role)||!Number.isFinite(now)||now<=0||!Number.isFinite(new Date(now).getTime()))throw Error('Нужны ID, роль и время записи нанесения');
+ if(typeof workerId!=='string'||!workerId.trim()||!id?.trim()||!Object.values(UserRole).includes(role)||!Number.isFinite(now)||now<=0||!Number.isFinite(new Date(now).getTime()))throw Error('Нужны ID, роль и время записи нанесения');
  const mix=input.mixSnapshot;
  if(mix&&(!mix.mixBatchId?.trim()||!mix.recipeName?.trim()||!Number.isFinite(mix.createdAt)||mix.createdAt<=0))throw Error('Исходный замес требует ID, название и версию');
  if(mix&&hasSlurryHandover(mix))validateSlurryHandover(mix);
