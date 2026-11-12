@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { useAuthStore } from './core/store/authStore';
+import { useAuthStore,currentLocalSession } from './core/store/authStore';
 import { db, initializeDatabase } from './core/db';
 import { FirstRunSetup } from './modules/auth/components/FirstRunSetup';
 import { LoginForm } from './modules/auth/components/LoginForm';
@@ -18,7 +18,8 @@ import { renderStageIfActive } from './stages/StageRouter';
 import { ErrorBoundary } from './shared/ErrorBoundary';
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const {isAuthenticated,session,sessionChecked,sessionError,verifyLocalSession}=useAuthStore();
+  const localIdentity=useLiveQuery(async()=>session?.userId?(await db.users.get(session.userId))??null:null,[session?.userId]);
   const localUsersCount = useLiveQuery(() => db.users.count(), []);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isDbReady, setIsDbReady] = useState(false);
@@ -49,6 +50,15 @@ function App() {
     }).catch(cause=>setDbError(cause instanceof Error?cause.message:'Ошибка базы данных'));
   }, []);
 
+  useEffect(()=>{if(isDbReady&&localIdentity!==undefined)void verifyLocalSession();},[isDbReady,session?.userId,session?.role,session?.expiresAt.getTime(),localIdentity?.isActive,localIdentity?.role,localIdentity===null]);
+  useEffect(()=>{if(!isAuthenticated)setActiveTab('dashboard');},[isAuthenticated]);
+  useEffect(()=>{
+    if(!session)return;
+    const check=()=>void verifyLocalSession();window.addEventListener('focus',check);
+    const timer=session?setTimeout(check,Math.max(0,session.expiresAt.getTime()-Date.now())):undefined;
+    return()=>{window.removeEventListener('focus',check);if(timer!==undefined)clearTimeout(timer);};
+  },[session,verifyLocalSession]);
+
   if (dbError) return <main className="min-h-screen bg-slate-900 p-6 text-red-200">
     Не удалось открыть локальную базу данных: {dbError}
   </main>;
@@ -66,6 +76,9 @@ function App() {
   }
 
   if (localUsersCount===0) return <FirstRunSetup />;
+
+  if(sessionError)return <main className="min-h-screen bg-slate-900 p-6 text-slate-200"><p role="alert">{sessionError}</p><button className="mt-3 min-h-11 rounded bg-blue-700 px-4" onClick={()=>void verifyLocalSession()}>Повторить проверку доступа</button></main>;
+  if(!sessionChecked||localIdentity===undefined||isAuthenticated&&(!currentLocalSession(session)||!localIdentity?.isActive||localIdentity.role!==session?.role))return <main className="min-h-screen bg-slate-900 p-6 text-slate-200" role="status">Проверяем локальный профиль…</main>;
 
   if (!isAuthenticated) {
     return <LoginForm />;

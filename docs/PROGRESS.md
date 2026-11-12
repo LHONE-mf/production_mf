@@ -1,3 +1,25 @@
+## 2026-11-12 — Audit follow-up: local session and stale-chief access
+
+- Fast-forwarded from `09371a0` to the audited remote `141cfd8`, preserving
+  backup export, read-only file checker, atomic restore and APK provenance work.
+- Persist only bounded local session references; remove full user/hash/token/
+  permissions from historical cache and verify current profile before protected
+  rendering. Expiry/deactivation/deletion/role change requires fresh offline
+  login. Clear server credentials/lease on invalidation, retaining all work and
+  pending sync. Employee/backup transactions recheck current local chief access.
+- **491 frontend tests**, typecheck/build and phone/desktop Chromium passed
+  migration, no flash/hash cache, stale/expired authority, preserved work,
+  browser backup download/check and isolated restore/original-password login.
+  Password hashing and archive/restore format remain unchanged; no DB migration.
+- Added confirmed/unverified checklist, precise dependency triage and remaining
+  P0/P1 work in [RELEASE_AUDIT_2026-11-12.md](RELEASE_AUDIT_2026-11-12.md).
+  Root audit: 8 low/moderate package findings; server: 0. No forced upgrades.
+  Native WebView/file sharing and physical OnePlus gates are not performed;
+  added a phone-only smoke procedure without risking a data-bearing installation.
+- Next: legacy shared-key authority/input bounds, then honest live KPI totals.
+  Exact commit CI/APK evidence follows push in draft PR #3. No merge/deployment,
+  signing change, data wipe or automatic synchronization.
+
 ## 2026-11-12 — Coating import author-shape validation
 
 - Final packet review reproduced a privileged import accepting a non-text author

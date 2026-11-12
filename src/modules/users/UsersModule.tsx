@@ -33,7 +33,10 @@ export function UsersModule(){
     ))return;
     setBackupBusy(true);setBackupNote('');setError('');
     try{
-      const archive=await exportLocalBackup();
+      await useAuthStore.getState().verifyLocalSession();
+      const access=useAuthStore.getState();
+      if(!access.isAuthenticated||access.currentUser?.id!==currentUser?.id||access.currentUser?.role!==UserRole.CHIEF)throw Error('Локальный доступ изменился. Войдите заново');
+      const archive=await exportLocalBackup(access.currentUser.id);
       const filename='production-mf-local-'+new Date().toISOString().slice(0,10)+'.json';
       const file=new File([archive],filename,{type:'application/json'});
       if(navigator.canShare?.({files:[file]})){
@@ -67,7 +70,9 @@ export function UsersModule(){
     }
   }
 
-  if(currentUser?.role!==UserRole.CHIEF)
+  const localActor=users?.find(user=>user.id===currentUser?.id);
+  if(users===undefined)return <p>Проверяем локальный доступ…</p>;
+  if(currentUser?.role!==UserRole.CHIEF||!localActor?.isActive||localActor.role!==UserRole.CHIEF)
     return <p className="text-red-200">Управление сотрудниками доступно начальнику производства.</p>;
 
   const all=users??[];
@@ -86,7 +91,7 @@ export function UsersModule(){
       : 'Восстановить локальный доступ сотрудника '+user.fullName+'?'))return;
     setError('');setBusy(true);
     try{
-      await AuthService.updateUser(user.id,{isActive:!user.isActive});
+      await AuthService.updateUser(user.id,{isActive:!user.isActive},currentUser!.id);
     }catch(cause){setError(cause instanceof Error?cause.message:'Ошибка изменения сотрудника');}
     finally{setBusy(false);}
   }
@@ -216,11 +221,11 @@ function UserEditor({user,actorId,activeChiefCount,onClose}:{
       if(user)await AuthService.updateUser(user.id,{
         fullName:draft.fullName,login:draft.login,role:draft.role,
         ...(draft.password?{password:draft.password}:{}),
-      });
+      },actorId);
       else await AuthService.createUser({
         fullName:draft.fullName,login:draft.login,role:draft.role,
         password:draft.password,isActive:true,
-      });
+      },actorId);
       onClose();
     }catch(cause){
       setError(cause instanceof Error?cause.message:'Не удалось сохранить сотрудника');

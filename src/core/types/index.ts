@@ -252,9 +252,8 @@ export interface MeshMessage {
 // Сессия авторизации
 export interface AuthSession {
   userId: string;
-  login: string;
   role: UserRole;
-  token: string;
+  issuedAt: number;
   expiresAt: Date;
 }
 

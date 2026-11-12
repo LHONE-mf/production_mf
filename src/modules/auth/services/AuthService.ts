@@ -3,6 +3,11 @@ import { User, UserRole } from '../../../core/types';
 import { verifyPassword, hashPassword, isLegacyPlainPassword } from '../../../core/security';
 
 export class AuthService {
+  private static async requireChiefIfScoped(actorId?:string){
+    if(actorId===undefined)return;const actor=await db.users.get(actorId);
+    if(!actor?.isActive||actor.role!==UserRole.CHIEF)throw Error('Нужен активный локальный начальник');
+  }
+
   static async login(login: string, password: string): Promise<User | null> {
     const user = await db.users
       .where('login')
@@ -57,7 +62,7 @@ export class AuthService {
     return db.users.where('role').equals(role).toArray() as any;
   }
 
-  static async createUser(userData: Omit<User, 'id' | 'createdAt'>): Promise<string> {
+  static async createUser(userData: Omit<User, 'id' | 'createdAt'>, actorId?:string): Promise<string> {
     const login=userData.login.trim().toLowerCase();
     if(!/^[a-z0-9_.-]{3,40}$/.test(login) ||
        userData.fullName.trim().length<2 || userData.password.length<10)
@@ -65,6 +70,7 @@ export class AuthService {
     const id=crypto.randomUUID();
     const hashed=await hashPassword(userData.password);
     await db.transaction('rw',db.users,async()=>{
+      await this.requireChiefIfScoped(actorId);
       if(await db.users.where('login').equals(login).count()>0)
         throw new Error('Этот логин уже занят');
       await db.users.add({
@@ -75,7 +81,7 @@ export class AuthService {
     return id;
   }
 
-  static async updateUser(id: string, updates: Partial<User>): Promise<void> {
+  static async updateUser(id: string, updates: Partial<User>, actorId?:string): Promise<void> {
     const login=updates.login?.trim().toLowerCase();
     if(login!==undefined && !/^[a-z0-9_.-]{3,40}$/.test(login))
       throw new Error('Логин должен быть от 3 до 40 символов латиницей');
@@ -85,6 +91,7 @@ export class AuthService {
       throw new Error('Пароль должен содержать не менее 10 символов');
     const password=updates.password===undefined?undefined:await hashPassword(updates.password);
     await db.transaction('rw',db.users,async()=>{
+      await this.requireChiefIfScoped(actorId);
       const existing=await db.users.get(id);
       if(!existing)throw new Error('Сотрудник не найден');
       if(login!==undefined && login!==existing.login &&

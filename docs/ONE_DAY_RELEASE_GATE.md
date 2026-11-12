@@ -94,3 +94,26 @@ Record real-device evidence (device/build, old/new APK hashes and certificate,
 test accounts, saved file, restart/restore observations and defects) against the
 exact commit. Neither GitHub CI nor this checklist constitutes a passed
 physical acceptance test.
+
+## Five-minute phone smoke — not yet physically performed
+
+Use an isolated, empty test installation/profile and the exact candidate APK.
+Public-development signing is for isolated testing only. If the existing app has
+valuable records, use the installed-upgrade gate above; never uninstall or clear
+it for this smoke test.
+
+1. Log in offline (or create a local chief on first run). Record one material
+   receipt named `TEST-PHONE-…`, with explicit quantity/unit/place and TEST basis.
+2. Open another room, return, turn networking off, close/force-stop and reopen.
+   Check the same saved receipt/draft and confirm an exact retry adds no duplicate.
+3. As chief, use **Сотрудники → Создать резервную копию**. Save/share the JSON to
+   a protected destination outside app storage and confirm a nonempty file exists.
+4. Use **Проверить сохранённый файл резервной копии** on that file. Check the
+   recorded counts without restoring over current data. The plaintext archive
+   contains hashes/work data; checksum verification is not encryption/authenticity.
+5. If a separate empty test installation is available, restore there and log in
+   with the original password. Compare the TEST record. Otherwise mark restore
+   **not performed**; the isolated restore drill may take longer than five minutes.
+
+Record device/build, candidate SHA/signing provenance, file result and observations.
+Browser download/restore tests do not complete this Android acceptance procedure.

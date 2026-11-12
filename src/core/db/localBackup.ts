@@ -1,4 +1,5 @@
 import {db} from './index';
+import {UserRole} from '../types';
 
 // A device-local, user-initiated recovery archive. No network operations, server
 // authorizations, automatic sync or mutation of saved manufacturing observations.
@@ -98,10 +99,11 @@ function tableNames():string[]{return db.tables.map(table=>table.name).sort();}
 
 /** Consistent read-only snapshot across every IndexedDB table; includes unsent
  * work for archival purposes but does not grant its restoration to a new device. */
-export async function exportLocalBackup():Promise<string>{
+export async function exportLocalBackup(actorId?:string):Promise<string>{
   await db.open();
   const names=tableNames();
   const snapshot=await db.transaction('r',db.tables,async()=>{
+    if(actorId!==undefined){const actor=await db.users.get(actorId);if(!actor?.isActive||actor.role!==UserRole.CHIEF)throw Error('Экспорт копии требует активного локального начальника');}
     const rows:unknown[][]=[];
     for(const name of names)rows.push(await db.table(name).toArray());
     return rows;

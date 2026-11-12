@@ -29,7 +29,7 @@ afterEach(async()=>{
   root=undefined;container?.remove();container=undefined;
   useAuthStore.getState().logout();
   db.close();await db.delete();
-  vi.restoreAllMocks();
+  vi.restoreAllMocks();vi.unstubAllGlobals();
 });
 
 describe('real local employee management',()=>{
@@ -70,6 +70,7 @@ describe('real local employee management',()=>{
     const archive=await exportLocalBackup();
     useAuthStore.getState().login(chief);
     const screen=await mount();
+    await vi.waitFor(()=>expect(screen.querySelector('#verify-local-backup')).toBeTruthy());
     const picker=screen.querySelector('#verify-local-backup') as HTMLInputElement;
     expect(picker).toBeTruthy();
     const transfer=new DataTransfer();
@@ -84,4 +85,11 @@ describe('real local employee management',()=>{
     expect(await db.table('journal').get('test-entry')).toBeDefined();
   });
 
+});
+
+it('blocks stale-chief backup and employee writes after the database revokes that role',async()=>{
+ await initializeDatabase();const chief=await AuthService.createFirstLocalAdmin({fullName:'Original chief',login:'chief',password:'test-password-2026'});useAuthStore.getState().login(chief);const screen=await mount();await vi.waitFor(()=>expect(screen.textContent).toContain('Создать резервную копию'));
+ const oldBackup=[...screen.querySelectorAll('button')].find(b=>b.textContent?.includes('Создать резервную копию'))!;vi.stubGlobal('confirm',()=>true);
+ await act(async()=>db.users.update(chief.id,{role:'worker' as never}));await vi.waitFor(()=>expect(screen.textContent).toContain('доступно начальнику'));
+ await expect(exportLocalBackup(chief.id)).rejects.toThrow();await expect(AuthService.createUser({fullName:'Not allowed',login:'blocked',password:'blocked-password',role:'chief' as never,isActive:true},chief.id)).rejects.toThrow();await expect(AuthService.updateUser(chief.id,{fullName:'Forbidden'},chief.id)).rejects.toThrow();await act(async()=>oldBackup.click());expect(await db.users.count()).toBe(1);expect((await db.users.get(chief.id))?.fullName).toBe('Original chief');
 });
