@@ -75,6 +75,7 @@ jobs:
         run: |
           if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ] && [ -n "$KEY_PASS" ]; then
             echo "Using secure release signing secrets"
+            echo "mode=private-secret" >> "$GITHUB_OUTPUT"
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
             echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
             echo "storepass=$KS_PASS" >> "$GITHUB_OUTPUT"
@@ -86,6 +87,7 @@ jobs:
               exit 1
             fi
             echo "::warning::Development APK signed with the public DEVELOPMENT key. Never distribute as production."
+            echo "mode=public-development" >> "$GITHUB_OUTPUT"
             base64 -d scripts/dev-signing/keystore.b64 > "$RUNNER_TEMP/release.keystore"
             echo "path=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
             echo "storepass=productionmfdev" >> "$GITHUB_OUTPUT"
@@ -143,10 +145,43 @@ jobs:
             sleep 15
           done
 
+      # Evidence travels WITH the APK, not only in transient workflow logs.
+      # The certificate fingerprint identifies whether an Android in-place update
+      # is possible; the commit and APK checksum identify the actual candidate.
+      - name: Verify APK signature and record release provenance
+        shell: bash
+        env:
+          SIGNING_MODE: ${{ steps.keystore.outputs.mode }}
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          report="android/app/build/outputs/apk/release/release-provenance.txt"
+          test -s "$apk"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          signer="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$signer" && test -x "$signer"
+          {
+            echo "Production MF APK build provenance"
+            echo "source_commit=$(git rev-parse HEAD)"
+            echo "github_ref=$GITHUB_REF"
+            echo "signing_mode=$SIGNING_MODE"
+            echo "built_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sha256sum "$apk"
+            echo "--- APK signature verification ---"
+            "$signer" verify --verbose --print-certs "$apk"
+          } | tee "$report"
+          test -s "$report"
+          if [ "$SIGNING_MODE" = "public-development" ]; then
+            echo "::warning::This APK uses the public development signing key and is for isolated testing only."
+          fi
+
       - name: Публикация артефакта
         uses: actions/upload-artifact@v4
         with:
           name: app-release-signed
-          path: android/app/build/outputs/apk/release/app-release.apk
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/release-provenance.txt
           if-no-files-found: error
 
