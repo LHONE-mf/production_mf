@@ -54,9 +54,12 @@ A green workflow is automated engineering evidence only.
 4. **Backup file actually leaves the app**: As local chief open
    **Сотрудники → Создать резервную копию**. Select the share target or download
    destination. Confirm the JSON file exists, has nonzero size and is held
-   somewhere protected **outside** the application's storage. The archive is
-   **not separately encrypted** and contains sensitive local user and work data.
-   A generated share sheet or click is not proof of a saved file.
+   somewhere protected **outside** the application's storage. Reopen that
+   saved JSON using **Сотрудники → Проверить сохранённый файл резервной копии**;
+   verify its checksum, schema and recorded counts without touching the live
+   database. The archive is **not separately encrypted** and contains sensitive
+   local user and work data. A passing file check does **not** prove an actual
+   restore will succeed or replace the isolated restore drill in step 5.
 5. **Restore without risking original data**: On a **separate empty test
    installation** of the same schema version, use
    **Первый запуск → Восстановить локальные данные из файла**.
