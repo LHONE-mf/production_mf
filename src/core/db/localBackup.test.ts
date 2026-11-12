@@ -1,4 +1,5 @@
 import {afterEach,describe,expect,it} from 'vitest';
+import {Blob as NativeBlob} from 'node:buffer';
 import {db} from './index';
 import {exportLocalBackup,restoreLocalBackup} from './localBackup';
 
@@ -56,6 +57,11 @@ describe('local backup/restore safety',()=>{
     expect(await db.tables.reduce(async (p,table)=>(await p)+(await table.count()),Promise.resolve(0))).toBe(0);
   });
   it('round-trips a real Blob attachment with its MIME type',async()=>{
+    // happy-dom's Blob is not recognized by Node's structuredClone in fake-indexeddb.
+    // Use the native WHATWG Blob so this checks binary bytes, not a test-only clone artifact.
+    const originalBlob=globalThis.Blob;
+    globalThis.Blob=NativeBlob as unknown as typeof Blob;
+    try {
     await db.open();
     await db.table('users').put({id:'chief',login:'chief',fullName:'Operator',password:'hash',role:'chief',isActive:true});
     await db.table('journal').put({id:'blob',stage:'storage',workerId:'chief',params:{
@@ -68,6 +74,9 @@ describe('local backup/restore safety',()=>{
     expect(attachment).toBeInstanceOf(Blob);
     expect(attachment.type).toBe('application/octet-stream');
     expect(Array.from(new Uint8Array(await attachment.arrayBuffer()))).toEqual([0,128,255]);
+    } finally {
+      globalThis.Blob=originalBlob;
+    }
   });
 
   it('rolls back the entire restore if a row violates an IndexedDB key constraint',async()=>{
