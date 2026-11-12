@@ -36,6 +36,8 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
 - Migration: v18 offline grant and v19 deferred inbox stores are additive; a
   focused fake-IndexedDB test upgrades a representative v17 manufacturing
   database while retaining task, journal, cursor, outbox and conflict archive.
+  The additive v20 local-form draft store is also covered by v17/v19 upgrades;
+  it does not alter task synchronization, device grants or server permissions.
 - Read-path audit: shared task titles/counts now pass one device/actor-scoped
   visibility filter in Tasks, Dashboard, KPI, worker stage navigation, shared
   stage-room cards, and the slurry, coating, calendaring, cutting and sorting
@@ -98,7 +100,7 @@ migrations to production PostgreSQL, or call M1 production-ready yet.**
 - [ ] Revoking a worker device denies new device proof and sync reads/writes.
 - [ ] Reassigning/removing workshop access refreshes the authorized-ID
   snapshot and hides stale records in task screens on reauthentication.
-- [ ] v17→v19 application upgrade, installed signed APK upgrade and backup/
+- [ ] v17/v19→v20 application upgrade, installed signed APK upgrade and backup/
   restore preserve existing production records and local edits.
 - [ ] All CI gates green for the exact APK build commit.
 

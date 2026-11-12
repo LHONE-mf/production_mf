@@ -21,8 +21,8 @@ const emptyForm=():SlurryForm=>({version:1,draft:empty(),source:null,phi:'',shea
 function parseForm(value:unknown,actorId:string):SlurryForm {
  const form=value as SlurryForm;
  if(!form||form.version!==1||!form.draft||typeof form.phi!=='string'||typeof form.shear!=='string'||typeof form.draft.basis!=='boolean'||Object.keys(empty()).filter(key=>!['lines','basis'].includes(key)).some(key=>typeof form.draft[key as keyof typeof form.draft]!=='string')||!Array.isArray(form.draft.lines)||form.draft.lines.some(line=>!line||['key','componentId','pct','actual'].some(key=>typeof line[key as keyof Line]!=='string')||line.component&&(!line.component.id||typeof line.component.name!=='string'||!Number.isFinite(line.component.updatedAt))))throw Error('Структура черновика замеса не поддерживается; исходные данные сохранены');
- if(form.source&&(!form.source.id||typeof form.source.name!=='string'||!Number.isFinite(form.source.updatedAt)||!Array.isArray(form.source.lines)||!Array.isArray(form.source.mode)))throw Error('Версия рецепта в черновике повреждена');
- if(form.attempt){validateMeasuredSlurryBatch(form.attempt);if(form.attempt.workerId!==actorId)throw Error('Автор попытки замеса не совпадает с профилем');}
+ if(form.source!==null&&(!form.source||!form.source.id||typeof form.source.name!=='string'||!Number.isFinite(form.source.updatedAt)||!Array.isArray(form.source.lines)||!Array.isArray(form.source.mode)))throw Error('Версия рецепта в черновике повреждена');
+ if(form.attempt!==null){validateMeasuredSlurryBatch(form.attempt);if(form.attempt.workerId!==actorId)throw Error('Автор попытки замеса не совпадает с профилем');}
  return form;
 }
 const input='min-h-11 w-full min-w-0 rounded border border-slate-700 bg-slate-900 p-2 text-sm text-white';
@@ -90,7 +90,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
   <p className="text-xs text-slate-400">План СВ в кг → расчётные навески в г. Фактические массы вводятся отдельно; пустое значение неизвестно. Тип материала не определяет его содержание СВ.</p>
   <LocalDraftStatus draft={recovery} disabled={busy||checking}/>
-  {attempt&&!saved&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
+  {attempt&&!saved&&!recovery.saving&&!recovery.error&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
   {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
   <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
    {!!tasks?.length&&<label className="block text-xs text-slate-300">Ссылка на видимое задание (без изменения статуса)<select aria-label="Задание замеса" className={input} value={draft.taskId} onChange={e=>setDraft({...draft,taskId:e.target.value})}><option value="">Без задания</option>{tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label>}

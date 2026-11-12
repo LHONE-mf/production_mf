@@ -108,6 +108,22 @@ must implement the new packet type. Physical workshop acceptance remains open. S
 unresolved cathode/anode source identity and allocation rules before extending
 assembly pairing.
 
+**M0 local form recovery checkpoint (2026-11-12):**
+Additive Dexie v20 introduces `localFormDrafts` for actor/room-scoped slurry
+weighing and storage receipt/location forms. Raw text, unknown blanks, frozen
+source versions and failed operation identity survive acknowledged local writes
+and application-page restart. Attempts are checkpointed before manufacturing
+save; already committed attempts reopen without duplicate writes or automatic
+export. Drafts are not production history, inventory transactions or server
+operations. Optimistic revisions protect competing windows; disk/read/conflict
+errors retain data and require explicit retry/reload. Unknown or incomplete
+metadata are not silently converted to fresh forms. Clearing retains a revision
+marker. v17/v19 upgrades preserve existing local stores, including the sync
+outbox, cursor, deferred inbox and conflict archive. Pending writes remain marked
+as saving. Real Chromium phone/desktop restart, failure, concurrency and local
+profile-switch checks passed; physical Android installed upgrade/force-stop and
+backup/restore acceptance remain open.
+
 **M0 room utility checkpoint (2026-11-11):**
 The [room workflow audit](ROOM_WORKFLOW_AUDIT.md) inventories all 11 registered
 rooms with actual stores, assumptions, unverified paths and acceptance criteria.

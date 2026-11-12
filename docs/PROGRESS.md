@@ -1,3 +1,45 @@
+## 2026-11-12 — Storage receipt/location draft recovery and profile isolation
+
+- Storage now uses the same v20 local draft store for raw receipt inputs,
+  selected receipt/history snapshot, new place/evidence and frozen attempt.
+  A valid receipt or location attempt is checkpointed before production save;
+  restart retries retain its exact ID/time. Invalid raw quantities remain
+  editable drafts, not fabricated receipts. Completed receipt/location attempts
+  reopen as saved without writing another journal entry or automatic export.
+- Restoring a location draft does not silently adopt later history. A competing
+  successor remains a conflict after restart; explicit refresh changes the
+  predecessor while retaining the entered place/evidence for review. Logout
+  preserves the draft, another profile gets its own form, and returning to the
+  original profile restores its unchanged checkpoint. No server grant or sync
+  operation is created by recovery.
+- Read failures, unknown payload versions and incomplete retry/source metadata
+  keep the original stored draft for review and block form editing/production
+  write rather than silently turning it into a new blank/manual draft. Two new
+  failing component regressions reproduced that incomplete-metadata fallback
+  before the shape checks. A pending/failed checkpoint is never labelled as a
+  durable frozen production attempt.
+- **462 frontend tests / 66 files**, typecheck and PWA build passed. Existing
+  component checks now include raw receipt/location restart, receipt/location
+  rollback with stable retry after reopen, completed-save recognition, read-only
+  export and invalid draft preservation. The optimistic revision regression
+  fails when its guard is removed and passes again after restoration.
+- Chromium **390×844 / 1365×900** passed raw receipt/place restart, failed saves
+  with stable retry IDs, stale predecessor recovery/explicit refresh, offline
+  saves and double retry, signed five-frame history transfer with atomic import,
+  legacy retention, DB/page reopen, and actual worker→chief→worker login isolation.
+  No storage-room overflow/runtime errors. Browser restart/IndexedDB checks do
+  not substitute for physical OnePlus force-stop, installed upgrade/restore or
+  workshop acceptance; M0–M5 physical/pilot/authority gates remain open.
+- Slurry recovery commit `b87eea6578b311a8d9b2d79be80f57da7cc07967` passed exact-head
+  [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43161430475),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43161430463)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43161425434),
+  with an unexpired `app-release-signed` artifact. Final storage-head checks are
+  inspected after push and recorded in draft PR #3; predecessor success does not
+  establish final-head success. No further schema, native/signing, dependency,
+  server, automatic-sync, merge or deployment change. A safe next recovery slice
+  is the coating measurement form; physical pairing still needs owner policy.
+
 ## 2026-11-12 — Slurry draft recovery across application-page restart
 
 - Continued from remote `70d6ea1b7f989f4ecbf52a0186c58f8cb7ef1026`, now verified

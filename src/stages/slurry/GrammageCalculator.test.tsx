@@ -36,6 +36,10 @@ it('keeps missing weights unknown, retains a failed draft/ID and exports only on
   expect(node.textContent).not.toContain('Saved slurry packet');expect(await db.mixBatches.count()).toBe(1);
   await click('Очистить форму для нового замеса');await wait(()=>expect(node.querySelector<HTMLInputElement>('input[aria-label="Код партии замеса"]')?.value).toBe(''));
   expect((await db.localFormDrafts.toArray())[0].payload).toBeNull();expect(await db.mixBatches.count()).toBe(1);
+  const row=(await db.localFormDrafts.toArray())[0];
+  const complete={version:1,draft:{taskId:'',batchCode:'unfinished',recipeName:'manual',targetKg:'',basis:false,lines:[],note:'',viscosity:'',fineness:'',density:'',notes:''},source:null,phi:'',shear:''};
+  await act(async()=>root.unmount());await db.localFormDrafts.update(row.key,{payload:complete});root=createRoot(node);await act(async()=>root.render(<GrammageCalculator/>));await wait(()=>expect(node.querySelector('[role="alert"]')).not.toBeNull());expect(node.querySelector('input[aria-label="Код партии замеса"]')).toBeNull();expect((await db.localFormDrafts.get(row.key))?.payload).toEqual(complete);
+
 
  }finally{await act(async()=>root.unmount());node.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();}
 });
