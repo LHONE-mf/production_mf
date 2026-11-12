@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { db } from '../../core/db';
+import {UserRole} from '../../core/types';
 import { prepareCoatingRun, saveCoatingRun, saveCoatingRollHandover, coatingRollSpec, type CoatingEntry } from './coatingJournal';
 
 const entry:CoatingEntry={foilType:'Al, measured 12 um',mode:'continuous',targetDryMgm2:20,
   coatingWidthCm:50,webSpeedMpm:8,headGapUm:180,pumpDeliveryCm3Rev:25,
   segLengthsM:[1.234567],ovenTempsC:[],
   mixSnapshot:{mixBatchId:'measured-mix',recipeName:'Measured slurry',pasteDensity:2,solidsPctMass:50,createdAt:1}};
-beforeEach(async()=>{await db.open();});
+beforeEach(async()=>{await db.open();await db.users.add({id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()});await db.coatIncomingMixes.add(entry.mixSnapshot!);});
 afterEach(async()=>{db.close();await db.delete();});
 
 it('retains reproducible inputs and calculated results after closing and reopening IndexedDB',async()=>{
@@ -44,7 +45,8 @@ it('rolls back both stores after a journal failure and permits a safe retry of t
   finally{db.journal.hook('creating').unsubscribe(fail);}
   expect(await db.coatRuns.count()).toBe(0);expect(await db.journal.count()).toBe(0);
   await saveCoatingRun(entry,'operator','retry');
-  await expect(saveCoatingRun(entry,'operator','retry')).rejects.toThrow();
+  const before=await db.coatRuns.get('retry');expect(await saveCoatingRun(entry,'operator','retry')).toEqual(before);
+  await expect(saveCoatingRun({...entry,foilType:'Changed'},'operator','retry')).rejects.toThrow();
   expect(await db.coatRuns.count()).toBe(1);expect(await db.journal.count()).toBe(1);
 });
 

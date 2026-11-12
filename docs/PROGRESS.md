@@ -1,3 +1,55 @@
+## 2026-11-12 — Coating draft recovery, frozen attempts and read-only export
+
+- Continued from verified remote `7c1c9887e6c8c837bc244dff413a2d476327177d`,
+  whose exact-head [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43162438512),
+  [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43162438533) and
+  [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43162431939)
+  passed. Existing slurry/storage recovery and source-bound room workflows remain.
+- Coating now uses the existing v20 draft store under its own actor/room scope;
+  no new database version/table is needed. Raw blanks, entered zero, comma and
+  unfinished decimals, all segments/ovens, notes, explicit mode, chosen slurry
+  snapshot and frozen attempt survive acknowledged local checkpoints and restart.
+  Room tabs preserve the mounted form. Profile switches restore only that
+  profile's draft. Unsupported/incomplete payloads stay stored for review.
+- Source and mode are no longer chosen automatically. An absent source remains
+  explicitly unknown. The chosen snapshot supplies estimates until explicitly
+  refreshed; changing or losing the source blocks a first local write without
+  replacing entered values. New attempts freeze ID/time/role and all entered
+  data before production save. Already committed attempts reopen as saved, with
+  no duplicate write or automatic export. Inactive/changed-role authors and
+  conflicting draft windows cannot bypass the same transaction checks.
+- New `recordingVersion:1` coating runs and attributed journal entries commit
+  atomically. Exact retries reuse the saved snapshot; changed same-ID intent,
+  fabricated estimates and typed/generic forced marker stripping fail. Remote
+  late observations preserve their source snapshot without creating/rewriting
+  a catalog. Historical unmarked records remain readable. New protected roll
+  handovers additionally require the exact durable coating record; missing dry
+  thickness never comes from a wet-film estimate.
+- Journal export now reads the saved record without changing `updatedAt` or
+  writing to IndexedDB. Model predictions stay distinct from entered readings;
+  an incomplete oven set is not converted to zeros. Inactive gap text is retained
+  as a draft when continuous mode is chosen but is excluded from that record.
+  An explicitly recorded side-B zero remains visible in the journal.
+- **470 frontend tests / 68 files**, typecheck and PWA build passed; focused
+  tests/typecheck/build passed after final edge-case review. New regressions
+  failed before implementation for retry/source/import integrity, raw parsing,
+  missing durable handover, inactive gap text and zero display. Removing the
+  changed-intent guard made both its save and forced-import regressions fail;
+  restoration passed. Existing legacy, rollback and handover checks remain.
+- Chromium **390×844 / 1365×900** passed explicit choices, raw partial-oven/
+  segment restart, room tabs, competing drafts, real draft/journal failures,
+  frozen source change/refresh, offline exact retry/double click, signed saved
+  JSON/multi-frame QR, forced import rejection, unknown dry thickness in roll
+  handover, committed-save recognition and worker/chief draft isolation. No
+  overflow/runtime errors; layouts inspected. Final exact-head CI/APK is
+  recorded on draft PR #3 after push; predecessor success is not substituted.
+- No native/signing/dependency/server/automatic-sync/deployment or merge change.
+  M0 physical OnePlus installed upgrade/force-stop/restore, M1 separate devices/TLS,
+  M2 factory pilot, M3 authoritative operations, M4 inventory/QA and M5 rollout
+  remain open. Gauge/calibration and physical source acceptance remain unverified.
+  Physical pairing policy is still unresolved. Next safe recovery slice:
+  calendaring assignment/result forms, preserving their source revisions.
+
 ## 2026-11-12 — Storage receipt/location draft recovery and profile isolation
 
 - Storage now uses the same v20 local draft store for raw receipt inputs,

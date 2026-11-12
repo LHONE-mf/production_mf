@@ -1,5 +1,6 @@
 import { db } from '../../core/db';
-import { StageId, type CoatRun, type CoatingMixSnapshot, type RollSpec } from '../../core/types';
+import { StageId, UserRole, type MixBatch, type CoatRun, type CoatingMixSnapshot, type RollSpec } from '../../core/types';
+import {hasMeasuredSlurryBatch,hasSlurryHandover,validateSlurryHandover} from '../../core/manufacturing/slurryBatch';
 import { intermittentCoverage, requiredScrewFlowLpm, screwRpmFromFlow, wetThicknessUm } from './coatMath';
 
 export interface CoatingEntry {
@@ -26,6 +27,7 @@ function positive(value:number|undefined,label:string):asserts value is number {
 
 /** Calculations retain their entered inputs. They are estimates, not equipment commands. */
 export function prepareCoatingRun(input:CoatingEntry,workerId:string,id:string,now=Date.now()):CoatRun {
+  if(!['continuous','intermittent'].includes(input.mode))throw Error('Выберите режим нанесения явно');
   if(!workerId||!input.foilType.trim())throw new Error('Укажите исполнителя и фольгу');
   positive(input.targetDryMgm2,'Сухая поверхностная плотность');
   positive(input.coatingWidthCm,'Ширина полосы');
@@ -61,11 +63,35 @@ export function prepareCoatingRun(input:CoatingEntry,workerId:string,id:string,n
     gapPitchMm:input.mode==='intermittent'?input.gapPitchMm:undefined,createdAt:now,updatedAt:now};
 }
 
-/** One local operation: failure of either store rolls both writes back. */
-export async function saveCoatingRun(input:CoatingEntry,workerId:string,id:string):Promise<CoatRun> {
-  const run=prepareCoatingRun(input,workerId,id);
-  await db.transaction('rw',db.coatRuns,db.journal,async()=>{
-    await db.coatRuns.add(run);
+const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
+export const hasRecordedCoatingRun=(run?:CoatRun)=>!!run&&(run.recordingVersion!==undefined||run.recordedRole!==undefined);
+export function coatingSourceFromBatch(batch:MixBatch):CoatingMixSnapshot|undefined {
+ if(hasMeasuredSlurryBatch(batch))return;
+ return {mixBatchId:batch.id,recipeName:batch.recipeName,viscosity:batch.viscosity,fineness:batch.fineness,solidsPctMass:batch.pasteCalc?.solidsPctMass,solidsPctVol:batch.pasteCalc?.solidsPctVol,pasteDensity:batch.pasteCalc?.pasteDensity,batchKg:batch.batchKg,createdAt:batch.createdAt};
+}
+export function coatingEntryFromRun(run:CoatRun):CoatingEntry {
+ const {foilType,mixSnapshot,targetDryMgm2,coatingWidthCm,webSpeedMpm,pumpDeliveryCm3Rev,headGapUm,measuredDryThicknessUm,mode,gapWidthMm,gapPitchMm,segLengthsM,sideBLengthM,ovenTempsC,defects,notes}=run;
+ return {foilType,mixSnapshot,targetDryMgm2,coatingWidthCm,webSpeedMpm,pumpDeliveryCm3Rev,headGapUm,measuredDryThicknessUm,mode,gapWidthMm,gapPitchMm,segLengthsM,sideBLengthM,ovenTempsC,defects,notes};
+}
+export function prepareRecordedCoatingRun(input:CoatingEntry,workerId:string,id:string,role:UserRole,now=Date.now()):CoatRun {
+ if(!id?.trim()||!Object.values(UserRole).includes(role)||!Number.isFinite(now)||now<=0||!Number.isFinite(new Date(now).getTime()))throw Error('Нужны ID, роль и время записи нанесения');
+ const mix=input.mixSnapshot;
+ if(mix&&(!mix.mixBatchId?.trim()||!mix.recipeName?.trim()||!Number.isFinite(mix.createdAt)||mix.createdAt<=0))throw Error('Исходный замес требует ID, название и версию');
+ if(mix&&hasSlurryHandover(mix))validateSlurryHandover(mix);
+ return {...prepareCoatingRun(input,workerId,id,now),recordingVersion:1,recordedRole:role};
+}
+export function validateRecordedCoatingRun(run:CoatRun):void {
+ if(run?.recordingVersion!==1)throw Error('Версия записи нанесения не поддерживается');
+ const expected=prepareRecordedCoatingRun(coatingEntryFromRun(run),run.workerId,run.id,run.recordedRole!,run.createdAt);
+ if([...new Set([...Object.keys(expected),...Object.keys(run)])].some(key=>!same(run[key as keyof CoatRun],expected[key as keyof CoatRun])))throw Error('Снимок нанесения, единицы, время и расчётные оценки должны сохраняться без подмены');
+}
+async function knownSource(id:string){const incoming=await db.coatIncomingMixes.get(id);if(incoming)return incoming;const batch=await db.mixBatches.get(id);return batch?coatingSourceFromBatch(batch):undefined;}
+async function insertRecordedCoatingRun(run:CoatRun,local:boolean):Promise<CoatRun>{
+ validateRecordedCoatingRun(run);
+ const existing=await db.coatRuns.get(run.id);if(existing){if(same(existing,run))return existing;throw Error('ID нанесения уже сохранён с другим содержимым; история не заменяется');}
+ if(run.mixSnapshot){const current=await knownSource(run.mixSnapshot.mixBatchId);if(local?!same(current,run.mixSnapshot):current&&(hasSlurryHandover(current)||current.createdAt===run.mixSnapshot.createdAt)&&!same(current,run.mixSnapshot))throw Error('Источник замеса изменён или отсутствует. Обновите источник явно и проверьте введённые значения');}
+ const workerId=run.workerId;
+ await db.coatRuns.add(run);
     await db.journal.add({id:run.id,stage:StageId.COATING,workerId,
       summary:`Нанесение: ${run.mixSnapshot?.recipeName??'без замеса'}, сторона A ${run.sideALengthM} м`,
       params:{'Запись нанесения':run.id,'Ширина, см':run.coatingWidthCm!,
@@ -74,8 +100,32 @@ export async function saveCoatingRun(input:CoatingEntry,workerId:string,id:strin
         'Шнек (оценка), об/мин':run.screwRpm??'','Заданный зазор, мкм':run.headGapUm??'',
         'Печи, °C':run.ovenTempsC.length?run.ovenTempsC.join('/'):'не указаны'},
       defects:run.defects??'',createdAt:new Date(run.createdAt)});
-  });
-  return run;
+ return run;
+}
+const coatingTables=()=>[db.coatRuns,db.journal,db.users,db.coatIncomingMixes,db.mixBatches];
+export async function savePreparedCoatingRun(run:CoatRun,actorId:string):Promise<CoatRun>{
+ return db.transaction('rw',coatingTables(),async()=>{
+  const actor=await db.users.get(actorId);if(!actor?.isActive||run.workerId!==actor.id||run.recordedRole!==actor.role)throw Error('Нужен активный локальный профиль автора нанесения');
+  return insertRecordedCoatingRun(run,true);
+ });
+}
+/** Compatibility for entry callers; restart-safe UI checkpoints the prepared run. */
+export async function saveCoatingRun(input:CoatingEntry,workerId:string,id:string):Promise<CoatRun>{
+ const actor=await db.users.get(workerId);if(!actor?.isActive)throw Error('Нужен активный локальный профиль автора нанесения');
+ const old=await db.coatRuns.get(id);return savePreparedCoatingRun(prepareRecordedCoatingRun(input,workerId,id,actor.role,old?.createdAt),workerId);
+}
+export async function receiveCoatingRun(run:CoatRun,stage?:StageId,role?:UserRole,senderId?:string,forced=false):Promise<CoatRun>{
+ return db.transaction('rw',coatingTables(),async()=>{
+  if(stage!==StageId.COATING||!run?.id?.trim())throw Error('Некорректный этап или ID нанесения');
+  const previous=await db.coatRuns.get(run.id);
+  if(hasRecordedCoatingRun(run)||hasRecordedCoatingRun(previous)){
+   validateRecordedCoatingRun(run);
+   if(role!==UserRole.MASTER&&role!==UserRole.CHIEF&&(role!==run.recordedRole||senderId!==run.workerId))throw Error('Подписант не совпадает с автором нанесения');
+   return insertRecordedCoatingRun(run,false);
+  }
+  if(previous&&(!forced&&previous.updatedAt>=run.updatedAt||same(previous,run)))return previous;
+  await db.coatRuns.put(run);return run;
+ });
 }
 
 /** Never substitute a wet-film estimate for a dry electrode measurement. */
@@ -96,7 +146,8 @@ export function coatingRollSpec(run:CoatRun):RollSpec {
 /** Stable source identity: retries reuse the snapshot; changed content cannot overwrite it. */
 export async function saveCoatingRollHandover(run:CoatRun):Promise<RollSpec> {
   const spec=coatingRollSpec(run);
-  return db.transaction('rw',db.rollSpecs,async()=>{
+  return db.transaction('rw',[db.rollSpecs,db.coatRuns],async()=>{
+    if(hasRecordedCoatingRun(run)){validateRecordedCoatingRun(run);if(!same(await db.coatRuns.get(run.id),run))throw Error('Источник рулона не сохранён или сохранён с другими данными');}
     const existing=await db.rollSpecs.get(spec.id);
     if(existing){
       const fields=['mixName','foilType','sideALengthM','sideBLengthM','thicknessBeforeUm'] as const;

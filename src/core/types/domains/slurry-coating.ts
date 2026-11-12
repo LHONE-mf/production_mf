@@ -150,6 +150,8 @@ export type CoatMode = 'continuous' | 'intermittent';
 
 // Запись журнала нанесения покрытия
 export interface CoatRun {
+  recordingVersion?: 1;
+  recordedRole?: import('../index').UserRole;
   id: string;
   taskId?: string;                 // задание (если работа по заданию)
   mixBatchId?: string;             // замес, из которого взята паста

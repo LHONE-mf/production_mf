@@ -1,3 +1,4 @@
+import {receiveCoatingRun,hasRecordedCoatingRun} from '../stages/coating/coatingJournal';
 import {isStorageJournal,receiveStorageJournal,isStorageHistory,receiveStorageHistory} from '../core/manufacturing/storageReceipts';
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
 import {receiveSlurryBatch,receiveSlurryHandover} from '../core/manufacturing/slurryBatch';
@@ -126,16 +127,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         return { ok: true, message: `Данные замеса приняты: «${snap?.recipeName}» (вязкость ${snap?.viscosity ?? '—'} сП)` };
       }
       case 'coat-run': {
-        // Журнал нанесения: slave → master. Свежесть по updatedAt; forced — безусловно.
-        const r = p.payload as CoatRun;
-        if (!Array.isArray(r.segLengthsM)) r.segLengthsM = [];
-        if (!Array.isArray(r.ovenTempsC)) r.ovenTempsC = new Array(6).fill(0);
-        const existing = await db.coatRuns.get(r.id);
-        if (existing && !p.forced && existing.updatedAt >= r.updatedAt) {
-          return { ok: true, message: `Запись нанесения от ${new Date(r.createdAt).toLocaleDateString('ru-RU')} уже новее — пропущено` };
-        }
-        await db.coatRuns.put(r);
-        return { ok: true, message: `Журнал нанесения получен (${p.forced ? 'принудительно' : 'slave → master'})` };
+        await receiveCoatingRun(p.payload as CoatRun,p.stage,p.role,p.from,!!p.forced);
+        return {ok:true,message:'Запись нанесения принята; защищённая история не заменяется'};
       }
       case 'roll-spec': {
         // Рулон с намазки → технологу (master) → каландрирование.
@@ -351,8 +344,8 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           await db.users.put(payload as User);
           return { ok: true, message: `(forced) пользователь обновлён: ${(payload as User).login}` };
         }
-        if ('segLengthsM' in payload && 'ovenTempsC' in payload) {
-          await db.coatRuns.put(payload as CoatRun);
+        if (hasRecordedCoatingRun(payload as CoatRun)||'id' in payload&&hasRecordedCoatingRun(await db.coatRuns.get(payload.id))||'segLengthsM' in payload && 'ovenTempsC' in payload) {
+          await receiveCoatingRun(payload as CoatRun,p.stage,p.role,p.from,true);
           return { ok: true, message: '(forced) журнал нанесения применён' };
         }
         if ('lines' in payload && 'dryMassKg' in payload) {

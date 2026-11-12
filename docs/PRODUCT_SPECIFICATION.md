@@ -110,7 +110,8 @@ assembly pairing.
 
 **M0 local form recovery checkpoint (2026-11-12):**
 Additive Dexie v20 introduces `localFormDrafts` for actor/room-scoped slurry
-weighing and storage receipt/location forms. Raw text, unknown blanks, frozen
+weighing, storage receipt/location and coating measurement forms. Coating reuses
+the existing store without another migration. Raw text, unknown blanks, frozen
 source versions and failed operation identity survive acknowledged local writes
 and application-page restart. Attempts are checkpointed before manufacturing
 save; already committed attempts reopen without duplicate writes or automatic
@@ -123,6 +124,15 @@ outbox, cursor, deferred inbox and conflict archive. Pending writes remain marke
 as saving. Real Chromium phone/desktop restart, failure, concurrency and local
 profile-switch checks passed; physical Android installed upgrade/force-stop and
 backup/restore acceptance remain open.
+
+Coating specifically requires an explicit mode and freezes the chosen slurry
+snapshot. New source changes require explicit refresh before first local save,
+while completed attempts remain historical snapshots. New versioned coating
+run+journal writes share immutable retry/import guards, reject fabricated
+estimates and require the exact durable run for a protected roll handover.
+Journal export is read-only. Legacy observations are retained and unmarked data
+are not promoted to verified measurements. Physical instrument/source acceptance
+remains open.
 
 **M0 room utility checkpoint (2026-11-11):**
 The [room workflow audit](ROOM_WORKFLOW_AUDIT.md) inventories all 11 registered
