@@ -145,7 +145,7 @@ export function LoginForm() {
         </div>
 
         <p className="text-center text-blue-300/50 text-xs mt-4">
-          v1.0.0 • Офлайн режим • Bluetooth Mesh
+          v0.1.0 • Локальный офлайн-режим • Тестовая сборка
         </p>
       </div>
     </div>
