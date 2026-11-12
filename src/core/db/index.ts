@@ -1,4 +1,5 @@
 import Dexie, { Table } from 'dexie';
+import type {LocalFormDraft} from './localFormDrafts';
 import { migratePasswords } from '../security';
 import type { PendingTaskOperation } from '../sync/hybridOutbox';
 import type { ArchivedTaskConflict } from '../sync/taskConflictResolution';
@@ -7,6 +8,7 @@ import type { DeferredTaskChange } from '../sync/deferredTaskChange';
 import { User, Task, TechCard, SyncDevice, SyncLog, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
+  localFormDrafts!: Table<LocalFormDraft, string>;
   users!: Table<User, string>;
   tasks!: Table<Task, string>;
   hybridTaskOutbox!: Table<PendingTaskOperation, string>;
@@ -160,6 +162,9 @@ export class AppDatabase extends Dexie {
     this.version(19).stores({
       hybridTaskDeferred: 'sequence, entityId',
     });
+
+    // v20: actor/room-scoped unfinished forms; existing records/outbox unchanged.
+    this.version(20).stores({localFormDrafts:'key, actorId, scope'});
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
     // Комнаты нарезки и сортировки разделены (Шаг S4). Миграция однократная,

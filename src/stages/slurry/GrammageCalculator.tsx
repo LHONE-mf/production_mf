@@ -11,25 +11,44 @@ import {saveSlurryBatch,validateMeasuredSlurryBatch,SLURRY_UNITS} from '../../co
 import {calcPasteProperties} from './mixMath';
 import {PastePropertiesPanel} from './PastePropertiesPanel';
 import {PacketOutModal} from '../_ui/PacketOutModal';
+import {useLocalFormDraft,LocalDraftStatus} from '../_common/useLocalFormDraft';
 
 interface Props {presetRecipe?:MixRecipe|null;onPresetConsumed?:()=>void}
 interface Line {key:string;componentId:string;component?:MixComponent;pct:string;actual:string}
 const empty=()=>({taskId:'',batchCode:'',recipeName:'',targetKg:'',basis:false,lines:[] as Line[],note:'',viscosity:'',fineness:'',density:'',notes:''});
+interface SlurryForm {version:1;draft:ReturnType<typeof empty>;source:MixRecipe|null;phi:string;shear:string;attempt:MixBatch|null;}
+const emptyForm=():SlurryForm=>({version:1,draft:empty(),source:null,phi:'',shear:'',attempt:null});
+function parseForm(value:unknown,actorId:string):SlurryForm {
+ const form=value as SlurryForm;
+ if(!form||form.version!==1||!form.draft||typeof form.phi!=='string'||typeof form.shear!=='string'||typeof form.draft.basis!=='boolean'||Object.keys(empty()).filter(key=>!['lines','basis'].includes(key)).some(key=>typeof form.draft[key as keyof typeof form.draft]!=='string')||!Array.isArray(form.draft.lines)||form.draft.lines.some(line=>!line||['key','componentId','pct','actual'].some(key=>typeof line[key as keyof Line]!=='string')||line.component&&(!line.component.id||typeof line.component.name!=='string'||!Number.isFinite(line.component.updatedAt))))throw Error('Структура черновика замеса не поддерживается; исходные данные сохранены');
+ if(form.source&&(!form.source.id||typeof form.source.name!=='string'||!Number.isFinite(form.source.updatedAt)||!Array.isArray(form.source.lines)||!Array.isArray(form.source.mode)))throw Error('Версия рецепта в черновике повреждена');
+ if(form.attempt){validateMeasuredSlurryBatch(form.attempt);if(form.attempt.workerId!==actorId)throw Error('Автор попытки замеса не совпадает с профилем');}
+ return form;
+}
 const input='min-h-11 w-full min-w-0 rounded border border-slate-700 bg-slate-900 p-2 text-sm text-white';
 const number=(value:number|undefined)=>value===undefined?'неизвестно':value.toLocaleString('ru-RU',{maximumSignificantDigits:12});
-export function GrammageCalculator(props:Props){const actor=useAuthStore(s=>s.currentUser?.id);return <CalculatorContent key={actor} {...props}/>;}
+export function GrammageCalculator(props:Props){const actor=useAuthStore(s=>s.currentUser?.id);return actor?<CalculatorContent key={actor} {...props}/>:<p>Войдите в локальный профиль для записи навесок.</p>;}
 function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const tasks=useLiveQuery(async()=>(await listVisibleTasks()).filter(task=>task.stage===StageId.SLURRY),[]);
  const actor=useAuthStore(s=>s.currentUser);const catalog=useLiveQuery(()=>db.mixComponents.toArray(),[]);
- const [draft,setDraft]=useState(empty),[source,setSource]=useState<MixRecipe|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);
- const [phi,setPhi]=useState(''),[shear,setShear]=useState('');const lock=useRef(false),attempt=useRef<MixBatch|null>(null);
+ const recovery=useLocalFormDraft(actor!.id,'slurry',emptyForm,value=>parseForm(value,actor!.id));
+ const {draft,source,phi,shear,attempt}=recovery.value;
+ const setDraft=(update:React.SetStateAction<typeof draft>)=>recovery.edit(form=>({...form,draft:typeof update==='function'?update(form.draft):update}));
+ const setSource=(source:MixRecipe|null)=>recovery.edit(form=>({...form,source}));
+ const setPhi=(phi:string)=>recovery.edit(form=>({...form,phi}));const setShear=(shear:string)=>recovery.edit(form=>({...form,shear}));
+ const [busy,setBusy]=useState(false),[error,setError]=useState(''),[checking,setChecking]=useState(false);
+ const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);const lock=useRef(false);
  useEffect(()=>{
-  if(!presetRecipe||catalog===undefined)return;
-  setSource(structuredClone(presetRecipe));setDraft({...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
-   lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))});
-  attempt.current=null;setError('');setSaved(null);setPacket(null);onPresetConsumed?.();
- },[presetRecipe,catalog===undefined]);
+  if(!recovery.ready||!attempt){setSaved(null);return;}let active=true;setChecking(true);
+  void db.mixBatches.get(attempt.id).then(row=>{if(!active)return;if(row){if(JSON.stringify(row)!==JSON.stringify(attempt))throw Error('Сохранённый замес отличается от восстановленной попытки; история сохранена');setSaved(row);}}).catch(e=>{if(active)setError(String(e));}).finally(()=>{if(active)setChecking(false);});
+  return()=>{active=false;};
+ },[recovery.ready,attempt]);
+ useEffect(()=>{
+  if(!presetRecipe||catalog===undefined||!recovery.ready)return;
+  recovery.edit({...emptyForm(),source:structuredClone(presetRecipe),draft:{...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
+   lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))}});
+  setError('');setSaved(null);setPacket(null);onPresetConsumed?.();
+ },[presetRecipe,catalog===undefined,recovery.ready]);
  const snapshots=useMemo(()=>draft.lines.flatMap(line=>line.component?[line.component]:[]),[draft.lines]);
  const calculation=useMemo(()=>{
   try{
@@ -47,27 +66,33 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const change=(key:Exclude<keyof typeof draft,'lines'>)=>(event:React.ChangeEvent<HTMLInputElement>)=>setDraft(d=>({...d,[key]:event.target.value}));
  const lineChange=(index:number,patch:Partial<Line>)=>setDraft(d=>({...d,lines:d.lines.map((line,i)=>i===index?{...line,...patch}:line)}));
  const save=async()=>{
-  if(!actor||lock.current||saved)return;lock.current=true;setBusy(true);setError('');
+  if(!actor||lock.current||saved||checking||!recovery.ready||recovery.error)return;lock.current=true;setBusy(true);setError('');
   try{
-   if(!attempt.current){
+   let operation=attempt;
+   if(!operation){
     if(!calculation.plan)throw new Error(calculation.error);
     const weighings=draft.lines.map((line,i)=>({componentId:line.componentId,plannedG:calculation.plan!.rows[i].grams,actualG:parseSlurryNumber(line.actual,true)!}));
     const now=Date.now();const run:MixBatch={id:uuidv4(),taskId:draft.taskId||undefined,measurementVersion:1,batchCode:draft.batchCode.trim(),recipeName:draft.recipeName.trim(),recipeId:source?.id,recipeSnapshot:source??undefined,
      componentSnapshots:snapshots,recipePlan:{basis:SLURRY_BASIS,lines:calculation.lines},batchKg:parseSlurryNumber(draft.targetKg,true)!,weighings,massBalance:slurryMassBalance(weighings,snapshots),measurementUnits:SLURRY_UNITS,
      viscosity:parseSlurryNumber(draft.viscosity),fineness:parseSlurryNumber(draft.fineness),measuredDensity:parseSlurryNumber(draft.density),measurementNote:draft.note.trim(),notes:draft.notes.trim()||undefined,
      workerId:actor.id,recordedRole:actor.role,createdAt:now,updatedAt:now};
-    validateMeasuredSlurryBatch(run);attempt.current=run;
+    validateMeasuredSlurryBatch(run);operation=run;
    }
-   const committed=await saveSlurryBatch(attempt.current,actor.id);setSaved(committed);
+   await recovery.checkpoint(form=>({...form,attempt:operation}));
+   const committed=await saveSlurryBatch(operation,actor.id);setSaved(committed);
    setPacket({v:1,type:'mix-batch',stage:StageId.SLURRY,payload:committed,from:actor.id,role:actor.role,ts:Date.now()});
   }catch(cause){setError(cause instanceof Error?cause.message:'Замес не сохранён');}finally{lock.current=false;setBusy(false);}
  };
+ const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setError('');}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
  const field=(key:Exclude<keyof typeof draft,'lines'|'basis'>,label:string,decimal=false)=> <label className="block min-w-0 text-xs text-slate-300">{label}<input aria-label={label} className={input} value={draft[key]} inputMode={decimal?'decimal':undefined} onChange={change(key)} disabled={key==='recipeName'&&!!source}/></label>;
+ if(!recovery.ready)return <LocalDraftStatus draft={recovery}/>;
  return <div className="space-y-3 min-w-0">
   <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
   <p className="text-xs text-slate-400">План СВ в кг → расчётные навески в г. Фактические массы вводятся отдельно; пустое значение неизвестно. Тип материала не определяет его содержание СВ.</p>
+  <LocalDraftStatus draft={recovery} disabled={busy||checking}/>
+  {attempt&&!saved&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
   {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
-  <fieldset disabled={busy||!!attempt.current||!!saved} className="space-y-3 min-w-0">
+  <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
    {!!tasks?.length&&<label className="block text-xs text-slate-300">Ссылка на видимое задание (без изменения статуса)<select aria-label="Задание замеса" className={input} value={draft.taskId} onChange={e=>setDraft({...draft,taskId:e.target.value})}><option value="">Без задания</option>{tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label>}
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('batchCode','Код партии замеса')}{field('recipeName','Название состава')}{field('targetKg','План СВ, кг',true)}</div>
    <p className="text-xs text-slate-400 break-all">{source?`Версия рецепта: ${source.name} · ${source.id} · ${source.updatedAt}`:'Источник состава: явный ручной план'}</p>
@@ -101,10 +126,10 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   </fieldset>
   {error&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
   <div className="flex flex-wrap gap-2">
-   <button disabled={busy||!!saved} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
-   {error&&attempt.current&&<button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setError('');}}>Изменить незаписанный черновик</button>}
-   {!saved&&<button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setDraft(d=>({...d,lines:d.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
-   <button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setSaved(null);setPacket(null);setSource(null);setDraft(empty());setError('');}}>Очистить форму для нового замеса</button>
+   <button disabled={busy||checking||!!saved||!!recovery.error} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
+   {error&&attempt&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null}));setError('');}}>Изменить незаписанный черновик</button>}
+   {!saved&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null,draft:{...form.draft,lines:form.draft.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
+   <button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>void reset()}>Очистить форму для нового замеса</button>
   </div>
   {packet&&<PacketOutModal packet={packet} onClose={()=>setPacket(null)}/>}
  </div>;

@@ -1,3 +1,39 @@
+## 2026-11-12 — Slurry draft recovery across application-page restart
+
+- Continued from remote `70d6ea1b7f989f4ecbf52a0186c58f8cb7ef1026`, now verified
+  with exact-head [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43155743421),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43155743547)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43155736931)
+  all passed. PR #3 remains a draft; previous engineering progress is retained.
+- Slurry forms now checkpoint raw inputs (including blank/zero/comma decimals),
+  recipe/material snapshots, optional theory settings and the frozen attempt in
+  local IndexedDB. Opening the room restores only the current local profile's
+  form. A production attempt is durably checkpointed before batch+journal save;
+  restart retries use its original identity/time. Already committed attempts
+  reopen as saved without making a duplicate or automatically opening an export.
+- Additive Dexie v20 creates one `localFormDrafts` store; unfinished forms never
+  become production journal entries or server-sync operations. Actor/room keys,
+  active-profile write checks and optimistic revisions prevent competing windows
+  from silently replacing a saved draft. Clearing retains a revision marker so
+  stale writers cannot recreate it. No expiry or automatic deletion is applied.
+  Unsupported/corrupt versions remain stored for review. A draft error retains
+  in-memory fields and blocks production save until explicit retry or reload.
+- **462 frontend tests**, typecheck and PWA build passed. Focused restart tests
+  cover unfinished inputs, failed stable-ID retry, completed-save recognition and
+  explicit reset. v17/v19 upgrade checks preserve existing production records,
+  users, outbox, cursor, deferred inbox and conflict history. Removing all prior
+  rows or claiming installed upgrade acceptance is not part of these checks.
+- Chromium **390×844 / 1365×900** passed page restart with raw blanks/fractional
+  grams, frozen sources, conflicting tabs, real draft-store failure/retry,
+  manufacturing rollback/restart/retry, saved-state recognition, signed export
+  and coating handover/reopen, with no overflow/runtime errors. An IndexedDB
+  transaction still in progress is shown as saving; only acknowledged local
+  checkpoints are recovered. Physical Android force-stop/in-place upgrade and
+  factory acceptance remain open. Storage form recovery is the next slice.
+- No native/signing/server/dependency/automatic-sync/deployment or merge change.
+  M0–M5 retain their documented physical, pilot and authoritative-operation gates;
+  unspecified cathode/anode pairing policy is not inferred.
+
 ## 2026-11-12 — Read-only saved receipt/history transfer
 
 - Storage history now exports the exact viewed saved receipt plus all location
