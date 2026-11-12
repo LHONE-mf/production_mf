@@ -1,3 +1,4 @@
+import {hasMeasuredSlurryBatch,hasSlurryHandover} from '../../core/manufacturing/slurryBatch';
 // Комната «Нанесение покрытия» (coating). Полностью офлайн.
 // Вкладки: 📥 Данные замесов · ⚙️ Намазка (расчёты) · 📒 Журнал нанесения · 💬 Комментарии
 // Данные замесов приходят пакетами LIP: (QR/текст, позже Bluetooth) — type 'coating-mix'.
@@ -54,7 +55,7 @@ export function CoatingModule() {
   // Все доступные замесы: принятые пакетом + локальные из журнала замесов (одна комната цеха)
   const availableMixes: CoatingMixSnapshot[] = useMemo(() => {
     const fromPackets = incomingMixes ?? [];
-    const fromLocal = (localBatches ?? []).map((b) => ({
+    const fromLocal = (localBatches ?? []).filter(batch=>!hasMeasuredSlurryBatch(batch)).map((b) => ({
       mixBatchId: b.id,
       recipeName: b.recipeName,
       viscosity: b.viscosity,
@@ -66,7 +67,7 @@ export function CoatingModule() {
       createdAt: b.createdAt,
     }));
     const map = new Map<string, CoatingMixSnapshot>();
-    for (const m of [...fromPackets, ...fromLocal]) map.set(m.mixBatchId, m);
+    for (const m of [...fromLocal, ...fromPackets]) map.set(m.mixBatchId, m);
     return [...map.values()].sort((a, b) => b.createdAt - a.createdAt);
   }, [incomingMixes, localBatches]);
 
@@ -167,7 +168,7 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
       <p className="text-xs text-slate-500">
         Данные замесов поступают с участка замесов офлайн-пакетом (QR / текст, позже Bluetooth): вязкость,
         степень перетира, содержание СВ и плотность пасты — из них оцениваются мокрая толщина и расход. Механический зазор вводится отдельно; оценка оборотов требует калибровки насоса.
-        Здесь же видны замесы, сделанные на этом устройстве.
+        Новые измеренные замесы появляются после явной сохранённой передачи из журнала замесов. Неизмеренные свойства остаются неизвестными.
       </p>
       {mixes.length === 0 && (
         <div className="bg-slate-800 border border-dashed border-slate-600 rounded-lg p-6 text-center text-sm text-slate-400">
@@ -184,11 +185,12 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
             <div className="grid grid-cols-2 gap-x-3 text-xs text-slate-300">
               <span>Вязкость: <b className="text-white">{m.viscosity ?? '—'} сП</b></span>
               <span>Перетир: <b className="text-white">{m.fineness ?? '—'} мкм</b></span>
-              <span>СВ (масс.): <b className="text-white">{m.solidsPctMass ? `${m.solidsPctMass}%` : '—'}</b></span>
+              <span>СВ (масс.): <b className="text-white">{m.solidsPctMass!==undefined ? `${m.solidsPctMass}%` : '—'}</b></span>
               <span>СВ (объём φ): <b className="text-white">{m.solidsPctVol ? `${m.solidsPctVol}%` : '—'}</b></span>
               <span>ρ пасты: <b className="text-white">{m.pasteDensity ? `${m.pasteDensity} г/см³` : '—'}</b></span>
-              <span>Масса: <b className="text-white">{m.batchKg ? `${m.batchKg} кг` : '—'}</b></span>
+              <span>Масса СВ: <b className="text-white">{m.batchKg!==undefined ? `${m.batchKg} кг` : '—'}</b></span>
             </div>
+            {hasSlurryHandover(m)?<p className="text-xs text-slate-400 break-all">Партия {m.sourceBatch?.batchCode} · автор передачи {m.preparedBy} · СВ рассчитаны по навескам и заявленному составу · плотность {m.densityBasis==='measured'?'измерена':'неизвестна'}. Физическое получение и QA не подтверждены.</p>:<p className="text-xs text-amber-200">Исторический источник: происхождение свойств не подтверждено новым измеренным потоком; значения могли быть модельными.</p>}
           </div>
         ))}
       </div>

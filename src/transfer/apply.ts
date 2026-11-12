@@ -1,4 +1,6 @@
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
+import {receiveSlurryBatch,receiveSlurryHandover} from '../core/manufacturing/slurryBatch';
+import {receiveSlurryComponent,receiveSlurryRecipe} from '../core/manufacturing/slurryCatalog';
 import {receiveFillingHandover} from '../core/manufacturing/fillingHandover';
 import {receiveFillingResult} from '../core/manufacturing/fillingResults';
 import {receiveWalzingIncoming,receiveWalzingResult} from '../core/manufacturing/walzingResults';
@@ -98,35 +100,23 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         // Журнал замеса: slave присылает результат master'у.
         // Побеждает более свежий updatedAt; forced (от master) — безусловно.
         const b = p.payload as MixBatch;
-        const existing = await db.mixBatches.get(b.id);
-        if (existing && !p.forced && existing.updatedAt >= b.updatedAt) {
-          return { ok: true, message: `Замес «${b.recipeName}» уже новее — пропущено` };
-        }
-        await db.mixBatches.put(b);
-        return { ok: true, message: `Журнал замеса получен: «${b.recipeName}» (${p.forced ? 'принудительно' : 'slave → master'})` };
+        await receiveSlurryBatch(b,p.stage,p.role,p.from);
+        return {ok:true,message:'Замес сохранён без замены исходных навесок и версий'};
       }
       case 'mix-component': {
         const c = p.payload as MixComponent;
-        const existing = await db.mixComponents.get(c.id);
-        if (existing && !p.forced && existing.updatedAt >= c.updatedAt) {
-          return { ok: true, message: `Компонент «${c.name}» уже новее — пропущено` };
-        }
-        await db.mixComponents.put(c);
+        await receiveSlurryComponent(c,p.role);
         return { ok: true, message: `Компонент обновлён: ${c.name}` };
       }
       case 'mix-recipe': {
         const r = p.payload as MixRecipe;
-        const existing = await db.mixRecipes.get(r.id);
-        if (existing && !p.forced && existing.updatedAt >= r.updatedAt) {
-          return { ok: true, message: `Стандартный замес «${r.name}» уже новее — пропущено` };
-        }
-        await db.mixRecipes.put(r);
+        await receiveSlurryRecipe(r,p.role);
         return { ok: true, message: `Стандартный замес обновлён: ${r.name}${p.forced ? ' (forced master→slave)' : ''}` };
       }
       case 'coating-mix': {
         // Данные замеса → участку нанесения: кладём в «входящие замесы» комнаты намазки.
         const snap = p.payload as CoatingMixSnapshot;
-        await db.coatIncomingMixes.put(snap);
+        await receiveSlurryHandover(snap,p.stage,p.role,p.from);
         return { ok: true, message: `Данные замеса приняты: «${snap?.recipeName}» (вязкость ${snap?.viscosity ?? '—'} сП)` };
       }
       case 'coat-run': {
@@ -319,6 +309,9 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
       case 'forced-push': {
         // Принудительная запись от master: применяем payload без проверки свежести
         const payload = p.payload as Task | User | MixRecipe | MixComponent | MixBatch | CoatRun | SortRun | AssemblyRun | ElectrolyteIncoming | WalzingIncoming | WalzRun | FormationIncoming | FormationRun;
+        if('mixBatchId' in payload&&!('segLengthsM' in payload)&&!('foilType' in payload)){
+          await receiveSlurryHandover(payload as CoatingMixSnapshot,p.stage,p.role,p.from);return {ok:true,message:'Передача замеса сохранена'};
+        }
         if('sourceBox' in payload||p.stage===StageId.FORMATION&&'destination' in payload){
           await receiveFormationIncoming(payload as FormationIncoming,p.stage,p.role,p.from);return {ok:true,message:'Вход формирования сохранён'};
         }
@@ -355,15 +348,15 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
           return { ok: true, message: '(forced) журнал нанесения применён' };
         }
         if ('lines' in payload && 'dryMassKg' in payload) {
-          await db.mixRecipes.put(payload as MixRecipe);
+          await receiveSlurryRecipe(payload as MixRecipe,p.role);
           return { ok: true, message: `(forced) стандартный замес применён: ${(payload as MixRecipe).name}` };
         }
         if ('kind' in payload) {
-          await db.mixComponents.put(payload as MixComponent);
+          await receiveSlurryComponent(payload as MixComponent,p.role);
           return { ok: true, message: `(forced) компонент применён: ${(payload as MixComponent).name}` };
         }
         if ('weighings' in payload) {
-          await db.mixBatches.put(payload as MixBatch);
+          await receiveSlurryBatch(payload as MixBatch,p.stage,p.role,p.from);
           return { ok: true, message: `(forced) журнал замеса применён: ${(payload as MixBatch).recipeName}` };
         }
         const candidate=payload as Task;

@@ -17,7 +17,8 @@ import { MixBatchJournal } from './MixBatchJournal';
 
 type Tab = 'calc' | 'recipes' | 'components' | 'journal' | 'comments';
 
-export function SlurryModule() {
+export function SlurryModule(){const actor=useAuthStore(s=>s.currentUser?.id);return <SlurryContent key={actor}/>;}
+function SlurryContent() {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [tab, setTab] = useState<Tab>('calc');
   const [preset, setPreset] = useState<MixRecipe | null>(null);
@@ -69,7 +70,7 @@ export function SlurryModule() {
         ))}
       </div>
 
-      {tab === 'calc' && <GrammageCalculator presetRecipe={preset} onPresetConsumed={() => setPreset(null)} />}
+      <div hidden={tab!=='calc'}><GrammageCalculator presetRecipe={preset} onPresetConsumed={() => setPreset(null)}/></div>
       {tab === 'recipes' && <RecipesDatabase onUse={useRecipe} />}
       {tab === 'components' && <ComponentsDatabase />}
       {tab === 'journal' && <MixBatchJournal />}

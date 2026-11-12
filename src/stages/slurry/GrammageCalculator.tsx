@@ -1,313 +1,111 @@
-// Расчёт граммовок замеса. Источник задания: стандартный замес из базы,
-// задание начальника/мастера/технолога (пакет task с приложенным рецептом) или ручной ввод.
-// Результат можно записать в журнал замеса (MixBatchJournal) и отправить slave→master пакетом.
+import React,{useEffect,useMemo,useRef,useState} from 'react';
+import {useLiveQuery} from 'dexie-react-hooks';
+import {v4 as uuidv4} from 'uuid';
+import {db} from '../../core/db';
+import {listVisibleTasks} from '../../core/sync/visibleTasks';
+import type {MixBatch,MixComponent,MixRecipe,SyncPacket} from '../../core/types';
+import {StageId} from '../../core/types';
+import {useAuthStore} from '../../core/store/authStore';
+import {calculateSlurryPlan,parseSlurryNumber,slurryMassBalance,SLURRY_BASIS} from '../../core/manufacturing/slurryMath';
+import {saveSlurryBatch,validateMeasuredSlurryBatch,SLURRY_UNITS} from '../../core/manufacturing/slurryBatch';
+import {calcPasteProperties} from './mixMath';
+import {PastePropertiesPanel} from './PastePropertiesPanel';
+import {PacketOutModal} from '../_ui/PacketOutModal';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { v4 as uuidv4 } from 'uuid';
-import { db } from '../../core/db';
-import { MixRecipe, MixComponent, MixModeStage, StageId, SyncPacket, UserRole, Task } from '../../core/types';
-import { useAuthStore } from '../../core/store/authStore';
-import { calcGrammages, calcPasteProperties, fmtG } from './mixMath';
-import { PacketOutModal } from '../_ui/PacketOutModal';
-import { PastePropertiesPanel } from './PastePropertiesPanel';
-
-interface Props {
-  /** рецепт, переданный из базы («Взять в расчёт») */
-  presetRecipe?: MixRecipe | null;
-  onPresetConsumed?: () => void;
-}
-
-interface DraftLine { componentId: string; pct: number }
-interface DraftState {
-  name: string;
-  batchKg: number;
-  lines: DraftLine[];
-  mode: MixModeStage[];
-  taskId?: string;
-}
-
-const emptyDraft = (): DraftState => ({ name: 'Замес (ручной расчёт)', batchKg: 100, lines: [], mode: [] });
-
-export function GrammageCalculator({ presetRecipe, onPresetConsumed }: Props) {
-  const currentUser = useAuthStore((s) => s.currentUser);
-  const isWorker = currentUser?.role === UserRole.WORKER;
-
-  const components = useLiveQuery(() => db.mixComponents.toArray(), []);
-  const compMap = useMemo(() => new Map((components ?? []).map((c) => [c.id, c])), [components]);
-  const tasks = useLiveQuery(
-    () => db.tasks.where('stage').equals(StageId.SLURRY).toArray(),
-    [],
-  );
-
-  const [draft, setDraft] = useState<DraftState>(emptyDraft());
-  const [actual, setActual] = useState<Record<string, string>>({}); // фактические навески, г
-  const [viscosity, setViscosity] = useState('');
-  const [fineness, setFineness] = useState('');
-  const [notes, setNotes] = useState('');
-  const [savedMsg, setSavedMsg] = useState('');
-  const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
-  const [phiMax, setPhiMax] = useState(0.62);   // φm — макс. упаковка для моделей вязкости
-  const [shearRate, setShearRate] = useState(50); // γ̇, 1/с — для модели Кросса
-
-  // рецепт из базы → в черновик
-  useEffect(() => {
-    if (!presetRecipe) return;
-    setDraft({
-      name: presetRecipe.name,
-      batchKg: presetRecipe.dryMassKg,
-      lines: presetRecipe.lines.map((l) => ({ ...l })),
-      mode: presetRecipe.mode.map((m) => ({ ...m })),
-    });
-    setActual({});
-    onPresetConsumed?.();
-  }, [presetRecipe]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const calc = useMemo(() => {
-    if (draft.lines.length === 0) return null;
-    return calcGrammages({ lines: draft.lines }, compMap, draft.batchKg);
-  }, [draft, compMap]);
-
-  // Свойства пасты: расчётное содержание СВ + вязкость по реологическим моделям
-  const paste = useMemo(() => {
-    if (!calc) return null;
-    try {
-      return calcPasteProperties(calc.rows, compMap, { phiMax, shearRate });
-    } catch {
-      return null;
-    }
-  }, [calc, compMap, phiMax, shearRate]);
-
-  const addLine = () =>
-    setDraft((d) => ({ ...d, lines: [...d.lines, { componentId: components?.[0]?.id ?? '', pct: 1 }] }));
-  const setLine = (i: number, patch: Partial<DraftLine>) =>
-    setDraft((d) => ({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
-  const delLine = (i: number) =>
-    setDraft((d) => ({ ...d, lines: d.lines.filter((_, j) => j !== i) }));
-
-  const importFromTask = async (taskId: string) => {
-    // подхват рецепта из описания задания, если там есть пакет mix-recipe
-    const t = await db.tasks.get(taskId);
-    if (!t) return;
-    setDraft((d) => ({ ...d, taskId, name: d.taskId === taskId ? d.name : t.title || d.name }));
-  };
-
-  const saveToJournal = async () => {
-    if (!calc || !currentUser) return;
-    const now = Date.now();
-    const batch = {
-      id: uuidv4(),
-      recipeName: draft.name || 'Замес без названия',
-      batchKg: draft.batchKg,
-      taskId: draft.taskId,
-      weighings: calc.rows.map((r) => ({
-        componentId: r.componentId,
-        plannedG: Math.round(r.grams * 10) / 10,
-        actualG: Number((actual[r.componentId] ?? '').replace(',', '.')) || 0,
-      })),
-      modeActual: draft.mode.length ? draft.mode : undefined,
-      viscosity: viscosity.trim() ? Number(viscosity.replace(',', '.')) : undefined,
-      fineness: fineness.trim() ? Number(fineness.replace(',', '.')) : undefined,
-      pasteCalc: paste ? {
-        solidsPctMass: Math.round(paste.solidsPctMass * 10) / 10,
-        solidsPctVol: Math.round(paste.solidsPctVol * 10) / 10,
-        pasteDensity: Math.round(paste.pasteDensity * 100) / 100,
-        etaModel: 'maronpearson',
-        etaPredictedCp: Math.round(paste.etaAbs.maronpearson),
-      } : undefined,
-      notes: notes.trim() || undefined,
-      workerId: currentUser.id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await db.mixBatches.add(batch);
-    // запись и в общий журнал комнаты — для KPI-цепочки
-    await db.journal.add({
-      id: uuidv4(), stage: StageId.SLURRY, workerId: currentUser.id, createdAt: new Date(),
-      taskId: draft.taskId,
-      summary: `Замес «${batch.recipeName}», СВ ${draft.batchKg} кг`,
-      params: {
-        'СВ, кг': draft.batchKg,
-        'Масса замеса, кг': Math.round((calc.allTotalG / 1000) * 10) / 10,
-        ...(viscosity.trim() ? { 'Вязкость': Number(viscosity.replace(',', '.')) } : {}),
-        ...(fineness.trim() ? { 'Перетир, мкм': Number(fineness.replace(',', '.')) } : {}),
-      },
-      defects: notes.trim(),
-    });
-    setSavedMsg('Записано в журнал замеса ✓');
-    setTimeout(() => setSavedMsg(''), 2500);
-    // тут же подготовить пакет для отправки master'у (slave → master)
-    setOutPacket({ v: 1, type: 'mix-batch', stage: StageId.SLURRY, payload: batch, from: currentUser.id, ts: now });
-  };
-
-  const inputCls = 'bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white';
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="text-white font-semibold">⚖️ Расчёт граммовок замеса</h3>
-        {(tasks?.length ?? 0) > 0 && (
-          <select
-            className={`text-sm ${inputCls}`}
-            value={draft.taskId ?? ''}
-            onChange={(e) => e.target.value && importFromTask(e.target.value)}
-          >
-            <option value="">— взять из задания комнаты —</option>
-            {tasks!.map((t: Task) => (
-              <option key={t.id} value={t.id}>{t.title}</option>
-            ))}
-          </select>
-        )}
-      </div>
-      <p className="text-xs text-slate-500">
-        Источник: стандартный замес из базы (кнопка «Взять в расчёт»), задание мастера/технолога/начальника
-        или ручная настройка. Растворитель указывается % от массы сухих веществ (СВ).
-      </p>
-
-      {/* Параметры замеса */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="text-xs text-slate-400 space-y-1 sm:col-span-2">
-          <span>Название / номер партии</span>
-          <input className={`w-full ${inputCls}`} value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-        </label>
-        <label className="text-xs text-slate-400 space-y-1">
-          <span>Масса замеса (СВ), кг</span>
-          <input type="number" min={0.1} step={anyStep} className={`w-full ${inputCls}`} value={draft.batchKg}
-            onChange={(e) => setDraft({ ...draft, batchKg: Number(e.target.value) || 0.1 })} />
-        </label>
-      </div>
-
-      {/* Компоненты + граммовки + факт. навески */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold text-slate-200">Компоненты и граммовки</p>
-          <button onClick={addLine} disabled={!components?.length}
-            className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-white">+ компонент</button>
-        </div>
-
-        {draft.lines.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-slate-400 border-b border-slate-700 text-xs">
-                  <th className="py-1 pr-2">Компонент</th>
-                  <th className="py-1 pr-2">%</th>
-                  <th className="py-1 pr-2">Расчёт</th>
-                  <th className="py-1 pr-2">Факт, г</th>
-                  <th className="py-1 pr-2">Δ</th>
-                  <th className="py-1"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {draft.lines.map((l, i) => {
-                  const row = calc?.rows[i];
-                  const c = compMap.get(l.componentId);
-                  const fact = Number((actual[l.componentId] ?? '').replace(',', '.'));
-                  const delta = row && Number.isFinite(fact) && fact !== 0 ? fact - row.grams : undefined;
-                  return (
-                    <tr key={i} className="border-b border-slate-800 text-slate-200">
-                      <td className="py-1 pr-2">
-                        <select className={`min-w-[9rem] max-w-[14rem] ${inputCls}`} value={l.componentId}
-                          onChange={(e) => setLine(i, { componentId: e.target.value })}>
-                          {(components ?? []).map((cc) => (
-                            <option key={cc.id} value={cc.id}>{cc.name}{cc.kind === 'solvent' ? ' (р-тель)' : ''}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="py-1 pr-2">
-                        <div className="flex items-center gap-1">
-                          <input type="number" step="any" min={0} className={`w-16 ${inputCls}`} value={l.pct}
-                            onChange={(e) => setLine(i, { pct: Number(e.target.value) || 0 })} />
-                          <span className="text-[10px] text-slate-500">{c?.kind === 'solvent' ? 'от СВ' : 'сух.'}</span>
-                        </div>
-                      </td>
-                      <td className="py-1 pr-2 font-mono text-blue-300 whitespace-nowrap">{row ? fmtG(row.grams) : '—'}</td>
-                      <td className="py-1 pr-2">
-                        <input type="number" step="any" className={`w-24 ${inputCls}`} placeholder="навеска"
-                          value={actual[l.componentId] ?? ''}
-                          onChange={(e) => setActual({ ...actual, [l.componentId]: e.target.value })} />
-                      </td>
-                      <td className={`py-1 pr-2 text-xs font-mono ${delta !== undefined && Math.abs(delta) > row!.grams * 0.01 ? 'text-red-400' : 'text-slate-400'}`}>
-                        {delta !== undefined ? `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} г` : '—'}
-                      </td>
-                      <td className="py-1">
-                        <button onClick={() => delLine(i)} className="text-xs px-2 py-1 bg-red-900/50 hover:bg-red-800/60 rounded">✕</button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {calc && (
-          <div className="text-xs text-slate-300 flex flex-wrap gap-x-6 gap-y-1 bg-slate-900/50 rounded p-2">
-            <span>СВ: <b className="font-mono text-white">{fmtG(calc.dryTotalG)}</b></span>
-            <span>Растворитель: <b className="font-mono text-white">{fmtG(calc.wetTotalG)}</b></span>
-            <span>Всего замес: <b className="font-mono text-white">{fmtG(calc.allTotalG)}</b></span>
-            <span>Доля СВ: <b className="font-mono text-white">{calc.solidsPct.toFixed(1)}%</b></span>
-          </div>
-        )}
-
-        {/* Расчётные свойства пасты: СВ + модели вязкости */}
-        <PastePropertiesPanel
-          paste={paste}
-          phiMax={phiMax}
-          shearRate={shearRate}
-          onPhiMaxChange={setPhiMax}
-          onShearRateChange={setShearRate}
-        />
-      </div>
-
-      {/* Режим замеса (из рецепта / вручную) */}
-      {draft.mode.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-sm font-semibold text-slate-200">Режим замеса</p>
-          {draft.mode.map((s, i) => (
-            <div key={s.id} className="text-xs text-slate-300 bg-slate-800/60 border border-slate-700 rounded px-2 py-1">
-              {i + 1}. <b>{s.name}</b>: {s.disperserRpm ? `дисп. ${s.disperserRpm}` : 'дисп. —'} / {s.paddleRpm ? `лоп. ${s.paddleRpm}` : 'лоп. —'} об/мин
-              {s.vacuumOn ? ` · вакуум ${s.vacuumKpa ?? '?'} кПа` : ' · без вакуума'} · {s.tempC ?? '—'}°C · {s.minutes} мин
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Результаты контроля */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        <label className="text-xs text-slate-400 space-y-1">
-          <span>Вязкость (сП / мПа·с)</span>
-          <input type="number" step="any" className={`w-full ${inputCls}`} value={viscosity}
-            onChange={(e) => setViscosity(e.target.value)} placeholder="напр. 3100" />
-        </label>
-        <label className="text-xs text-slate-400 space-y-1">
-          <span>Степень перетира, мкм</span>
-          <input type="number" step="any" className={`w-full ${inputCls}`} value={fineness}
-            onChange={(e) => setFineness(e.target.value)} placeholder="напр. 15" />
-        </label>
-        <label className="text-xs text-slate-400 space-y-1 col-span-2 sm:col-span-1">
-          <span>Примечания / дефекты</span>
-          <input className={`w-full ${inputCls}`} value={notes}
-            onChange={(e) => setNotes(e.target.value)} placeholder="если есть замечания" />
-        </label>
-      </div>
-
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={saveToJournal}
-          disabled={!calc || draft.lines.length === 0}
-          className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded text-sm text-white font-medium"
-        >
-          💾 Записать в журнал замеса
-        </button>
-        {savedMsg && <span className="text-sm text-green-400">{savedMsg}</span>}
-        {isWorker && <span className="text-xs text-slate-500">После записи появится QR для отправки мастеру.</span>}
-      </div>
-
-      {outPacket && <PacketOutModal packet={outPacket} onClose={() => setOutPacket(null)} />}
+interface Props {presetRecipe?:MixRecipe|null;onPresetConsumed?:()=>void}
+interface Line {key:string;componentId:string;component?:MixComponent;pct:string;actual:string}
+const empty=()=>({taskId:'',batchCode:'',recipeName:'',targetKg:'',basis:false,lines:[] as Line[],note:'',viscosity:'',fineness:'',density:'',notes:''});
+const input='min-h-11 w-full min-w-0 rounded border border-slate-700 bg-slate-900 p-2 text-sm text-white';
+const number=(value:number|undefined)=>value===undefined?'неизвестно':value.toLocaleString('ru-RU',{maximumSignificantDigits:12});
+export function GrammageCalculator(props:Props){const actor=useAuthStore(s=>s.currentUser?.id);return <CalculatorContent key={actor} {...props}/>;}
+function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
+ const tasks=useLiveQuery(async()=>(await listVisibleTasks()).filter(task=>task.stage===StageId.SLURRY),[]);
+ const actor=useAuthStore(s=>s.currentUser);const catalog=useLiveQuery(()=>db.mixComponents.toArray(),[]);
+ const [draft,setDraft]=useState(empty),[source,setSource]=useState<MixRecipe|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);
+ const [phi,setPhi]=useState(''),[shear,setShear]=useState('');const lock=useRef(false),attempt=useRef<MixBatch|null>(null);
+ useEffect(()=>{
+  if(!presetRecipe||catalog===undefined)return;
+  setSource(structuredClone(presetRecipe));setDraft({...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
+   lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))});
+  attempt.current=null;setError('');setSaved(null);setPacket(null);onPresetConsumed?.();
+ },[presetRecipe,catalog===undefined]);
+ const snapshots=useMemo(()=>draft.lines.flatMap(line=>line.component?[line.component]:[]),[draft.lines]);
+ const calculation=useMemo(()=>{
+  try{
+   if(!draft.basis)throw new Error('Подтвердите базу: доли сухого вклада 100 %, жидкие добавки — % от массы СВ');
+   const lines=draft.lines.map(line=>({componentId:line.componentId,pct:parseSlurryNumber(line.pct,true)!}));
+   return {plan:calculateSlurryPlan(lines,snapshots,parseSlurryNumber(draft.targetKg,true)!,SLURRY_BASIS),lines,error:''};
+  }catch(cause){return {plan:null,lines:[],error:cause instanceof Error?cause.message:'План недоступен'};}
+ },[draft.lines,draft.targetKg,draft.basis,snapshots]);
+ const balance=useMemo(()=>{
+  try{return slurryMassBalance(draft.lines.map(line=>({componentId:line.componentId,actualG:parseSlurryNumber(line.actual)})),snapshots);}catch{return null;}
+ },[draft.lines,snapshots]);
+ const paste=useMemo(()=>{
+  try{return calculation.plan?calcPasteProperties(calculation.plan.rows,new Map(snapshots.map(c=>[c.id,c])),{phiMax:parseSlurryNumber(phi),shearRate:parseSlurryNumber(shear)}):null;}catch{return null;}
+ },[calculation.plan,snapshots,phi,shear]);
+ const change=(key:Exclude<keyof typeof draft,'lines'>)=>(event:React.ChangeEvent<HTMLInputElement>)=>setDraft(d=>({...d,[key]:event.target.value}));
+ const lineChange=(index:number,patch:Partial<Line>)=>setDraft(d=>({...d,lines:d.lines.map((line,i)=>i===index?{...line,...patch}:line)}));
+ const save=async()=>{
+  if(!actor||lock.current||saved)return;lock.current=true;setBusy(true);setError('');
+  try{
+   if(!attempt.current){
+    if(!calculation.plan)throw new Error(calculation.error);
+    const weighings=draft.lines.map((line,i)=>({componentId:line.componentId,plannedG:calculation.plan!.rows[i].grams,actualG:parseSlurryNumber(line.actual,true)!}));
+    const now=Date.now();const run:MixBatch={id:uuidv4(),taskId:draft.taskId||undefined,measurementVersion:1,batchCode:draft.batchCode.trim(),recipeName:draft.recipeName.trim(),recipeId:source?.id,recipeSnapshot:source??undefined,
+     componentSnapshots:snapshots,recipePlan:{basis:SLURRY_BASIS,lines:calculation.lines},batchKg:parseSlurryNumber(draft.targetKg,true)!,weighings,massBalance:slurryMassBalance(weighings,snapshots),measurementUnits:SLURRY_UNITS,
+     viscosity:parseSlurryNumber(draft.viscosity),fineness:parseSlurryNumber(draft.fineness),measuredDensity:parseSlurryNumber(draft.density),measurementNote:draft.note.trim(),notes:draft.notes.trim()||undefined,
+     workerId:actor.id,recordedRole:actor.role,createdAt:now,updatedAt:now};
+    validateMeasuredSlurryBatch(run);attempt.current=run;
+   }
+   const committed=await saveSlurryBatch(attempt.current,actor.id);setSaved(committed);
+   setPacket({v:1,type:'mix-batch',stage:StageId.SLURRY,payload:committed,from:actor.id,role:actor.role,ts:Date.now()});
+  }catch(cause){setError(cause instanceof Error?cause.message:'Замес не сохранён');}finally{lock.current=false;setBusy(false);}
+ };
+ const field=(key:Exclude<keyof typeof draft,'lines'|'basis'>,label:string,decimal=false)=> <label className="block min-w-0 text-xs text-slate-300">{label}<input aria-label={label} className={input} value={draft[key]} inputMode={decimal?'decimal':undefined} onChange={change(key)} disabled={key==='recipeName'&&!!source}/></label>;
+ return <div className="space-y-3 min-w-0">
+  <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
+  <p className="text-xs text-slate-400">План СВ в кг → расчётные навески в г. Фактические массы вводятся отдельно; пустое значение неизвестно. Тип материала не определяет его содержание СВ.</p>
+  {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
+  <fieldset disabled={busy||!!attempt.current||!!saved} className="space-y-3 min-w-0">
+   {!!tasks?.length&&<label className="block text-xs text-slate-300">Ссылка на видимое задание (без изменения статуса)<select aria-label="Задание замеса" className={input} value={draft.taskId} onChange={e=>setDraft({...draft,taskId:e.target.value})}><option value="">Без задания</option>{tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label>}
+   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('batchCode','Код партии замеса')}{field('recipeName','Название состава')}{field('targetKg','План СВ, кг',true)}</div>
+   <p className="text-xs text-slate-400 break-all">{source?`Версия рецепта: ${source.name} · ${source.id} · ${source.updatedAt}`:'Источник состава: явный ручной план'}</p>
+   <label className="flex min-h-11 items-start gap-2 text-xs text-slate-300"><input aria-label="Подтверждена база процентов" className="mt-1 h-5 w-5 shrink-0" type="checkbox" checked={draft.basis} onChange={e=>setDraft({...draft,basis:e.target.checked})}/><span>Доли по сухому вкладу составляют 100 %. Для материала с 0 % СВ количество задаётся в % от плановой массы СВ. Масса раствора учитывает его явно указанное содержание СВ.</span></label>
+   <div className="flex flex-wrap gap-2">
+    {!source&&<button className="min-h-11 px-3 rounded bg-blue-700 text-sm text-white" onClick={()=>setDraft(d=>({...d,lines:[...d.lines,{key:uuidv4(),componentId:'',pct:'',actual:''}]}))}>Добавить материал</button>}
+    {source&&<button className="min-h-11 px-3 rounded bg-slate-700 text-sm text-white" onClick={()=>setSource(null)}>Перейти к ручному составу</button>}
+   </div>
+   {draft.lines.map((line,index)=>{const planned=calculation.plan?.rows[index]?.grams;let actual:number|undefined;try{actual=parseSlurryNumber(line.actual);}catch{}return <article key={line.key} className="space-y-2 rounded border border-slate-700 bg-slate-800/60 p-3 min-w-0">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+     <label className="text-xs text-slate-300">Материал {index+1}<select aria-label={`Материал ${index+1}`} disabled={!!source} className={input} value={line.componentId} onChange={e=>lineChange(index,{componentId:e.target.value,component:catalog?.find(c=>c.id===e.target.value),actual:''})}><option value="">Выберите материал</option>{[...(line.component?[line.component]:[]),...(catalog??[]).filter(c=>c.id!==line.component?.id)].map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+     <label className="text-xs text-slate-300">Доля {index+1}, %<input disabled={!!source} aria-label={`Доля ${index+1}, %`} className={input} inputMode="decimal" value={line.pct} onChange={e=>lineChange(index,{pct:e.target.value})}/></label>
+     <label className="text-xs text-slate-300">Фактическая масса {index+1}, г<input aria-label={`Фактическая масса ${index+1}, г`} className={input} inputMode="decimal" value={line.actual} onChange={e=>lineChange(index,{actual:e.target.value})}/></label>
     </div>
-  );
+    <p className="text-xs text-slate-300 break-all">{line.component?.name??'Материал не выбран'} · СВ материала: {number(line.component?.solidsMassFraction===undefined?undefined:line.component.solidsMassFraction*100)} % масс. · версия {line.component?.updatedAt??'неизвестна'}</p>
+    <p className="text-xs text-slate-400">План: {number(planned)} г · Факт: {number(actual)} г · Δ: {number(planned===undefined||actual===undefined?undefined:actual-planned)} г</p>
+    {!source&&<button className="min-h-11 px-3 rounded bg-slate-700 text-xs text-white" onClick={()=>setDraft(d=>({...d,lines:d.lines.filter((_,i)=>i!==index)}))}>Убрать строку {index+1}</button>}
+   </article>;})}
+   {!calculation.plan&&<p className="text-xs text-amber-200">План недоступен: {calculation.error}</p>}
+   <div className="space-y-1 rounded bg-slate-900 p-3 text-xs text-slate-300">
+    <p>Плановая масса смеси: {number(calculation.plan?.allTotalG)} г</p>
+    <p>Известная сумма навесок: {number(balance?.knownMassG)} г · неизвестных навесок: {balance?.missingCount??'—'}</p>
+    <p>Полная фактическая масса: {number(balance?.totalActualG)} г</p>
+    <p>СВ по навескам и составу: {number(balance?.solidsPctMass)} % масс. · сухая масса {number(balance?.solidsActualG)} г · жидкая часть {number(balance?.liquidActualG)} г</p>
+    <p>Это расчёт по записанным массам и заявленному составу, без вывода о QA или запасах.</p>
+   </div>
+   {source?.mode?.length?<details className="text-xs text-slate-400"><summary>Плановый режим исходного рецепта (не фактический)</summary><pre className="whitespace-pre-wrap break-all">{JSON.stringify(source.mode,null,2)}</pre></details>:null}
+   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('viscosity','Измеренная вязкость, мПа·с',true)}{field('fineness','Измеренный перетир, мкм',true)}{field('density','Измеренная плотность, г/см³',true)}{field('note','Основание навесок и состава')}{field('notes','Примечания / дефекты')}</div>
+   <p className="text-xs text-slate-400">Неизмеренные свойства оставьте пустыми. Модельная плотность или вязкость не подставляются в измерения и передачу.</p>
+   <details className="space-y-2 text-xs text-slate-400"><summary>Отдельная теоретическая оценка плана</summary><div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><label>Введённый φm<input aria-label="φm для модели" className={input} inputMode="decimal" value={phi} onChange={e=>setPhi(e.target.value)}/></label><label>Введённая скорость сдвига, 1/с<input aria-label="Скорость сдвига для модели" className={input} inputMode="decimal" value={shear} onChange={e=>setShear(e.target.value)}/></label></div><PastePropertiesPanel paste={paste} phiMax={Number(phi.replace(',','.'))}/></details>
+  </fieldset>
+  {error&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
+  <div className="flex flex-wrap gap-2">
+   <button disabled={busy||!!saved} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
+   {error&&attempt.current&&<button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setError('');}}>Изменить незаписанный черновик</button>}
+   {!saved&&<button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setDraft(d=>({...d,lines:d.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
+   <button disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{attempt.current=null;setSaved(null);setPacket(null);setSource(null);setDraft(empty());setError('');}}>Очистить форму для нового замеса</button>
+  </div>
+  {packet&&<PacketOutModal packet={packet} onClose={()=>setPacket(null)}/>}
+ </div>;
 }
-
-const anyStep = 'any';

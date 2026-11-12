@@ -1,3 +1,37 @@
+## 2026-11-12 — Measured slurry weighing and durable coating handover
+
+- Continued from verified remote `db5b9db51baf` on the existing feature branch.
+  Slurry now distinguishes target dry kg, planned ingredient g and explicitly
+  weighed g. Blank is unknown; entered zero remains zero. Materials declare
+  solids mass fraction explicitly (including binder solutions); dry-contribution
+  shares sum to 100%, while liquid additions are percent of target dry mass.
+  This declared planning convention is shown for confirmation, not inferred
+  from legacy recipes or material kind. Incomplete properties make predictions
+  unavailable; model density/viscosity never become measured observations.
+- Immutable batch records freeze recipe/material versions, actual masses, units,
+  basis, author/role/time and measurement note. Batch+journal save atomically;
+  failures retain the frozen attempt and fields, retries preserve identity,
+  competing batch codes and changed intent fail. Catalog edits require an active
+  local supervisor and current version. Forced/legacy packets cannot replace
+  protected measurements, handovers or a known catalog version.
+- Saved journals export without writes. Explicit coating handover+journal commit
+  before packet preparation and freeze the complete source. Mass composition
+  derives only from all entered masses and declared composition; density and
+  viscosity remain unknown unless actually entered. Legacy data remain readable
+  with uncertainty labels and are not promoted to proven measured history.
+- **446 frontend tests**, typecheck and PWA build passed. IndexedDB/component
+  checks cover missing/zero, percentages, fractional/comma inputs, incomplete
+  properties, rollback, idempotency, races, version changes and protected import.
+  Chromium **390×844 / 1365×900** passed supervisor catalog/recipe entry, worker
+  weighing, real journal failure, retained offline double retry, signed JSON/QR
+  frames, frozen source names, durable handover, unknown density, DB close/open
+  and page reload without overflow/runtime errors. Unsaved drafts survive room
+  tabs in memory; browser termination does not persist unfinished drafts.
+- No schema/native/signing/dependency/server or automatic-sync change. No physical
+  receipt, consumption, QA, stock balance or factory acceptance is inferred.
+  Exact-head Actions status is recorded after push; queued checks are not passes.
+  Next implementation: recorded material lot receipts and location history.
+
 ## 2026-11-11 — Final filling/formation review and zero-dose rejection observation
 
 - The full received count may be explicitly rejected after an observed zero
