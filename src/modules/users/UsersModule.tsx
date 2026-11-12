@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, Edit2, UserX, UserCheck } from 'lucide-react';
 import { db } from '../../core/db';
+import { exportLocalBackup } from '../../core/db/localBackup';
 import { User, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { AuthService } from '../auth/services/AuthService';
@@ -20,6 +21,31 @@ export function UsersModule(){
   const [editing,setEditing]=useState<User|null|'new'>(null);
   const [error,setError]=useState('');
   const [busy,setBusy]=useState(false);
+  const [backupBusy,setBackupBusy]=useState(false);
+  const [backupNote,setBackupNote]=useState('');
+  async function saveBackup(){
+    if(backupBusy||!window.confirm(
+      'Архив содержит пользователей, хеши локальных паролей и производственные записи. Сохраните его в защищённом месте вне телефона. Продолжить?'
+    ))return;
+    setBackupBusy(true);setBackupNote('');setError('');
+    try{
+      const archive=await exportLocalBackup();
+      const filename='production-mf-local-'+new Date().toISOString().slice(0,10)+'.json';
+      const file=new File([archive],filename,{type:'application/json'});
+      if(navigator.canShare?.({files:[file]})){
+        await navigator.share({files:[file],title:'Резервная копия Production MF'});
+      }else{
+        const url=URL.createObjectURL(file);
+        const link=document.createElement('a');
+        link.href=url;link.download=filename;document.body.appendChild(link);
+        link.click();link.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),60_000);
+      }
+      setBackupNote('Копия подготовлена. Убедитесь, что файл действительно сохранён вне телефона. Без проверки восстановления выпуск для реального производства запрещён.');
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Не удалось подготовить резервную копию');
+    }finally{setBackupBusy(false);}
+  }
 
   if(currentUser?.role!==UserRole.CHIEF)
     return <p className="text-red-200">Управление сотрудниками доступно начальнику производства.</p>;
@@ -54,6 +80,19 @@ export function UsersModule(){
         onClick={()=>{setError('');setEditing('new');}}>
         <Plus size={18}/> Добавить сотрудника
       </button>
+    </div>
+    <div className="rounded-xl border border-amber-600/40 bg-slate-800 p-3 space-y-2">
+      <p className="text-sm font-semibold text-white">Резервная копия данных этого устройства</p>
+      <p className="text-xs text-slate-300">
+        Экспорт всех локальных таблиц для восстановления на чистой установке той же версии.
+        Копия не защищена отдельным паролем: храните её в закрытом месте.
+        Импорт серверных заданий и действующих разрешений заблокирован.
+      </p>
+      <button type="button" disabled={backupBusy} onClick={()=>void saveBackup()}
+        className="rounded-lg bg-amber-700 px-4 py-2 text-sm text-white disabled:opacity-40">
+        {backupBusy?'Подготовка архива…':'Создать резервную копию'}
+      </button>
+      {backupNote&&<p role="status" className="text-xs text-amber-200">{backupNote}</p>}
     </div>
     <p className="text-xs text-slate-400">Профили здесь не создают пользователей PostgreSQL и не
       назначают права на серверные производственные партии.</p>
