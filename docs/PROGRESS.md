@@ -1,3 +1,28 @@
+## 2026-11-12 — Slurry recipe selection preserves the working draft
+
+- Reproduced silent replacement of an occupied slurry draft on recipe selection,
+  including raw actual weights, batch code, basis and frozen attempt metadata.
+  Selection during a pending production save could also reset the form while the
+  original save later completed; a failed draft checkpoint left unpersisted input
+  vulnerable to replacement in memory.
+- Empty forms still load a recipe directly. Replacing a nonempty draft requires
+  the existing native confirmation pattern; Cancel preserves both raw input and
+  the stored checkpoint. The prompt explicitly identifies the fields being
+  cleared and states that production history stays unchanged.
+- Block recipe selection during a production save/check or a known checkpoint
+  error. Finish or repair that operation, then select again. The selection does
+  not remain queued to replace the draft after saving/recovery completes.
+- Three reproducing tests failed before the four-line correction. **512 frontend
+  tests / 75 files**, typecheck and PWA build passed. Chromium 390×844 / 1365×900
+  passed fresh selection, native confirmation Cancel/accept, unchanged raw and
+  stored values, actual checkpoint failure/retry, draft reopen and subsequent
+  offline save against the explicitly chosen replacement recipe; no tested-page
+  overflow/runtime errors. The paused-save regression commits exactly the
+  original recipe/weights and one batch/journal after a blocked selection.
+- No database, recipe/material, measured-value, server/outbox, permission or
+  synchronization-policy changes. Physical OnePlus/native-dialog acceptance
+  remains open. Exact pushed-head CI/APK evidence follows in draft PR #3.
+
 ## 2026-11-12 — Phone slurry save: identify the actual required field
 
 - Reproduced the phone report with a provided valid recipe/material version,

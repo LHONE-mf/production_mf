@@ -3,6 +3,28 @@
 Scope: limited offline engineering candidate on `feat/hybrid-server-foundation`;
 PR #3 remains draft. No factory, inventory/QA or multi-device acceptance.
 
+## Slurry continuation: recipe replacement and pending saves
+
+Recipe selection previously installed a fresh empty form over the current draft
+without a replacement check. New tests reproduced silent loss of raw weights/basis on selection,
+replacement while a production write was pending, and
+loss of uncheckpointed in-memory values after a draft persistence failure.
+
+An empty form still accepts a recipe directly. A nonempty draft now requires
+native confirmation before replacement. Cancellation leaves the raw form and
+stored checkpoint unchanged. Production save/check and known checkpoint errors
+block selection; finish or repair that operation and explicitly select again.
+The original pending save retains its frozen recipe, weights and ID. No
+manufacturing record or source catalog is changed by accepting a new draft.
+
+Local 512 frontend tests / 75 files, typecheck/build and phone/desktop Chromium
+passed. Browser evidence includes real checkpoint failure/retry, native
+confirmation Cancel/accept, draft reopening and a subsequent offline save of the
+chosen new source. A controlled paused-save regression proves the original
+batch/journal commits once without its draft being replaced. No physical
+OnePlus/Capacitor dialog or installed-upgrade acceptance is inferred. Exact
+commit/CI/APK evidence is recorded on draft PR #3 after push.
+
 ## Phone follow-up: slurry save error
 
 A provided recipe and all actual weights can still trigger the old all-in-one

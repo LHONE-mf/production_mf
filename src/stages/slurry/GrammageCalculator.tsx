@@ -46,6 +46,10 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  },[recovery.ready,attempt]);
  useEffect(()=>{
   if(!presetRecipe||catalog===undefined||!recovery.ready)return;
+  if(lock.current||checking){setError('Завершите текущую запись или проверку замеса, затем выберите рецепт заново.');onPresetConsumed?.();return;}
+  if(recovery.error){setError('Сначала устраните ошибку сохранения черновика, затем выберите рецепт заново. Введённые значения остались в форме.');onPresetConsumed?.();return;}
+  const hasInput=source||attempt||phi||shear||Object.values(draft).some(value=>Array.isArray(value)?value.length>0:!!value);
+  if(hasInput&&!window.confirm(`Заменить текущий черновик рецептом «${presetRecipe.name}»? Код партии, фактические навески, основание и другие введённые значения будут очищены. Сохранённые записи производства не изменятся.`)){onPresetConsumed?.();return;}
   recovery.edit({...emptyForm(),source:structuredClone(presetRecipe),draft:{...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
    lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))}});
   setError('');setInvalidField(null);setSaved(null);setPacket(null);onPresetConsumed?.();
