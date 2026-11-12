@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Plus, Search, Edit2, UserX, UserCheck } from 'lucide-react';
 import { db } from '../../core/db';
-import { exportLocalBackup } from '../../core/db/localBackup';
+import { exportLocalBackup, inspectLocalBackup } from '../../core/db/localBackup';
+import type { LocalBackupInspection } from '../../core/db/localBackup';
 import { User, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { AuthService } from '../auth/services/AuthService';
@@ -23,6 +24,9 @@ export function UsersModule(){
   const [busy,setBusy]=useState(false);
   const [backupBusy,setBackupBusy]=useState(false);
   const [backupNote,setBackupNote]=useState('');
+  const [inspection,setInspection]=useState<LocalBackupInspection|null>(null);
+  const [inspectionError,setInspectionError]=useState('');
+  const [inspectionBusy,setInspectionBusy]=useState(false);
   async function saveBackup(){
     if(backupBusy||!window.confirm(
       'Архив содержит пользователей, хеши локальных паролей и производственные записи. Сохраните его в защищённом месте вне телефона. Продолжить?'
@@ -45,6 +49,22 @@ export function UsersModule(){
     }catch(cause){
       setError(cause instanceof Error?cause.message:'Не удалось подготовить резервную копию');
     }finally{setBackupBusy(false);}
+  }
+
+  async function inspectSavedBackup(event:React.ChangeEvent<HTMLInputElement>){
+    const input=event.currentTarget;
+    const file=input.files?.[0];
+    if(!file||inspectionBusy)return;
+    setInspectionBusy(true);setInspection(null);setInspectionError('');
+    try{
+      if(file.size>80_000_000)throw new Error('Файл слишком велик для проверки на устройстве');
+      setInspection(await inspectLocalBackup(await file.text()));
+    }catch(cause){
+      setInspectionError(cause instanceof Error?cause.message:'Не удалось прочитать файл резервной копии');
+    }finally{
+      setInspectionBusy(false);
+      input.value='';
+    }
   }
 
   if(currentUser?.role!==UserRole.CHIEF)
@@ -93,6 +113,28 @@ export function UsersModule(){
         {backupBusy?'Подготовка архива…':'Создать резервную копию'}
       </button>
       {backupNote&&<p role="status" className="text-xs text-amber-200">{backupNote}</p>}
+      <div className="border-t border-slate-600 pt-3 space-y-2">
+        <label className="block text-sm font-semibold text-slate-100" htmlFor="verify-local-backup">
+          Проверить сохранённый файл резервной копии
+        </label>
+        <p className="text-xs text-slate-300">
+          Выберите ранее сохранённый JSON-файл. Приложение проверит его формат,
+          целостность и совместимость, не изменяя текущие записи.
+        </p>
+        <input id="verify-local-backup" type="file" accept=".json,application/json"
+          disabled={inspectionBusy||backupBusy} onChange={event=>void inspectSavedBackup(event)}
+          className="block w-full text-sm text-white file:mr-3 file:rounded-lg file:border-0 file:bg-slate-600 file:px-3 file:py-2 file:text-white disabled:opacity-50" />
+        {inspectionBusy&&<p role="status" className="text-xs text-slate-300">Проверяем архив…</p>}
+        {inspectionError&&<p role="alert" className="text-xs text-red-200">Проверка не пройдена: {inspectionError}</p>}
+        {inspection&&<p role="status" className="text-xs text-green-200">
+          Файл прошёл проверку целостности и формата. Создан: {new Date(inspection.createdAt).toLocaleString('ru-RU')}.
+          Таблиц: {inspection.tableCount}; записей: {inspection.recordCount}; пользователей: {inspection.userCount}.
+        </p>}
+        <p className="text-xs text-slate-400">
+          Это проверка файла, а не пробное восстановление. Перенос данных всё равно
+          нужно проверить на отдельной пустой установке.
+        </p>
+      </div>
     </div>
     <p className="text-xs text-slate-400">Профили здесь не создают пользователей PostgreSQL и не
       назначают права на серверные производственные партии.</p>
