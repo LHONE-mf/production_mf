@@ -1,3 +1,14 @@
+## 2026-11-12 — CI recovery: wait for database readiness in session regression
+
+- PR CI at `277aa9b` caught a timing assumption: before the deliberately pending
+  identity lookup, database readiness can still show its first loading screen.
+  Push CI and standalone tests passed, but the PR run was correctly reported red.
+- Wait for the profile-check phase while the lookup remains unresolved and track
+  every protected-screen render, strengthening the no-flash assertion. No runtime
+  authorization change. Full 500 frontend tests, typecheck/build passed locally.
+- KPI implementation remained paused until this failure was diagnosed and fixed.
+  Exact-head CI/APK results must be verified after push; no merge/deployment.
+
 ## 2026-11-12 — Audit follow-up: shared-key transfer authority and input limits
 
 - Reject account/catalog/technologist-parameter and forced writes regardless of

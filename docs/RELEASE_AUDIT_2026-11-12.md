@@ -104,7 +104,24 @@ verification. Actual APK SHA-256:
 certificate SHA-256:
 `637331c73bee1ac9f07444a207b9cfd5d8bd9535641e24ad3471082c9d62f51b`.
 This public development key provides no production distribution trust.
-Subsequent commits require their own exact-source evidence on draft PR #3.
+Transfer commit `277aa9bb8fe050edb6c99d9bace3f9243ec4d674` passed
+[push web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43207794448)
+and [standalone tests](https://github.com/LHONE-mf/production_mf/actions/runs/43207801890),
+but its [PR CI](https://github.com/LHONE-mf/production_mf/actions/runs/43207801833)
+failed: the session test asserted the *second* loading phase before database
+readiness/live-query delivery had completed. It saw the earlier safe database
+loading screen, not protected content. Server tests passed. Work paused to fix
+this timing assumption before KPI implementation. The test now waits with the
+identity lookup still pending and records every protected-screen render, so it
+also detects a transient flash. Runtime authorization was not relaxed. Local
+500-test suite, typecheck/build passed after correction; exact follow-up SHA
+checks must still be inspected. Its predecessor's
+[APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43207794387)
+succeeded; artifact `13940626122` exists, source SHA and public-development
+signature provenance verified. Actual APK SHA-256:
+`5d9a3df0cdce7b0795a5b3116d0255fb8bd10f3732b61a2cda070aaadf5fb357`.
+This APK does not make the failed PR CI green. Subsequent source/APK evidence is
+on draft PR #3.
 
 ## Dependency audit — lockfiles unchanged
 
