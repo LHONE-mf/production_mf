@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react-dom/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { db, initializeDatabase } from '../../core/db';
+import { exportLocalBackup } from '../../core/db/localBackup';
 import { useAuthStore } from '../../core/store/authStore';
 import { AuthService } from '../auth/services/AuthService';
 import { UsersModule } from './UsersModule';
@@ -60,4 +61,27 @@ describe('real local employee management',()=>{
     await vi.waitFor(()=>expect(screen.textContent).toContain('Worker Real'));
     expect(screen.textContent).not.toContain('Козлов Д.С.');
   });
+  it('checks an archived file without overwriting local work',async()=>{
+    await initializeDatabase();
+    const chief=await AuthService.createFirstLocalAdmin({
+      fullName:'Local Tester',login:'local.test',password:'test-password-2026',
+    });
+    await db.table('journal').put({id:'test-entry',stage:'storage',workerId:chief.id});
+    const archive=await exportLocalBackup();
+    useAuthStore.getState().login(chief);
+    const screen=await mount();
+    const picker=screen.querySelector('#verify-local-backup') as HTMLInputElement;
+    expect(picker).toBeTruthy();
+    const transfer=new DataTransfer();
+    transfer.items.add(new File([archive],'backup.json',{type:'application/json'}));
+    picker.files=transfer.files;
+    await act(async()=>{
+      picker.dispatchEvent(new Event('change',{bubbles:true}));
+      await new Promise(resolve=>setTimeout(resolve,100));
+    });
+    await vi.waitFor(()=>expect(screen.textContent).toContain('Файл прошёл проверку'));
+    expect(screen.textContent).toContain('записей: 2');
+    expect(await db.table('journal').get('test-entry')).toBeDefined();
+  });
+
 });
