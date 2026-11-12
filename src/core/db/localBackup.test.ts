@@ -55,4 +55,41 @@ describe('local backup/restore safety',()=>{
     await expect(restoreLocalBackup('not json')).rejects.toThrow();
     expect(await db.tables.reduce(async (p,table)=>(await p)+(await table.count()),Promise.resolve(0))).toBe(0);
   });
+  it('round-trips a real Blob attachment with its MIME type',async()=>{
+    await db.open();
+    await db.table('users').put({id:'chief',login:'chief',fullName:'Operator',password:'hash',role:'chief',isActive:true});
+    await db.table('journal').put({id:'blob',stage:'storage',workerId:'chief',params:{
+      attachment:new Blob([new Uint8Array([0,128,255])],{type:'application/octet-stream'}),
+    }});
+    const saved=await exportLocalBackup();
+    await db.transaction('rw',db.tables,async()=>{for(const table of db.tables)await table.clear();});
+    await restoreLocalBackup(saved);
+    const attachment=(await db.table('journal').get('blob')).params.attachment as Blob;
+    expect(attachment).toBeInstanceOf(Blob);
+    expect(attachment.type).toBe('application/octet-stream');
+    expect(Array.from(new Uint8Array(await attachment.arrayBuffer()))).toEqual([0,128,255]);
+  });
+
+  it('rolls back the entire restore if a row violates an IndexedDB key constraint',async()=>{
+    await db.open();
+    await db.table('users').put({id:'chief',login:'chief',fullName:'Operator',password:'hash',role:'chief',isActive:true});
+    await db.table('journal').bulkPut([
+      {id:'one',stage:'storage',workerId:'chief'},
+      {id:'two',stage:'storage',workerId:'chief'},
+    ]);
+    const saved=await exportLocalBackup();
+    const archive=JSON.parse(saved);
+    const journals=archive.payload.tables.find(([name]:[string,unknown])=>name==='journal')[1];
+    // Keep a valid checksum: simulate a structurally well-formed archive whose
+    // two journal rows collide on the same primary key during bulkAdd.
+    journals[1]=journals[0];
+    const digest=await crypto.subtle.digest('SHA-256',
+      new TextEncoder().encode(JSON.stringify(archive.payload)));
+    archive.sha256=Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+    await db.transaction('rw',db.tables,async()=>{for(const table of db.tables)await table.clear();});
+    await expect(restoreLocalBackup(JSON.stringify(archive))).rejects.toThrow();
+    expect(await db.users.count()).toBe(0);
+    expect(await db.journal.count()).toBe(0);
+  });
+
 });
