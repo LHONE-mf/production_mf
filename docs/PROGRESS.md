@@ -1,3 +1,27 @@
+## 2026-11-12 — Audit follow-up: honest live KPI and report totals
+
+- Chain yield remains unavailable without verified matching lot genealogy;
+  independent stage totals are declared observations, never QA or accepted stock.
+  Remove unsupported per-stage yield labels and cells×50 worker ranking.
+- Distinguish unavailable, explicitly recorded zero and partial known+unknown
+  totals without coercing blank/missing legacy fields. Keep historical DB rows
+  unchanged; assembly intake/station counters never become declared cell output.
+- Observe Dexie while open; use output-declaration dates for assembly, explicit
+  date windows and exclusion warnings, and current protected task visibility.
+  A fresh read timestamp admits just-saved records immediately. Reports share the
+  numeric rules and clarify that saved formation fields do not prove completion.
+- Failing regressions preceded corrections. **506 frontend tests / 74 files**,
+  typecheck/PWA build and Chromium 390×844 / 1365×900 passed unrelated lots,
+  unknown vs zero, legacy values, live insertion, date windows, reports and
+  offline navigation without overflow/runtime errors.
+- CI-recovery `ef604db` PR/push CI, tests and APK all succeeded; source, APK digest
+  and public-development signature provenance verified. Details in release audit.
+  Physical Android file-share/picker, installed upgrade, force-stop and restore
+  remain unperformed; browser checks do not close that release gate.
+- No database/dependency/server/signing change, automatic synchronization, merge
+  or deployment. Next gate: phone smoke/recovery evidence, then approved physical
+  source/pairing/QA policy and separately enrolled devices against deployed TLS.
+
 ## 2026-11-12 — CI recovery: wait for database readiness in session regression
 
 - PR CI at `277aa9b` caught a timing assumption: before the deliberately pending

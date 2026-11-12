@@ -5,7 +5,7 @@ PR #3 remains draft. No factory, inventory/QA or multi-device acceptance.
 
 ## Confirmed versus unverified at the audit head
 
-- Confirmed: remote HEAD is `141cfd87f317b3ccbba8e39f3e401ebc74fd8030`;
+- Confirmed: at audit start remote HEAD was `141cfd87f317b3ccbba8e39f3e401ebc74fd8030`;
   the older checkout was fast-forwarded, preserving the new backup/checker work.
   Exact-head [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43193658555)
   and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43193658656)
@@ -91,19 +91,72 @@ size/count limits, conflicting frames, expiry, flooding and aggregate memory.
 Frontend typecheck, **500 tests / 72 files** and PWA build passed. Native BLE,
 camera and actual WebView behavior still require physical acceptance.
 
+## P1 truthful live KPI and reports
+
+The chain-yield card is now unavailable until a verified matching lot genealogy
+exists. It never divides independent assembly/formation totals. Stage quantities
+remain separate **declared local observations**, not accepted stock or QA output.
+Removed QA-sounding per-stage yield percentages as well; counts remain visible.
+
+One numeric subtotal helper distinguishes no valid observation (`—`), an explicit
+recorded zero (`0`), and known values alongside unknowns (`N + ?`). Blank strings,
+null, missing/invalid values and unsafe counts are not coerced into zero. Partial
+cards show known/missing counts. Invalid totals fail unavailable rather than
+showing overflow. Legacy fields remain readable as declared values and are never
+rewritten. New assembly intake/station records without a separate cell-output
+declaration contribute unknown output, not their placeholder historical counters;
+station scrap units are not converted into cell scrap.
+
+KPI observes Dexie while open. Rolling windows exclude invalid/future dates with
+a visible count, use the cell-output declaration time for assembly, and use
+record creation time for other observations. A just-saved record uses the fresh
+read time rather than the dashboard's old mount time. Focus/minute/lease-expiry
+checks re-evaluate dates and the existing protected `listVisibleTasks` view.
+Reports show the same unknown/partial rules for all-time saved formation fields;
+its wording no longer claims those entries are completed processes. Worker
+quantities stay in separate units, sorted by name; the old invented cells×50
+ranking is removed. No lot matching, conversion, physical yield or stock is inferred.
+
+Evidence: five UI regressions reproduced unrelated-lot yield, false zero, stale
+open-screen values, wrong output date windows and report coercion; an additional
+regression caught just-saved records being excluded by a stale clock snapshot.
+**506 frontend tests / 74 files**, typecheck and PWA build passed. Chromium
+390×844 / 1365×900 passed missing values, independent unrelated lots, unavailable
+yield, immediate open-screen insertion, partial legacy totals, reports and
+offline navigation without overflow/runtime errors. Screens inspected at phone
+width. No data migration, seeded app records or physical acceptance implied.
+
+## Recovery delivery assessment
+
+The existing export uses Web Share files when `navigator.canShare` supports them,
+otherwise a Blob/download anchor. The read-only checker uses a file input and
+`File.text()`. Browser file download, picker/check and separate empty-profile
+restore were exercised with isolated TEST data. The UI reports a prepared file
+and asks the operator to verify durable external saving; a successful API call
+is not evidence that a file is recoverable outside the app. Actual Capacitor
+WebView share availability, Blob delivery, Android picker and installed upgrade/
+force-stop remain **not performed** here. There is no native-device/emulator
+access in this executor. This gap is a release blocker, not proof of data loss
+or a reason to clear a data-bearing app. Follow the phone procedure below.
+
 ## Exact pushed-commit evidence
 
 | Commit | GitHub checks | APK artifact |
 | --- | --- | --- |
 | `60ac88f046cca2a426dc06584bf943e0c39f4a74` | [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43205196446) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43205196435) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43205188594), artifact `13937746221`, `app-release-signed`, exists and is unexpired |
+| `ef604db21030f4d1c6f9b13f97251bb07ae488bb` | [PR web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43208335261), [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43208327176) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43208335235) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43208327091), artifact `13940871721`, exists/unexpired; source SHA, APK digest and public-development signature provenance verified |
 
-The downloaded APK archive's `release-provenance.txt` matches that source SHA,
+The downloaded session-fix APK archive's `release-provenance.txt` matches
+`60ac88f046cca2a426dc06584bf943e0c39f4a74`,
 reports `signing_mode=public-development`, and records successful v1/v2 signature
 verification. Actual APK SHA-256:
 `a9ce0ea48b94e41316301826b027dff5a8a585df13b7119863e016c86f32df18`;
 certificate SHA-256:
 `637331c73bee1ac9f07444a207b9cfd5d8bd9535641e24ad3471082c9d62f51b`.
 This public development key provides no production distribution trust.
+The CI-recovery APK digest at `ef604db` is
+`d34fb4499cda1a654289283f1b197431cb9327c6328b2027f30fa0d67e6b92e4`;
+its recorded certificate is the same public development certificate above.
 Transfer commit `277aa9bb8fe050edb6c99d9bace3f9243ec4d674` passed
 [push web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43207794448)
 and [standalone tests](https://github.com/LHONE-mf/production_mf/actions/runs/43207801890),
@@ -114,8 +167,9 @@ loading screen, not protected content. Server tests passed. Work paused to fix
 this timing assumption before KPI implementation. The test now waits with the
 identity lookup still pending and records every protected-screen render, so it
 also detects a transient flash. Runtime authorization was not relaxed. Local
-500-test suite, typecheck/build passed after correction; exact follow-up SHA
-checks must still be inspected. Its predecessor's
+500-test suite, typecheck/build passed after correction. Follow-up `ef604db`
+passed PR/push CI, standalone tests and APK checks as recorded above. The transfer
+commit's
 [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43207794387)
 succeeded; artifact `13940626122` exists, source SHA and public-development
 signature provenance verified. Actual APK SHA-256:
@@ -140,9 +194,7 @@ any newly reachable high/critical advisory before a candidate is distributed.
 
 ## Remaining ordered work
 
-- P1: replace cross-stage aggregate yield with unavailable lineage-dependent
-  yield and truthful independent observation totals; refresh while open.
-- P1 physical gate: run the [phone smoke procedure](ONE_DAY_RELEASE_GATE.md),
+- P1 physical gate (next): run the [phone smoke procedure](ONE_DAY_RELEASE_GATE.md),
   including an external saved file and a separate empty-install restore. Public
   development signing is unsuitable for production distribution.
 - P2 / M0–M5: calibration/source evidence, approved pairing policy, physical

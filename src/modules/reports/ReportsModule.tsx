@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { useAuthStore } from '../../core/store/authStore';
+import { recordedTotal, displayRecordedTotal, recordedTotalNote } from '../../core/manufacturing/recordedTotals';
 import { TaskStatus, UserRole } from '../../core/types';
 
 /** Local data summary only. No fabricated plan adherence, output or KPI ratings. */
@@ -31,10 +32,7 @@ export function ReportsModule(){
   const max=Math.max(1,...days.map(d=>d.count));
   const recentJournal=[...data.journal].sort((a,b)=>
     new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime()).slice(0,10);
-  const formed=data.formations.reduce((sum,record)=>{
-    const n=Number(record.cellsOut);
-    return sum+(Number.isSafeInteger(n)&&n>=0?n:0);
-  },0);
+  const formed=recordedTotal(data.formations.map(record=>record.cellsOut),true);
   const userRows=data.users.filter(user=>user.isActive)
     .map(user=>({...user,assigned:data.tasks.filter(t=>t.assignedTo===user.id).length,
       completed:done.filter(t=>t.assignedTo===user.id).length}));
@@ -49,12 +47,13 @@ export function ReportsModule(){
         ['Доступных заданий',total],
         ['Завершённых заданий',done.length],
         ['Завершено сегодня',finishedToday],
-        ['Заявленный выход формовки, шт.',formed],
+        ['Заявленный выход формовки, шт.',displayRecordedTotal(formed)],
       ].map(([label,value])=><div key={label} className="rounded-xl border border-slate-700 bg-slate-800 p-4">
         <p className="text-xs text-slate-400">{label}</p>
         <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
       </div>)}
     </div>
+    <p className="text-xs text-slate-400">Формовка: {recordedTotalNote(formed)}. —: нет значения; + ?: частичный итог. Пустые исторические поля не считаются нулём.</p>
     <div className="rounded-xl border border-slate-700 bg-slate-800 p-4">
       <h2 className="mb-3 font-semibold text-white">Завершённые задачи за 7 дней</h2>
       <p className="mb-3 text-xs text-slate-400">
@@ -89,7 +88,7 @@ export function ReportsModule(){
       </section>
     </div>
     <p className="text-xs text-slate-400">Сумма выхода формовки — сумма заявленных полей
-      завершённых записей, без проверки дублей, статуса контроля качества или прихода на склад.</p>
+      сохранённых записей за всё время, без подтверждения завершения процесса, проверки дублей, статуса контроля качества или прихода на склад.</p>
   </section>;
 }
 
