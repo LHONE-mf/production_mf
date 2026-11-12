@@ -85,7 +85,7 @@ describe('local backup/restore safety',()=>{
     await db.table('journal').put({id:'receipt',stage:'storage',workerId:'chief'});
     const saved=await exportLocalBackup();
     const report=await inspectLocalBackup(saved);
-    expect(report.createdAt).toMatch(/^2026-/);
+    expect(report.createdAt).toBe(JSON.parse(saved).createdAt);
     expect(report.tableCount).toBe(db.tables.length);
     expect(report.recordCount).toBe(2);
     expect(report.userCount).toBe(1);
