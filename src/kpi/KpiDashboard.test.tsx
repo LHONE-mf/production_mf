@@ -38,7 +38,7 @@ it('never computes yield from unrelated assembly and formation lots', async () =
 });
 
 it('distinguishes no observation, explicit zero and partial historical totals while refreshing live', async () => {
-  await render(); expect(value('После формировки')).toBe('—'); expect(value('Замешано пасты')).toBe('—');
+  await render(); expect(value('После формировки')).toBe('—'); expect(value('Цель сухой массы')).toBe('—');
   await act(async () => db.formationRuns.add(formation('zero', 0)));
   await vi.waitFor(() => expect(value('После формировки')).toBe('0'));
   await act(async () => db.formationRuns.bulkAdd([formation('missing', undefined), formation('blank', ''), formation('null', null), formation('bad', NaN)]));
@@ -84,4 +84,15 @@ it('reports unknown/blank legacy output as unavailable and updates an explicit z
   await vi.waitFor(() => expect(value('Заявленный выход формовки, шт.')).toBe('0 + ?'));
   expect(node.textContent).toContain('без значения: 2');
   expect((await db.formationRuns.get('blank'))?.cellsOut).toBe('');
+});
+
+it('labels dry-solids targets as plans and keeps small recorded quantities visible', async () => {
+  const timestamp=Date.now();
+  await db.mixBatches.add({id:'small-target',recipeName:'TEST planned target',batchKg:0.025,weighings:[],workerId:'operator',createdAt:timestamp,updatedAt:timestamp});
+  await db.coatRuns.add({id:'short-coverage',foilType:'TEST recorded foil',ovenTempsC:[],mode:'continuous',segLengthsM:[0.125],sideALengthM:0.125,sideBLengthM:0,workerId:'operator',createdAt:timestamp,updatedAt:timestamp});
+  await render();
+  expect(value('Цель сухой массы')).toBe('0.025 кг');
+  expect(card('Цель сухой массы')?.textContent).toContain('план');
+  expect(value('Покрытие A+B')).toBe('0.125 м');
+  expect(node.textContent).not.toContain('Замешано пасты');
 });

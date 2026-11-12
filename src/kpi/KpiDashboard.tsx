@@ -222,8 +222,8 @@ export const KpiDashboard: React.FC = () => {
         <KpiCard label="Годность цепочки" value="—" sub="Не подтверждена связь партий сборки и формировки" tone="warn" />
         <KpiCard label="Средняя КУЭ" value={kpi.avgCoulomb != null ? kpi.avgCoulomb.toFixed(1) + '%' : '—'} sub={`${kpi.coulombCount}/${kpi.wForm.length} записей со значением; заявленные измерения`} tone="info" />
         <KpiCard label="Ёмкость 5-го цикла" value={kpi.avgCap5 != null ? kpi.avgCap5.toFixed(2) + ' А·ч' : '—'} sub={`${kpi.cap5Count}/${kpi.wForm.length} записей со значением; среднее заявленное`} tone="info" />
-        <KpiCard label="Замешано пасты" value={kpi.mixKg.value === null ? '—' : show(kpi.mixKg, 1) + ' кг'} sub={`${kpi.wMix.length} замесов · ${recordedTotalNote(kpi.mixKg)}`} tone="info" />
-        <KpiCard label="Намазано" value={kpi.coatMeters.value === null ? '—' : show(kpi.coatMeters, 0) + ' м'} sub={`покрытие A+B, не длина рулона · ${recordedTotalNote(kpi.coatMeters)}`} tone="info" />
+        <KpiCard label="Цель сухой массы" value={kpi.mixKg.value === null ? '—' : show(kpi.mixKg) + ' кг'} sub={`план СВ, не фактическая масса пасты · ${recordedTotalNote(kpi.mixKg)}`} tone="info" />
+        <KpiCard label="Покрытие A+B" value={kpi.coatMeters.value === null ? '—' : show(kpi.coatMeters) + ' м'} sub={`покрытие A+B, не длина рулона · ${recordedTotalNote(kpi.coatMeters)}`} tone="info" />
         <KpiCard label="Открытые задания" value={String(kpi.openTasks)} sub={`текущие доступные; просрочено: ${kpi.overdueTasks}`} tone={kpi.overdueTasks > 0 ? 'bad' : 'good'} />
       </div>
 

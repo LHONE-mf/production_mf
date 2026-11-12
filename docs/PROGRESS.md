@@ -1,3 +1,16 @@
+## 2026-11-12 — KPI review: dry-mass plans and small recorded quantities
+
+- Traced `MixBatch.batchKg` to a planned dry-solids target, not weighed paste
+  output. Label it **Цель сухой массы**, explicitly marked as a plan; coverage
+  remains separately declared A+B lengths. No material balance is inferred.
+- Preserve small recorded totals (`0.025 kg`, `0.125 m`) instead of rounding them
+  to a displayed zero. Stored records, units and measured values are unchanged.
+- Regression failed before correction. **507 frontend tests / 74 files**,
+  typecheck/build and Chromium phone/desktop passed the final label/precision
+  check alongside live totals and offline reports. Physical acceptance open.
+- Previous KPI head `3eff4e0` passed exact PR/push CI and tests; its APK artifact
+  exists at that SHA. Final exact-head evidence follows push on draft PR #3.
+
 ## 2026-11-12 — Audit follow-up: honest live KPI and report totals
 
 - Chain yield remains unavailable without verified matching lot genealogy;

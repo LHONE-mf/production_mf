@@ -126,6 +126,19 @@ yield, immediate open-screen insertion, partial legacy totals, reports and
 offline navigation without overflow/runtime errors. Screens inspected at phone
 width. No data migration, seeded app records or physical acceptance implied.
 
+### Final quantity-label correction
+
+Final review traced `MixBatch.batchKg` to the planned dry-solids target (the
+slurry journal already distinguishes this from actual weighed mass). KPI no
+longer labels that target as prepared paste: the card says **Цель сухой массы**
+and explicitly marks it as a plan. Coverage is **Покрытие A+B**, retaining its
+separate coverage-versus-roll-length explanation. These two totals no longer
+round small recorded quantities to displayed zero: e.g. `0.025 kg` target and
+`0.125 m` coverage remain visible. No measured paste mass or material balance is
+inferred from the target. The regression failed before correction; final local
+**507 frontend tests / 74 files**, typecheck/build and phone/desktop Chromium
+passed. Source observations remain unchanged.
+
 ## Recovery delivery assessment
 
 The existing export uses Web Share files when `navigator.canShare` supports them,
@@ -145,6 +158,7 @@ or a reason to clear a data-bearing app. Follow the phone procedure below.
 | --- | --- | --- |
 | `60ac88f046cca2a426dc06584bf943e0c39f4a74` | [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43205196446) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43205196435) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43205188594), artifact `13937746221`, `app-release-signed`, exists and is unexpired |
 | `ef604db21030f4d1c6f9b13f97251bb07ae488bb` | [PR web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43208335261), [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43208327176) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43208335235) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43208327091), artifact `13940871721`, exists/unexpired; source SHA, APK digest and public-development signature provenance verified |
+| `3eff4e021ec43741194dbd44af0d86ff5d45ec89` | [PR web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43209867248), [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43209857320) and [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43209867147) succeeded | [APK run](https://github.com/LHONE-mf/production_mf/actions/runs/43209857313), artifact `13939743979`, exists/unexpired; source SHA, APK digest and public-development signature provenance verified |
 
 The downloaded session-fix APK archive's `release-provenance.txt` matches
 `60ac88f046cca2a426dc06584bf943e0c39f4a74`,
@@ -157,6 +171,9 @@ This public development key provides no production distribution trust.
 The CI-recovery APK digest at `ef604db` is
 `d34fb4499cda1a654289283f1b197431cb9327c6328b2027f30fa0d67e6b92e4`;
 its recorded certificate is the same public development certificate above.
+The first KPI APK at `3eff4e0` has actual SHA-256
+`52815e87be0c8ece0e46b29c4b4ae1bf1d1f2ad8038a1f1f451a83e9d6c05ad2`,
+with matching source and the same public development certificate.
 Transfer commit `277aa9bb8fe050edb6c99d9bace3f9243ec4d674` passed
 [push web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43207794448)
 and [standalone tests](https://github.com/LHONE-mf/production_mf/actions/runs/43207801890),
