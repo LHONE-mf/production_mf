@@ -18,8 +18,12 @@ export async function receiveSortingHandoff(payload:unknown):Promise<SortingWork
     throw new Error('Некорректный пакет станции сортировки');
   const incoming=payload as SortingWorkflow;
   validateSortingWorkflow(incoming);
-  if(incoming.stages.length===0 || incoming.finalizedSortRunId!==undefined)
-    throw new Error('Передаются только завершённые станции незавершённой сортировки');
+  // The Mass operator finalizes on the final workstation and transfers the
+  // resulting sort-run. Never clone a fully inspected but unfinalized batch to
+  // two devices, which could otherwise issue different final report IDs.
+  if(incoming.stages.length===0 || incoming.stages.length>2 ||
+    incoming.finalizedSortRunId!==undefined)
+    throw new Error('Передача станций доступна только после Visual или Thickness; Mass завершает сортировку и передаёт итог');
   return db.transaction('rw',[db.sortingWorkflows,db.cuttingRuns,db.sortSpecs,db.sortRuns],async()=>{
     const source=await db.cuttingRuns.get(incoming.cutRunId);
     const spec=await db.sortSpecs.get(incoming.specSnapshot.id);
