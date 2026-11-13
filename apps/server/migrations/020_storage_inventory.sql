@@ -122,9 +122,9 @@ CREATE INDEX IF NOT EXISTS inventory_operations_by_stock
 
 -- Never alter accepted operation history. Correct stock through new events.
 CREATE OR REPLACE FUNCTION forbid_inventory_operation_rewrite()
-RETURNS trigger LANGUAGE plpgsql AS $ BEGIN
+RETURNS trigger LANGUAGE plpgsql AS $inventory_fn$ BEGIN
   RAISE EXCEPTION 'inventory operation history is immutable';
-END $;
+END $inventory_fn$;
 DROP TRIGGER IF EXISTS inventory_operation_immutable ON inventory_operations;
 CREATE TRIGGER inventory_operation_immutable BEFORE UPDATE OR DELETE
   ON inventory_operations FOR EACH ROW EXECUTE FUNCTION forbid_inventory_operation_rewrite();
