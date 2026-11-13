@@ -293,6 +293,17 @@ export function registerStorageRoutes(app:FastifyInstance,pool:Pool) {
         difference:after.difference});
     });
   });
+  app.get('/storage/capabilities',async(request,reply)=>{
+    const parsed=pageSchema.safeParse(request.query);
+    if(!parsed.success || parsed.data.after)return reply.code(400).send({error:'invalid_capabilities_query'});
+    const actor=await authorized(pool,request,reply,parsed.data.deviceId);
+    if(!actor)return reply;
+    const manager=actor.role==='chief' || !!(await pool.query(
+      'SELECT 1 FROM storage_warehouse_managers WHERE organization_id=$1 AND user_id=$2 AND enabled=true',
+      [actor.organization_id,actor.id])).rowCount;
+    return {actorId:actor.id,organizationId:actor.organization_id,canManageCatalog:actor.role==='chief',
+      canRelease:actor.role==='chief',canMoveIssue:manager,canReconcile:manager};
+  });
   app.get('/storage/materials',async(request,reply)=>{
     const parsed=pageSchema.safeParse(request.query);
     if(!parsed.success)return reply.code(400).send({error:'invalid_material_query'});
