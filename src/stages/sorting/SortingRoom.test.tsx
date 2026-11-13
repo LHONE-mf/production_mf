@@ -10,7 +10,9 @@ let root:Root|undefined,node:HTMLDivElement|undefined;
 afterEach(async()=>{if(root)await act(async()=>root!.unmount());root=undefined;node?.remove();useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();});
 async function mount(){
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
- useAuthStore.setState({currentUser:{id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
+ const operator={id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()};
+ await db.users.add(operator);
+ useAuthStore.setState({currentUser:operator});
  await db.cuttingRuns.add({id:'cut',incomingId:'roll',electrodeType:'strip',goodCount:10,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1});
  await db.sortSpecs.add({id:'spec',batchName:'roll',cutRunId:'cut',electrodeType:'strip',parameterName:'Sorting KD',unit:'g',categories:[
   {name:'A',criteria:'Mass grade A',minMass:1,maxMass:1.5,minUm:70,maxUm:80},
@@ -104,6 +106,30 @@ it('grades only by mass after passing thickness, keeping grade totals separate',
  const saved=(await db.sortRuns.toArray())[0];
  expect(saved).toMatchObject({goodCount:10,rejected:3,buckets:[{categoryName:'A',count:5},{categoryName:'B',count:2}]});
  expect(saved.sortingWorkflow?.stages.map(s=>s.station)).toEqual(['visual','thickness','mass']);
+});
+
+it('restores unfinished station counts after closing and reopening the Sorting room',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await vi.waitFor(()=>expect(page.textContent).toContain('Автосохранение формы'));
+ await typeCount('Прошло контроль','7');
+ await typeCount('Отбраковано на станции','3');
+ await vi.waitFor(async()=>{
+  const raw=(await db.localFormDrafts.get(JSON.stringify(['operator','sorting'])))?.payload as
+   {entries?:Record<string,{passed?:string;rejected?:string}>}|undefined;
+  const entry=raw?.entries?.[JSON.stringify(['cut',0])];
+  expect(entry).toMatchObject({passed:'7',rejected:'3'});
+ });
+ await act(async()=>{root!.unmount();});node?.remove();root=undefined;
+ node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+ await act(async()=>{root!.render(<SortingModule/>);});
+ await vi.waitFor(()=>expect(node!.textContent).toContain('roll'));
+ await clickRoomButton('Сортировать');
+ await vi.waitFor(()=>expect(node!.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('7'));
+ expect(node!.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('3');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
+ expect(await db.sortRuns.count()).toBe(0);
 });
 
 async function referenceRoom(){
