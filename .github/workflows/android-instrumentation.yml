@@ -1,8 +1,15 @@
 name: Android emulator instrumentation
 
-# Emulator boot is expensive. Run this only when native Android behavior needs verification.
-# Fast web/server and offline-sync checks still run on every push.
+# Emulator boot is expensive. Run it automatically only for native system-
+# window changes (such as an Android 15+ status-bar regression); manual runs
+# remain available for the other instrumentation suites.
 on:
+  push:
+    branches: [feat/hybrid-server-foundation]
+    paths:
+      - 'android/app/src/main/java/ru/liion/production/MainActivity.java'
+      - 'android/app/src/androidTest/java/ru/liion/production/ProductionMfLaunchTest.java'
+      - '.github/workflows/android-instrumentation.yml'
   workflow_dispatch:
 
 permissions:
