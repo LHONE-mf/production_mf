@@ -48,11 +48,13 @@ function validatePage<T extends {id:string}>(
   raw:unknown,key:'materials'|'locations',
   valid:(x:unknown)=>x is T,limit:number,after?:string,
 ):InventoryPage<T>{
-  if(!isRecord(raw)||!Array.isArray(raw[key])||raw[key].length>limit||
+  if(!isRecord(raw))throw new Error('Invalid inventory catalogue response');
+  const rows=raw[key];
+  if(!Array.isArray(rows)||rows.length>limit||
       typeof raw.hasMore!=='boolean')
     throw new Error('Invalid inventory catalogue response');
   const items:T[]=[];let previous=after??'';
-  for(const item of raw[key] as unknown[]){
+  for(const item of rows as unknown[]){
     if(!valid(item)||item.id<=previous)
       throw new Error('Invalid inventory catalogue row ordering or identity');
     items.push(item);previous=item.id;
