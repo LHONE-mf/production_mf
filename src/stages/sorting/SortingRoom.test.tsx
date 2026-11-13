@@ -40,6 +40,7 @@ it('rejects invalid counts and a failed station write without losing operator in
  const page=await mount();
  await clickRoomButton('Начать сортировку');
  await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
  await typeCount('Прошло контроль','1.5');await typeCount('Отбраковано на станции','8.5');
  expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
  expect([...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить 1.'))?.disabled).toBe(true);
@@ -59,12 +60,13 @@ it('completes visual-thickness-mass in pass/fail mode, excluding failures and em
  const page=await mount();
  await clickRoomButton('Начать сортировку');
  await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
  await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 1.');
- await vi.waitFor(()=>expect(page.querySelector('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
  await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 2.');
- await vi.waitFor(()=>expect(page.textContent).toContain('3. Контроль массы'));
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 3.'))).toBe(true));
  await typeCount('Прошло контроль','7');await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 3.');
  await vi.waitFor(()=>expect(page.textContent).toContain('Итоги сортировки'));
@@ -86,9 +88,10 @@ it('grades only by mass after passing thickness, keeping grade totals separate',
  await act(async()=>{grading.click();});
  await clickRoomButton('Начать сортировку');
  await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
  await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 1.');
- await vi.waitFor(()=>expect(page.textContent).toContain('2. Контроль толщины'));
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
  await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 2.');
  await vi.waitFor(()=>expect(page.querySelector('[aria-label="Количество сорта A"]')).toBeTruthy());
