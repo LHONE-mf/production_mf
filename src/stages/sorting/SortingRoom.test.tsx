@@ -87,7 +87,7 @@ it('retains spec editor on failed write and saves locally without forbidden pack
  expect(await db.sortSpecs.count()).toBe(0);
  await clickText('Сохранить локально');
  await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(1));
- expect(page.textContent).toContain('Сохранена локально');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Сохранена локально'));
  expect(page.querySelector('[data-testid="packet"]')).toBeNull();
  expect(page.textContent).not.toContain('Принудительно');
 });
@@ -109,7 +109,7 @@ it('does not close defect editor or offer transfer when its write fails',async()
  expect(page.querySelector('[data-testid="packet"]')).toBeNull();
  await clickText('Сохранить локально');
  await vi.waitFor(async()=>expect(await db.defectRegistry.count()).toBe(1));
- expect(page.textContent).toContain('Сохранено локально');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Сохранено локально'));
  expect(page.querySelector('[data-testid="packet"]')).toBeNull();
 });
 
