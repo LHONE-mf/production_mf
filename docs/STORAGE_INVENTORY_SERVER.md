@@ -103,9 +103,30 @@ Stock records always retain their manufacturer lot and receipt identity.
 
 Changes of these four kinds are now represented in the immutable confirmed
 change feed and validated by the inventory client's explicit pull function.
-There is **no automatic or offline Android outbox for non-receipt mutations**.
-Do not issue new movement requests from an offline phone yet; use controlled
-online operations after an authorized client interface has been added.
+A new **independent Dexie v2 stock-operation outbox** preserves provisional
+transfers, corrections, reservations and reservation releases across application
+restarts. It never changes the confirmed stock projection locally. Changes
+must start from a previously synchronized stock snapshot; stale revisions,
+overcommit, partial moves and a second provisional operation for the same
+stock in the same user/device scope are rejected locally. The server remains
+authoritative for access rights, production-batch references, reservation
+ownership, available quantities and the final result. Pending offline changes
+are proposals only and do not grant physical stock authority.
+
+Use `queueInventoryStockChange(session,scope,draft)` to persist a request and
+`pushPendingInventoryStockChanges(session,scope)` with a **fresh device proof**
+after reconnection. Exactly the originally queued operation ID and request
+are sent on every retry. HTTP 409 creates an explicit conflict record; HTTP
+400/404 creates a rejected record; unknown network responses and expired
+authentication preserve the pending operation unchanged. Conflicts are not
+automatically rebased or erased. A successful acknowledgment must match the
+frozen base snapshot and expected next revision, and is written atomically
+with removal of the pending request. Newer confirmed snapshots never regress.
+`inventoryStockQueueForScope` allows an eventual UI to display and review
+provisional operations; the current Storage operator UI is still NOT
+connected to these functions and no automatic stock synchronization is
+activated. A trusted warehouse interface and manual conflict-resolution
+workflow are required before factory use.
 The PostgreSQL reservation integration fixture explicitly synthesizes a
 released state in its disposable database to verify server arithmetic; it is
 not a manufacturing QA authorization mechanism.
@@ -117,17 +138,18 @@ before the first network attempt**. Never mint a replacement operation ID
 when retrying a failed, unknown or timed-out request. The server compares the
 full normalized request, actor, device and stock ID for idempotency.
 
-Server-confirmed receipts alone are visible in stock queries and the change
-feed. A future client outbox may show locally saved operations as
-**provisional**, but must never add them to confirmed/available stock.
+Only server-confirmed operations are visible in stock queries and the change
+feed. Local provisional receipts or stock operations never increase or decrease
+the confirmed/available balance.
 After a feed response, a client must apply the events and checkpoint its
 cursor atomically; it must not advance its cursor before local persistence.
 
 Inventory transactions use a per-organization advisory lock to serialize
 their commit order. This is an intentionally simple first implementation
 that may require a scalable transactional-outbox design at high volume.
-There is no automatic Android inventory synchronization or local stock
-projection in this slice.
+There is no automatic Android inventory synchronization. Confirmed
+per-scope snapshots are stored only after explicit, validated server
+acknowledgments or atomic change-feed application.
 
 ## Test expectations and next phases
 
@@ -136,11 +158,10 @@ Run `npm ci && npm run typecheck && npm test && npm run build` under
 `POSTGRES_TEST_URL` with database name `production_mf_ci`.
 The CI migration step validates 020 before integration tests.
 
-**Next:** authenticated server reservation/issue/return with real batch
-ownership and no negative balances; explicitly approved release/quarantine
-policy; Android provisional transaction outbox with deduplication, conflict
-resolution and durable read-cursor updates; warehouse operator screens and
-offline/restart tests; factory physical inventory reconciliation.
+**Next:** real operator screens for review/confirmation and manual conflict
+handling; approved quality-release policy; physical issuing/returns with
+provenance; end-to-end two-device tests and factory stock reconciliation.
+No automatic inventory sync or live deployment is approved.
 
 Until those steps and real two-device tests pass, this is a
 **development-only server foundation**, not an accepted manufacturing stock
