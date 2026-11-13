@@ -15,6 +15,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { estimateCuttingYield, prepareCuttingRun, readCuttingYield } from './cutMath';
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 
 type Tab = 'incoming' | 'cut' | 'journal' | 'comments';
 
@@ -63,25 +64,23 @@ export function CuttingModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
+      <RoomWorkspaceHeader icon="✂️" title="Нарезка электродов"
+        description="Выберите рулон с каландра, отдельно оцените раскрой и запишите фактические количества годных и дефектных электродов."/>
+      <nav aria-label="Разделы нарезки" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
+        {tabs.map(t => (
+          <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}
+            className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}>
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {tab === 'incoming' && (
         <IncomingTab items={incoming ?? []} onOpen={(id) => { setSelectedId(id); setTab('cut'); }} />
       )}
 
-      {tab === 'cut' && (
+      {/* Preserve unfinished measurements when viewing other room tabs. */}
+      <div hidden={tab !== 'cut'}>
         <CutTab
           key={selectedId??incoming?.[0]?.id??'empty'}
           incoming={incoming ?? []}
@@ -97,7 +96,7 @@ export function CuttingModule() {
             });
           }}
         />
-      )}
+      </div>
 
       {tab === 'journal' && (
         <JournalTab
@@ -217,6 +216,17 @@ function CutTab({
   const calc=ci&&geometry?estimateCuttingYield(ci.electrodeType,{...geometry,
     electrodeLengthMm:actualLen===''?(ci.electrodeLengthMm??NaN):Number(actualLen)}):null;
 
+  const changeSource=(nextId:string,control:HTMLSelectElement)=>{
+    if(!ci||nextId===ci.id)return;
+    const entered=[kerfMm,physicalLengthM,electrodeWidthMm,usableWebWidthMm,actualLen,goodCount,defectCount,breaks,defects,notes]
+      .some(value=>value.trim()!=='');
+    if(entered&&!window.confirm('Заменить рулон? Несохранённые измерения и подсчёты будут очищены.')){
+      control.value=ci.id;
+      return;
+    }
+    onSelect(nextId);
+  };
+
   if (!ci) {
     return <p className="text-slate-400 text-sm">Нет входящих рулонов — дождитесь пакет «cutting-roll».</p>;
   }
@@ -242,9 +252,10 @@ function CutTab({
     <fieldset disabled={saving} className="grid md:grid-cols-2 gap-4">
       {/* Левая колонка: выбор рулона + расчёт */}
       <div className="space-y-3">
-        <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
-          <label className={labelCls}>Рулон с каландра</label>
-          <select aria-label="Рулон для нарезки" className={inputCls} value={ci.id} onChange={(e) => onSelect(e.target.value)}>
+        <div aria-label="Источник и задание нарезки" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
+          <h3 className="text-white text-sm font-semibold mb-2">1. Источник и параметры задания</h3>
+           <label className={labelCls}>Рулон с каландра</label>
+          <select aria-label="Рулон для нарезки" className={inputCls} value={ci.id} onChange={(e) => changeSource(e.target.value,e.target)}>
             {incoming.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.roll.mixName} · {shapeLabel(i.electrodeType)} · {new Date(i.createdAt).toLocaleDateString('ru-RU')}
@@ -262,8 +273,8 @@ function CutTab({
           </div>
         </div>
 
-        <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
-          <div className="text-white text-sm font-semibold">🧮 Расчёт выхода</div>
+        <div aria-label="Теоретический расчёт раскроя" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
+          <h3 className="text-white text-sm font-semibold">2. Теоретическая оценка раскроя (не физический выход)</h3>
           <div>
             <label className={labelCls}>Измеренная длина полотна для нарезки, м</label>
             <input aria-label="Измеренная длина полотна, м" type="number" min="0" step="any" className={inputCls}
@@ -297,11 +308,12 @@ function CutTab({
       </div>
 
       {/* Правая колонка: фактический результат */}
-      <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div className="text-white text-sm font-semibold">📝 Фактический результат нарезки</div>
+      <div aria-label="Фактический результат нарезки" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-3">
+        <h3 className="text-white text-sm font-semibold">3. Фактический результат нарезки</h3>
+         <p className="text-xs text-slate-300">Записывайте только подсчитанные количества. Теоретическая оценка не переносится в фактический результат.</p>
         {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
         {message && <p role="status" className="text-sm text-emerald-200">{message}</p>}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Факт. длина электрода, мм (пусто — по заданию для оценки)</label>
             <input type="number" className={inputCls} placeholder={String(ci.electrodeLengthMm ?? '')}
@@ -314,7 +326,7 @@ function CutTab({
           </div>
           <div>
             <label className={labelCls}>Годных электродов *</label>
-            <input type="number" min={0} className={inputCls} placeholder={calc ? String(calc.expected) : ''}
+            <input type="number" min={0} className={inputCls} placeholder="Фактический подсчёт"
               aria-label="Годных электродов" value={goodCount} onChange={(e) => setGoodCount(e.target.value)} />
           </div>
           <div>
@@ -333,13 +345,15 @@ function CutTab({
           <textarea rows={2} className={inputCls} placeholder="Партия, номер станка…"
             value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        <div className="flex flex-wrap gap-2 pt-1">
+        <h4 className="text-sm font-semibold text-white border-t border-slate-700 pt-3">4. Проверка и сохранение результата</h4>
+         <p className="text-xs text-slate-300">Проверьте источник и подсчёт: сохранение создаёт локальную запись и отдельный пакет передачи, но не означает QA-допуск.</p>
+         <div className="flex flex-wrap gap-2 pt-1">
           <button
             onClick={() => void save()}
             disabled={!workerId || saving || !goodCount || !defectCount}
             className="min-h-11 px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm text-white"
           >
-            💾 Сохранить и отправить на сортировку (QR/текст/BLE)
+            💾 Сохранить результат и подготовить передачу
           </button>
 
         </div>
