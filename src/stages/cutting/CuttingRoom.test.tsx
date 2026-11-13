@@ -85,8 +85,35 @@ it('resets the draft when selecting another source roll',async()=>{
   await act(async()=>{await db.cuttingRolls.add({...incoming,id:'other',createdAt:2,roll:{...incoming.roll,id:'other-roll',mixName:'Another roll'}});});
   const select=page.querySelector<HTMLSelectElement>('[aria-label="Рулон для нарезки"]')!;
   await vi.waitFor(()=>expect(select.options.length).toBe(2));
+  vi.spyOn(window,'confirm').mockReturnValue(true);
   await act(async()=>{select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(window.confirm).toHaveBeenCalled();
   expect(page.querySelector<HTMLInputElement>('[aria-label="Измеренная длина полотна, м"]')!.value).toBe('');
   expect(page.querySelector<HTMLInputElement>('[aria-label="Годных электродов"]')!.value).toBe('');
   expect(page.textContent).not.toContain('Ожидаемо электродов:');
+});
+
+it('keeps an unfinished cutting record across room tabs and protects source changes',async()=>{
+  const page=await mount();
+  expect(page.textContent).toContain('Локальная запись · офлайн');
+  const nav=page.querySelector('nav[aria-label="Разделы нарезки"]')!;
+  expect(nav).not.toBeNull();
+  expect([...nav.querySelectorAll('button')].every(b=>b.className.includes('min-h-11'))).toBe(true);
+  await act(async()=>{edit('Измеренная длина полотна','10');edit('Годных электродов','90');});
+  await act(async()=>{[...nav.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал нарезки'))!.click();});
+  await act(async()=>{[...nav.querySelectorAll('button')].find(b=>b.textContent==='✂️ Нарезка')!.click();});
+  expect(page.querySelector<HTMLInputElement>('[aria-label="Измеренная длина полотна, м"]')!.value).toBe('10');
+  expect(page.querySelector<HTMLInputElement>('[aria-label="Годных электродов"]')!.value).toBe('90');
+  expect(page.querySelector('[aria-label="Источник и задание нарезки"]')).not.toBeNull();
+  expect(page.querySelector('[aria-label="Фактический результат нарезки"]')).not.toBeNull();
+  expect(page.querySelector('[aria-label="Теоретический расчёт раскроя"]')).not.toBeNull();
+  await act(async()=>{await db.cuttingRolls.add({...incoming,id:'other',createdAt:2,roll:{...incoming.roll,id:'roll2',mixName:'Second source roll'}});});
+  const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+  const select=page.querySelector<HTMLSelectElement>('[aria-label="Рулон для нарезки"]')!;
+  await vi.waitFor(()=>expect(select.options.length).toBe(2));
+  await act(async()=>{select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(confirm).toHaveBeenCalled();
+  expect(page.querySelector<HTMLInputElement>('[aria-label="Измеренная длина полотна, м"]')!.value).toBe('10');
+  expect(page.querySelector<HTMLInputElement>('[aria-label="Годных электродов"]')!.value).toBe('90');
+  expect(await db.cuttingRuns.count()).toBe(0);
 });
