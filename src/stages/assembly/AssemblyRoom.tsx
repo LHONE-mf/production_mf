@@ -85,12 +85,12 @@ export function AssemblyModule() {
     await appendAssemblyOperation(selected,op,currentUser.id);
   };
 
-  const sendToMaster = (run: AssemblyRun, forced: boolean) => {
+  const sendToMaster = (run: AssemblyRun) => {
     if (!currentUser) return;
     const fresh = run;
     setOutPacket({
       v: 1, type: 'assembly-run', stage: StageId.ASSEMBLY,
-      payload: fresh, role:currentUser.role, from: currentUser.id, ts: Date.now(), forced,
+      payload: fresh, role:currentUser.role, from: currentUser.id, ts: Date.now(),
     });
   };
 
@@ -207,12 +207,9 @@ export function AssemblyModule() {
                 <div className="flex gap-1">
                   <button onClick={() => { setSelectedId(r.id); setTab('li-electrodes'); }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-white">Открыть</button>
-                  <button onClick={() => sendToMaster(r, false)}
+                  <button onClick={() => sendToMaster(r)}
                     className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">📤 Отправить</button>
-                  {isTechManager && (
-                    <button onClick={() => sendToMaster(r, true)}
-                      className="px-2 py-1 bg-amber-700 hover:bg-amber-600 rounded text-xs text-white" title="forced → slave">📌 Принудительно</button>
-                  )}
+
                 </div>
               </div>
             </div>
