@@ -125,8 +125,38 @@ export interface SortBucket {
   avgMassG?: number;          // средняя измеренная масса, г
 }
 
+
+// Sorting process: Visual → Thickness → Mass, where only Mass assigns grades.
+// These are operator decisions and counts, not automatically inferred QA results.
+export type SortingMode = 'pass-fail' | 'grading';
+export type SortingStation = 'visual' | 'thickness' | 'mass';
+export interface SortingStationResult {
+  station: SortingStation;
+  inputCount: number;
+  passedCount: number;
+  rejectedCount: number;
+  workerId: string;
+  recordedAt: number;
+  grades?: { categoryName: string; count: number }[]; // Mass only, grading mode
+  rejectionReasons?: { reason: string; count: number }[];
+  notes?: string;
+}
+export interface SortingWorkflow {
+  id: string; // equal to the source CutRun.id; only one workflow per cutting result
+  cutRunId: string;
+  cutRunSnapshot: CutRun;
+  specSnapshot: SortSpec;
+  mode: SortingMode;
+  stages: SortingStationResult[];
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  finalizedSortRunId?: string;
+}
+
 // Результат сортировки партии (запись журнала оператора)
 export interface SortRun {
+  sortingWorkflow?: SortingWorkflow; // frozen 3-station history; absent on legacy summary records
   cutRunId?:string;
   cutRunSnapshot?:CutRun;
   specSnapshot?:SortSpec;

@@ -5,7 +5,7 @@ import type { PendingTaskOperation } from '../sync/hybridOutbox';
 import type { ArchivedTaskConflict } from '../sync/taskConflictResolution';
 import type { OfflineTaskEditLease } from '../sync/offlineTaskLease';
 import type { DeferredTaskChange } from '../sync/deferredTaskChange';
-import { User, Task, TechCard, SyncDevice, SyncLog, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
+import { User, Task, TechCard, SyncDevice, SyncLog, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, SortingWorkflow, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
   localFormDrafts!: Table<LocalFormDraft, string>;
@@ -38,6 +38,7 @@ export class AppDatabase extends Dexie {
   // Комната сортировки электродов
   sortSpecs!: Table<SortSpec, string>;           // спецификации технолога (параметры из КД)
   sortRuns!: Table<SortRun, string>;             // журнал сортировки (разнос по категориям)
+  sortingWorkflows!: Table<SortingWorkflow, string>; // three-station sorting, keyed by source cutting run
   defectRegistry!: Table<DefectEntry, string>;   // реестр дефектов электродов (критичные/не критичные)
   // Комната сборки элементов
   assemblyRuns!: Table<AssemblyRun, string>;     // партии сборки: подсекции, выход ячеек, дефекты
@@ -165,6 +166,9 @@ export class AppDatabase extends Dexie {
 
     // v20: actor/room-scoped unfinished forms; existing records/outbox unchanged.
     this.version(20).stores({localFormDrafts:'key, actorId, scope'});
+
+    // v21: additive three-station Sorting workflow. No existing records are transformed.
+    this.version(21).stores({ sortingWorkflows: 'id, cutRunId, mode, updatedAt' });
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
     // Комнаты нарезки и сортировки разделены (Шаг S4). Миграция однократная,
