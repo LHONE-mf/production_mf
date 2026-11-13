@@ -111,6 +111,38 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
     expect(await pullInventoryChanges(session,scope)).toEqual({received:1,hasMore:false,cursor:2});
     expect(await confirmedInventoryForScope(scope)).toEqual([expect.objectContaining(stock)]);
   });
+  it('atomically applies authoritative transfer and correction snapshots after receipt',async()=>{
+    const operationIds=[
+      '77777777-7777-4777-8777-777777777777',
+      '88888888-8888-4888-8888-888888888888',
+      '99999999-9999-4999-8999-999999999999',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    ];
+    const snapshots=[
+      stock,
+      {...stock,revision:2,onHand:stock.onHand+100,available:stock.available+100},
+      {...stock,revision:3,onHand:stock.onHand+100,available:stock.available+100,
+        locationId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},
+      {...stock,revision:4,onHand:stock.onHand+100,available:stock.available-400,
+        reserved:500,locationId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},
+    ];
+    const kinds=['receive','adjust','transfer','reserve'];
+    const changes=operationIds.map((operationId,i)=>({
+      sequence:i+1,operationId,kind:kinds[i],stock:snapshots[i],
+      recordedAt:new Date().toISOString(),
+    }));
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+      changes,nextCursor:4,hasMore:false,
+    })));
+    expect(await pullInventoryChanges(session,scope)).toEqual({
+      received:4,hasMore:false,cursor:4,
+    });
+    expect(await confirmedInventoryForScope(scope))
+      .toEqual([expect.objectContaining(snapshots[3])]);
+    expect((await inventoryOutbox.metadata.get(
+      scope.serverUrl+'::'+scope.organizationId+'::'+scope.actorId+'::'+scope.deviceId+':cursor'
+    ))?.value).toBe(4);
+  });
   it('isolates inventory data by server organization actor and device',async()=>{
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
       changes:[{sequence:1,operationId:'77777777-7777-4777-8777-777777777777',
