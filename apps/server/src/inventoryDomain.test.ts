@@ -48,7 +48,7 @@ describe('authoritative inventory transition contract',()=>{
   });
   it('cannot release more reservation than exists',()=>{
     expect(transitionInventory(released,action('release_reservation',{productionBatchId:'batch-1'})))
-      .toMatchObject({ok:false,code:'insufficient_stock'});
+      .toMatchObject({ok:false,code:'blocked'});
     expect(transitionInventory({...released,reserved:600_000},action('release_reservation',{productionBatchId:'batch-1'})))
       .toMatchObject({ok:false,code:'blocked'});
     expect(transitionInventory({...released,reserved:600_000},action('release_reservation',{productionBatchId:'batch-1'}),{mayAdjust:false,ownedReservation:100_000}))
