@@ -59,7 +59,7 @@ function toStock(row: Record<string, unknown>): InventoryStock {
   };
 }
 
-async function inventoryPermission(pool: Pool, actor: Principal, required: 'operator'|'manager') {
+export async function inventoryPermission(pool: Pool, actor: Principal, required: 'operator'|'manager') {
   if (actor.role === 'chief') return true;
   const result = await pool.query(
     'SELECT level FROM inventory_access WHERE organization_id=$1 AND user_id=$2 AND active=true',
