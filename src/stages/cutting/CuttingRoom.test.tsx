@@ -43,7 +43,7 @@ it('does not infer a physical cutting length from summed A+B coverage',async()=>
 it('rejects fractional actual piece counts without saving or exporting',async()=>{
   const page=await mount();
   await act(async()=>{edit('Годных электродов','1.5');edit('С дефектами','0');});
-  await act(async()=>{[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить и отправить'))!.click();});
+  await act(async()=>{[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить результат и подготовить передачу'))!.click();});
   expect(await db.cuttingRuns.count()).toBe(0);
   expect(page.querySelector('[data-testid="outgoing-packet"]')).toBeNull();
   expect(page.querySelector('[role="alert"]')).not.toBeNull();
@@ -56,7 +56,7 @@ it('saves measured geometry once, retains inputs after failure and reopens the s
   expect(page.textContent).toContain('100 шт');
   const fail=()=>{throw new Error('Test write failure');};
   db.cuttingRuns.hook('creating',fail);
-  const save=[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить и отправить'))!;
+  const save=[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить результат и подготовить передачу'))!;
   try{
     await act(async()=>{save.click();});
     await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('Test write failure'));
