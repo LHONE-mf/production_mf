@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
-  CutRun, CuttingIncoming, ElectrodeShape, StageId, SyncPacket, UserRole,
+  CutRun, CuttingIncoming, ElectrodeShape, StageId, SyncPacket,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -27,7 +27,6 @@ const shapeLabel = (s: ElectrodeShape) =>
 
 export function CuttingModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
-  const isTechManager = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
