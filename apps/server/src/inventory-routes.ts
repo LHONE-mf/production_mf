@@ -26,7 +26,7 @@ const receiptSchema = device.extend({
   manufacturerLot: z.string().trim().min(1).max(200),
   supplier: z.string().trim().min(1).max(200).optional(),
   receiptReference: z.string().trim().min(1).max(200).optional(),
-  expectedRevision: z.literal(0), quantity: z.number().int().positive().safe(),
+  expectedRevision: z.literal(0), quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   reason: z.string().trim().min(1).max(2000),
 }).strict();
 const accessSchema = device.extend({
