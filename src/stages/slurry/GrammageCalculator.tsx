@@ -38,21 +38,35 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const setPhi=(phi:string)=>recovery.edit(form=>({...form,phi}));const setShear=(shear:string)=>recovery.edit(form=>({...form,shear}));
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[checking,setChecking]=useState(false);
  const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);const lock=useRef(false);
+ const [pendingRecipe,setPendingRecipe]=useState<MixRecipe|null>(null);
  const [invalidField,setInvalidField]=useState<string|null>(null);const fieldInputs=useRef<Record<string,HTMLInputElement|null>>({});
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(null);return;}let active=true;setChecking(true);
   void db.mixBatches.get(attempt.id).then(row=>{if(!active)return;if(row){if(JSON.stringify(row)!==JSON.stringify(attempt))throw Error('Сохранённый замес отличается от восстановленной попытки; история сохранена');setSaved(row);}}).catch(e=>{if(active)setError(String(e));}).finally(()=>{if(active)setChecking(false);});
   return()=>{active=false;};
  },[recovery.ready,attempt]);
+ function applyRecipe(preset:MixRecipe){
+  if(!catalog||!recovery.ready||lock.current||checking||recovery.error){
+   setError('Перед заменой рецепта дождитесь сохранения текущих данных или устраните ошибку черновика.');
+   return;
+  }
+  recovery.edit({...emptyForm(),source:structuredClone(preset),draft:{...empty(),recipeName:preset.name,targetKg:String(preset.dryMassKg),basis:preset.basis===SLURRY_BASIS,
+   lines:preset.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))}});
+  setPendingRecipe(null);setError('');setInvalidField(null);setSaved(null);setPacket(null);
+ }
  useEffect(()=>{
   if(!presetRecipe||catalog===undefined||!recovery.ready)return;
   if(lock.current||checking){setError('Завершите текущую запись или проверку замеса, затем выберите рецепт заново.');onPresetConsumed?.();return;}
   if(recovery.error){setError('Сначала устраните ошибку сохранения черновика, затем выберите рецепт заново. Введённые значения остались в форме.');onPresetConsumed?.();return;}
   const hasInput=source||attempt||phi||shear||Object.values(draft).some(value=>Array.isArray(value)?value.length>0:!!value);
-  if(hasInput&&!window.confirm(`Заменить текущий черновик рецептом «${presetRecipe.name}»? Код партии, фактические навески, основание и другие введённые значения будут очищены. Сохранённые записи производства не изменятся.`)){onPresetConsumed?.();return;}
-  recovery.edit({...emptyForm(),source:structuredClone(presetRecipe),draft:{...empty(),recipeName:presetRecipe.name,targetKg:String(presetRecipe.dryMassKg),basis:presetRecipe.basis===SLURRY_BASIS,
-   lines:presetRecipe.lines.map(line=>({key:uuidv4(),componentId:line.componentId,component:catalog.find(c=>c.id===line.componentId),pct:String(line.pct),actual:''}))}});
-  setError('');setInvalidField(null);setSaved(null);setPacket(null);onPresetConsumed?.();
+  if(hasInput){
+   // Browser confirm() is unreliable in Android WebViews.
+   // Keep the working draft until the operator explicitly accepts the change.
+   setPendingRecipe(structuredClone(presetRecipe));
+   onPresetConsumed?.();return;
+  }
+  applyRecipe(presetRecipe);
+  onPresetConsumed?.();
  },[presetRecipe,catalog===undefined,recovery.ready]);
  const snapshots=useMemo(()=>draft.lines.flatMap(line=>line.component?[line.component]:[]),[draft.lines]);
  const calculation=useMemo(()=>{
@@ -104,6 +118,20 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
   <p className="text-xs text-slate-400">План СВ в кг → расчётные навески в г. Фактические массы вводятся отдельно; пустое значение неизвестно. Тип материала не определяет его содержание СВ.</p>
   <LocalDraftStatus draft={recovery} disabled={busy||checking}/>
+  {pendingRecipe&&<section role="alertdialog" aria-label="Подтверждение замены рецепта"
+    className="rounded-lg border-2 border-amber-600 bg-slate-900 p-4 space-y-3">
+    <h4 className="text-amber-200 font-semibold">Заменить текущий черновик?</h4>
+    <p className="text-sm text-slate-200">Новый рецепт: <strong>{pendingRecipe.name}</strong>.
+      Код партии, фактические навески и другие незавершённые данные будут сброшены.
+      Сохранённые записи производства не изменятся.</p>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" disabled={busy||checking||!!recovery.error}
+        className="min-h-11 rounded bg-amber-700 px-3 text-white disabled:opacity-40"
+        onClick={()=>applyRecipe(pendingRecipe)}>Заменить черновик рецептом</button>
+      <button type="button" className="min-h-11 rounded bg-slate-700 px-3 text-white"
+        onClick={()=>setPendingRecipe(null)}>Оставить текущий черновик</button>
+    </div>
+  </section>
   {attempt&&!saved&&!recovery.saving&&!recovery.error&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
   {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
   <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
