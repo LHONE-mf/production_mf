@@ -88,7 +88,10 @@ it('requires local approved KD and local Cutting history; no catalogs are instal
 it('rejects missing, premature, finalized, and wrong-stage handoffs without mutation',async()=>{
   const {visual}=await sample();
   await db.sortingWorkflows.clear();
-  for(const value of [null,{}, {...visual,stages:[]}, {...visual,finalizedSortRunId:'final-1'},
+  const mass=await recordSortingStation(cut.id,{station:'mass',passedCount:8,rejectedCount:1,
+    workerId:'mass-operator',grades:[{categoryName:'A',count:5},{categoryName:'B',count:3}]});
+  for(const value of [null,{}, {...visual,stages:[]}, mass,
+    {...visual,finalizedSortRunId:'final-1'},
     {...visual,stages:[{...visual.stages[0],station:'thickness'}]}]){
     await expect(receiveSortingHandoff(value)).rejects.toThrow();
   }
