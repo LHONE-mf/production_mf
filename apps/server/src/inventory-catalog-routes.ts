@@ -84,7 +84,7 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     if(!result)return;
     if(result.actor.role==='chief'){
       return {level:'chief',canRecordReceipts:true,canManageCatalog:true,
-        canCorrectStock:true};
+        canCorrectStock:false,correctionRoleEligible:true};
     }
     const found=await pool.query(`SELECT level FROM inventory_access
       WHERE organization_id=$1 AND user_id=$2 AND active=true`,
@@ -94,6 +94,6 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     if(level!=='operator'&&level!=='manager')
       return reply.code(403).send({error:'forbidden'});
     return {level,canRecordReceipts:true,canManageCatalog:level==='manager',
-      canCorrectStock:level==='manager'};
+      canCorrectStock:false,correctionRoleEligible:level==='manager'};
   });
 }
