@@ -43,7 +43,7 @@ describe('validated warehouse catalogue client',()=>{
     expect(await loadInventoryLocations(session,scope,undefined,1)).toEqual({
       items:[location(first)],hasMore:false,nextAfter:null,
     });
-    expect(fetchMock.mock.calls[1][0]).toContain('after='+first);
+    expect(String(fetchMock.mock.calls[1][0])).toContain('after='+first);
     for(const call of fetchMock.mock.calls){
       expect(call[1].headers.Authorization).toBe('Bearer '+session.accessToken);
       expect(call[1].headers['x-device-proof']).toBe(session.deviceProofToken);
