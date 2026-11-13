@@ -112,7 +112,7 @@ describe("applyPacket security (Э1)", () => {
     const p = await sign(makePacket({ type: "user" as any, payload: { id: "u-9", login: "x", fullName: "X", role: UserRole.WORKER } }));
     const res = await applyPacket(p);
     expect(res.ok).toBe(false);
-    expect(res.message).toMatch(/только мастер/);
+    expect(res.message).toMatch(/Общий ключ/);
   });
 
   it("подписанный journal-пакет применяется", async () => {

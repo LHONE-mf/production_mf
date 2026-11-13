@@ -3,21 +3,24 @@
 // Цепочка данных: каландр/технолог → (cutting-roll) сюда → оператор режет и фиксирует
 // результат (годные/дефекты) → (cut-run) на участок сортировки / master.
 
-import React, { useMemo, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
-  CutRun, CuttingIncoming, ElectrodeShape, StageId, SyncPacket, UserRole,
+  CutRun, CuttingIncoming, ElectrodeShape, StageId, SyncPacket,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
+import { estimateCuttingYield, prepareCuttingRun, readCuttingYield } from './cutMath';
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 
 type Tab = 'incoming' | 'cut' | 'journal' | 'comments';
 
 const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
+  'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
 const shapeLabel = (s: ElectrodeShape) =>
@@ -25,7 +28,6 @@ const shapeLabel = (s: ElectrodeShape) =>
 
 export function CuttingModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
-  const isTechManager = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,7 +43,7 @@ export function CuttingModule() {
   }, []);
 
   const tasks = useLiveQuery(async () => {
-    const all = await db.tasks.toArray();
+    const all = await listVisibleTasks();
     return all.filter((t) => t.stage === StageId.CUTTING || t.stage === StageId.CALENDARING);
   }, []);
 
@@ -62,53 +64,48 @@ export function CuttingModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
+      <RoomWorkspaceHeader icon="✂️" title="Нарезка электродов"
+        description="Выберите рулон с каландра, отдельно оцените раскрой и запишите фактические количества годных и дефектных электродов."/>
+      <nav aria-label="Разделы нарезки" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
+        {tabs.map(t => (
+          <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}
+            className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}>
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {tab === 'incoming' && (
         <IncomingTab items={incoming ?? []} onOpen={(id) => { setSelectedId(id); setTab('cut'); }} />
       )}
 
-      {tab === 'cut' && (
+      {/* Preserve unfinished measurements when viewing other room tabs. */}
+      <div hidden={tab !== 'cut'}>
         <CutTab
+          key={selectedId??incoming?.[0]?.id??'empty'}
           incoming={incoming ?? []}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          canForce={isTechManager}
-          hasUser={!!currentUser}
-          onSave={(run, forced) => {
-            const fresh = { ...run, workerId: currentUser!.id, updatedAt: Date.now() };
-            db.cuttingRuns.put(fresh);
+          workerId={currentUser?.id}
+          onSave={async (run) => {
+            const fresh = { ...run, updatedAt: Date.now() };
+            await db.cuttingRuns.add(fresh);
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'cut-run', stage: StageId.CUTTING,
+              payload: fresh, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
-      )}
+      </div>
 
       {tab === 'journal' && (
         <JournalTab
           runs={runs ?? []}
           incoming={incoming ?? []}
-          canForce={isTechManager}
-          onSend={(r, forced) => {
-            const fresh = { ...r, updatedAt: Date.now() };
-            db.cuttingRuns.put(fresh);
+          onSend={(r) => {
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'cut-run', stage: StageId.CUTTING,
+              payload: r, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
@@ -161,6 +158,7 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
                 <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200">{shapeLabel(ci.electrodeType)}</span>
                 {ci.coatingType && <span>Покрытие: <b className="text-white">{ci.coatingType}</b></span>}
                 {ci.electrodeLengthMm ? <span>L электрода: <b className="text-white">{ci.electrodeLengthMm} мм</b></span> : null}
+                {ci.electrodeWidthMm ? <span>Ширина пластины (задание): <b className="text-white">{ci.electrodeWidthMm} мм</b></span> : null}
                 {ci.webWidthMm ? <span>Ширина полотна: <b className="text-white">{ci.webWidthMm} мм</b></span> : null}
               </div>
               <div className="mt-1 text-xs text-slate-400">
@@ -168,6 +166,7 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
                 Длина A: {ci.roll.sideALengthM ?? '—'} м · B: {ci.roll.sideBLengthM ?? '—'} м
                 {ci.calender?.hasDefects ? <span className="text-amber-400"> · ⚠ дефекты прокатки</span> : null}
               </div>
+              {ci.instruction && <p className="text-xs text-slate-400 break-all">Задание: {ci.instruction.recordedBy} · {new Date(ci.instruction.recordedAt).toLocaleString('ru-RU')}</p>}
               {ci.techNotes && <div className="mt-1 text-xs text-emerald-300">📝 Технолог: {ci.techNotes}</div>}
             </div>
             <button
@@ -184,50 +183,25 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
 }
 
 // ---------- ✂️ Нарезка: калькулятор выхода + форма результата ----------
-interface CalcResult {
-  perMeter: number;   // пластин/полос с 1 м ленты
-  usableM: number;    // доступная длина, м
-  expected: number;   // ожидаемое количество
-  kerfNote: string;
-}
-
-function calcYield(ci: CuttingIncoming, kerfMm: number): CalcResult {
-  const lenMm = ci.electrodeLengthMm ?? 0;
-  const totalM = (ci.roll.sideALengthM ?? 0) + (ci.roll.sideBLengthM ?? 0);
-  const kerf = Math.max(kerfMm, 0);
-  if (lenMm <= 0 || totalM <= 0) return { perMeter: 0, usableM: totalM, expected: 0, kerfNote: '' };
-  if (ci.electrodeType === 'strip') {
-    // полосы: лента режется поперёк, шаг = длина электрода + ширина ножа
-    const pitch = lenMm + kerf;
-    const perMeter = 1000 / pitch;
-    return {
-      perMeter, usableM: totalM, expected: Math.floor(totalM * perMeter),
-      kerfNote: `шаг реза ${pitch.toFixed(1)} мм`,
-    };
-  }
-  // призматические: сколько пластин влазит в ширину полотна + резы по длине
-  const w = ci.webWidthMm ?? 0;
-  if (w <= 0) return { perMeter: 0, usableM: totalM, expected: 0, kerfNote: '' };
-  const cols = Math.floor((w + kerf) / (lenMm + kerf));
-  const perMeter = Math.max(cols, 0) * (1000 / (lenMm + kerf));
-  return {
-    perMeter, usableM: totalM, expected: Math.floor(totalM * perMeter),
-    kerfNote: `${Math.max(cols, 0)} шт в ряду по ширине полотна`,
-  };
-}
-
 function CutTab({
-  incoming, selectedId, onSelect, onSave, canForce, hasUser,
+  incoming, selectedId, onSelect, onSave, workerId,
 }: {
   incoming: CuttingIncoming[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onSave: (run: CutRun, forced: boolean) => void;
-  canForce: boolean;
-  hasUser: boolean;
+  onSave: (run: CutRun) => Promise<void>;
+  workerId?: string;
 }) {
   const ci = incoming.find((i) => i.id === selectedId) ?? incoming[0] ?? null;
-  const [kerfMm, setKerfMm] = useState(1);
+  const [kerfMm, setKerfMm] = useState('');
+  const [physicalLengthM,setPhysicalLengthM]=useState('');
+  const [electrodeWidthMm,setElectrodeWidthMm]=useState('');
+  const [usableWebWidthMm,setUsableWebWidthMm]=useState('');
+  const [runId,setRunId]=useState(uuidv4);
+  const [saving,setSaving]=useState(false);
+  const savingRef=useRef(false);
+  const [error,setError]=useState('');
+  const [message,setMessage]=useState('');
   const [actualLen, setActualLen] = useState('');
   const [goodCount, setGoodCount] = useState('');
   const [defectCount, setDefectCount] = useState('');
@@ -235,40 +209,53 @@ function CutTab({
   const [defects, setDefects] = useState('');
   const [notes, setNotes] = useState('');
 
-  const calc = useMemo(() => (ci ? calcYield(ci, Number(kerfMm) || 0) : null), [ci, kerfMm]);
+  const geometry=[physicalLengthM,kerfMm,electrodeWidthMm,usableWebWidthMm].some(value=>value!=='')
+    ?{physicalLengthM:physicalLengthM===''?NaN:Number(physicalLengthM),kerfMm:kerfMm===''?NaN:Number(kerfMm),
+      electrodeWidthMm:electrodeWidthMm===''?undefined:Number(electrodeWidthMm),
+      usableWebWidthMm:usableWebWidthMm===''?undefined:Number(usableWebWidthMm)}:undefined;
+  const calc=ci&&geometry?estimateCuttingYield(ci.electrodeType,{...geometry,
+    electrodeLengthMm:actualLen===''?(ci.electrodeLengthMm??NaN):Number(actualLen)}):null;
+
+  const changeSource=(nextId:string,control:HTMLSelectElement)=>{
+    if(!ci||nextId===ci.id)return;
+    const entered=[kerfMm,physicalLengthM,electrodeWidthMm,usableWebWidthMm,actualLen,goodCount,defectCount,breaks,defects,notes]
+      .some(value=>value.trim()!=='');
+    if(entered&&!window.confirm('Заменить рулон? Несохранённые измерения и подсчёты будут очищены.')){
+      control.value=ci.id;
+      return;
+    }
+    onSelect(nextId);
+  };
 
   if (!ci) {
     return <p className="text-slate-400 text-sm">Нет входящих рулонов — дождитесь пакет «cutting-roll».</p>;
   }
 
-  const save = (forced: boolean) => {
-    if (!hasUser) return;
-    const run: CutRun = {
-      id: uuidv4(),
-      incomingId: ci.id,
-      electrodeType: ci.electrodeType,
-      coatingType: ci.coatingType,
-      electrodeLengthMm: actualLen ? Number(actualLen) : ci.electrodeLengthMm,
-      goodCount: Number(goodCount) || 0,
-      defectCount: Number(defectCount) || 0,
-      breaks: breaks ? Number(breaks) : undefined,
-      defects: defects.trim() || undefined,
-      notes: notes.trim() || undefined,
-      workerId: '', // заполняется в onSave из текущего пользователя
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    onSave(run, forced);
-    setGoodCount(''); setDefectCount(''); setBreaks(''); setDefects(''); setNotes(''); setActualLen('');
+  const save = async () => {
+    if (!workerId || savingRef.current) return;
+    savingRef.current=true;setSaving(true);setError('');setMessage('');
+    try{
+      const run=prepareCuttingRun(ci,{
+        goodCount:goodCount===''?undefined:Number(goodCount),defectCount:defectCount===''?undefined:Number(defectCount),
+        breaks:breaks===''?undefined:Number(breaks),electrodeLengthMm:actualLen===''?undefined:Number(actualLen),
+        geometry,defects,notes,
+      },workerId,runId);
+      await onSave(run);
+      setRunId(uuidv4());setGoodCount('');setDefectCount('');setBreaks('');setDefects('');setNotes('');setActualLen('');
+      setPhysicalLengthM('');setKerfMm('');setElectrodeWidthMm('');setUsableWebWidthMm('');
+      setMessage('Запись сохранена на устройстве. Передача выполняется отдельно и требует ключ цеха.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Не удалось сохранить нарезку. Повторите попытку.');}
+    finally{savingRef.current=false;setSaving(false);}
   };
 
   return (
-    <div className="grid md:grid-cols-2 gap-4">
+    <fieldset disabled={saving} className="grid md:grid-cols-2 gap-4">
       {/* Левая колонка: выбор рулона + расчёт */}
       <div className="space-y-3">
-        <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
-          <label className={labelCls}>Рулон с каландра</label>
-          <select className={inputCls} value={ci.id} onChange={(e) => onSelect(e.target.value)}>
+        <div aria-label="Источник и задание нарезки" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
+          <h3 className="text-white text-sm font-semibold mb-2">1. Источник и параметры задания</h3>
+           <label className={labelCls}>Рулон с каландра</label>
+          <select aria-label="Рулон для нарезки" className={inputCls} value={ci.id} onChange={(e) => changeSource(e.target.value,e.target)}>
             {incoming.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.roll.mixName} · {shapeLabel(i.electrodeType)} · {new Date(i.createdAt).toLocaleDateString('ru-RU')}
@@ -279,53 +266,73 @@ function CutTab({
             Покрытие: <b className="text-white">{ci.coatingType ?? '—'}</b><br />
             L электрода (задание): <b className="text-white">{ci.electrodeLengthMm ?? '—'} мм</b> ·
             Ширина полотна: <b className="text-white">{ci.webWidthMm ?? '—'} мм</b><br />
+            {ci.electrodeType==='prismatic' && <>Ширина пластины (задание): <b className="text-white">{ci.electrodeWidthMm??'—'} мм</b><br/></>}
             Толщина после прокатки: <b className="text-white">{ci.thicknessAfterUm ?? '—'} мкм</b> ·
-            Длина A+B: <b className="text-white">{(ci.roll.sideALengthM ?? 0) + (ci.roll.sideBLengthM ?? 0)} м</b>
+            Покрытие A / B (не длина полотна): <b className="text-white">{ci.roll.sideALengthM ?? '—'} / {ci.roll.sideBLengthM ?? '—'} м</b>
             {ci.calender?.hasDefects && <span className="text-amber-400"> · ⚠ дефекты прокатки</span>}
           </div>
         </div>
 
-        <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
-          <div className="text-white text-sm font-semibold">🧮 Расчёт выхода</div>
+        <div aria-label="Теоретический расчёт раскроя" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-2">
+          <h3 className="text-white text-sm font-semibold">2. Теоретическая оценка раскроя (не физический выход)</h3>
           <div>
-            <label className={labelCls}>Ширина ножа / реза, мм</label>
-            <input type="number" min={0} step={0.1} className={inputCls} value={kerfMm}
-              onChange={(e) => setKerfMm(Number(e.target.value))} />
+            <label className={labelCls}>Измеренная длина полотна для нарезки, м</label>
+            <input aria-label="Измеренная длина полотна, м" type="number" min="0" step="any" className={inputCls}
+              value={physicalLengthM} onChange={event=>setPhysicalLengthM(event.target.value)}/>
+            <p className="text-xs text-slate-400 mt-1">Укажите измеренную длину один раз независимо от числа покрытых сторон. A+B не используется.</p>
+            <label className={labelCls+' mt-2'}>Ширина ножа / реза, мм</label>
+            <input aria-label="Ширина реза, мм" type="number" min={0} step="any" className={inputCls} value={kerfMm}
+              onChange={(e) => setKerfMm(e.target.value)} />
           </div>
+          {ci.electrodeType==='prismatic' && <div className="space-y-2">
+            <label className={labelCls}>Ширина прямоугольной пластины, мм
+              <input aria-label="Ширина пластины, мм" type="number" min="0" step="any" className={inputCls}
+                value={electrodeWidthMm} onChange={event=>setElectrodeWidthMm(event.target.value)}/>
+            </label>
+            <label className={labelCls}>Полезная ширина полотна после обрезки кромок, мм
+              <input aria-label="Полезная ширина полотна, мм" type="number" min="0" step="any" className={inputCls}
+                value={usableWebWidthMm} onChange={event=>setUsableWebWidthMm(event.target.value)}/>
+            </label>
+          </div>}
+          {!calc && <p className="text-xs text-amber-200">Оценка недоступна без полной геометрии. Можно сохранить только фактические количества, оставив поля расчёта пустыми.</p>}
+          <p className="text-xs text-slate-400">Оценка для прямоугольного раскроя: каждый шаг включает длину электрода и рез; для пластин — также ширину и рез. Выступы, разворот и оптимизация раскроя не учтены. Это не приёмка и не подтверждённый выход.</p>
           {calc && (
             <div className="rounded bg-slate-900 border border-slate-700 p-3 text-sm">
               <div className="flex justify-between text-slate-300"><span>С 1 метра ленты:</span><b className="text-white">{calc.perMeter.toFixed(1)} шт</b></div>
-              <div className="flex justify-between text-slate-300"><span>Доступная длина:</span><b className="text-white">{calc.usableM.toFixed(1)} м</b></div>
+              <div className="flex justify-between text-slate-300"><span>Доступная длина:</span><b className="text-white">{calc.physicalLengthM.toFixed(3)} м</b></div>
               <div className="flex justify-between mt-1 pt-1 border-t border-slate-700"><span className="text-slate-200">Ожидаемо электродов:</span><b className="text-emerald-400 text-lg">{calc.expected} шт</b></div>
-              {calc.kerfNote && <div className="text-xs text-slate-500 mt-1">{calc.kerfNote}</div>}
+              {calc.columns>0 && <div className="text-xs text-slate-500 mt-1">{calc.columns} колонок × {calc.rows} рядов</div>}
             </div>
           )}
         </div>
       </div>
 
       {/* Правая колонка: фактический результат */}
-      <div className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-3">
-        <div className="text-white text-sm font-semibold">📝 Фактический результат нарезки</div>
-        <div className="grid grid-cols-2 gap-2">
+      <div aria-label="Фактический результат нарезки" className="bg-slate-800/70 border border-slate-700 rounded-lg p-4 space-y-3">
+        <h3 className="text-white text-sm font-semibold">3. Фактический результат нарезки</h3>
+         <p className="text-xs text-slate-300">Записывайте только подсчитанные количества. Теоретическая оценка не переносится в фактический результат.</p>
+        {error && <p role="alert" className="text-sm text-red-200">{error}</p>}
+        {message && <p role="status" className="text-sm text-emerald-200">{message}</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>Факт. длина, мм</label>
+            <label className={labelCls}>Факт. длина электрода, мм (пусто — по заданию для оценки)</label>
             <input type="number" className={inputCls} placeholder={String(ci.electrodeLengthMm ?? '')}
-              value={actualLen} onChange={(e) => setActualLen(e.target.value)} />
+              aria-label="Фактическая длина электрода, мм" value={actualLen} onChange={(e) => setActualLen(e.target.value)} />
           </div>
           <div>
             <label className={labelCls}>Обрывы ленты</label>
             <input type="number" min={0} className={inputCls} placeholder="0"
-              value={breaks} onChange={(e) => setBreaks(e.target.value)} />
+              aria-label="Обрывы ленты" value={breaks} onChange={(e) => setBreaks(e.target.value)} />
           </div>
           <div>
             <label className={labelCls}>Годных электродов *</label>
-            <input type="number" min={0} className={inputCls} placeholder={calc ? String(calc.expected) : ''}
-              value={goodCount} onChange={(e) => setGoodCount(e.target.value)} />
+            <input type="number" min={0} className={inputCls} placeholder="Фактический подсчёт"
+              aria-label="Годных электродов" value={goodCount} onChange={(e) => setGoodCount(e.target.value)} />
           </div>
           <div>
-            <label className={labelCls}>С дефектами</label>
+            <label className={labelCls}>С дефектами *</label>
             <input type="number" min={0} className={inputCls} placeholder="0"
-              value={defectCount} onChange={(e) => setDefectCount(e.target.value)} />
+              aria-label="Дефектных электродов" value={defectCount} onChange={(e) => setDefectCount(e.target.value)} />
           </div>
         </div>
         <div>
@@ -338,39 +345,31 @@ function CutTab({
           <textarea rows={2} className={inputCls} placeholder="Партия, номер станка…"
             value={notes} onChange={(e) => setNotes(e.target.value)} />
         </div>
-        <div className="flex flex-wrap gap-2 pt-1">
+        <h4 className="text-sm font-semibold text-white border-t border-slate-700 pt-3">4. Проверка и сохранение результата</h4>
+         <p className="text-xs text-slate-300">Проверьте источник и подсчёт: сохранение создаёт локальную запись и отдельный пакет передачи, но не означает QA-допуск.</p>
+         <div className="flex flex-wrap gap-2 pt-1">
           <button
-            onClick={() => save(false)}
-            disabled={!hasUser || !goodCount}
-            className="px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm text-white"
+            onClick={() => void save()}
+            disabled={!workerId || saving || !goodCount || !defectCount}
+            className="min-h-11 px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm text-white"
           >
-            💾 Сохранить и отправить на сортировку (QR/текст/BLE)
+            💾 Сохранить результат и подготовить передачу
           </button>
-          {canForce && (
-            <button
-              onClick={() => save(true)}
-              disabled={!hasUser || !goodCount}
-              className="px-3 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm text-white"
-              title="Принудительная запись master'ом во все slave-устройства"
-            >
-              👑 Принудительно (master)
-            </button>
-          )}
+
         </div>
-        {!hasUser && <p className="text-xs text-amber-400">Войдите в профиль, чтобы сохранить результат.</p>}
+        {!workerId && <p className="text-xs text-amber-400">Войдите в профиль, чтобы сохранить результат.</p>}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
 // ---------- 📒 Журнал нарезки ----------
 function JournalTab({
-  runs, incoming, canForce, onSend,
+  runs, incoming, onSend,
 }: {
   runs: CutRun[];
   incoming: CuttingIncoming[];
-  canForce: boolean;
-  onSend: (r: CutRun, forced: boolean) => void;
+  onSend: (r: CutRun) => void;
 }) {
   const mixNameOf = (run: CutRun) =>
     incoming.find((i) => i.id === run.incomingId)?.roll.mixName ?? 'рулон не принят';
@@ -380,8 +379,9 @@ function JournalTab({
   }
   return (
     <div className="space-y-3">
-      {runs.map((r) => (
-        <div key={r.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
+      {runs.map((r) => {
+        const calculation=readCuttingYield(r.electrodeType,r.yieldCalculation);
+        return <div key={r.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="text-sm">
               <div className="text-white font-semibold">✂️ {mixNameOf(r)}</div>
@@ -395,30 +395,28 @@ function JournalTab({
                 <span className={r.defectCount ? 'text-rose-400 font-semibold' : 'text-slate-500'}>Дефектных: {r.defectCount}</span>{' '}
                 {r.breaks ? <span className="text-amber-400">· Обрывов: {r.breaks}</span> : null}
               </div>
+              {calculation ? <div className="mt-2 text-xs text-slate-300 space-y-1">
+                <p>Измеренная длина полотна: {calculation.physicalLengthM} м · рез: {calculation.kerfMm} мм</p>
+                <p>Длина электрода для оценки: {calculation.electrodeLengthMm} мм ({calculation.electrodeLengthSource==='entered'?'ввод оператора':'задание'})</p>
+                {calculation.electrodeWidthMm!==undefined && <p>Ширина пластины: {calculation.electrodeWidthMm} мм · полезная ширина полотна: {calculation.usableWebWidthMm} мм</p>}
+                <p>Оценка раскроя: {calculation.expected} шт · {calculation.columns} колонок × {calculation.rows} рядов. Это не подтверждённый физический выход.</p>
+              </div> : <p className="mt-2 text-xs text-slate-400">Геометрия и оценка раскроя не записаны.</p>}
               {r.defects && <div className="mt-1 text-xs text-rose-300">⚠ {r.defects}</div>}
               {r.notes && <div className="mt-1 text-xs text-slate-400">📝 {r.notes}</div>}
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => onSend(r, false)}
+                onClick={() => onSend(r)}
                 className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white"
                 title="Партия нарезки → сортировка (QR/текст/Bluetooth)"
               >
                 📤 На сортировку
               </button>
-              {canForce && (
-                <button
-                  onClick={() => onSend(r, true)}
-                  className="px-2.5 py-1 bg-purple-700 hover:bg-purple-600 rounded text-xs text-white"
-                  title="Принудительная рассылка master → slave"
-                >
-                  👑 Master
-                </button>
-              )}
+
             </div>
           </div>
         </div>
-      ))}
+      })}
     </div>
   );
 }

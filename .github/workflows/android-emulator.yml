@@ -1,0 +1,56 @@
+name: Android emulator smoke test
+
+# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  emulator:
+    name: Android emulator — launch app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build and sync Android assets
+        run: |
+          npm run build
+          npx cap sync android
+      - name: Android instrumentation on emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_4
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            cd android
+            chmod +x gradlew
+            ./gradlew connectedDebugAndroidTest --stacktrace
+      - name: Upload instrumentation reports on failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-test-results
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+          if-no-files-found: warn

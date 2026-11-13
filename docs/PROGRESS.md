@@ -1,3 +1,1555 @@
+## 2026-11-12 — Slurry recipe selection preserves the working draft
+
+- Reproduced silent replacement of an occupied slurry draft on recipe selection,
+  including raw actual weights, batch code, basis and frozen attempt metadata.
+  Selection during a pending production save could also reset the form while the
+  original save later completed; a failed draft checkpoint left unpersisted input
+  vulnerable to replacement in memory.
+- Empty forms still load a recipe directly. Replacing a nonempty draft requires
+  the existing native confirmation pattern; Cancel preserves both raw input and
+  the stored checkpoint. The prompt explicitly identifies the fields being
+  cleared and states that production history stays unchanged.
+- Block recipe selection during a production save/check or a known checkpoint
+  error. Finish or repair that operation, then select again. The selection does
+  not remain queued to replace the draft after saving/recovery completes.
+- Three reproducing tests failed before the four-line correction. **512 frontend
+  tests / 75 files**, typecheck and PWA build passed. Chromium 390×844 / 1365×900
+  passed fresh selection, native confirmation Cancel/accept, unchanged raw and
+  stored values, actual checkpoint failure/retry, draft reopen and subsequent
+  offline save against the explicitly chosen replacement recipe; no tested-page
+  overflow/runtime errors. The paused-save regression commits exactly the
+  original recipe/weights and one batch/journal after a blocked selection.
+- No database, recipe/material, measured-value, server/outbox, permission or
+  synchronization-policy changes. Physical OnePlus/native-dialog acceptance
+  remains open. Exact pushed-head CI/APK evidence follows in draft PR #3.
+
+## 2026-11-12 — Phone slurry save: identify the actual required field
+
+- Reproduced the phone report with a provided valid recipe/material version,
+  explicit batch code and weights, but an empty basis/reference field. One
+  combined metadata check misleadingly requested plan/source/author/time as well.
+- Keep the same required data and measurement guards; return a field-specific
+  error for missing batch code, composition name or weighing/composition basis,
+  including the existing 2000-character limit. The form marks these fields as
+  required, focuses the failed input and explains that a reference to already
+  provided source information is sufficient. Correcting the field clears its old
+  error without resetting weights, source snapshots or the draft.
+- Regression tests failed before the correction. **509 frontend tests / 74
+  files**, typecheck and PWA build passed. Chromium 390×844 / 1365×900 passed
+  recipe and manual entry, required-field focus, retained source/weights,
+  persisted draft reopening, subsequent offline saves, comma decimals and blank
+  optional density/viscosity/fineness. Phone error screenshot inspected.
+- No manufacturing data, measurement defaults, recipe/catalog, password,
+  database schema, server/outbox or synchronization policy changed. The basis
+  remains operator-entered; no fabricated measurement/evidence is supplied.
+  Physical OnePlus/Capacitor acceptance remains unperformed. Exact pushed-head
+  CI and APK evidence follows in draft PR #3; no merge or deployment.
+
+## 2026-11-12 — KPI review: dry-mass plans and small recorded quantities
+
+- Traced `MixBatch.batchKg` to a planned dry-solids target, not weighed paste
+  output. Label it **Цель сухой массы**, explicitly marked as a plan; coverage
+  remains separately declared A+B lengths. No material balance is inferred.
+- Preserve small recorded totals (`0.025 kg`, `0.125 m`) instead of rounding them
+  to a displayed zero. Stored records, units and measured values are unchanged.
+- Regression failed before correction. **507 frontend tests / 74 files**,
+  typecheck/build and Chromium phone/desktop passed the final label/precision
+  check alongside live totals and offline reports. Physical acceptance open.
+- Previous KPI head `3eff4e0` passed exact PR/push CI and tests; its APK artifact
+  exists at that SHA. Final exact-head evidence follows push on draft PR #3.
+
+## 2026-11-12 — Audit follow-up: honest live KPI and report totals
+
+- Chain yield remains unavailable without verified matching lot genealogy;
+  independent stage totals are declared observations, never QA or accepted stock.
+  Remove unsupported per-stage yield labels and cells×50 worker ranking.
+- Distinguish unavailable, explicitly recorded zero and partial known+unknown
+  totals without coercing blank/missing legacy fields. Keep historical DB rows
+  unchanged; assembly intake/station counters never become declared cell output.
+- Observe Dexie while open; use output-declaration dates for assembly, explicit
+  date windows and exclusion warnings, and current protected task visibility.
+  A fresh read timestamp admits just-saved records immediately. Reports share the
+  numeric rules and clarify that saved formation fields do not prove completion.
+- Failing regressions preceded corrections. **506 frontend tests / 74 files**,
+  typecheck/PWA build and Chromium 390×844 / 1365×900 passed unrelated lots,
+  unknown vs zero, legacy values, live insertion, date windows, reports and
+  offline navigation without overflow/runtime errors.
+- CI-recovery `ef604db` PR/push CI, tests and APK all succeeded; source, APK digest
+  and public-development signature provenance verified. Details in release audit.
+  Physical Android file-share/picker, installed upgrade, force-stop and restore
+  remain unperformed; browser checks do not close that release gate.
+- No database/dependency/server/signing change, automatic synchronization, merge
+  or deployment. Next gate: phone smoke/recovery evidence, then approved physical
+  source/pairing/QA policy and separately enrolled devices against deployed TLS.
+
+## 2026-11-12 — CI recovery: wait for database readiness in session regression
+
+- PR CI at `277aa9b` caught a timing assumption: before the deliberately pending
+  identity lookup, database readiness can still show its first loading screen.
+  Push CI and standalone tests passed, but the PR run was correctly reported red.
+- Wait for the profile-check phase while the lookup remains unresolved and track
+  every protected-screen render, strengthening the no-flash assertion. No runtime
+  authorization change. Full 500 frontend tests, typecheck/build passed locally.
+- KPI implementation remained paused until this failure was diagnosed and fixed.
+  Exact-head CI/APK results must be verified after push; no merge/deployment.
+
+## 2026-11-12 — Audit follow-up: shared-key transfer authority and input limits
+
+- Reject account/catalog/technologist-parameter and forced writes regardless of
+  signed role claims. Shared HMAC verifies group-key possession, not individual
+  identity or authority. Keep local editors and nonforced protected observations;
+  retain legacy archive decoding with explicit blocked-state explanations.
+- Validate local task/result shapes and dates before writes; preserve atomic
+  server-task revision/outbox guards. Never overwrite a differing roll snapshot.
+- Bound packet bytes, QR frames, indices, cache size/memory and expiry; reject
+  conflicting frame metadata. Wire format and already signed ordinary archives
+  remain compatible. No database migration, data deletion or dependency change.
+- **500 frontend tests / 72 files**, typecheck/build passed. Actual-HMAC spoofing
+  regressions failed before correction. Existing immutable-history tests now
+  exercise nonforced typed paths as well as rejected generic forced paths.
+- `60ac88f` exact CI/tests/APK succeeded; downloaded provenance/source and actual
+  APK digest verified, public-development certificate. Details in the release
+  audit. Native Android/BLE/file-share/upgrade acceptance remains unperformed.
+- Next: truthful independent KPI/report totals and live refresh. Draft PR #3;
+  no merge, release, deployment, sync activation or signing change.
+
+## 2026-11-12 — Audit follow-up: local session and stale-chief access
+
+- Fast-forwarded from `09371a0` to the audited remote `141cfd8`, preserving
+  backup export, read-only file checker, atomic restore and APK provenance work.
+- Persist only bounded local session references; remove full user/hash/token/
+  permissions from historical cache and verify current profile before protected
+  rendering. Expiry/deactivation/deletion/role change requires fresh offline
+  login. Clear server credentials/lease on invalidation, retaining all work and
+  pending sync. Employee/backup transactions recheck current local chief access.
+- **491 frontend tests**, typecheck/build and phone/desktop Chromium passed
+  migration, no flash/hash cache, stale/expired authority, preserved work,
+  browser backup download/check and isolated restore/original-password login.
+  Password hashing and archive/restore format remain unchanged; no DB migration.
+- Added confirmed/unverified checklist, precise dependency triage and remaining
+  P0/P1 work in [RELEASE_AUDIT_2026-11-12.md](RELEASE_AUDIT_2026-11-12.md).
+  Root audit: 8 low/moderate package findings; server: 0. No forced upgrades.
+  Native WebView/file sharing and physical OnePlus gates are not performed;
+  added a phone-only smoke procedure without risking a data-bearing installation.
+- Next: legacy shared-key authority/input bounds, then honest live KPI totals.
+  Exact commit CI/APK evidence follows push in draft PR #3. No merge/deployment,
+  signing change, data wipe or automatic synchronization.
+
+## 2026-11-12 — Coating import author-shape validation
+
+- Final packet review reproduced a privileged import accepting a non-text author
+  ID in an otherwise valid new coating record. New recorded-run preparation now
+  requires a nonblank text author before any write; numbers, objects, null and
+  whitespace-only identities are rejected even when a supervisor signs. Existing
+  historical rows are neither rewritten nor deleted. This tightens data shape,
+  not local/server role authority or authentication policy.
+- The new regression failed before the one-condition correction. Final local
+  **471 frontend tests / 68 files**, typecheck and PWA build passed. Phone/desktop
+  Chromium evidence for the coating feature is recorded below; this correction
+  changes rejection of malformed imports and leaves valid string-author paths.
+- Coating feature commit `83febb2940677bc59c6a101ffced51890b34de9f` passed
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43168340896),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43168340920)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43168334608);
+  the unexpired `app-release-signed` artifact was confirmed. Exact correction-head
+  checks are inspected after push and recorded in draft PR #3. No merge,
+  deployment, native/signing/schema/dependency or automatic-sync change. M0–M5
+  and physical OnePlus/factory gates remain open.
+
+## 2026-11-12 — Coating draft recovery, frozen attempts and read-only export
+
+- Continued from verified remote `7c1c9887e6c8c837bc244dff413a2d476327177d`,
+  whose exact-head [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43162438512),
+  [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43162438533) and
+  [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43162431939)
+  passed. Existing slurry/storage recovery and source-bound room workflows remain.
+- Coating now uses the existing v20 draft store under its own actor/room scope;
+  no new database version/table is needed. Raw blanks, entered zero, comma and
+  unfinished decimals, all segments/ovens, notes, explicit mode, chosen slurry
+  snapshot and frozen attempt survive acknowledged local checkpoints and restart.
+  Room tabs preserve the mounted form. Profile switches restore only that
+  profile's draft. Unsupported/incomplete payloads stay stored for review.
+- Source and mode are no longer chosen automatically. An absent source remains
+  explicitly unknown. The chosen snapshot supplies estimates until explicitly
+  refreshed; changing or losing the source blocks a first local write without
+  replacing entered values. New attempts freeze ID/time/role and all entered
+  data before production save. Already committed attempts reopen as saved, with
+  no duplicate write or automatic export. Inactive/changed-role authors and
+  conflicting draft windows cannot bypass the same transaction checks.
+- New `recordingVersion:1` coating runs and attributed journal entries commit
+  atomically. Exact retries reuse the saved snapshot; changed same-ID intent,
+  fabricated estimates and typed/generic forced marker stripping fail. Remote
+  late observations preserve their source snapshot without creating/rewriting
+  a catalog. Historical unmarked records remain readable. New protected roll
+  handovers additionally require the exact durable coating record; missing dry
+  thickness never comes from a wet-film estimate.
+- Journal export now reads the saved record without changing `updatedAt` or
+  writing to IndexedDB. Model predictions stay distinct from entered readings;
+  an incomplete oven set is not converted to zeros. Inactive gap text is retained
+  as a draft when continuous mode is chosen but is excluded from that record.
+  An explicitly recorded side-B zero remains visible in the journal.
+- **470 frontend tests / 68 files**, typecheck and PWA build passed; focused
+  tests/typecheck/build passed after final edge-case review. New regressions
+  failed before implementation for retry/source/import integrity, raw parsing,
+  missing durable handover, inactive gap text and zero display. Removing the
+  changed-intent guard made both its save and forced-import regressions fail;
+  restoration passed. Existing legacy, rollback and handover checks remain.
+- Chromium **390×844 / 1365×900** passed explicit choices, raw partial-oven/
+  segment restart, room tabs, competing drafts, real draft/journal failures,
+  frozen source change/refresh, offline exact retry/double click, signed saved
+  JSON/multi-frame QR, forced import rejection, unknown dry thickness in roll
+  handover, committed-save recognition and worker/chief draft isolation. No
+  overflow/runtime errors; layouts inspected. Final exact-head CI/APK is
+  recorded on draft PR #3 after push; predecessor success is not substituted.
+- No native/signing/dependency/server/automatic-sync/deployment or merge change.
+  M0 physical OnePlus installed upgrade/force-stop/restore, M1 separate devices/TLS,
+  M2 factory pilot, M3 authoritative operations, M4 inventory/QA and M5 rollout
+  remain open. Gauge/calibration and physical source acceptance remain unverified.
+  Physical pairing policy is still unresolved. Next safe recovery slice:
+  calendaring assignment/result forms, preserving their source revisions.
+
+## 2026-11-12 — Storage receipt/location draft recovery and profile isolation
+
+- Storage now uses the same v20 local draft store for raw receipt inputs,
+  selected receipt/history snapshot, new place/evidence and frozen attempt.
+  A valid receipt or location attempt is checkpointed before production save;
+  restart retries retain its exact ID/time. Invalid raw quantities remain
+  editable drafts, not fabricated receipts. Completed receipt/location attempts
+  reopen as saved without writing another journal entry or automatic export.
+- Restoring a location draft does not silently adopt later history. A competing
+  successor remains a conflict after restart; explicit refresh changes the
+  predecessor while retaining the entered place/evidence for review. Logout
+  preserves the draft, another profile gets its own form, and returning to the
+  original profile restores its unchanged checkpoint. No server grant or sync
+  operation is created by recovery.
+- Read failures, unknown payload versions and incomplete retry/source metadata
+  keep the original stored draft for review and block form editing/production
+  write rather than silently turning it into a new blank/manual draft. Two new
+  failing component regressions reproduced that incomplete-metadata fallback
+  before the shape checks. A pending/failed checkpoint is never labelled as a
+  durable frozen production attempt.
+- **462 frontend tests / 66 files**, typecheck and PWA build passed. Existing
+  component checks now include raw receipt/location restart, receipt/location
+  rollback with stable retry after reopen, completed-save recognition, read-only
+  export and invalid draft preservation. The optimistic revision regression
+  fails when its guard is removed and passes again after restoration.
+- Chromium **390×844 / 1365×900** passed raw receipt/place restart, failed saves
+  with stable retry IDs, stale predecessor recovery/explicit refresh, offline
+  saves and double retry, signed five-frame history transfer with atomic import,
+  legacy retention, DB/page reopen, and actual worker→chief→worker login isolation.
+  No storage-room overflow/runtime errors. Browser restart/IndexedDB checks do
+  not substitute for physical OnePlus force-stop, installed upgrade/restore or
+  workshop acceptance; M0–M5 physical/pilot/authority gates remain open.
+- Slurry recovery commit `b87eea6578b311a8d9b2d79be80f57da7cc07967` passed exact-head
+  [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43161430475),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43161430463)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43161425434),
+  with an unexpired `app-release-signed` artifact. Final storage-head checks are
+  inspected after push and recorded in draft PR #3; predecessor success does not
+  establish final-head success. No further schema, native/signing, dependency,
+  server, automatic-sync, merge or deployment change. A safe next recovery slice
+  is the coating measurement form; physical pairing still needs owner policy.
+
+## 2026-11-12 — Slurry draft recovery across application-page restart
+
+- Continued from remote `70d6ea1b7f989f4ecbf52a0186c58f8cb7ef1026`, now verified
+  with exact-head [CI](https://github.com/LHONE-mf/production_mf/actions/runs/43155743421),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43155743547)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43155736931)
+  all passed. PR #3 remains a draft; previous engineering progress is retained.
+- Slurry forms now checkpoint raw inputs (including blank/zero/comma decimals),
+  recipe/material snapshots, optional theory settings and the frozen attempt in
+  local IndexedDB. Opening the room restores only the current local profile's
+  form. A production attempt is durably checkpointed before batch+journal save;
+  restart retries use its original identity/time. Already committed attempts
+  reopen as saved without making a duplicate or automatically opening an export.
+- Additive Dexie v20 creates one `localFormDrafts` store; unfinished forms never
+  become production journal entries or server-sync operations. Actor/room keys,
+  active-profile write checks and optimistic revisions prevent competing windows
+  from silently replacing a saved draft. Clearing retains a revision marker so
+  stale writers cannot recreate it. No expiry or automatic deletion is applied.
+  Unsupported/corrupt versions remain stored for review. A draft error retains
+  in-memory fields and blocks production save until explicit retry or reload.
+- **462 frontend tests**, typecheck and PWA build passed. Focused restart tests
+  cover unfinished inputs, failed stable-ID retry, completed-save recognition and
+  explicit reset. v17/v19 upgrade checks preserve existing production records,
+  users, outbox, cursor, deferred inbox and conflict history. Removing all prior
+  rows or claiming installed upgrade acceptance is not part of these checks.
+- Chromium **390×844 / 1365×900** passed page restart with raw blanks/fractional
+  grams, frozen sources, conflicting tabs, real draft-store failure/retry,
+  manufacturing rollback/restart/retry, saved-state recognition, signed export
+  and coating handover/reopen, with no overflow/runtime errors. An IndexedDB
+  transaction still in progress is shown as saving; only acknowledged local
+  checkpoints are recovered. Physical Android force-stop/in-place upgrade and
+  factory acceptance remain open. Storage form recovery is the next slice.
+- No native/signing/server/dependency/automatic-sync/deployment or merge change.
+  M0–M5 retain their documented physical, pilot and authoritative-operation gates;
+  unspecified cathode/anode pairing policy is not inferred.
+
+## 2026-11-12 — Read-only saved receipt/history transfer
+
+- Storage history now exports the exact viewed saved receipt plus all location
+  predecessors through the existing signed text/multi-frame QR/Bluetooth packet
+  UI. Export rechecks the active local sender and saved history in a read-only
+  transaction; stale snapshots require explicit refresh. Source actor/time,
+  quantity/unit, evidence, IDs and location events are not modified.
+- New `storage-history` v1 payloads identify the receipt and latest event and
+  validate one complete, ordered chain. Typed and generic forced packets share
+  signature/stage/sender and immutable history guards. Receipt+all missing events
+  import in one transaction; interrupted import rolls the new rows back. Replay
+  preserves later local successors. Broken, mixed, reordered, changed and
+  divergent histories fail without replacing originals. This is manual local
+  provenance transfer, not server sync or physical/stock authority. Receiving
+  installations need support for this new packet type; older applications reject
+  an unknown type rather than gaining the workflow automatically.
+- **458 frontend tests** in 64 files passed, plus typecheck/PWA build. Focused
+  tests were rerun after final boundary review. Chromium **390×844 / 1365×900**
+  additionally passed real signed export without journal writes, QR navigation,
+  five-frame reconstruction through the actual receive UI in an independent
+  browser profile, interrupted first-import rollback, offline retry/replay,
+  exact saved provenance and DB close/open. Both complete storage scenarios were
+  rerun; no room overflow/runtime errors. These are browser profiles, not M1
+  independently enrolled physical phones or camera/BLE hardware tests.
+- Final exact-head CI/APK status is recorded on draft PR #3 after push. Previous
+  slurry/storage commit checks passed (links below); those results do not stand
+  in for the new commit's checks. No physical/native/server authority, schema,
+  signing, automatic-sync, deployment or merge change. M0–M5 remain open at their
+  existing physical/release/authoritative-operation gates. Pairing decisions are
+  documented in ASSEMBLY_PAIRING_POLICY.md. A safe next local reliability slice
+  is recovery of unfinished slurry/receipt forms after app termination; current
+  failed drafts survive room tabs and retries in memory only.
+
+## 2026-11-12 — Recorded material lot receipts and append-only location history
+
+- Storage now records explicit material/reference, lot, known supplier/document,
+  positive quantity with chosen kg/g/l/m/pieces unit, receiving location, evidence
+  and local author/role/time. Blank is unknown, zero is not a receipt, pieces must
+  be safe whole counts, and no quantity/unit conversion is inferred. Search
+  includes material, lot, known references and all recorded locations.
+- Each immutable `storageEvent` snapshot and its attribution live in one existing
+  journal row, committed under a users+journal transaction. No new table/schema
+  or migration is needed. Location events append a receipt ID, exact predecessor,
+  previous/new place and evidence; they never alter receipt quantities. Different
+  IDs cannot claim the same material/lot with the same or unknown supplier, or
+  the same location predecessor. Repeated partial receipts/splits need a later
+  approved accounting policy. There is no opening balance, on-hand total,
+  physical transfer, consumption or QA claim.
+- Failed writes keep fields and a frozen ID; exact retries are safe, changed intent
+  fails, actor activation/role are rechecked. Room tabs retain drafts in memory.
+  Concurrent place changes require explicit refresh; forms do not silently adopt
+  new predecessors. Typed journal and forced imports share the same immutable
+  chain/envelope validation. Legacy notes remain notes; malformed protected
+  history stays stored for review and blocks further ambiguous writes.
+- **454 frontend tests**, typecheck and PWA build passed. Chromium
+  **390×844 / 1365×900** passed assigned-worker receipt, missing/zero/fractional
+  pieces rejection, real journal rollback, retained ID/draft across room tabs,
+  offline double retry, searchable register, location rollback/retry, competing
+  tab conflict and explicit refresh, legacy preservation, DB close/open and page
+  reload without overflow/runtime errors. Removing the duplicate-lot guard made
+  its concurrency regression fail; it passed again after restoration.
+- Exact-head storage commit `fc1d80707d7ad58b2bdd4f9104e020b4f32e33aa`
+  passed [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43154899757),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43154899768)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43154893851).
+  The unexpired `app-release-signed` artifact was present. These are build/test
+  results, not an installed Android or factory acceptance.
+- Reviewed local assembly intake and M2 genealogy. The physical pairing policy,
+  explicit sourced polarity and allocation rules are not specified. Recorded the
+  required decisions in [ASSEMBLY_PAIRING_POLICY.md](ASSEMBLY_PAIRING_POLICY.md)
+  instead of inventing ratios, stock claims or physical acceptance. No change to
+  assembly behavior or server authority. M0 installed upgrade/restore, M1 separate
+  phones/TLS, M2 factory pilot, M3 authoritative room operations, M4 QA/inventory
+  and M5 remain open. No merge/deployment/native/signing/auto-sync change.
+
+## 2026-11-12 — Measured slurry weighing and durable coating handover
+
+- Continued from verified remote `db5b9db51baf` on the existing feature branch.
+  Slurry now distinguishes target dry kg, planned ingredient g and explicitly
+  weighed g. Blank is unknown; entered zero remains zero. Materials declare
+  solids mass fraction explicitly (including binder solutions); dry-contribution
+  shares sum to 100%, while liquid additions are percent of target dry mass.
+  This declared planning convention is shown for confirmation, not inferred
+  from legacy recipes or material kind. Incomplete properties make predictions
+  unavailable; model density/viscosity never become measured observations.
+- Immutable batch records freeze recipe/material versions, actual masses, units,
+  basis, author/role/time and measurement note. Batch+journal save atomically;
+  failures retain the frozen attempt and fields, retries preserve identity,
+  competing batch codes and changed intent fail. Catalog edits require an active
+  local supervisor and current version. Forced/legacy packets cannot replace
+  protected measurements, handovers or a known catalog version.
+- Saved journals export without writes. Explicit coating handover+journal commit
+  before packet preparation and freeze the complete source. Mass composition
+  derives only from all entered masses and declared composition; density and
+  viscosity remain unknown unless actually entered. Legacy data remain readable
+  with uncertainty labels and are not promoted to proven measured history.
+- **446 frontend tests**, typecheck and PWA build passed. IndexedDB/component
+  checks cover missing/zero, percentages, fractional/comma inputs, incomplete
+  properties, rollback, idempotency, races, version changes and protected import.
+  Chromium **390×844 / 1365×900** passed supervisor catalog/recipe entry, worker
+  weighing, real journal failure, retained offline double retry, signed JSON/QR
+  frames, frozen source names, durable handover, unknown density, DB close/open
+  and page reload without overflow/runtime errors. Unsaved drafts survive room
+  tabs in memory; browser termination does not persist unfinished drafts.
+- No schema/native/signing/dependency/server or automatic-sync change. No physical
+  receipt, consumption, QA, stock balance or factory acceptance is inferred.
+  Exact-head [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43153909903),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43153909885)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43153905120)
+  passed for slurry commit `0f4432e36be58696cb8a61ae44d07a0af271c271`;
+  the `app-release-signed` artifact was present and unexpired at inspection.
+
+## 2026-11-11 — Final filling/formation review and zero-dose rejection observation
+
+- The full received count may be explicitly rejected after an observed zero
+  electrolyte dose. The result now preserves that measured zero when no filled
+  cells are claimed. A positive filled count still requires a positive dose;
+  missing measurements never become zero. Full input range and rejection count
+  remain saved observations, with no onward output/serial allocation or QA/stock
+  disposition inferred. A failing IndexedDB regression reproduced the rejected
+  zero-dose write before the one-condition fix.
+- **432 frontend tests**, typecheck and PWA build passed after the correction.
+  Chromium **390×844 / 1365×900** additionally passed independent receipt ->
+  explicit zero-dose/all-rejected result, real journal failure/rollback, retained
+  values/ID, offline duplicate retry, saved journal/export, blocked downstream
+  transfer and exact reopen without overflow/runtime errors. Earlier checks in
+  this session cover both complete routes to source-bound formation and actual
+  signed saved JSON export through multi-frame QR.
+- Implementation commits in this continuation: filling `cc91d7a`, walzing/QR
+  `f491e7c`, formation `4caa20b`; starting remote was `43bb1a5`. Exact-head CI,
+  Run Tests and signed APK all passed for the first two (links below). Formation
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43096351822),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43096351885) and
+  [APK](https://github.com/LHONE-mf/production_mf/actions/runs/43096346525) were
+  still queued without assigned jobs at **20:34 UTC**; no passing conclusion is
+  claimed for those queued runs. Check the exact target commit's Actions/PR
+  checks before selecting an APK. No runs were manually cancelled or rerun.
+- Updated canonical local-observation boundary and room-by-room audit. Physical
+  OnePlus/equipment/scanner/BLE, installed signed upgrade/restore and separately
+  enrolled devices against deployed TLS remain untested. M0/M1 release gates,
+  M2 factory pilot, authoritative M3 integration, M4 QA/inventory and M5 remain
+  open. No merge, deployment, native/signing/schema/dependency or automatic-sync
+  change. Next implementation priority: slurry actual-weighing/mass-balance and
+  atomic batch/journal, then storage lot/location history and polarity pairing.
+
+## 2026-11-11 — Source-bound formation observations complete the local recorded chain
+
+- Continued after `f491e7c108953dc9cc20ef7e31e7bedb5a1d5487`, whose exact-head
+  [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43093718899),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43093719039) and
+  [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43093709638)
+  all passed. No production deployment or merge was performed.
+- Complete, serial-identified dry-room filling output can now create a durable
+  formation instruction directly. Complete protected walzing output can create
+  the alternative instruction. Both freeze their entire predecessor/receipt/
+  assembly snapshots, format/count/range, explicit destination and preparer/time.
+  The instruction and journal commit before preview; stable retries preserve it.
+  Wrong destinations, altered/missing sources, rejected/unknown subsets and
+  duplicate/ambiguous allocations fail. No physical receipt time is invented.
+- Formation observations freeze the saved instruction and require explicit
+  cycle count, actual start date and whole full-source partition: processed +
+  rejected + unknown = counted input. No assumed five cycles or today's start
+  date remains. Calendar dates (including leap days) and chronological end date
+  are checked. The preserved full range describes the input; subset identities
+  are not invented from totals.
+- Optional entered current A (including signed discharge observations), voltage V,
+  fifth-cycle capacity Ah and efficiency % are validated in fixed units. Fifth-
+  cycle capacity requires at least five recorded cycles. Missing readings stay
+  unknown and efficiency is not calculated. A basis identifies the observed phase/
+  method; optional equipment/channel stays unknown when absent. New observations
+  are explicitly distinct from an approved machine program, final QC or release.
+- Result + attributed journal save/import atomically under the shared source/
+  serial transaction. Stable frozen retries, a synchronous submit lock, exact
+  saved export and actor/source rechecks cover offline failure/recovery. Typed
+  and generic forced packets cannot overwrite/strip protected history or bypass
+  allocation through legacy shapes. Existing recipes with a `mode` field still
+  dispatch as recipes, covered by a dedicated regression. Legacy records remain
+  available; new historical writes validate explicit counts/dates/measurements.
+- Exact upstream assembly snapshots can arrive after full formation history
+  without colliding with their own serial lineage; unrelated overlaps still
+  block new claims. The source-bound local observation chain is engineered, not
+  proof of physical movement, material balance, inventory disposition or QA.
+- Local verification: **431 frontend tests**, typecheck and PWA build passed.
+  IndexedDB/component/transfer coverage includes real calendar/unit/count errors,
+  dry-room and walzing alternatives, atomic instruction/result journal rollback,
+  competing claims, inactive/stale actors and sources, preserved legacy records,
+  replay/forced bypass and late upstream declaration. Removing the formation
+  allocation guard makes the concurrent-claim regression fail; it was restored.
+- Chromium **390×844 / 1365×900** passed **both** complete paths: independent
+  dry-room receipt/filling -> formation, and independent 705 receipt/filling ->
+  walzing -> formation. Checks cover blank cycles/dates, explicit observations,
+  fixed source/range, real journal rollback/retained draft, offline double-submit,
+  atomic saved journal, signed export matching the saved JSON snapshot (optional
+  undefined properties are omitted by JSON), multi-frame QR navigation, offline
+  DB reopen and full-page reopen. No overflow/runtime errors; phone journal
+  screenshots inspected under `/tmp/production-mf-evidence/`.
+- No schema/dependency/server/native/signing/background-sync change. No emulator,
+  physical OnePlus/equipment/camera/BLE, installed APK upgrade/restore or deployed
+  two-device TLS validation. M0/M1 release, M2 factory pilot, server-authoritative
+  M3 integration, M4 QA/inventory and M5 rollout remain open. Next P1: slurry
+  planned-versus-weighed integrity, validated mass balance and atomic journal;
+  storage lot/location history and complete cathode/anode pairing follow.
+
+## 2026-11-11 — Source-bound walzing observations and framed QR export
+
+- Continued after filling commit `cc91d7a33c025f3ea1ca1bda8bdc847f1be26531`:
+  exact-head [web/server CI](https://github.com/LHONE-mf/production_mf/actions/runs/43091490070),
+  [Run Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43091489628)
+  and [signed APK](https://github.com/LHONE-mf/production_mf/actions/runs/43091480553)
+  passed. [Signed development APK artifact](https://github.com/LHONE-mf/production_mf/actions/runs/43091480553/artifacts/13888657685).
+- A saved all-filled cylindrical output in room 705 can now create one durable
+  walzing instruction with the exact filling/receipt/assembly snapshot, serials,
+  count/format, explicit destination and preparer/time. Instruction and journal
+  commit before export. Repeated intent returns the original; wrong room/format,
+  rejected/unknown subsets, changed sources and ambiguous legacy history fail.
+  The instruction has **no fabricated physical receipt timestamp**.
+- Walzing results freeze the saved input and require the full counted input to
+  partition into processed + rejected + unknown whole cells. Explicit optional
+  diameters mm, force kgf, speed rpm, temperature °C and whole pass counts are
+  validated; blanks remain unknown. No machine calibration or QA pass is inferred.
+- Result/journal and packet import share transactional immutable insertion.
+  Competing claims, changed inputs/authors and typed/generic forced stripped
+  packets cannot replace history or allocate the source twice. Failed drafts
+  retain values and identity; rapid submit and exact offline/reopen retries
+  produce one result. New pending data renders safely before live queries load.
+- Legacy history remains stored. New legacy observations validate explicit whole
+  partitions, optional measurements and duplicate history, with atomic journal.
+  Ambiguous serial claims are blocked for review rather than inferred as lineage.
+  Protected walzing results currently stop at the saved result: a source-bound
+  formation instruction/result is the immediate next slice, not yet implemented.
+- Real signed source snapshots exceed a single QR's capacity. Packet modal/chat
+  QR now reuse the existing `toQrChunks`/receiver format with explicit previous/
+  next frames. Small packets remain one QR. A regression reproduces the original
+  oversized-QR failure and verifies framing/navigation/reset plus reconstruction.
+  This is browser rendering/codec evidence, not physical camera/BLE transport.
+- **422 frontend tests**, typecheck and PWA build passed. IndexedDB/component/
+  transfer tests cover full-source counts/units, pending instruction rollback,
+  stale inputs, serial conflicts, competing claims, journal rollback, replay,
+  immutable snapshots, preserved legacy data and forced-packet bypasses.
+  Removing the allocation guard makes the concurrent-allocation regression fail;
+  it was restored. No dependency/schema/server/native/signing/background-sync change.
+- Chromium **390×844 / 1365×900** passed independent 705 receipt/filling result ->
+  durable walzing instruction -> exact source/serial-bound result, explicit blank
+  rejection, real IndexedDB journal rollback, retained draft, offline double-submit,
+  saved export, actual signed multi-frame QR rendering/navigation, offline DB
+  close/open and full-page reopen. No overflow/runtime errors; phone journal and
+  QR screenshots inspected. A fresh server with hot reload disabled isolated
+  development WebSocket/module-version effects during fault injection.
+- Physical OnePlus/equipment/scanner/BLE, installed upgrade/restore and deployed
+  two-device TLS validation remain open. M0/M1 release gates and the M2 factory
+  pilot remain unpassed. Next: full-source formation with immutable input/ranges,
+  explicit dates/units/counts and atomic result/journal; then slurry/storage and
+  cross-polarity lineage. Recorded observations remain separate from QA/inventory.
+
+## 2026-11-11 — Receipt-bound filling observations and atomic saved export
+
+- Resumed from clean remote `43bb1a579ebeca7f401a0807fbe05ec9242664a4`;
+  its CI and Run Tests runs were confirmed successful before implementation.
+- Both alternative filling rooms now open result entry from a **saved independent
+  receipt**. The result freezes the complete assembly/declaration/instruction/
+  receipt, destination, format, full count/range, local author/role and record time.
+  Missing receipts, wrong destinations, changed upstream snapshots, competing
+  allocation, ambiguous historical results and inactive/changed actors are blocked.
+- Measured dose mg, vacuum/pressure kPa, duration min, temperature °C and humidity
+  ppm are entered explicitly; a required basis describes dose scope, pressure
+  convention and environment. Optional equipment stays unknown when blank.
+  No machine settings, calibration, predictions or QA acceptance are fabricated.
+  Decimal comma is supported. Missing, nonfinite, invalid-unit and fractional
+  values are rejected; entered zero is distinct from missing.
+- **Product decision:** one result accounts for the full saved receipt as filled
+  + rejected + unknown whole cells. No split operation is invented. Any rejects
+  or unknown cells leave the filled subset's serial identities unresolved and
+  block downstream subset export; the original full range is retained as source
+  provenance only. All-filled output retains the exact full range. Rejected here
+  is an operator observation, not an authorized inventory/QA disposition.
+- Result and attributed journal commit in one Dexie transaction. Stable draft IDs,
+  frozen retry values and a synchronous submit lock protect failure/retry and
+  duplicate clicks. Export uses only the committed snapshot. Typed and generic
+  forced packets share immutable result/allocation checks and require the exact
+  saved receipt before first import; first authors or permitted local supervisor
+  relays are checked. Result import and its journal also commit atomically.
+- Historical rows and their original uncertain measurement units remain readable
+  and exportable. New result creation requires the protected receipt workflow;
+  older unlinked rows are not silently promoted into it or deleted. Exact old
+  packet replay is retained; conflicting replacement is rejected. The matching
+  filling result is part of its original serial lineage, so an exact upstream
+  declaration can arrive later without reserving its own cells twice.
+- Local verification: **414 frontend tests**, typecheck and PWA build passed.
+  Focused IndexedDB/component/transfer tests cover invalid measurements/units,
+  wrong room, missing/changed receipt, stale source/actor, simultaneous claims,
+  rollback, exact replay/reopen, serial collision, stripped/forced legacy bypass
+  and late upstream import. Disabling the allocation guard makes the concurrent
+  claim regression fail (two results instead of one); the guard was restored.
+- Chromium **390×844 and 1365×900** passed actual chief/assigned-worker login,
+  independent receipt, blank validation, decimal comma, injected real IndexedDB
+  journal failure/rollback, retained draft, offline double-submit retry, saved
+  journal/export, unknown-range downstream gate and exact record reopen. No
+  overflow or runtime errors; phone form and journal screenshots inspected.
+  Screenshots are session evidence under `/tmp/production-mf-evidence/`.
+- No schema/dependency/server/native/signing or automatic-sync change. Emulator,
+  physical OnePlus/equipment/QR/BLE, installed APK upgrade/restore and deployed
+  two-device TLS acceptance were not performed. M0/M1 release and M2 factory
+  pilot gates remain open. Next: source-bound walzing/formation with safe units,
+  whole counts, transactional journal and immutable downstream provenance.
+
+## 2026-11-11 — Declaration-bound filling handover and explicit room receipt
+
+- Revalidated clean remote `29a7fdc` and green exact-head CI. A declared assembly
+  output can now be durably assigned to one explicit filling room. The pending
+  instruction freezes the full source/declaration snapshot, serial range, cell
+  format/count, preparer/role/time and destination before packet preview.
+- Assignment and its journal commit together. Same-destination retries resume
+  the original instruction; competing destinations, changed sources, duplicate
+  declaration/job IDs and ambiguous legacy history preserve the original and
+  block allocation. Availability is checked across both rooms. The rooms are
+  alternative destinations; no dry-room -> 705 sequence is inferred.
+- A packet instruction remains pending: no fabricated `receivedAt` or receipt.
+  A different active local account explicitly records the full counted quantity
+  and receipt basis in the assigned room. Receipt and journal commit together;
+  failed drafts retain their ID for retry. Identical replay preserves a saved
+  receipt; older pending packets do not erase it. Different receipt content,
+  wrong rooms/counts, copied/stripped provenance and forced legacy bypass fail.
+- Typed and generic forced `electrolyte-in` use the same guards and enforce
+  packet-stage/destination agreement. First instruction receipt requires a
+  permitted signed supervisor role; a worker can return their receipt against
+  the already-known immutable instruction. These local transport/account roles
+  are not server workshop authority or physical/QA acceptance.
+- A validated transfer carrying the exact assembly snapshot is the same serial
+  lineage, not a second reservation. The assembly snapshot may arrive later
+  without colliding with its own transfer; unrelated or malformed claims still
+  block it. Historical incoming rows are preserved, not silently overwritten.
+- Room UI distinguishes pending/received history, persists before export,
+  exposes retry/receipt packets, and resets room-local state on destination
+  changes. New handover results cannot bypass source/receipt binding through
+  the old manual form. Linked filling-result entry is the next slice.
+- **407 frontend tests**, typecheck and PWA build passed. IndexedDB/component/
+  receipt checks cover cross-room races, rollback, source snapshots, actor/count
+  policy, exact retry/reopen, old-pending replay, forced/legacy bypass, late
+  upstream import and state isolation. Removing the allocation guard causes
+  regressions to fail. Chromium **390×844 / 1365×900** passed real chief and
+  assigned-worker login, instruction rollback, offline double-submit retry,
+  other-room exclusion, explicit different-account receipt/count rejection,
+  failed-receipt retained ID/draft, offline acceptance and exact reopen with no
+  overflow/errors. Phone receipt layout was inspected.
+- No schema/dependency/backend/native/signing/automatic-sync change. Physical
+  OnePlus, installed upgrade/restore, emulator, real BLE/QR and two-device TLS
+  acceptance were not run. Full-source/no-split allocation is a recorded claim,
+  not reconciled stock, verified material balance or a completed server route.
+
+## 2026-11-11 — Separate declared cell output and protected serial ranges
+
+- Continued from `2b665ac`, whose exact-head frontend/server CI passed. Cell
+  output is now a separate immutable `cellOutput` record, not the last station
+  quantity or a recalculated electrode-to-cell estimate. A declaration names the
+  sole positive terminal sourced observation in cells, its full count, explicit
+  cell format, inclusive serial range, counting basis, actor/role and time.
+  The selected ancestry must have explicit source links. No split is supported.
+- An active local technologist/master/chief from `users` can declare output;
+  worker UI/direct writes cannot. These local roles do not grant server workshop
+  authority. First packet receipt requires a permitted signed-envelope role;
+  exact replay is acknowledged, while altered/stripped/null declarations and
+  later operation appends are rejected. Historical source/operation fields,
+  raw numeric totals and originally unassigned format remain unchanged.
+- Declaration and attributed journal commit together. Competing identical
+  attempts resume the original ID. Failed writes preserve the frozen draft/ID
+  for retry; changing an unsaved draft is explicit. Serial length must exactly
+  equal the whole cell count, with safe nonnegative integer endpoints. Blank
+  input does not become zero. The room displays attribution, counting basis and
+  the saved format/range; ordinary workers can read a saved declaration.
+- Collision checks serialize with declaration/receipt across assembly, filling
+  incoming/results, walzing incoming/results and formation incoming/results.
+  Missing prefixes are treated conservatively; overlapping or malformed old
+  ranges block new claims for review. Checks use table identity rather than
+  untrusted record fields. A serial conflict rolls an entire first receipt
+  back, including any intermediate imported operation history.
+- The old direct range editor is read-only. Typed/generic forced legacy packets
+  cannot delete or change an existing range or introduce conflicting/invalid
+  ranges through an older payload shape. Existing historical ranges are kept.
+  This checks locally recorded intervals, not worldwide serial uniqueness or
+  physical label/scanner acceptance. Corrections need a future append-only flow.
+- KPI and manually selected server-source measures use the separately declared
+  count when present, rather than the old raw aggregate; they label reported
+  local totals, not QA or stock. Both filling rooms still exclude the new
+  ledgers: an allocation-safe handover/receipt tied to the declaration ID and
+  explicit destination is the next slice. No automatic receipt or box sequence
+  is introduced. Complete polarity pairing/material balance remains unverified.
+- **399 frontend tests**, typecheck and PWA build passed. IndexedDB/receipt tests
+  cover actor policy, terminal/count/range checks, concurrent claims, rollback,
+  exact retry/reopen, first receipt into existing/fresh history, malformed and
+  stripped payloads, occupied/unknown-prefix/downstream ranges and legacy bypass.
+  Removing the range collision guard makes two regressions fail. Chromium
+  **390×844 / 1365×900** passes sourced observations -> counted-cell declaration,
+  blank/overlapping serial rejection, failed-journal retained draft, offline
+  same-ID double-submit retry, unchanged raw history, exact reopen and closed
+  observation history without overflow/errors. Phone declaration UI inspected.
+- No schema/dependency/backend/native/signing/automatic-sync change. Physical
+  OnePlus, installed upgrade/restore, emulator, real BLE/QR and two-device TLS
+  acceptance were not run. This declaration is not QA approval, complete
+  physical genealogy, stock reconciliation or server-controlled route release.
+
+## 2026-11-11 — Explicit assembly source and predecessor allocation
+
+- Revalidated clean remote `3d6e560` and green exact-head CI. New observations
+  now require the saved sorting intake, an earlier operation in this job, or
+  an explicitly identified external source on a legacy job. Protected intakes
+  can record sourced observations; cell release/serial/filling remain separate.
+- Intake inputs must equal the frozen accepted electrode count in electrodes.
+  A predecessor must occur earlier in the same job, with positive whole output
+  exactly matching the next input and unit. A full output/reference can be
+  allocated once; no splitting or automatic station order is inferred. Local
+  creation and receipt enforce the same graph, count and duplicate checks.
+  External references cannot be reused across local jobs. These are recorded
+  allocations, not confirmed stock movements or complete cathode/anode pairing.
+- Same-unit input is exactly partitioned into output plus scrap. Different
+  units require an entered explanatory basis; output remains an independent
+  observation, with no invented conversion rate or released-cell total.
+  Source/specification snapshots and actor attribution remain frozen.
+- The `sourceLedger` marker protects the new contract against stripped/older
+  packet appends. Historical unlinked operations remain readable and intact;
+  they are not retroactively given source identities. Receipt rejects cycles,
+  future/cross-job links, changed prefixes, duplicate allocations and copied
+  intake jobs, including forced paths. Saved-intake take-in resumes its job
+  after operations exist. Optional fields need no schema migration.
+- **389 frontend tests**, typecheck and PWA build passed. IndexedDB tests cover
+  actual first intake -> predecessor chain, competing allocation, bad links,
+  same-unit balance, differing-unit basis, external reference reuse, historical
+  replay, stripped receipt and reopen. The rendered room test records the first
+  sourced intake observation; six-station save/count regressions still pass.
+  Chromium **390×844 / 1365×900** passes intake/observation rollback, retained
+  draft, offline double-submit retry, predecessor-count rejection, full-output
+  chaining, consumed-source exclusion, resume/reopen with frozen snapshots,
+  no implicit cell conversion, overflow or browser errors. Phone UI inspected.
+- No server, dependency, signing or automatic-sync change. Next: separately
+  declared cell output and serial integrity. Source links do not complete a
+  route, reconcile stock, establish a physical conversion or grant QA approval.
+  Physical OnePlus, installed upgrade/restore, emulator, BLE/QR and two-device
+  TLS acceptance were not run.
+
+## 2026-11-11 — Durable, attributed assembly station observations
+
+- Revalidated clean remote `a7a92b0` and its green exact-head CI. Six rendered
+  regressions reproduced station forms clearing before an asynchronous save
+  completed. The room also copied the last station output into `cellsOut`, even
+  when that station counted electrodes or blocks.
+- All six forms now require explicit input/output/scrap units (parts,
+  electrodes, sets, blocks or cells), with no inferred conversion or default.
+  New observations carry an immutable operation ID, actor and recording time.
+  Nonfinite supplied process parameters and fractional/nonpositive layer counts
+  are rejected. This is observation recording on existing legacy batches;
+  protected source intakes remain gated pending the pairing/conversion model.
+- `core/manufacturing/assemblyOperations.ts` commits the operation and its
+  attributed journal together. Identical stable-ID retries, including after
+  reopen, retain the original. Conflicting IDs, reused IDs across batches and
+  stale parallel intent are rejected without losing history; refresh/review is
+  required before a separate append. Historical operations and totals are not
+  rewritten, including formerly accepted fractional legacy observations.
+- The shared six-station save hook waits for persistence before clearing,
+  blocks duplicate submit and freezes inputs while saving. Failures retain the
+  draft and original ID/time for retry. Changed intent after a failed attempt
+  requires explicit “new operation” after journal review. Unsaved drafts remain
+  in memory only; navigating away/restarting does not persist them.
+- New observation ledgers do not recalculate cell output or sum scrap across
+  differing units. Original numeric totals remain in the legacy snapshot, while
+  the room marks current output unknown. Both filling rooms exclude these
+  records; KPI shows their exclusion and manual server-source selection omits
+  assembled-cell measures. No station observation becomes a release or QA pass.
+- Typed and generic forced receipt allow exact replay or a full append whose
+  prefix and batch metadata are unchanged. Altered/truncated/stripped histories
+  and cross-batch ID reuse fail visibly. A legacy packet cannot create an
+  alternate same-name batch to bypass the protected observation ledger. Serial
+  writes recheck the current snapshot transactionally; new ledgers cannot use
+  the old serial/release editor. Export remains a read-only saved snapshot.
+- **384 frontend tests**, typecheck and PWA build passed. Real IndexedDB tests
+  cover journal rollback/retry, concurrent retries, stale intent, reopen,
+  immutable receipt and legacy preservation; six-station component tests cover
+  pending/failed saves and exact-ID retry. Removing the immutable receipt guard
+  makes its regression fail. Chromium **390×844 / 1365×900** passed required
+  units, failed-journal retained draft, offline retry/double-submit, exact reopen,
+  original totals, serial gate, both filling exclusions, KPI exclusion and no
+  overflow/errors. Protected-intake browser regressions also passed both sizes;
+  the new phone unit controls were visually inspected.
+- No schema, dependency, backend, native/signing or automatic-sync change.
+  Physical OnePlus, installed APK upgrade/restore, emulator, BLE/QR and
+  two-device/TLS acceptance were not run. Next: explicit station predecessor
+  and source/count reconciliation, then a separately declared cell release and
+  serial integrity before enabling new-intake execution/filling. No material
+  balance, stock consumption, pairing rate or physical yield is invented.
+
+## 2026-11-11 — Reject truncated/invalid counts in all six assembly stations
+
+- Continued from protected intake `a8285a2`, whose exact-head CI/server checks
+  and signed APK packaging passed. Six rendered regressions reproduced `1.5`
+  silently becoming `1` in each existing station's `parseInt` path.
+- All six station forms now use `core/manufacturing/assemblyCounts.ts`:
+  entered input must be a positive safe whole count; output/scrap must be
+  nonnegative safe whole counts. Blank values remain missing and are rejected,
+  including blank scrap. Invalid counts show an error and retain the draft.
+  The room's persistence callback also checks counts before adding an operation.
+- **364 frontend tests**, typecheck and PWA build pass. Regressions cover each
+  count field, fractions, negatives, zero input, blanks, unsafe/nonfinite values
+  and valid zero-output/all-scrap entry. Chromium **390×844 / 1365×900** passes
+  fractional/blank-scrap rejection, retained draft, offline save and reload with
+  original counts, no overflow/errors. Protected intake browser checks reran
+  successfully on both sizes (rollback/retry/reopen/station gate).
+- No historical operations are rewritten. This validates entered numbers only:
+  it does not establish common station units, material balance, conversion,
+  physical acceptance or QA. New intakes remain gated. Legacy output/scrap
+  aggregation, optional process-parameter validation, serial uniqueness and
+  operation save-failure/duplicate handling still need work. Next: explicit
+  station units and append-only operation identity/persistence, then reconcile
+  source/counts before enabling new-intake station execution or filling.
+- No schema, backend, native/signing or automatic-sync change. Physical OnePlus,
+  installed upgrade/restore, emulator, BLE/QR and two-device/TLS acceptance
+  were not run. The draft PR remains unmerged.
+
+## 2026-11-11 — Protected full-source assembly intake (first slice)
+
+- Revalidated clean remote `2903d06` and exact-head green CI before work.
+  A rendered regression reproduced repeated take-in creating duplicate jobs.
+- `core/manufacturing/assemblyIntake.ts` now accepts the entire positive output
+  of one explicit sorting record, freezing its source/specification, electrode
+  count, actor and time. Intake and journal commit atomically. Concurrent or
+  repeated local take-in resumes the original; stale sources and ambiguous
+  legacy batches block creation while retaining history. No split is supported.
+- Typed and generic forced assembly receipt use the same allocation checks;
+  changed/duplicate records and stripped provenance cannot replace an intake.
+  Exact replay is acknowledged. Export no longer changes actor/time or storage.
+- Cell format is explicitly unassigned; electrode counts are not cell counts.
+  The UI shows cell output/scrap as unknown (legacy numeric fields remain zero
+  for compatibility). New intakes cannot enter station operations, serials or
+  filling until units, cathode/anode pairing and conversion rules are defined.
+  This is recorded allocation, not evidence of physical consumption or QA.
+- Visible save errors preserve the source and permit retry. **357 frontend
+  tests**, typecheck and PWA build pass. IndexedDB/component/receipt tests cover
+  concurrency, rollback, reopen, legacy ambiguity and forced bypass rejection.
+  Removing the allocation guard causes two regressions to fail. Chromium
+  **390×844 / 1365×900** passes real login, failed-journal rollback, offline
+  retry, source/count retention, reload resume, station gate, no overflow/errors.
+- Audit and canonical checkpoint updated. No schema/server/signing/sync change.
+  Legacy station logic is unchanged: last operation still sets output and scrap
+  accumulates. Assembly station integrity is **not complete**. Next: explicit
+  station units, operation identity and source reconciliation without inventing
+  cell conversion; then serial/count integrity and downstream handover.
+  Physical OnePlus/stock acceptance, installed upgrade/restore, emulator,
+  BLE/QR and two-device/TLS acceptance were not run for this slice.
+
+## 2026-11-11 — Whole-count sorting partitions and protected source allocation
+
+- Revalidated remote `a2f56a5` and its passing exact-head CI. A rendered
+  regression reproduced fractional categories/rejects being saved and exported
+  when their arithmetic total happened to equal the incoming count.
+- New sorting records require nonnegative safe whole counts, a positive input
+  and an exact full partition. All-reject results are valid. Optional means
+  remain unknown when blank; negative/nonfinite observations and means for
+  empty categories are rejected. Classification is not formal QA acceptance.
+- New records explicitly identify the cut run and freeze its snapshot and the
+  directly linked specification. Batch-name guessing is removed from new
+  sorting selection. Source/spec changes require an explicit draft reset;
+  conflicting versions do not silently relabel observations.
+- Transactional creation and receipt serialize allocation checks and writes.
+  A cut run can be fully allocated once, even across competing IDs or forced
+  packets. Exact stable-ID retries retain timestamps/content, including after
+  upstream criteria change. Ambiguous legacy history is preserved and blocks
+  new allocation pending review; new distinct cut runs from the same roll remain
+  independently sortable. Failed writes keep the form and produce no export.
+- Review also reproduced generic forced sorting packets being misrouted into
+  the task store. Sorting now sends its typed packet and legacy forced sorting
+  payloads use the allocation guard. Unsupported generic manufacturing payloads
+  are rejected instead of falling through to task creation. Regression tests
+  verify no task is created.
+- Exports no longer modify saved results. Assembly uses frozen specifications
+  for new results, and all-reject groups are not offered as assembly input.
+  Existing records are retained; no historical source links are invented.
+- Full frontend checks passed: **351 tests**, typecheck and PWA build.
+  IndexedDB/component/receipt tests cover invalid partitions, empty means,
+  concurrency, rollback/retry, frozen snapshots, stale criteria, legacy/forced
+  bypass attempts, same-roll distinct cuts and reopen. Mutation tests prove
+  allocation guards are exercised. Chromium **390×844 / 1365×900** passed
+  fractional rejection, failure/no export, retained form, offline retry,
+  exact-source snapshots/counts after reload, duplicate-allocation rejection,
+  no overflow and no browser exceptions.
+- Room audit and canonical checkpoint updated. No schema, server, signing or
+  automatic-sync change. Next: assembly source consumption/duplicate take-in
+  controls and local recorded-data reports. Physical stock, yield/QA approval,
+  installed APK upgrade/restore, BLE/QR and two-device/TLS acceptance stay open.
+
+## 2026-11-11 — Explicit, durable calender-to-cutting instructions
+
+- Revalidated clean remote `a8b4f89` and successful exact-head CI. The calender
+  room now has a separate instruction form for local technologist/master/chief
+  accounts: source result, explicit strip/rectangular shape, longitudinal length,
+  web width, independent plate width, optional coating identity and notes.
+  No shape, material, dimensions or actual operator measurement is invented.
+- The full source/roll snapshot, result version, instruction actor and recording
+  time persist in `cuttingRolls` before packet preparation. Source must have
+  complete measured results without marked defects. Invalid dimensions, worker
+  creation, stale source versions and changed stable-ID retries are rejected;
+  identical concurrent retries reuse the original. Failed writes preserve the
+  form/source and permit retry. New instructions do not overwrite legacy inputs.
+- Receipt validates new provenance and snapshot consistency, checks permitted
+  local packet roles and serializes duplicate/conflict checks with writes.
+  Forced or legacy packets cannot replace a frozen explicit instruction.
+  Existing shared-key signing and server/device authority boundaries remain;
+  a local role or signed local instruction is not a server permission or QA pass.
+- Cutting displays the assigned plate width and attribution while keeping
+  measured geometry/counts separate. Unknown coverage remains unknown. Result
+  export labels now distinguish a result packet from a cutting instruction.
+- Full local frontend verification: **334 tests**, typecheck and PWA build.
+  A rendered regression failed before the new form. IndexedDB and receipt tests
+  cover role/geometry validation, concurrency, stale sources, defective results,
+  rollback/retry, reopen and forced conflict preservation. Mutation checks prove
+  the role guard is exercised. Chromium **390×844 / 1365×900** passed explicit
+  rectangular entry, no default shape, storage failure/no export, offline retry,
+  stable duplicate retry, source/provenance retention, reopen into Cutting,
+  separately entered measured geometry, no overflow/browser exceptions.
+- Room audit and specification updated. No schema, server, signing, automatic
+  sync or production change. Next: sorting whole-count partitions and preventing
+  repeated allocation of the same cut run. Physical BLE/QR delivery, process,
+  installed APK upgrade/restore and M1 two-device/TLS acceptance remain open.
+
+## 2026-11-11 — Atomic calender results, conflict recovery and save-before-export
+
+- Revalidated clean remote `ac12a2f` and successful exact-head CI. Reproduced
+  partial draft edits losing untouched fields. Inspection also found result
+  export running on a timer before successful persistence and independent
+  result/journal writes leaving partial saves.
+- Result measurements and the attributed generic journal now commit in one
+  IndexedDB transaction. Required positive gaps/length/thickness are validated;
+  decimal-comma gaps are parsed correctly, with spaces/semicolons separating
+  passes. Invalid tokens are rejected, not silently dropped.
+- Version checks and monotonically increasing timestamps reject stale or
+  concurrent edits. Drafts retain their base version until explicitly reset.
+  Failed writes retain the full form; duplicate clicks are guarded. Every result
+  export waits for the committed returned snapshot and does not rewrite it.
+  Removed automatic cutting packets that guessed a strip electrode shape.
+- Assignments now write only IndexedDB, preserving measured result fields in
+  the transaction. Legacy localStorage settings remain an untouched read-only
+  fallback; failure cannot create a new cached assignment. Assignment-only
+  rows are labelled as pending results, without a completed-roll checkmark.
+- Full frontend verification: **324 tests**, typecheck and PWA build. Unit and
+  real IndexedDB/component checks cover rollback/retry, competing edits,
+  assignment/result isolation, complete drafts, duplicate clicks and no failed
+  export. Conflict mutation tests demonstrate regression coverage. Chromium
+  **390×844 / 1365×900** passed injected journal failure, original retention,
+  offline retry, exact saved export values and reopen, decimal-comma gaps,
+  absence of fabricated cutting input, no overflow and no browser exceptions.
+- No schema, server, signing or automatic-sync change. Physical APK upgrade,
+  gauge/process, TLS/two-device and factory acceptance remain open. Next room
+  work: explicit cutting instruction handover and sorting count/allocation
+  validation; this slice does not reconcile physical stock or certify yield.
+
+## 2026-11-11 — Measured dry-electrode handover and explicit calender targets
+
+- Cutting commit `cebd638` passed exact-head CI `42994773683`, Run Tests
+  `42994773794` and signed APK `42994764033` before continuing.
+- Reproduced wet-film estimate `200 µm` being exported as a dry-roll thickness,
+  and an unmarked legacy value being used to claim calender compression.
+- Coating now accepts an optional entered dry-electrode **total thickness,
+  including foil and all coated faces**. It is validated and stored with the
+  existing run. Handover retains source identity and records the measurement
+  basis, source actor and recording time. Estimated wet thickness remains in
+  its own field and is never substituted. Missing dry measurements stay unknown.
+- A roll snapshot commits before packet preparation. Stable-ID retries reuse
+  the stored snapshot; changed source data cannot overwrite it. Storage failure
+  leaves the original coating record intact and allows retry. Legacy conflicting
+  snapshots are preserved and made visible as a conflict, not rewritten.
+- Calender comparisons accept only valid, attributed measurements on this dry
+  total-electrode basis. Legacy unmarked values remain stored/displayed as
+  unconfirmed and do not enter the estimate. Target comparison is explicitly
+  planned total-thickness change, not actual compression, porosity or a gap.
+  Removed fabricated 18 µm / 80°C / 60 tonnes defaults. Heat is an explicit
+  selection, force is labelled tonnes-force, targets retain their thickness-basis
+  tag, and changing rolls clears settings.
+- Full local frontend verification: **313 tests**, typecheck and PWA build.
+  IndexedDB, unit and rendered checks cover validation, provenance, stable retry,
+  conflict/no overwrite, failure recovery, close/reopen and legacy isolation.
+  Chromium **390×844 / 1365×900** passed real data entry, offline handover,
+  actor/time/basis retention, reload, a 100→80 µm target comparison (20%),
+  exclusion/preservation of a 200 µm unmarked legacy value, explicit heat choice,
+  blank numeric settings, source reset, no overflow and no browser exceptions.
+- Updated the canonical specification and room audit. No schema, dependency,
+  server, signing, automatic-sync or production change. Still open: physical
+  gauge/process validation, installed-APK upgrade/restore, M1 two-device/TLS,
+  durable calender assignment/result failure recovery and material allocation.
+  No native emulator or physical packet delivery was performed in this slice.
+
+## 2026-11-11 — Physical-length cutting estimates and durable whole-count records
+
+- Revalidated clean remote `3fc842a` and its successful exact-head CI before
+  changes. Reproduced A+B coating coverage being counted as two physical webs,
+  and a fractional actual piece count being saved/exported.
+- Cutting estimates now require entered physical usable length in metres and
+  explicit kerf in mm. Plate estimates require separate length/width and usable
+  web width. The conservative rectangular model includes kerf in each pitch;
+  no side-coverage sum, square-plate assumption, edge salvage or layout
+  optimization is inferred. Unknown geometry gives no estimate, while actual
+  counts can still be recorded alone. An instruction dimension is distinguished
+  from an entered actual dimension. Saved geometry/estimate survives reopen;
+  malformed/inconsistent imported estimate metadata is not displayed as valid.
+- New good/reject/break counts require nonnegative safe whole integers and a
+  nonzero actual total. A stable ID and in-flight guard prevent repeated-click
+  duplicates. The existing `cuttingRuns` table is appended before opening the
+  outgoing packet. Failed writes retain the form and never expose a nonexistent
+  export; export no longer rewrites saved records. Changing source rolls resets
+  the draft. Separate runs remain declarations, not reconciled stock allocation.
+- Full local frontend checks passed: **302 tests**, typecheck and PWA build.
+  Regressions cover double-sided rolls, nonsquare plates, kerf, zero valid
+  estimate, overflow, invalid counts, unknown geometry, storage failure/retry,
+  duplicate clicks, source reset and real IndexedDB close/reopen. Mutation
+  checks prove count guards are exercised. Chromium **390×844 / 1365×900**
+  passed offline save, durable geometry/counts, both layouts, input rejection,
+  source reset, 44px Save target, no overflow and no browser exceptions.
+- Updated the room audit and canonical checkpoint. No server, schema, signing,
+  task-outbox or production change. Next: measured dry-electrode thickness in
+  coating-to-calender handover. Physical/M1 TLS/upgrade acceptance stays open;
+  automatic sync remains disabled and no physical packet delivery was claimed.
+
+## 2026-11-11 — Validated, atomic coating journal with reproducible estimates
+
+- Completed a code-based inventory of all **11 registered rooms** in
+  [ROOM_WORKFLOW_AUDIT.md](ROOM_WORKFLOW_AUDIT.md): real stores/actions,
+  unit assumptions, access/failure gaps, evidence labels and concrete next
+  acceptance criteria. No untested room was labelled production accepted.
+- Reproduced blank coating records and invalid geometry being accepted. New
+  entries start without sample machine values; validate foil, dry loading,
+  width, speed, segment lengths, optional calibration/gap, side-B length,
+  temperatures and supplied slurry mass fraction/density. Blank oven values
+  remain unknown, with no fabricated six-zone zero readings. An entered oven
+  set requires all six zones. Existing records are not rewritten.
+- Added one transaction for `coatRuns` + the linked `journal` entry. Failure
+  rolls both back; the form remains available for retry. A stable run ID and
+  in-flight guard prevent rapid duplicate saves. Saved width, slurry snapshot,
+  pump calibration and flow estimate make displayed results reproducible after
+  closing/reopening. The entered mechanical gap is separate from wet thickness.
+- Geometry rejects missing/nonfinite/negative lengths and invalid gap/pitch.
+  The UI states the intermittent pattern assumption. A failing regression also
+  caught early flow rounding to zero; small positive L/min values are now
+  retained and overflow estimates stay unavailable. No hardware command, QA
+  decision, stock posting or server sync is inferred from these estimates.
+- Full frontend verification: **279 tests**, typecheck and PWA build passed.
+  Real IndexedDB tests cover invalid-write rejection, rollback, same-ID retry,
+  duplicate prevention and reopen. Mutation checks proved zero-input guards
+  are exercised. Chromium **390×844 / 1365×900** passed actual first-run,
+  no-demo empty stores, invalid/partial-oven input, offline save, saved results
+  after reload, 44px save target, no overflow and no browser exceptions.
+- No dependency, Dexie schema, server or Android signing change. Next P0 room
+  work: cutting uses A+B coated face lengths as physical web length; fix its
+  dimensional basis and integer counts. Coating-to-calender transfer also
+  needs a measured dry thickness rather than its present wet-film estimate.
+  M0 installed upgrade/restore, M1 physical two-device/TLS and factory M2
+  acceptance remain open. Automatic sync remains disabled.
+
+## 2026-11-11 — Preserve upgrade data regardless of legacy account IDs
+
+- Fetched and fast-forwarded to the actual remote `ff2c97e` (34 newer commits),
+  preserving completed workshop execution and M0/coating changes. Its CI
+  `42988485927`, Run Tests `42988486014`, and APK `42988475506` passed.
+- Reproduced startup deleting all tables when only old demo account IDs remain,
+  even if their journals were edited by operators and pending sync exists.
+  Account IDs cannot prove that records are disposable. Startup now only opens
+  the database and migrates password hashes. It never silently clears records,
+  auth settings or pending operations. New installations still contain no demo
+  data. Destructive local reset still requires typed confirmation at login.
+- Real IndexedDB regression preserves per-table counts, edited journal content
+  and a queued operation across initialization and close/reopen. It failed
+  before the change. All **259 frontend tests**, typecheck and PWA build passed.
+  No backend/schema/signing change; physical in-place Android upgrade/restore
+  acceptance remains open. Updated README, product spec and Android notes to
+  remove the obsolete automatic-purge claim.
+- Next: room inventory with evidence labels, then validated atomic coating
+  journal persistence and reproducible calculation inputs; room utility is the
+  owner's current priority, alongside the existing gated M1/M2 work.
+
+## 2026-11-11 — Preserve newer logins across obsolete Planning failures
+
+- Continued after source replacement commit `1b423f4`. Its exact-head web/server
+  CI [42957968917](https://github.com/LHONE-mf/production_mf/actions/runs/42957968917),
+  Run Tests [42957968904](https://github.com/LHONE-mf/production_mf/actions/runs/42957968904)
+  and signed APK [42957964067](https://github.com/LHONE-mf/production_mf/actions/runs/42957964067)
+  all passed; `app-release-signed` was published for that SHA.
+- Inspection before expanding workshop execution permissions reproduced obsolete
+  HTTP 401 replies clearing a newer login in route-step evidence, observations,
+  inspection reviews/criteria, genealogy and the Planning refresh/action wrapper.
+  Late failures now check the session that sent the request before changing
+  errors or authentication. Current-session authorization failures still expire
+  the session; evidence submits also reject an obsolete session before sending.
+- Rendered regressions failed before the fix. Tests cover delayed initial reads,
+  evidence/observation/review/criterion writes, a workspace refresh after account
+  replacement/unmount, and current-session denial controls. Full frontend checks
+  passed: **222 tests**, typecheck and PWA build. Backend unchanged from the
+  **173-test** source-replacement verification.
+- No permissions were broadened. Next M2 work remains workshop-scoped execution
+  access and material reconciliation; physical/TLS/production acceptance stays
+  open, and automatic task synchronization remains disabled.
+
+## 2026-11-11 — Controlled replacement of withdrawn local sources
+
+- Inspected remote branch head `8e3a671` and its successful exact-head CI
+  `42955227104` / Run Tests `42955227116`; continued the existing M2 ledger.
+- Migration `019` adds an immutable replacement relation with reason/actor/time,
+  scoped foreign keys, one successor per original and database scope validation.
+  Chief-only attachment accepts an explicit withdrawn predecessor of the same
+  batch/order/route/version/step/workshop/stage/source type. A different saved
+  source is required; original identities stay reserved. New replacements need
+  an active batch; exact retries remain safe after completion or withdrawal.
+- Link and relation commit atomically under the batch lock. Role/tenant checks,
+  wrong scope/type, concurrent retries, rival successors, changed intent,
+  reserved identities, rollback, immutable history, migration reapplication and
+  no invented metrics have real PostgreSQL regressions.
+- UI requires a saved source, predecessor, reason and confirmation, retains both
+  references and refreshes quantity comparisons. Lost replies retain request
+  identity; malformed acknowledgements are rejected. No local journal rewrite.
+- Full local checks passed: **207 frontend / 173 backend tests**, both
+  typechecks and builds. Real Chromium **390×844 / 1365×900** passed replacement,
+  retained original values/history, refreshed comparisons, genealogy navigation,
+  no overflow and no browser exceptions using disposable PostgreSQL/Fastify.
+- Only isolated test databases received migration `019`. M2 remains incomplete:
+  next priorities are workshop-scoped execution permissions and documented
+  input/output material reconciliation. Physical Android/TLS/production gates
+  remain open; automatic task sync remains disabled. No deploy, merge, stock
+  mutation, QA acceptance or production migration performed.
+
+## 2026-11-11 — Ignore obsolete journal attachment authentication failures
+
+- A rendered regression reproduced an old attachment request's HTTP 401
+  clearing a newer login. Attachment and initial-read error handlers now ignore
+  obsolete sessions; the current user's session and error state are preserved.
+- Full frontend verification passed: **205 tests**, typecheck and PWA build.
+  Backend remains at **171 passing tests** from the withdrawal slice; no further
+  backend changes. Withdrawal commit `38390a6` passed exact-head CI
+  `42955053012` and Run Tests `42955053016`.
+- Next M2 work: controlled versioned source replacement (withdrawn identities
+  remain reserved), workshop-scoped execution permissions and physical material
+  reconciliation. No physical-device/production gate was passed; automatic
+  task synchronization remains disabled.
+
+## 2026-11-11 — Audited withdrawal of incorrect local journal references
+
+- Verified clean remote head `c7c4fc7` and its successful exact-head CI before
+  changes. Reused the current hybrid design and existing source ledger.
+- Added migration `018_m2_local_source_withdrawals.sql`: immutable withdrawal
+  identities, link/actor foreign keys and a unique withdrawal per source.
+  Chief-only withdrawal requires a reason, records actor/time, serializes under
+  a batch lock and safely acknowledges identical retries. Original sources,
+  completion evidence and batch status are preserved, including terminal batches.
+- Journal history exposes the reason and author. Quantity comparisons exclude
+  withdrawn measurements, show the excluded count and refresh after source
+  changes. Source identities stay reserved; original attachment retries cannot
+  reactivate them. No snapshot replacement or formal material reconciliation.
+- Added PostgreSQL regressions for role/tenant and batch isolation, concurrent
+  duplicate/competing attempts, strict inputs, migration reapplication,
+  immutable records, completed-batch correction and non-reactivation. UI/client
+  tests cover required rationale, lost-reply retry, acknowledgement validation
+  and retained history. Full checks: **171 backend / 204 frontend tests passed**,
+  both typechecks and builds passed.
+- Real Chromium **390×844 / 1365×900** passed withdrawal, retained values,
+  automatic comparison refresh, whole-count error handling and genealogy using
+  actual Fastify/disposable PostgreSQL. Browser testing exposed duplicate React
+  sibling keys that remounted the journal panel on refresh; distinct keys fix it
+  and a full-screen regression reproduces the old lost-confirmation defect.
+- Migration applied only to disposable local PostgreSQL; CI applies it only to
+  its isolated database. No production migration/deployment, physical Android
+  test, automatic task sync, inventory posting or QA acceptance performed.
+
+## 2026-11-11 — Whole-count manufacturing API safeguards
+
+- New order, batch, completion, handover and genealogy API writes require
+  whole counts for `cells` and `pieces`; fractional kg, m and m2 stay valid.
+  Values are validated as strings, without rounding or unit conversion.
+- Stable-ID retries are checked before the new count guard, preserving exact
+  retries of historical fractional declarations. No existing records or schema
+  were changed. Five real PostgreSQL regressions cover all affected write paths,
+  rejection without consuming identities, and unchanged historical quantities.
+- The client explains fractional-count errors and preserves the entered value
+  for correction. Full local verification passed: **202 frontend / 169 backend
+  tests**, both typechecks and builds. Physical-device acceptance remains open.
+- Prior refresh fix `2f4dcae` passed exact-head CI `42898623163` and Run Tests
+  `42898623062`. Automatic background synchronization remains disabled.
+
+## 2026-11-10 — Quantity comparison refresh isolation
+
+- Reproduced and fixed two manual-refresh races in the quantity panel: a late
+  previous-batch result overwrote a newer view, and an old 401 response cleared
+  a newer server login. Initial and manual reads now share cancellation on
+  navigation/unmount, and obsolete failures cannot modify the current session.
+- Both regressions failed before the fix. All **201 frontend tests**, typecheck
+  and PWA build passed. Real Chromium phone/desktop source comparison, manual
+  refresh and genealogy navigation passed again against isolated PostgreSQL.
+- The comparison feature commit `b64b622` passed exact-head GitHub web/server
+  CI `42898171052` and Run Tests `42898171135`. This is automated engineering
+  evidence, not an Android physical-device or production acceptance pass.
+
+## 2026-11-10 — M2 linked local source/output quantity comparison
+
+- Continued from verified remote head `0b2ca08`; its exact-head web/server CI,
+  Run Tests and signed development APK passed. Existing PR #3 stays a draft.
+- Extended the existing chief-only quantity-flow API and Android/web panel to
+  compare a single output-compatible local reference with declared step output.
+  Exact NUMERIC subtraction covers calendered length (m), good cut electrodes
+  (pieces) and assembled cells (cells). Shows source summary and immutable
+  source/link identifiers. UI rejects malformed or inconsistent responses and
+  explains older-server comparison unavailability.
+- Input/partial metrics (dry solids, side-A coating length, sorting input) stay
+  reference-only. Missing output, incompatible units and multiple measured
+  references produce explicit non-comparison states; no conversion, arbitrary
+  choice or assumed sum is made. Generic narrative links are not measurements.
+- Added eight PostgreSQL regressions including a one-millionth difference near
+  the NUMERIC limit, positive/zero/negative differences, role/tenant isolation,
+  unchanged batch status and multiple-source ambiguity. Local full verification:
+  **164 backend / 199 frontend tests passed**, both typechecks and builds passed.
+  Chromium **390×844 and 1365×900** passed the new comparison and existing
+  genealogy navigation using synthetic records through real Fastify/PostgreSQL;
+  source details meet 44px touch targets, with no overflow or browser exceptions.
+- No migrations, production writes, local journal rewrites, inventory posting,
+  automatic sync or formal QA approval. Existing physical-device, deployed TLS,
+  upgrade/restore and M2 physical route acceptance gates remain open.
+
+## 2026-11-10 — Security, reproducible server installs and session handoff
+
+- `8ea7aed`: committed the independent server lockfile and switched web/server
+  CI, the Android emulator bridge and both server Docker install stages to
+  `npm ci`. Upgraded Zod to 4.6.7 for GHSA-mrhx-c7xc-m3w5. Collection validation
+  now rejects oversized comment arrays before expanding per-item errors.
+  `z.guid()` preserves the old UUID spelling contract; actor, device, tenant
+  and record-scope permissions remain enforced. Added bounded-error and
+  legacy-UUID compatibility regressions. Clean install, typecheck, all **156
+  backend tests** against isolated PostgreSQL 16, and build passed. Exact-commit
+  CI `42890626209` and Run Tests `42890626203` passed.
+- `e42b23a`: fixed a pre-existing integration assertion that counted earlier
+  preserved test tenants. It now explicitly verifies its own two tenant IDs;
+  repeated full runs pass without deleting immutable records.
+- `3506ffb`: upgraded only the existing Vitest dependency in the frontend and
+  server to 5.1.0, removing test-runner advisories. Reviewed official migration
+  requirements; Node 22.12+ / Node 24 supported. All **192 frontend / 156
+  backend tests**, both typechecks and builds passed without weakening test
+  assertions. Exact-commit CI `42891035866` and Run Tests `42891035711` passed.
+- `fa70f79`, `a3675f3`: applied compatible Vite 6.4.6 and source-map-js 1.2.2
+  security patches after reviewing upstream changes. `ab4637c` removed
+  react-router-dom (and its transitive routers) after a repository-wide search
+  confirmed no application imports; navigation uses the existing tab layout.
+  Each change passed frontend typecheck, all 192 tests and production/PWA build.
+  The final dependency set passed real Chromium **390×844 / 1365×900** against
+  Fastify and disposable PostgreSQL: two-level ancestry, return path, unchanged
+  operation target, exact quantities, no overflow, 44px controls, no exceptions.
+- Audit snapshot: server **zero** advisories including dev dependencies;
+  frontend **zero high/critical**, six moderate and two low. Frontend runtime-only
+  audit reports one moderate `uuid` advisory affecting v3/v5/v6 buffer APIs;
+  application code imports v4 only and calls none of those affected APIs.
+  Other findings are PWA build-tool dependencies (glob/minimatch/deepmerge,
+  rimraf and the plugin chain). A forced plugin downgrade is not accepted.
+  Review a compatible upstream PWA update and UUID major/native replacement
+  before production release; next dependency review due **2026-11-17**. This is
+  a scoped audit snapshot, not a production security sign-off.
+- Container-image verification limit: the local Docker VFS build exhausted the
+  small workspace disk during the final image layer. Both install stages and
+  TypeScript compilation ran, but **the final image did not build**. Only this
+  task's identified transient build cache was removed; dependencies were
+  restored and clean locked tests/builds rerun. Do not report Docker-image
+  acceptance. No production database, migration, signing key or app ID changed.
+- Latest code and acceptance evidence should be checked against the exact head
+  on draft [PR #3](https://github.com/LHONE-mf/production_mf/pull/3); prior run
+  IDs above are pinned evidence, not claims about future commits. The signed
+  development APK for selection fix `5c4c0df` passed (`42889087796`), as did its
+  web/server CI (`42889097314`). Later APK packaging remains a separate check.
+- **Next useful M2 slice:** reconcile declared stage quantities/units with
+  actual journal links, then define workshop-scoped operator permissions and
+  real split/merge execution. Current genealogy remains a declaration, not
+  stock movement or physical consumption. M0 installed-upgrade/backup/restore,
+  M1 deployed-TLS/two-physical-device acceptance and the physical M2 pilot
+  remain open. No new Android emulator run and no production acceptance.
+  Automatic background synchronization remains disabled.
+
+## 2026-11-10 — M2 selection safety after delayed network replies
+
+- Fixed reproducible Planning races: a slow previous order, batch history or
+  route-step response could overwrite the active selection. Read success and
+  failure handlers now ignore superseded requests, closing a route invalidates
+  its pending read, and a completed save cannot reopen an order/batch the user
+  has left. No record edits, server permissions or synchronization changed.
+- Added five rendered regressions covering out-of-order order/batch/route reads,
+  an obsolete network failure and navigation during a save. The original three
+  selection tests reproduced the defects before the fix.
+- Local frontend **192 tests passed**, typecheck and build passed. Chromium
+  phone/desktop genealogy workflow passed again against real Fastify and
+  disposable PostgreSQL. This does not establish physical Android acceptance.
+
+## 2026-11-10 — M2 multi-level genealogy browser and complete link pagination
+
+- Verified remote branch `feat/hybrid-server-foundation` at `cf12fa7` before
+  changes; its web/server CI and Run Tests passed. PR #3 remains a draft.
+- `6b7d349` replaces silent 500-link truncation with chief-only, tenant/batch
+  scoped cursor pagination. Real PostgreSQL regression tests cover equal and
+  microsecond timestamps, all 501 declarations, invalid cursors and role/tenant
+  isolation. All **154 backend tests**, typecheck and build passed locally;
+  GitHub CI `42887780371` and Run Tests `42887783266` passed for that exact commit.
+- `0a1cfa6` added the connected read-only genealogy browser in Planning: follow sources
+  and results across multiple levels, inspect declaration metadata and exact
+  quantities, return via the visited path, refresh and load further pages.
+  Related batches need not be in the loaded batch list. Operation forms remain
+  bound to the original batch. Failed page reads preserve loaded history;
+  obsolete responses and malformed/truncated legacy responses are rejected.
+- Local frontend: **187 tests passed**, typecheck and production build passed.
+  Real Chromium at **390×844** and **1365×900** passed two-level navigation,
+  return path, unchanged operation target, exact quantity display, no horizontal
+  overflow, 44px touch targets and no browser exceptions. Checks used synthetic
+  fixtures in a disposable local PostgreSQL 16 database through actual Fastify
+  APIs, not genuine manufacturing evidence.
+- No production data or schema changes. No automatic synchronization enabled.
+  No new Android emulator or physical-device tests; M0 upgrade/restore and M1
+  deployed-TLS/two-device acceptance remain open.
+- Exact UI commit `0a1cfa6` passed GitHub web/server CI `42888406142`
+  (PR) and `42888395392` (push), Run Tests `42888406230`, and signed
+  development Android APK packaging `42888395454`. APK packaging is not
+  emulator, physical-device or production acceptance.
+
+## 2026-11-10 — M1 verified engineering checkpoint; field gate remains open
+
+- Working branch: `feat/hybrid-server-foundation`. Latest functional/security changes:
+  - `73aa0f2` accepts newer *complete* server task snapshots across workshop-scoped revision gaps without overwriting queued edits; tests `777e424` and corrected earlier expectation `c83b1de`.
+  - `5fc12a9` requires current workshop membership for worker task-access listings, per-task comparison, and pull, even if the worker remains assigned; PostgreSQL revocation/restoration test `2f77336`.
+  - `17d01fc`, `de005ae`, `411bcbb` hide sensitive archived/conflicted task details without a valid offline access scope and verify expiry/revocation behavior.
+  - `daa278a` adds PostgreSQL integration coverage for two independently enrolled devices of the **same actor**, conflicting offline edits, device-proof isolation, and revocation of one device while the other remains authorized.
+- **Automated web/server tests passed** on `daa278a`: Run Tests `42797978836`, CI — web and server `42797979176`.
+- **Signed Android APK succeeded** on latest application-code commit `411bcbb`: run `42797199340`.
+- **Android emulator smoke succeeded** on `f1caa75`: run `42797431939`. Real emulator test evidence includes launch/screenshot checks, WebView IndexedDB conflict archive retained across activity restart, AndroidKeyStore Ed25519 and Capacitor plugin challenges verified by Fastify/PostgreSQL, and replay rejection. The temporary self-trigger was removed in `fd707c7`; Android emulator workflows are manual-only again.
+- The native emulator proves important Android behaviors but **does not** represent two physical devices or a deployed production server. Separate enrolled devices and competing edits are exercised in PostgreSQL integration tests; client restart/deferred-outbox safety is exercised in Dexie tests.
+- **M1 release status: engineering candidate, not signed off.** Remaining external gate: validate two separate physical Android installations against a configured TLS server with separate enrollments and concurrent offline edits, restart/recovery, and revocation, then document results. M0 Android upgrade/backup/restore reliability is also unverified. Never silently migrate or delete existing manufacturing data. Automatic background sync remains disabled.
+
+## 2026-11-08 — Emulator focus hardening and current M1 CI status
+
+- Working branch: `feat/hybrid-server-foundation`; latest code commit `25aeb2c7`.
+- Confirmed `75440c18` web/server CI, regression tests, and signed Android APK build succeeded.
+- Previous `a8485c8a` emulator smoke run `42500431502` failed because the application did not hold `mCurrentFocus` immediately after startup; its logs show Android boot completed and the smoke script stopped before authentication instrumentation. This is not evidence of a device-proof regression.
+- `25aeb2c7` adds bounded focus recovery (three attempts, relaunch and preserved diagnostics) in `scripts/android-emulator-smoke.sh`; persistent failure remains fatal.
+- New emulator run `42502963604`, APK build `42502963587`, and web/server CI `42502963617` were started for `25aeb2c7`. Their final results were not yet available at the time of this note; do not claim the new emulator test passed until the job completes.
+- Previously verified `e3c52d4` fresh AndroidKeyStore challenge round trip with Fastify/PostgreSQL and replay rejection. The Capacitor plugin test was added in `9f7a10d`, and the later successful emulator run `42499950461` verifies that path on its then-current commit.
+- JSONB idempotency fix `5031ce4` is covered by isolated PostgreSQL integration tests; web/server CI passed on that commit.
+- Task pull and comparison now require device-bound proof (commits `89e19f40`, `a8485c8a`); CI passed on `75440c18`.
+- Production data untouched. Automatic synchronization remains disabled. Do not enable until offline conflict handling, migration safeguards, and cross-device tests are verified.
+
+## 2026-11-08 — device-scoped task reads and reliable emulator CI
+- Investigated emulator failures `42496926273` and `42497310803` using uploaded window dumps and screenshots. The foreground was an Android system ANR dialog for `com.google.android.apps.nexuslauncher`, while `mFocusedApp` retained a stale Production MF activity. In `fe2c32a`, emulator CI switched to the AOSP system image, checks actual `mCurrentFocus` after launch/relaunch, and spaces the two Back key events without disabling the check. **Emulator run `42499950461` passed** with screenshots and device proof instrumentation.
+- In `89e19f4`, secured `GET /sync/pull` and `GET /sync/task/:id` with the same PostgreSQL-checked short-lived, enrolled, nonrevoked, actor/organization/session/device-bound grant as `POST /sync/push`. Both atomic and legacy task clients now include the device ID and proof for manual pull; UI task comparison likewise requires a fresh proof. Missing, mismatched, or revoked proof fails closed. No automatic sync enabled.
+- Added server unit and real PostgreSQL integration cases for proof-gated task reads, device mismatch and revocation; CI server tests reached **67 passed**. The first frontend run at `89e19f4` failed an existing cursor test that had no proof fixture; fixed the test in `a8485c8`. Dedicated Run Tests `42500435048` and both web/server CI workflows `42500431501`, `42500435039` **passed** on `a8485c8`.
+- Signed APK run `42500332150` passed for application code at `89e19f4`; the latest `a8485c8` APK and emulator runs are still pending at this checkpoint. A later docs-only commit does not change the APK application code.
+- Remaining M1 blockers: chief/master reads still have broad organization-level task visibility (workshop/team/assignee policy not implemented); web enrollment/proof capability needs product design; worker offline task edits, safe repeated edits, explicit conflict resolution, and PostgreSQL-backed two-device convergence are not verified. Production records untouched; automatic synchronization remains **disabled**.
+
+## 2026-11-08 — fresh Android challenge and Capacitor bridge verified; JSONB task retry fixed
+- Fixed emulator CI shell-variable loss in `e3c52d4`: read the fresh challenge in the same `adb` instrumentation command. Emulator run `42496170169` passed, including Fastify-issued random challenge, AndroidKeyStore Ed25519 signature, real PostgreSQL verification, and replay rejection.
+- Added actual Capacitor `DeviceProof` plugin instrumentation in `9f7a10d`. Emulator run `42496488988` passed: real WebView `nativePromise` calls exercised `getPublicKey` and `signChallenge`, private-key nonexportability and invalid challenge rejection; plugin-generated signatures verified by Node.js and by Fastify/PostgreSQL for a dynamically issued challenge, with replay denied.
+- Fixed sync operation idempotency in `5031ce4`: PostgreSQL JSONB equality now compares duplicate payloads regardless of key order, while modified payloads reusing an operation ID are rejected. Added real PostgreSQL integration test. Web/server CI runs `42496926313` and `42496931019` and Run Tests `42496930919` passed; server reports 64 passing tests.
+- Android release APK run `42496926347` passed and uploaded `app-release-signed` artifact; latest emulator run `42496926273` is in progress at this checkpoint. All migrations are applied only to isolated disposable CI databases.
+- This progress commit further gates the new integration test cleanup on verified disposable-database identity. No production data was modified and automatic synchronization remains disabled.
+- Remaining M1 gates: verify latest emulator run; establish device-scoped pull and granular role/workshop/assignee task policy; implement authorized offline editing, conflict recovery and two-device convergence tests. Do not label the application production-ready.
+
+## 2026-11-08 — fresh server-issued AndroidKeyStore challenge round-trip in emulator CI
+- Android-to-Fastify/PostgreSQL bridge workflow `42492031227` **passed**: AndroidKeyStore Ed25519 signature verified by Node, enrollment accepted via Fastify, PostgreSQL-backed proof issued for a test-seeded challenge, replay rejected, emulator smoke/screenshots passed. Logs contain both `PASS: AndroidKeyStore Ed25519 signature verified by Node crypto` and `PASS: emulator Ed25519 public key enrolled, Android signature accepted by Fastify/PostgreSQL, replay rejected`.
+- Next CI gate now signs a **fresh challenge actually issued by `/devices/challenge`**. Instrumentation test accepts the server challenge via runner arguments and reuses the same test-only non-exportable AndroidKeyStore alias across two explicit test invocations (`fc9ddaf9`, `89bafc09`).
+- New disposable-DB script `apps/server/scripts/verify-fresh-emulator-device-proof.mjs` (`425963aa`) enrolls the emulator-generated public key, obtains/stores the random challenge, then checks the Android signature via the real Fastify verification endpoint with PostgreSQL, hashed proof token, and replay rejection. CI `81721963` wires initial enrollment, dynamic challenge signing and final verification. Session material is stored mode-0600 under `RUNNER_TEMP`, never in downloadable artifacts. Script refuses non-local/non-test databases.
+- **Verification pending** for the new dynamic exchange in emulator workflow `42492845942`; latest Run Tests passed at `81721963`. Do not claim the fresh challenge round-trip works until emulator CI passes. Automatic sync disabled; no production data changed.
+
+## 2026-11-08 — AndroidKeyStore-to-Node verified; PostgreSQL proof-route bridge added
+- Emulator CI workflow `42491119075` **passed**, including cold launch/relaunch screenshots, `:app:connectedDebugAndroidTest`, and Node cryptographic verification of a real AndroidKeyStore Ed25519 signature; altered challenge and missing domain separator were rejected. The verification log explicitly reported `PASS: AndroidKeyStore Ed25519 signature verified by Node crypto`.
+- Added `apps/server/scripts/verify-emulator-device-proof.mjs` (`334520f1`) to enroll that emulator public SPKI via the real Fastify chief endpoint and verify its test-only signature via `/devices/challenge/verify` against disposable PostgreSQL. Checks genuine challenge issuance/hashing, hashed grant storage, rejection of replay and altered challenge. Because instrumentation signs the fixed test challenge, the bridge seeds that test-only challenge in the isolated CI database; it does **not yet** prove dynamically-issued challenge signing on Android.
+- Emulator CI now provisions separate `production_mf_emulator_ci` PostgreSQL 16 service, applies migrations 001–004, compiles Fastify and runs the bridge test after Android instrumentation (`8e37dd97`). The script refuses non-local or non-`production_mf_emulator_ci` database URLs and requires GitHub Actions. Workflow `42492031227` was running when logged; do not claim bridge verified until it passes.
+- Previous Fastify PostgreSQL integration CI `42491532396` passed 63 server tests including four real-database challenge tests. Auto sync remains disabled; existing production data was not touched.
+
+## 2026-11-08 — real PostgreSQL device-proof challenge integration CI passed
+- Added `apps/server/src/device-proof.postgres.test.ts` (`8f9983f8`), which performs chief-authorized Ed25519 enrollment, issues server challenges, verifies valid signatures, asserts only challenge hashes and proof-token hashes are stored, rejects incorrect signatures and expired challenges, and races two concurrent valid verifications of one challenge (exactly one 200, one 403 and one new grant).
+- Server CI now provisions an isolated PostgreSQL 16 service and applies migrations 001–004 before running Vitest (`09bcb5ff`). No production connection string is used for these tests. Both Fastify server and web jobs **passed** in GitHub Actions run `42491532396`, and dedicated Run Tests `42491536254` passed.
+- Android cross-runtime Ed25519 emulator run `42491119075` was still in progress at this checkpoint; AndroidKeyStore-to-Node verification and complete Android-to-server proof exchange remain unverified. Automatic sync remains disabled; production data unchanged.
+
+## 2026-11-08 — cross-runtime Ed25519 verification on emulator
+- Emulator run `42490460643` reproduced `NoSuchAlgorithmException: Ed25519 for provider AndroidOpenSSL` after successful AndroidKeyStore Ed25519 key generation and signing; local Android verifier provider selection was the test issue, not the signing operation.
+- Instrumentation now emits a **test-only** AndroidKeyStore Ed25519 public SPKI and signature over the fixed domain-separated challenge (`d39955d8`), with private key non-exportability and key encoding still asserted on Android.
+- New Node verifier `scripts/verify_android_ed25519_vector.mjs` reconstructs the SPKI, verifies the exact signed challenge using `node:crypto`, and rejects altered challenges/domain strings (`8a292354`, `71586fbb`); emulator workflow runs it after `:app:connectedDebugAndroidTest` (`c61feb5e`). Test fixture contains no private keys, live tokens or real server challenges.
+- At `71586fbb`, Run Tests and one web/server CI workflow passed. Cross-runtime emulator workflow `42491119075` and Android APK are still pending, so native sign-to-Node verification is **not yet confirmed** and authenticated Android-to-PostgreSQL round trip remains a separate milestone. Auto sync stays disabled; no production data modified.
+
+## 2026-11-08 — legacy sync outbox fail-closed responses and cursor checks
+- Hardened `src/core/sync/hybridClient.ts` so a partial, duplicated, unexpected or malformed push acknowledgment cannot delete queued edits; validates all responses before any IndexedDB writes, commits recognized outcomes in one Dexie transaction, retains rejected operations with reasons and skips already resolved operations (`66767e74`). Also restricts server URLs to HTTPS (or localhost HTTP) origins without embedded credentials or paths.
+- Pull now validates monotonic task sequences, IDs, revisions, response size, `hasMore` and exact checkpoint before invoking the remote-change consumer; callback errors leave the durable cursor unchanged. The callback remains separately responsible for idempotent durable task changes.
+- Added IndexedDB-backed regression tests for bad acknowledgments, accepted/conflict/rejected outcomes, unsafe URLs, skipped/invalid cursors, and consumer failure (`2030584b`). Both web/server CI and Run Tests passed at `2030584b` (workflow `42490750150`, `42490755456`, `42490755482`).
+- Android Ed25519 provider test run `42490460643` was still active, and newer Android build/emulator jobs were pending. Do not enable automatic sync until native signing and server integration are verified. Existing data unchanged.
+
+## 2026-11-08 — fix Android Ed25519 verification provider selection
+- Emulator `42489687923` advanced past Ed25519 key generation and non-exportable signing but failed when `KeyFactory.getInstance("Ed25519")` selected AndroidKeyStore and rejected `X509EncodedKeySpec` with `InvalidKeySpecException`. The signer itself did not fail.
+- Android instrumentation now explicitly imports the RFC 8410 SPKI using `KeyFactory.getInstance("Ed25519", "AndroidOpenSSL")` and verifies with `Signature.getInstance("Ed25519", "AndroidOpenSSL")` (`2a076006`). Private signing remains AndroidKeyStore-only; the change affects tests and no stored device keys or user data.
+- Previous `c004ac60` web/server CI, Run Tests and Android APK completed successfully. Fresh emulator test `42490460643` is running; verification not yet confirmed. Keep automatic sync disabled.
+
+## 2026-11-08 — AndroidKeyStore Ed25519 signs successfully; fix test verification provider mismatch
+- Emulator run `42486283232` (explicit `ECGenParameterSpec("ed25519")`) generated a canonical Ed25519 key, passed private-key non-exportability, and produced a 64-byte signature. Its only instrumentation failure was `InvalidKeyException: No installed provider supports this key: android.security.keystore2.AndroidKeyStoreEdECPublicKey` when trying to verify directly against the provider-specific public-key object.
+- The test now reconstructs a standard JCA Ed25519 public key from the 44-byte RFC 8410 SPKI encoding via `KeyFactory`/`X509EncodedKeySpec` and verifies with that (`576dc34b`), matching the remotely verifiable public-key representation. Await emulator CI before marking full native sign/verify gate green. This does not establish hardware-backed key storage on physical devices or complete device-to-server end-to-end testing.
+- No automatic sync or production data changes.
+
+## 2026-11-08 — force the Ed25519 curve in AndroidKeyStore
+- Diagnostic emulator workflow `42484736583` confirmed `algorithm=EC, SPKI length=91`: requesting a generator named Ed25519 without an explicit curve had produced a P-256 key, not a valid Ed25519 SPKI public key.
+- The native plugin now specifies `ECGenParameterSpec("ed25519")`, checks the generated SPKI and private-key non-exportability, and replaces only pre-existing non-Ed25519 aliases that could never have been accepted by the Ed25519-only server (`f199dbdf`). The Android instrumentation test explicitly requests the same curve (`a30b478b`). No software-key or ECDSA fallback is introduced.
+- CI and emulator verification for these changes are pending; do not mark hardware-backed Ed25519 operational or enable automatic sync until native key generation and signing pass.
+
+## 2026-11-08 — server rejects changed-precondition operation-ID replays
+- Tightened `/sync/push` duplicate checks: an operation ID is acknowledged only when the original `operation_type` and `expected_revision` also match, in addition to organization, actor, device, entity, and payload (`3921e9e5`). This prevents a stale or altered operation from being silently treated as a successful exact retry.
+- Added regression test that expects rejection for an altered expected revision and `duplicate` for an exact retry, without committing writes (`a6409584`). Web/server CI passed; dedicated Run Tests and Android build were running at documentation time.
+- Emulator Ed25519 algorithm diagnostics are still running in workflow `42484736583`; preserve strict fail-closed handling, no automatic sync.
+
+## 2026-11-08 — emulator exposes incompatible AndroidKeyStore public key
+- Emulator run `42484083357` built app and instrumentation APKs but failed `:app:connectedDebugAndroidTest`. DeviceProofKeystoreTest received a 91-byte SPKI rather than the required 44-byte Ed25519 SPKI; native enrollment correctly fails closed. Do not enable automatic sync or add a software-private-key fallback.
+- Also fixed stale Capacitor sample instrumentation assertion (`com.getcapacitor.app` → `ru.liion.production`, `995bb626`) and enriched Ed25519 assertion with provider algorithm details (`f5794130`). Await follow-up emulator diagnostics before selecting a secure supported key strategy.
+
+## 2026-11-08 — isolate Android instrumentation to app module
+- Emulator run `42483797636` failed in `:capacitor-cordova-android-plugins:checkDebugAndroidTestDuplicateClasses`, due to Kotlin 1.8.22 vs legacy Kotlin JDK7/JDK8 1.6.21 test dependency collisions. The Ed25519 test itself compiled after `412a6cc4`.
+- Restricted emulator workflow instrumentation build and execution to `:app:assembleDebugAndroidTest` and `:app:connectedDebugAndroidTest` (`1f8fd9a7`) to avoid running tests of unrelated Capacitor modules. Emulator runtime result still pending.
+
+## 2026-11-08 — Ed25519 instrumentation compile fix
+- Emulator run `42483549801` failed at `compileDebugAndroidTestJavaWithJavac` because the new instrumentation test passed a generic `Key` to `Signature.initSign`. Cast the retrieved AndroidKeyStore key to `PrivateKey` (`412a6cc4`), consistent with the production plugin. Runtime signing still awaits a completed emulator test.
+- The previous Gradle wrapper timeout fix was verified by a successful Android APK build `42483549778`; web/server and Run Tests passed at `0f8d38e5`.
+
+## 2026-11-08 — Gradle distribution download timeout
+- Android APK workflow `42483193971` failed before compilation: Gradle wrapper could not download `gradle-8.11.1-all.zip` within its configured 10-second network timeout. Increased `android/gradle/wrapper/gradle-wrapper.properties` networkTimeout to 120000 ms (`a4a30a26`). Requires a fresh CI result.
+- At `7940ebef`, Run Tests and web/server CI passed. Ed25519 emulator instrumentation remains unverified.
+
+## 2026-11-08 — emulator smoke green; AndroidKeyStore Ed25519 runtime gate added
+- Android emulator smoke run `42482735501` passed on `6b902fdf`, after correcting double-Back dispatch. Android APK and web/server CI passed at the same commit; `43ce5d9c` also passed Run Tests and web/server CI.
+- Added Android instrumentation test for AndroidKeyStore Ed25519 generation, non-exportability, SPKI encoding, and signing/verification of the device-proof domain-separated challenge (`3f79a261`). Updated emulator workflow to run `connectedDebugAndroidTest` (`4959333f`). Results pending; test exercises key primitives, not the Capacitor JS bridge or PostgreSQL end-to-end proof.
+- No automatic sync or production data changes.
+
+## 2026-11-08 — Android emulator Back smoke failure and targeted fix
+- At `50859a05`, web/server CI, Run Tests and Android APK build passed. Emulator run `42482142742` installed and cold-launched the app twice, then failed its two-Back exit assertion; native Ed25519 runtime signing was not exercised.
+- Changed `scripts/android-emulator-smoke.sh` to dispatch both Back key events within one ADB shell invocation, reducing host-to-emulator latency (`6b902fdf`). Await a fresh emulator result before claiming this issue resolved.
+- Automatic sync remains disabled; no production records changed.
+
+## 2026-11-08 — authenticated sync transaction boundary regression
+- Added server test proving a valid session-bound, device-bound proof passes authorization to the task-push transaction boundary and that an injected transaction query failure returns a temporary service error (`aa82c82`, `d096a89`). This is a mock test, not a real PostgreSQL integration test.
+- Web/server CI was successful at `8917ba2e`; current branch has newer unverified commits and Android builds were not confirmed successful when checked.
+- No automatic synchronization enabled and no production data modified.
+
+## 2026-11-08 — Ed25519 enrollment authorization coverage
+- Added HTTP route-level tests for successful canonical Ed25519 enrollment scoped to an active user in the chief's organization, and for rejection of a user outside that organization without inserting a device (`424ebec`). Existing RSA rejection test remains.
+- CI at the previous `8917ba2e` checkpoint was still in progress when inspected. Native Ed25519 generation/signing, Android APK/emulator and real PostgreSQL concurrency remain unverified; do not enable background synchronization.
+
+## 2026-11-08 — Android Ed25519 provider compatibility and CI stability
+- Android device proof bridge now validates the 44-byte RFC 8410 Ed25519 SPKI encoding instead of requiring the provider-reported algorithm string to equal `Ed25519` (some providers use `EdDSA`) (`e61697f`). Unsupported keys and AndroidKeyStore failures still fail closed; no software fallback.
+- Android APK and emulator workflows now use `cancel-in-progress: false` to allow long-running verification to finish despite frequent development commits (`c977dff`, `52fdbce`). Older cancelled runs remain cancelled.
+- Latest inspected web/server success was `79e05416`; new Android build/emulator verification is not yet complete. Actual AndroidKeyStore Ed25519 generation/signing compatibility and real PostgreSQL concurrency are still open gates.
+
+## 2026-11-08 — atomic task push proof regression
+- Added IndexedDB-backed regression tests for `pushAtomicTasks`: missing/wrong-device/expired proof must not issue a request or delete pending local edits; valid proof must be transmitted as `x-device-proof` and a successful server acknowledgment must atomically update revision and remove its queued operation (`dff6951`).
+- GitHub web/server CI passed at `79e05416`; new tests, Android APK and native signing have not yet been verified at this checkpoint.
+- Automatic synchronization remains off. No schema changes or production data deletion.
+
+## 2026-11-08 — strict device-proof endpoint and challenge validation
+- Device proof client rejects server URLs with embedded credentials, path, query, or fragment before issuing authenticated requests (`a0d917f`). Also requires challenge IDs to be UUIDs before invoking native signer.
+- Added regression tests for invalid server origins and malformed challenge IDs (`c110da2`).
+- GitHub web/server CI passed at `cb8ae349`. New client tests and Android APK/emulator have not yet been confirmed; Android build was still in progress when inspected.
+- No changes to production data, database schema, or automatic synchronization policy.
+
+## 2026-11-08 — challenge replay regression
+- Added HTTP route-level regression test that signs a genuine issued challenge, verifies once successfully, then replays the identical signature/challenge and expects HTTP 403 (`eaa645c`). The test simulates PostgreSQL conditional consumption with a stateful fake; real PostgreSQL concurrency still needs integration coverage.
+- At previous checkpoint `205b5955`, GitHub web/server CI passed; newer Android builds and the latest replay test were not yet verified when inspected.
+- Existing records unchanged; automatic sync remains disabled pending Android and PostgreSQL integration verification.
+
+## 2026-11-08 — session logout and enrollment guard regression
+- Sync screen disconnect now POSTs `/auth/logout`, clears in-memory bearer/proof/device UI state even on network failure, and warns if remote revocation could not be confirmed (`cbb74aa`). Existing local tasks and queued changes remain untouched.
+- Added HTTP-level regression test that chief enrollment rejects an RSA SPKI public key without any device insert (`f28067e`).
+- GitHub Actions web/server CI passed at `205b5955`; Android APK and emulator were still in progress, and the newest changes have not yet passed CI.
+- End-to-end AndroidKeyStore signing/enrollment/sync still requires a verified device/emulator run.
+
+## 2026-11-08 — device proof binding and expiry guard
+- Both sync adapters now require the ephemeral proof's device ID to match the pending operation's device ID and require more than five seconds of remaining lifetime before any task push (`d398f7d`, `1efe960`).
+- The challenge client records proof device ID and conservative local expiry from verification request start, without persisting token or private key (`525c319`). Added metadata assertions to client regression test (`b66cfab`).
+- Sync UI requests fresh proof when an existing grant expires and only displays verified status for the selected device (`5596c35`). No queued operations are deleted by these guards.
+- New GitHub Actions jobs were pending when inspected; AndroidKeyStore compatibility and complete device-to-server push remain unverified.
+
+## 2026-11-08 — Android device enrollment and proof UI
+- Added manual Android-only key creation and chief-authorized enrollment controls to the Sync screen, plus device selection and signed challenge verification before task pushes (`c7e22e1`). The server session and ephemeral proof remain in component memory; switching devices clears the proof. No background synchronization is enabled.
+- Verified GitHub Actions at `fc3c1615`: web/server CI and Run Tests passed; Android APK build was still running when inspected. The new UI commit has not yet passed CI.
+- **Remaining validation:** real AndroidKeyStore Ed25519 provider compatibility, emulator APK build, device-enrollment-to-push end-to-end test, proof expiry refresh, and tenant-safe device binding. Do not enable automatic sync yet.
+
+## 2026-11-08 — enrollment key validation
+- Server now validates canonical Ed25519 SPKI PEM keys before accepting chief-authorized device enrollment (`7967eb4`, `4e98877`); RSA, malformed and noncanonical PEM are rejected with HTTP 400.
+- Added Ed25519 enrollment key validation regression tests (`0d397a7`).
+- Verified via GitHub Actions: web/server CI passed at `3a6f98f`. The new enrollment changes and Android APK build have not yet been verified; several intermediate runs were cancelled by newer pushes.
+- Android key provider compatibility and secure enrollment/recovery UI remain outstanding. Do not enable automatic sync or deploy until end-to-end proof is verified.
+
+## 2026-11-08 — Android native device signing bridge
+- Added `DeviceProofPlugin.java` and registered it in `MainActivity`: attempts AndroidKeyStore-backed Ed25519 key generation, returns only the SPKI public key, and signs domain-separated challenge bytes; rejects malformed challenges and refuses exportable software-key fallback (`d609f31`, `ebdad62`).
+- Added `src/core/sync/androidDeviceProof.ts` to connect the native signer to the server's challenge exchange (`6ca7e62`). No UI flow or automatic synchronization was enabled.
+- **Device compatibility risk:** AndroidKeyStore Ed25519 support is not universal. Unsupported providers intentionally reject rather than silently generate software keys; hardware/provider testing is required before enrollment. No enrollment or recovery UI exists yet.
+- CI at prior commit `fa3504e`: web/server CI and Run Tests passed. Latest Android and emulator workflows were pending at last inspection. Do not claim current APK passed.
+
+## 2026-11-08 — M1 device proof transport (opt-in)
+- Added `src/core/sync/deviceProofClient.ts`: HTTPS-only issue/sign/verify exchange with an injected device-key signer, returning an ephemeral `HybridSession.deviceProofToken` without persisting credentials (`cad14055`).
+- Added challenge-exchange unit tests for success, insecure origins, malformed challenge and rejected verification (`8dec9b1`).
+- Both prototype and atomic sync push adapters now require a proof token and limit each batch to a single device (changes present on branch); no outbox records are removed when proof is missing.
+- Fixed migration numbering is visible on branch: `003_sync_entities.sql`, `004_device_challenges.sql`. Earlier naming collision no longer exists.
+- GitHub Actions on commit `d40560cf`: web/server CI and Run Tests both succeeded; Android build was still in progress when checked. New proof-client changes have **not** been verified by CI yet.
+- **Not production-ready:** platform-backed non-exportable Ed25519 key generation, device enrollment and signer wiring are not implemented. UI does not invoke this helper. Never replace the signer with an exportable browser key or persist private keys in localStorage.
+
+## 2026-11-08 — M1 client proof transport and CI repair
+- Updated both opt-in sync adapters (`hybridClient.ts`, `atomicClient.ts`) to send an in-memory `x-device-proof` header on push, reject absent proof before network upload, and split mixed-device pending queues into single-device batches. No automatic sync or credential persistence enabled.
+- Renumbered the additive device-challenge migration from duplicate `003` to `004`, preserving `003_sync_entities.sql`.
+- Inspected GitHub Actions: run 42480989082 failed server TypeScript with TS2532 at `device-challenge-routes.test.ts` lines 58–60; frontend typecheck, unit tests and build passed in that run. Fixed strict optional mocked-call indexing in challenge and sync-proof tests. New CI runs still need verification.
+- **Still incomplete:** client challenge signing/key management and enrollment, PostgreSQL integration tests, and end-to-end Android sync. Do not enable sync in production.
+
+## Current status — 2026-11-08 (M1 enforce device proof on push)
+- Added fail-closed `/sync/push` proof grant validation (commit `a9a38f5`): a single device per batch, required `x-device-proof` token, matching token hash, organization, user, device, login session, grant expiry, and active session/device. Checks happen before task mutations.
+- Added mocked route regressions for missing grant, invalid/expired/revoked/wrong-scope grant and mixed-device batch (commit `af99293`). These do **not** demonstrate successful push or PostgreSQL concurrency behavior.
+- **Compatibility limitation:** current client does not yet obtain or transmit a device proof; server-managed push now fails closed until client integration. Existing offline records and outbox are not deleted.
+- **Verification pending:** GitHub Actions page was inaccessible from this session; no server test, PostgreSQL integration, or Android APK pass can be claimed. Do not deploy this change to production before validating and updating the client.
+- Next: test with actual PostgreSQL, wire secure client proof flow, check GitHub Actions and Android build, then strengthen scoped pull authorization.
+
+## Current status — 2026-11-08 (M1 PostgreSQL device challenges)
+- Added additive migration `003_device_challenges.sql` for session-bound, expiring single-use challenge hashes and short-lived device proof grants (commit `2ef2577`). No existing production tables or data were deleted.
+- Added authenticated challenge issuance and Ed25519 proof verification endpoints (commit `a7e8d08`), registered with Fastify (commit `9ae139e`). Verification now uses a single PostgreSQL statement to consume a challenge and insert a grant atomically; inspect current code before assuming deployment.
+- Added endpoint regression tests for authentication, malformed input, ownership, challenge hashing, invalid signatures, success and consumed/expired rejection (`device-challenge-routes.test.ts`). These are mocked database tests, **not** PostgreSQL concurrency integration tests.
+- CI and Android APK status for these commits has **not** been independently verified; do not claim green builds. Device proof grants are **not yet enforced by sync push**, and secure client key storage is not implemented. No production rollout authorized.
+- Next: verify Actions and run server tests/Android build, add real PostgreSQL concurrent replay tests, then require session/device-bound proof grants on sync push.
+
+## Current status — 2026-11-08 (M1 Ed25519 device-proof primitive)
+- Web/server CI and tests passed for `1766aad5`; Android APK build was still in progress when checked.
+- Added `apps/server/src/device-proof.ts`: strict Ed25519 signature verification over a domain-separated challenge (commit `79ad421`).
+- Added five cryptographic primitive tests, including wrong challenge/key, malformed inputs and non-Ed25519 keys (commit `bfe6720`).
+- This primitive is not yet wired into authentication or sync authorization. It does not create or consume one-time challenges, persist proof, or establish a trusted device session.
+- Next: add PostgreSQL-backed one-use challenge issuance/consumption with expiry and replay tests, bind proof to authenticated user and device, then require verified proof on sync push.
+
+## Current status — 2026-11-08 (M1 task attachment integrity)
+- Verified web/server CI and tests passed for device-discovery progress commit `c3b16643`; APK was still running at verification time.
+- Added immutable attachment validation for task sync, preventing deletion, content replacement and duplicate attachment IDs (commits `5ac99e6`, `0352ceb`).
+- Added four attachment regression tests (commit `4f80684`).
+- Device proof-of-possession, session binding and offline server-managed edits remain outstanding; no claim of those features being implemented.
+- Next: review latest CI, then design and implement challenge-response device enrollment with server-verified public-key signatures before enabling offline task writes.
+
+## Current status — 2026-11-08 (M1 device discovery)
+- CI tests, web/server build, and Android APK passed for comment-security commit `e5484a87`; one duplicate CI workflow was still pending when checked.
+- Added authenticated `GET /devices/mine`, filtering by session organization and user and excluding revoked devices (commit `6cbde15`).
+- Added endpoint authorization/tenant-owner tests (commit `f47b691`) and display of enrolled device IDs in the sync screen (commit `3430835`).
+- This is device **discovery**, not cryptographic device proof or persisted secure session binding. Offline server-managed task editing remains disabled.
+- Next: validate new CI, implement secure device proof and session binding, then wire offline task commands.
+
+## Current status — 2026-11-08 (M1 atomic offline tests)
+- Verified CI, tests and APK build succeeded for creator-security commit `2ea068a4` (GitHub Actions runs `42475447047`, `42475447043`, `42475442039`, `42475442071`).
+- Added `src/core/sync/atomicTasks.test.ts` with regression cases for atomic task+outbox persistence, rejection of a second pending edit without overwriting the first, and invalid device ID (commit `a7db497`).
+- UI still blocks offline changes for server-managed tasks because durable enrolled device identity and a safe queue policy are not wired into task screens. Do not claim UI functionality has changed.
+- Next: verify new test CI; connect a durable, authenticated device identity to task commands and define a safe policy for multiple offline edits before enabling UI changes.
+
+## Current status — 2026-11-08 (M1 creator security)
+- Added `apps/server/src/task-authorization.ts` to require authenticated actor as creator on new task and preserve creator/creation time on updates (commit `370b42f`).
+- Integrated validation in `apps/server/src/sync-routes.ts` before task upsert (commit `417dbb1`).
+- Added five unit regression tests in `apps/server/src/task-authorization.test.ts` (commit `c5ba961`).
+- CI for latest security commit not yet verified. Earlier documentation commit `91e6821` had green CI/tests; do not attribute those results to this change.
+- Next: verify CI, then tighten task-level authorization and implement offline task status changes with atomic outbox.
+
+## Current status — 2026-11-08 (M1 sync audit)
+- Reviewed `atomicTasks.ts`, `atomicClient.ts`, `hybridClient.ts`, `hybridOutbox.ts`, task/sync UI, and server sync routes.
+- Recorded prioritized P0/P1 findings and eight regression test cases in `docs/M1_TASK_SYNC_AUDIT.md` (commit `03382fb`).
+- Next: implement server-side creator immutability and authorization tests, then unify offline task writes. No application code changed in this audit step.
+- CI for this documentation change not yet verified.
+
+## Current status — 2026-11-08 (hybrid product roadmap)
+- Architecture B (hybrid offline-first Android/Web + Fastify/PostgreSQL) selected by user.
+- Canonical product requirements and M0–M5 milestones: `docs/PRODUCT_SPECIFICATION.md` (commit `b52dd5a`).
+- Legacy fully-offline architecture and development plan explicitly marked superseded (commits `924ed78`, `83be4fb`).
+- Next: audit task writes and server sync authorization, add regression tests for offline server-managed tasks, then implement a minimal safe fix.
+- Documentation-only changes: CI result for this series not yet verified; no claim of functional implementation.
+
 # PROGRESS.md — состояние проекта и правила работы агента
 
 > **ВАЖНО ДЛЯ АГЕНТА (обязательный протокол):**

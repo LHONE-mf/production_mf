@@ -1,0 +1,84 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import { db } from '../../core/db';
+import {UserRole} from '../../core/types';
+import { prepareCoatingRun, saveCoatingRun, saveCoatingRollHandover, coatingRollSpec, type CoatingEntry } from './coatingJournal';
+
+const entry:CoatingEntry={foilType:'Al, measured 12 um',mode:'continuous',targetDryMgm2:20,
+  coatingWidthCm:50,webSpeedMpm:8,headGapUm:180,pumpDeliveryCm3Rev:25,
+  segLengthsM:[1.234567],ovenTempsC:[],
+  mixSnapshot:{mixBatchId:'measured-mix',recipeName:'Measured slurry',pasteDensity:2,solidsPctMass:50,createdAt:1}};
+beforeEach(async()=>{await db.open();await db.users.add({id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()});await db.coatIncomingMixes.add(entry.mixSnapshot!);});
+afterEach(async()=>{db.close();await db.delete();});
+
+it('retains reproducible inputs and calculated results after closing and reopening IndexedDB',async()=>{
+  const run=await saveCoatingRun(entry,'operator','run');
+  expect(run).toMatchObject({mixBatchId:'measured-mix',coatingWidthCm:50,pumpDeliveryCm3Rev:25,
+    wetThicknessUm:200,headGapUm:180,estimatedFlowLpm:0.8,screwRpm:32,sideALengthM:1.234567,ovenTempsC:[]});
+  db.close();await db.open();
+  expect(await db.coatRuns.get('run')).toEqual(run);
+  expect(await db.journal.get('run')).toMatchObject({workerId:'operator',params:{'Запись нанесения':'run'}});
+});
+
+it.each([
+  {foilType:''},{targetDryMgm2:0},{coatingWidthCm:-1},{webSpeedMpm:Infinity},
+  {segLengthsM:[1,-1]},{pumpDeliveryCm3Rev:0},{headGapUm:-1},{sideBLengthM:-1},{measuredDryThicknessUm:0},{measuredDryThicknessUm:-1},{measuredDryThicknessUm:Infinity},
+  {ovenTempsC:[120]},{ovenTempsC:[1,2,3,4,5,NaN]},
+  {mode:'intermittent' as const,gapWidthMm:20,gapPitchMm:10},
+  {mixSnapshot:{...entry.mixSnapshot!,solidsPctMass:101}},
+])('rejects invalid entered data before writing: %j',async(change)=>{
+  await expect(saveCoatingRun({...entry,...change},'operator','invalid')).rejects.toThrow();
+  expect(await db.coatRuns.count()).toBe(0);expect(await db.journal.count()).toBe(0);
+});
+
+it('keeps estimates unavailable without measured slurry properties or pump calibration',()=>{
+  const noMix=prepareCoatingRun({...entry,mixSnapshot:undefined},'operator','no-mix');
+  expect(noMix.wetThicknessUm).toBeUndefined();expect(noMix.estimatedFlowLpm).toBeUndefined();
+  expect(noMix.screwRpm).toBeUndefined();
+  const noCalibration=prepareCoatingRun({...entry,pumpDeliveryCm3Rev:undefined},'operator','no-calibration');
+  expect(noCalibration.estimatedFlowLpm).toBe(0.8);expect(noCalibration.screwRpm).toBeUndefined();
+});
+
+it('rolls back both stores after a journal failure and permits a safe retry of the same ID',async()=>{
+  const fail=()=>{throw new Error('Test storage failure');};
+  db.journal.hook('creating',fail);
+  try{await expect(saveCoatingRun(entry,'operator','retry')).rejects.toThrow('Test storage failure');}
+  finally{db.journal.hook('creating').unsubscribe(fail);}
+  expect(await db.coatRuns.count()).toBe(0);expect(await db.journal.count()).toBe(0);
+  await saveCoatingRun(entry,'operator','retry');
+  const before=await db.coatRuns.get('retry');expect(await saveCoatingRun(entry,'operator','retry')).toEqual(before);
+  await expect(saveCoatingRun({...entry,foilType:'Changed'},'operator','retry')).rejects.toThrow();
+  expect(await db.coatRuns.count()).toBe(1);expect(await db.journal.count()).toBe(1);
+});
+
+it('hands over attributed measured dry thickness, with stable retries and no overwrite of conflicting records',async()=>{
+  const run=await saveCoatingRun({...entry,measuredDryThicknessUm:100},'operator','measured');
+  const [first,retry]=await Promise.all([saveCoatingRollHandover(run),saveCoatingRollHandover(run)]);
+  expect(first).toEqual(retry);expect(await db.rollSpecs.count()).toBe(1);
+  expect(first).toMatchObject({thicknessBeforeUm:100,thicknessBeforeMeasurement:{
+    basis:'dry-electrode-including-foil',recordedBy:'operator',recordedAt:run.createdAt}});
+  expect(run.wetThicknessUm).toBe(200);
+  db.close();await db.open();expect(await db.rollSpecs.get(run.id)).toEqual(first);
+  await expect(saveCoatingRollHandover({...run,measuredDryThicknessUm:101})).rejects.toThrow('другими данными');
+  expect(await db.rollSpecs.get(run.id)).toEqual(first);
+  expect(await db.coatRuns.get(run.id)).toEqual(run);
+});
+
+it('keeps unknown dry thickness unknown and preserves conflicting legacy handovers',async()=>{
+  const run=prepareCoatingRun(entry,'operator','legacy',1);
+  expect(coatingRollSpec(run).thicknessBeforeUm).toBeUndefined();
+  const legacy={...coatingRollSpec(run),thicknessBeforeUm:200};
+  await db.rollSpecs.add(legacy);
+  await expect(saveCoatingRollHandover(run)).rejects.toThrow('другими данными');
+  expect(await db.rollSpecs.get(run.id)).toEqual(legacy);
+  expect(()=>coatingRollSpec({...run,measuredDryThicknessUm:100,workerId:''})).toThrow();
+});
+
+it('does not leave a partial handover after storage failure and can retry safely',async()=>{
+  const run=await saveCoatingRun({...entry,measuredDryThicknessUm:100},'operator','retry-handover');
+  const fail=()=>{throw new Error('Test handover failure');};
+  db.rollSpecs.hook('creating',fail);
+  try{await expect(saveCoatingRollHandover(run)).rejects.toThrow('Test handover failure');}
+  finally{db.rollSpecs.hook('creating').unsubscribe(fail);}
+  expect(await db.rollSpecs.count()).toBe(0);expect(await db.coatRuns.get(run.id)).toEqual(run);
+  await saveCoatingRollHandover(run);expect(await db.rollSpecs.count()).toBe(1);
+});

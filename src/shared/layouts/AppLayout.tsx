@@ -1,7 +1,9 @@
 import React from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useAuthStore } from '../../core/store/authStore';
-import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
+import { requireOfflineTaskEditLease, clearOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { clearServerConnection } from '../../core/sync/serverConnection';
 import { ROLE_LABELS, ROLE_COLORS, getPermissions } from '../../core/permissions';
 import { UserRole, Task } from '../../core/types';
 import { STAGES } from '../../stages/registry';
@@ -27,6 +29,18 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   const { currentUser, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
+  async function signOut() {
+    // A different local demo account must not inherit a live server session
+    // or an offline authorization to view the previous actor's task cache.
+    clearServerConnection();
+    try {
+      await clearOfflineTaskEditLease();
+      logout();
+    } catch {
+      window.alert('Не удалось очистить разрешение на серверные задания. Повторите выход.');
+    }
+  }
+
   if (!currentUser) return null;
 
   const permissions = getPermissions(currentUser.role);
@@ -51,6 +65,12 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {
+      id: 'planning',
+      label: 'Планирование',
+      icon: <ClipboardList className="w-5 h-5" />,
+      roles: [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
+    },
+    {
       id: 'chat',
       label: 'Чат цеха',
       icon: <MessageSquare className="w-5 h-5" />,
@@ -72,7 +92,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       id: 'sync',
       label: 'Синхронизация',
       icon: <Radio className="w-5 h-5" />,
-      roles: [UserRole.MASTER, UserRole.CHIEF],
+      roles: [UserRole.WORKER, UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF],
     },
     {
       id: 'reports',
@@ -86,7 +106,14 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
   // Комнаты этапов: worker видит только комнаты своих заданий, остальные роли — все этапы
   const tasksByWorker = useLiveQuery<Task[]>(
-    async () => (currentUser ? db.tasks.where('assignedTo').equals(currentUser.id).toArray() : []),
+    async () => {
+      if (!currentUser) return [];
+      const [tasks, lease] = await Promise.all([
+        listVisibleTasks(), requireOfflineTaskEditLease().catch(() => null),
+      ]);
+      return tasks.filter(task => task.assignedTo === currentUser.id ||
+        (lease?.role === 'worker' && task.assignedTo === lease.actorId));
+    },
     [currentUser?.id],
   ) ?? [];
   const visibleStages = (() => {
@@ -98,7 +125,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   })();
 
   return (
-    <div className="min-h-screen bg-slate-900 flex">
+    <div className="h-full min-h-0 bg-slate-900 flex">
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-slate-800/80 backdrop-blur border-r border-slate-700/50">
         {/* Logo */}
@@ -161,7 +188,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             </div>
           </div>
           <button
-            onClick={logout}
+            onClick={() => void signOut()}
             className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 rounded-lg text-red-300 text-sm transition"
           >
             <LogOut className="w-4 h-4" />
@@ -217,9 +244,9 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       )}
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col min-h-screen">
+      <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Mobile header */}
-        <header className="lg:hidden flex items-center justify-between p-4 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
+        <header className="lg:hidden flex shrink-0 items-center justify-between px-4 py-3 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
           <button onClick={() => setSidebarOpen(true)} className="text-white">
             <Menu className="w-6 h-6" />
           </button>
@@ -228,7 +255,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
             <span className="text-white font-bold text-sm">Li-Ion Production</span>
           </div>
           <button
-            onClick={logout}
+            onClick={() => void signOut()}
             title="Выйти из профиля"
             className={`w-8 h-8 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
           >
@@ -237,7 +264,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
         </header>
 
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-6 overflow-auto">
+        <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-y-auto overscroll-contain">
           {children}
         </main>
       </div>

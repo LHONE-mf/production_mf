@@ -5,10 +5,9 @@ import { SyncPacket } from './types';
 
 const te = new TextEncoder();
 
-/** Ключ цеха (символический пароль) — общий для всех устройств одного производства.
- *  Вводится начальником производства один раз при первом запуске и хранится локально.
- *  Без него пакеты не подписать/не проверить → чужое устройство с другим ключом не сможет
- *  подменить задания, пользователей или forced-обновления. */
+/** Shared group key stored locally. HMAC checks integrity and possession of this
+ * key; it cannot prove the claimed individual sender or their role. Administrative
+ * and forced writes must never rely on it as authorization. */
 const KEY_STORE = 'workshop-hmac-key-v1';
 
 export function getWorkshopKey(): string {

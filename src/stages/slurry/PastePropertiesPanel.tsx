@@ -8,15 +8,13 @@ import { PasteProperties, VISCOSITY_MODELS, ViscosityModelId } from './mixMath';
 interface Props {
   paste: PasteProperties | null;
   phiMax: number;                 // φm — максимальная упаковка (редактируется пользователем)
-  shearRate: number;              // γ̇ для модели Кросса
-  onPhiMaxChange: (v: number) => void;
-  onShearRateChange: (v: number) => void;
+
 }
 
 const num = (v: number, digits = 1) => (Number.isFinite(v) ? v.toFixed(digits) : '—');
 
-export function PastePropertiesPanel({ paste, phiMax, shearRate, onPhiMaxChange, onShearRateChange }: Props) {
-  if (!paste) return null;
+export function PastePropertiesPanel({ paste, phiMax }: Props) {
+  if (!paste) return <p className="text-xs text-slate-400">Оценка недоступна: нужны явно введённые параметры модели, полный состав чистых фаз и их плотности/вязкости. Плотность раствора не определяет объём сухого вещества внутри него. Типовые свойства не подставляются.</p>;
 
   const nearLimit = paste.packingFraction > phiMax * 0.92;
   const overLimit = paste.packingFraction >= phiMax;
@@ -46,26 +44,9 @@ export function PastePropertiesPanel({ paste, phiMax, shearRate, onPhiMaxChange,
 
       {overLimit && (
         <p className="text-xs text-red-400 bg-red-950/40 border border-red-800 rounded px-2 py-1">
-          ⚠️ φ ≥ φm: паста выше предела упаковки — по физике она не течёт (пересыщенный замес).
-          Увеличьте долю растворителя или уменьшите φm, если частицы крупные/полидисперсные.
+          φ ≥ φm: модель за пределами области расчёта. Эти числа не являются инструкцией для оборудования.
         </p>
       )}
-
-      {/* Настройки моделей */}
-      <div className="grid grid-cols-2 gap-3">
-        <label className="text-xs text-slate-400 space-y-1">
-          <span>φm — макс. степень упаковки (0.55–0.70 типично)</span>
-          <input type="number" step="0.01" min={0.1} max={0.9}
-            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white"
-            value={phiMax} onChange={(e) => onPhiMaxChange(Number(e.target.value) || 0.62)} />
-        </label>
-        <label className="text-xs text-slate-400 space-y-1">
-          <span>γ̇ — скорость сдвига для модели Кросса, 1/с</span>
-          <input type="number" step="1" min={0.1}
-            className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white"
-            value={shearRate} onChange={(e) => onShearRateChange(Number(e.target.value) || 50)} />
-        </label>
-      </div>
 
       {/* Вязкости по моделям */}
       <div className="overflow-x-auto">
@@ -103,7 +84,7 @@ export function PastePropertiesPanel({ paste, phiMax, shearRate, onPhiMaxChange,
           <li><b>φ</b> — какой объём занимает твёрдая фаза в пасте. При φ → φm вязкость уходит в бесконечность (паста перестаёт течь).</li>
           <li><b>Марон–Пирсон</b> — основная оценка «сверху» для рабочих замесов; <b>Айзенштейн</b> — нижняя граница (разбавленная суспензия).</li>
           <li><b>Кросс</b> показывает вязкость при конкретной скорости сдвига γ̇: чем быстрее мешалка/вискозиметр, тем ниже кажущаяся вязкость (сдвиговое разжижение).</li>
-          <li>Точность зависит от заполненности базы компонентов (истинная плотность, вязкость растворителя). Пустые поля дооцениваются типовыми значениями.</li>
+          <li>Точность зависит от заполненности базы компонентов (истинная плотность, вязкость растворителя). Отсутствующие свойства остаются неизвестными. Это оценка плана, не измерение пасты и не QA-допуск.</li>
         </ul>
       </details>
     </div>

@@ -1,0 +1,119 @@
+name: CI — web and server
+
+on:
+  push:
+    branches: [main, feat/hybrid-server-foundation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Preserve a complete result for each commit rather than cancelling validation mid-build.
+  cancel-in-progress: false
+
+jobs:
+  web:
+    name: Web / Android frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test -- --reporter=default
+      - name: Production build
+        run: npm run build
+
+  server:
+    name: Fastify server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Disposable CI database: never connect automated integration tests to production.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_ci
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked server dependencies
+        run: npm ci --no-audit --no-fund
+      - name: TypeScript
+        run: npm run typecheck
+      - name: Migrate isolated CI PostgreSQL database
+        run: |
+          node --input-type=module <<'EOF'
+          import { Pool } from 'pg';
+          import { readFile } from 'node:fs/promises';
+          const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
+          try {
+            for (const migration of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql', '009_m2_stage_handoffs.sql', '010_m2_step_evidence.sql', '011_m2_local_journal_links.sql', '012_m2_local_run_sources.sql', '013_m2_calender_cut_sources.sql', '014_m2_sort_assembly_sources.sql', '015_m2_inspection_observations.sql', '016_m2_inspection_reviews.sql', '017_m2_inspection_criteria.sql', '018_m2_local_source_withdrawals.sql', '019_m2_local_source_replacements.sql']) {
+              await pool.query(await readFile('migrations/' + migration, 'utf8'));
+              console.log('Applied CI migration:', migration);
+            }
+          } finally {
+            await pool.end();
+          }
+          EOF
+      - name: Unit and real-PostgreSQL integration tests
+        run: npm test -- --reporter=default
+      - name: Build
+        run: npm run build
+
+  m1-report:
+    name: M1 automated test report
+    runs-on: ubuntu-latest
+    needs: [web, server]
+    if: ${{ always() }}
+    permissions:
+      contents: read
+    steps:
+      - name: Publish phone-readable M1 report
+        env:
+          WEB_RESULT: ${{ needs.web.result }}
+          SERVER_RESULT: ${{ needs.server.result }}
+        run: |
+          {
+            echo '## Production MF — M1 automated checks'
+            echo
+            echo '| Check | Result |'
+            echo '| --- | --- |'
+            echo "| Frontend typecheck, offline sync tests, build | $WEB_RESULT |"
+            echo "| Server typecheck, isolated PostgreSQL integration, build | $SERVER_RESULT |"
+            echo
+            echo 'The PostgreSQL service is disposable and separate from production.'
+            echo 'Android emulator and real two-device acceptance are **not** covered by this workflow.'
+            echo 'Automatic client synchronization remains disabled.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$WEB_RESULT" != success ] || [ "$SERVER_RESULT" != success ]; then
+            echo 'M1 automated checks failed; inspect the failed job above.'
+            exit 1
+          fi

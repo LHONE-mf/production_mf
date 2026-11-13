@@ -6,25 +6,30 @@ import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { StageId, JournalEntry } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { StageJournal } from './StageJournal';
 import { CommentsSection } from './CommentsSection';
+import { RoomWorkspaceHeader } from './RoomWorkspaceHeader';
 
 interface Props {
   stage: StageId;
   title: string;
   icon?: string;
+  description?:string;
   /** Специфичный инструмент комнаты (калькулятор, параметры и т.п.) */
   tool?: React.ReactNode;
+  preserveToolDraft?: boolean;
 }
 
-export function StageRoom({ stage, title, icon, tool }: Props) {
+export function StageRoom({ stage, title, icon, description='Откройте инструмент для записи наблюдений и журнал для просмотра сохранённых работ.', tool, preserveToolDraft = false }: Props) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [tab, setTab] = useState<'tool' | 'journal' | 'comments'>('tool');
 
   const tasks = useLiveQuery(
-    () => db.tasks.where('stage').equals(stage).reverse().sortBy('updatedAt'),
+    async () => (await listVisibleTasks()).filter(task => task.stage === stage)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()),
     [stage],
   );
 
@@ -51,29 +56,25 @@ export function StageRoom({ stage, title, icon, tool }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-          {icon && <span>{icon}</span>} {title}
-        </h2>
-        <span className="text-xs text-slate-400">Офлайн · данные на устройстве</span>
-      </div>
+      <RoomWorkspaceHeader icon={icon} title={title} description={description}/>
 
       {/* Вкладки комнаты */}
-      <div className="flex gap-1 bg-slate-800 rounded-lg p-1 w-fit">
+      <nav aria-label="Разделы комнаты" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
         {tabs.map((t) => (
           <button
             key={t.id}
+            type="button" aria-pressed={activeTab===t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-md text-sm transition ${
+            className={`min-h-11 px-3 py-2 rounded-md text-sm font-medium transition ${
               activeTab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
             }`}
           >
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {activeTab === 'tool' && tool}
+      {tool && (activeTab === 'tool' || preserveToolDraft) && <div hidden={activeTab !== 'tool'}>{tool}</div>}
 
       {activeTab === 'journal' && (
         <StageJournal stage={stage} onAdd={addJournalEntry} canAdd={!!currentUser} />

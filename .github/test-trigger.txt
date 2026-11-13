@@ -1,0 +1,4 @@
+Android emulator smoke test trigger
+Updated by repository maintenance commits to start GitHub Actions without a manual workflow dispatch.
+Run request: 2026-11-07 19:00 +03:00
+Reason: first end-to-end Android emulator launch and screenshot validation.

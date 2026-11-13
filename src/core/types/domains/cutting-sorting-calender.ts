@@ -20,6 +20,8 @@ export type ElectrodeShape = 'strip' | 'prismatic'; // полосы (цилин�
 
 // Входящий рулон на нарезку: спецификация рулона + прокатка + задание технолога
 export interface CuttingIncoming {
+  instruction?:{recordedBy:string;recordedAt:number;calenderUpdatedAt:number};
+  electrodeWidthMm?:number; // explicitly assigned plate width, not an inferred square
   id: string;                 // = calenderRunId (или rollId, если прокатки нет)
   roll: RollSpec;             // данные рулона с намазки (название замеса, толщины, длины)
   calender?: CalenderRun;     // результат прокатки (зазоры, толщина после, дефекты)
@@ -32,6 +34,22 @@ export interface CuttingIncoming {
   createdAt: number;
 }
 
+/** Explicit physical cutting geometry. Face coating coverage is not web length. */
+export interface CuttingGeometry {
+  physicalLengthM:number;
+  electrodeLengthMm:number;
+  kerfMm:number;
+  electrodeWidthMm?:number;
+  usableWebWidthMm?:number;
+}
+export interface CuttingYield extends CuttingGeometry {
+  electrodeLengthSource?:'entered'|'incoming_spec';
+  rows:number;
+  columns:number;
+  expected:number;
+  perMeter:number;
+}
+
 // Запись журнала нарезки (результат оператора) → далее на сортировку
 export interface CutRun {
   id: string;
@@ -40,6 +58,7 @@ export interface CutRun {
   electrodeType: ElectrodeShape;
   coatingType?: string;
   electrodeLengthMm?: number;  // фактическая длина, мм
+  yieldCalculation?: CuttingYield; // saved advisory geometry and estimate, never a physical yield sign-off
   goodCount: number;           // количество нарезанных годных электродов
   defectCount: number;         // количество с дефектами
   defects?: string;            // виды дефектов / обрывы
@@ -106,8 +125,41 @@ export interface SortBucket {
   avgMassG?: number;          // средняя измеренная масса, г
 }
 
+
+// Sorting process: Visual → Thickness → Mass, where only Mass assigns grades.
+// These are operator decisions and counts, not automatically inferred QA results.
+export type SortingMode = 'pass-fail' | 'grading';
+export type SortingStation = 'visual' | 'thickness' | 'mass';
+export interface SortingStationResult {
+  station: SortingStation;
+  inputCount: number;
+  passedCount: number;
+  rejectedCount: number;
+  workerId: string;
+  recordedAt: number;
+  grades?: { categoryName: string; count: number }[]; // Mass only, grading mode
+  rejectionReasons?: { reason: string; count: number }[];
+  notes?: string;
+}
+export interface SortingWorkflow {
+  id: string; // equal to the source CutRun.id; only one workflow per cutting result
+  cutRunId: string;
+  cutRunSnapshot: CutRun;
+  specSnapshot: SortSpec;
+  mode: SortingMode;
+  stages: SortingStationResult[];
+  createdBy: string;
+  createdAt: number;
+  updatedAt: number;
+  finalizedSortRunId?: string;
+}
+
 // Результат сортировки партии (запись журнала оператора)
 export interface SortRun {
+  sortingWorkflow?: SortingWorkflow; // frozen 3-station history; absent on legacy summary records
+  cutRunId?:string;
+  cutRunSnapshot?:CutRun;
+  specSnapshot?:SortSpec;
   id: string;
   specId: string;             // SortSpec.id по которой сортировали
   batchName: string;          // название партии (пришла с нарезки)
@@ -130,7 +182,12 @@ export interface SortRun {
 export interface RollSpec {
   id: string;                    // = coatRunId
   mixName: string;               // название замеса
-  thicknessBeforeUm?: number;    // толщина покрытия до прокатки (мкм) — из расчётов намазки/журнала
+  thicknessBeforeUm?: number;    // legacy values may be estimates; measured use requires the provenance below
+  thicknessBeforeMeasurement?: {
+    basis:'dry-electrode-including-foil';
+    recordedBy:string;
+    recordedAt:number;
+  };
   segLengthsM: number[];         // длины участков нанесения, м
   sideALengthM?: number;         // общая длина, сторона A, м
   sideBLengthM?: number;         // общая длина, сторона B, м
@@ -147,10 +204,11 @@ export interface RollToTechPacket {
 
 // Параметры прокатки, назначаемые технологом (master)
 export interface CalenderParams {
+  targetThicknessBasis?:'dry-electrode-including-foil'; // absent on unmarked legacy assignments
   targetThicknessUm?: number;    // целевая толщина после прокатки, мкм
   heating: boolean;              // необходим ли нагрев валков
   heatTempC?: number;            // температура нагрева, °C
-  pressureTons?: number;         // давление прокатки, тс
+  pressureTons?: number;         // усилие прокатки, тс (legacy field name; not pressure per area)
   edgeTrim: boolean;             // обрезка кромок электродов (облегчает прокатку)
   notes?: string;
 }

@@ -1,0 +1,163 @@
+name: Android emulator smoke and screenshot
+
+# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: emulator-smoke-${{ github.ref }}
+  # Let long-running Android verification finish even when another development commit lands.
+  cancel-in-progress: false
+
+jobs:
+  android-emulator:
+    name: Install, launch and screenshot Android
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_emulator_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_emulator_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_emulator_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Prepare isolated Fastify/PostgreSQL bridge test
+        working-directory: apps/server
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          node --input-type=module <<'EOF'
+          import { Pool } from 'pg';
+          import { readFile } from 'node:fs/promises';
+          const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
+          try {
+            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql', '009_m2_stage_handoffs.sql', '010_m2_step_evidence.sql']) {
+              await pool.query(await readFile('migrations/' + name, 'utf8'));
+              console.log('Migrated isolated emulator CI DB:', name);
+            }
+          } finally {
+            await pool.end();
+          }
+          EOF
+      - name: Build web and synchronize Android
+        run: |
+          npm run build
+          npx cap sync android
+      - name: Generate launcher icons
+        run: |
+          python3 -m pip install --quiet cairosvg Pillow
+          python3 scripts/generate_android_icons.py
+      # Restore the exact Gradle wrapper distribution used by signed APK CI.
+      # Cache is shared across workflows on the same branch.
+      - name: Cache Gradle wrapper distribution
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-linux-8.11.1-bin-v1
+      - name: Build Android debug APK
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          # Gradle distribution fetch can return transient GitHub CDN 504s.
+          for attempt in 1 2 3; do
+            if ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android emulator APK build failed after three attempts"
+              exit 1
+            fi
+            echo "::warning::Android Gradle build retry $attempt/3"
+            sleep 15
+          done
+      - name: Enable KVM for emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run app on emulator and capture evidence
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: default
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          script: |
+            bash scripts/android-emulator-smoke.sh
+            (cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon)
+            # Ensure the archive persistence instrumentation actually ran;
+            # a green Gradle exit without this test is not sufficient evidence.
+            python3 -c "from pathlib import Path; import xml.etree.ElementTree as ET; results=Path('android/app/build/outputs/androidTest-results/connected'); xmls=list(results.rglob('*.xml')); matches=[(p, c) for p in xmls for c in ET.parse(p).getroot().iter('testcase') if 'HybridConflictArchiveWebViewTest' in c.attrib.get('classname', '') and c.attrib.get('name') == 'conflictArchiveSurvivesActivityRestart' and not any(child.tag in ('failure', 'error', 'skipped') for child in c)]; assert matches, 'Missing passing HybridConflictArchiveWebViewTest instrumentation report'; print('Verified WebView conflict archive test report:', matches[0][0])"
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/ed25519-test-vectors.log
+            node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/ed25519-test-vectors.log
+            node apps/server/scripts/verify-emulator-device-proof.mjs artifacts/android-smoke/ed25519-test-vectors.log
+            # Gradle may uninstall the test package when its run finishes. Install
+            # both APKs once, then run two tests against the same test-only key.
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofKeystoreTest               ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner               > artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            cat artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/fresh-baseline-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/fresh-baseline-vector.log
+            node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/fresh-baseline-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs prepare               artifacts/android-smoke/fresh-baseline-vector.log "$RUNNER_TEMP/production-mf-fresh-proof.json"
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofKeystoreTest               -e proofChallenge "$(node -e "const c = JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).challenge; if (!/^[A-Za-z0-9_-]{43}$/.test(c)) process.exit(1); console.log(c)" "$RUNNER_TEMP/production-mf-fresh-proof.json")"               ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner               > artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            cat artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/fresh-challenge-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfEd25519:I '*:S' > artifacts/android-smoke/fresh-challenge-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs finish               artifacts/android-smoke/fresh-challenge-vector.log "$RUNNER_TEMP/production-mf-fresh-proof.json"
+            # Exercise the registered Capacitor plugin through the real app WebView,
+            # not merely a parallel AndroidKeyStore test helper.
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofCapacitorPluginTest ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner > artifacts/android-smoke/capacitor-baseline-instrumentation.txt
+            cat artifacts/android-smoke/capacitor-baseline-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/capacitor-baseline-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfCapacitor:I '*:S' > artifacts/android-smoke/capacitor-baseline-vector.log
+            node scripts/verify_android_ed25519_vector.mjs artifacts/android-smoke/capacitor-baseline-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs prepare artifacts/android-smoke/capacitor-baseline-vector.log "$RUNNER_TEMP/production-mf-capacitor-proof.json"
+            adb logcat -c
+            adb shell am instrument -w -e class ru.liion.production.DeviceProofCapacitorPluginTest -e proofChallenge "$(node -e "const c = JSON.parse(require('node:fs').readFileSync(process.argv[1], 'utf8')).challenge; if (!/^[A-Za-z0-9_-]{43}$/.test(c)) process.exit(1); console.log(c)" "$RUNNER_TEMP/production-mf-capacitor-proof.json")" ru.liion.production.test/androidx.test.runner.AndroidJUnitRunner > artifacts/android-smoke/capacitor-challenge-instrumentation.txt
+            cat artifacts/android-smoke/capacitor-challenge-instrumentation.txt
+            grep -q 'OK (1 test)' artifacts/android-smoke/capacitor-challenge-instrumentation.txt
+            adb logcat -d -v brief -s ProductionMfCapacitor:I '*:S' > artifacts/android-smoke/capacitor-challenge-vector.log
+            node apps/server/scripts/verify-fresh-emulator-device-proof.mjs finish artifacts/android-smoke/capacitor-challenge-vector.log "$RUNNER_TEMP/production-mf-capacitor-proof.json"
+      - name: Verify emulator screenshots are not blank
+        run: python3 scripts/check_android_screenshots.py
+      - name: Upload screenshot and diagnostics (even if failed)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator-screenshot-and-logs
+          path: |
+            artifacts/android-smoke/
+            android/app/build/outputs/androidTest-results/connected/
+            android/app/build/reports/androidTests/connected/
+          if-no-files-found: warn
+          retention-days: 7

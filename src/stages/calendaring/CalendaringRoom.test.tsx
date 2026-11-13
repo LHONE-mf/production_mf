@@ -1,0 +1,128 @@
+import React,{act} from 'react';
+import {createRoot,type Root} from 'react-dom/client';
+import {afterEach,expect,it,vi} from 'vitest';
+import {db} from '../../core/db';
+import {UserRole} from '../../core/types';
+import {useAuthStore} from '../../core/store/authStore';
+import {CalendaringModule} from './CalendaringRoom';
+
+vi.mock('../_ui/PacketOutModal',()=>({PacketOutModal:({packet}:{packet:{payload:unknown}})=>
+  <div data-testid="packet">{JSON.stringify(packet.payload)}</div>}));
+let root:Root|undefined,node:HTMLDivElement|undefined;
+afterEach(async()=>{
+  if(root)await act(async()=>root!.unmount());
+  root=undefined;node?.remove();node=undefined;useAuthStore.setState({currentUser:null});
+  db.close();await db.delete();localStorage.removeItem('lip_calender_params_v1');vi.unstubAllGlobals();
+});
+it('does not treat an unmarked legacy thickness as a dry-electrode measurement',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'technologist',login:'tech',fullName:'Technologist',password:'test-only',
+    role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'legacy',mixName:'Unmarked legacy roll',thicknessBeforeUm:200,segLengthsM:[10],createdAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Unmarked legacy roll'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Параметры прокатки'))!.click();});
+  const target=node.querySelector<HTMLInputElement>('input[type="number"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(target,'100');
+    target.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(node.textContent).not.toContain('Обжатие:');
+  expect(node.textContent).not.toContain('Изменение полной толщины:');
+  expect((await db.rollSpecs.get('legacy'))?.thicknessBeforeUm).toBe(200);
+});
+
+it('starts with no sample machine settings and compares only the attributed dry measurement',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'technologist',login:'tech',fullName:'Technologist',password:'test-only',
+    role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'measured',mixName:'Measured dry roll',thicknessBeforeUm:100,
+    thicknessBeforeMeasurement:{basis:'dry-electrode-including-foil',recordedBy:'operator',recordedAt:1},segLengthsM:[10],createdAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Measured dry roll'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Параметры прокатки'))!.click();});
+  expect([...node.querySelectorAll<HTMLInputElement>('input[type="number"]')].every(input=>input.value==='')).toBe(true);
+  const target=node.querySelector<HTMLInputElement>('[aria-label="Целевая полная толщина, мкм"]')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(target,'80');target.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect(node.textContent).toContain('Плановое уменьшение полной толщины: ~20%');
+  expect(node.textContent).toContain('не фактическое обжатие');
+  const save=[...node.querySelectorAll('button')].find(button=>button.textContent?.includes('Сохранить параметры локально'))!;
+  expect(save.disabled).toBe(true);
+  const heating=node.querySelector<HTMLSelectElement>('[aria-label="Назначение нагрева валков"]')!;
+  await act(async()=>{heating.value='no';heating.dispatchEvent(new Event('change',{bubbles:true}));});
+  expect(save.disabled).toBe(false);
+  await act(async()=>{save.click();});
+  await vi.waitFor(async()=>expect(await db.calenderRuns.count()).toBe(1));
+  expect((await db.calenderRuns.get('measured'))?.params).toMatchObject({
+    targetThicknessUm:80,targetThicknessBasis:'dry-electrode-including-foil',heating:false,
+  });
+  expect((await db.calenderRuns.get('measured'))?.params?.pressureTons).toBeUndefined();
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Параметры сохранены локально'));
+  expect(node!.querySelector('[data-testid="packet"]')).toBeNull();
+});
+
+it('retains untouched result fields when editing one measured value',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'result',mixName:'Result fixture',segLengthsM:[10],createdAt:1});
+  await db.calenderRuns.add({id:'result',rollId:'result',gapsMm:[0.35],totalLengthM:10,thicknessAfterUm:80,hasDefects:false,workerId:'operator',createdAt:1,updatedAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Result fixture'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал прокатки'))!.click();});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Result fixture'));
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Result fixture'))!.click();});
+  const inputs=[...node.querySelectorAll<HTMLInputElement>('input')];
+  const length=inputs.find(i=>i.value==='10')!;
+  await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(length,'12');length.dispatchEvent(new Event('input',{bubbles:true}));});
+  expect([...node.querySelectorAll<HTMLInputElement>('input')].some(i=>i.value==='80')).toBe(true);
+  const send=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить и передать результат'))!;
+  const fail=()=>{throw new Error('Journal unavailable');};db.journal.hook('creating',fail);
+  try{
+    await act(async()=>{send.click();});
+    await vi.waitFor(()=>expect(node!.querySelector('[role="alert"]')?.textContent).toContain('Journal unavailable'));
+  }finally{db.journal.hook('creating').unsubscribe(fail);}
+  expect((await db.calenderRuns.get('result'))?.totalLengthM).toBe(10);
+  expect(node.querySelector('[data-testid="packet"]')).toBeNull();
+  await act(async()=>{send.click();send.click();});
+  await vi.waitFor(()=>expect(node!.querySelector('[data-testid="packet"]')?.textContent).toContain('"totalLengthM":12'));
+  await vi.waitFor(async()=>expect(await db.calenderRuns.get('result')).toMatchObject({totalLengthM:12,thicknessAfterUm:80,gapsMm:[0.35]}));
+  expect(await db.journal.count()).toBe(1);
+});
+
+it('offers a separate explicit cutting instruction rather than guessing a strip shape',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'tech',login:'tech',fullName:'Technologist',password:'test-only',role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  expect([...node.querySelectorAll('button')].some(b=>b.textContent==='✂️ Задание на нарезку')).toBe(true);
+});
+
+it('presents a touch-sized room workflow and separates assigned targets from measured results',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'tech',login:'tech',fullName:'Technologist',password:'test-only',
+    role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'roll-ui',mixName:'UI workflow roll',segLengthsM:[10],createdAt:1});
+  await db.calenderRuns.add({id:'roll-ui',rollId:'roll-ui',gapsMm:[],hasDefects:false,
+    params:{targetThicknessBasis:'dry-electrode-including-foil',targetThicknessUm:100,heating:false,edgeTrim:false},
+    workerId:'tech',createdAt:1,updatedAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('UI workflow roll'));
+  expect(node!.textContent).toContain('Локальная запись · офлайн');
+  const tabs=node!.querySelector('nav[aria-label="Разделы каландрирования"]')!;
+  expect(tabs).not.toBeNull();
+  expect([...tabs.querySelectorAll('button')].every(b=>b.className.includes('min-h-11'))).toBe(true);
+  await act(async()=>{[...tabs.querySelectorAll('button')].find(b=>b.textContent?.includes('Параметры прокатки'))!.click();});
+  expect(node!.querySelector('[aria-label="Источник и замер до прокатки"]')).not.toBeNull();
+  expect(node!.querySelector('[aria-label="Назначенные параметры прокатки"]')).not.toBeNull();
+  expect(node!.textContent).toContain('Плановое сравнение');
+  await act(async()=>{[...tabs.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал прокатки'))!.click();});
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('UI workflow roll'))!.click();});
+  const actual=node!.querySelector('[aria-label="Фактические измерения прокатки"]')!;
+  expect(actual).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Измеренная длина, м"]')).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Измеренная толщина после, мкм"]')).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Целевая полная толщина, мкм"]')).toBeNull();
+  expect(node!.textContent).toContain('Не является подтверждением QA');
+});

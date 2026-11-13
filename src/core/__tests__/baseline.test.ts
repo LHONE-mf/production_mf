@@ -3,7 +3,7 @@ import { encodePacket, decodePacket } from "../../transfer/packet";
 import { setWorkshopKey } from "../security";
 
 // Формат SyncPacket: { v:1, type, payload, ... }. См. src/core/types/domains/transfer.ts
-const sample = { v: 1 as const, type: "task" as any, id: "t-1", payload: { title: "Проверка" }, updatedAt: Date.now() };
+const sample = { v: 1 as const, type: "task" as any, id: "t-1", payload: { title: "Проверка" }, from: "test-sender", ts: Date.now() };
 
 describe("packet encode/decode (baseline)", () => {
   beforeEach(() => {

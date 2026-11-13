@@ -1,12 +1,14 @@
 // Математика комнаты замесов: расчёт граммовок по рецепту на произвольную массу.
 // Логика вынесена отдельно от React — чтобы её можно было тестировать и переиспользовать.
 
+import {calculateSlurryPlan,SLURRY_BASIS} from '../../core/manufacturing/slurryMath';
 import { MixRecipe, MixComponent, MixRecipeLine } from '../../core/types';
 
 export interface GrammageRow {
   componentId: string;
   name: string;
   kind: MixComponent['kind'];
+  solidsMassFraction?: number;
   pct: number;          // доля из рецепта, %
   isSolvent: boolean;   // растворитель/добавка-жидкость (считается от массы СВ)
   grams: number;        // расчётная граммовка, г
@@ -31,53 +33,9 @@ export function splitLines(lines: MixRecipeLine[], components: Map<string, MixCo
  *                   проценты сухих нормируются на сумму, растворитель задан % от массы СВ)
  * @returns строки таблицы + итоги
  */
-export function calcGrammages(
-  recipe: Pick<MixRecipe, 'lines'>,
-  components: Map<string, MixComponent>,
-  batchKg: number,
-): { rows: GrammageRow[]; dryTotalG: number; wetTotalG: number; allTotalG: number; solidsPct: number } {
-  const { dry, wet } = splitLines(recipe.lines, components);
-
-  const dryPctSum = dry.reduce((s, l) => s + l.pct, 0) || 1;
-  const dryTotalG = batchKg * 1000; // масса СВ в граммах
-
-  const rows: GrammageRow[] = [];
-  // Сухие: доли нормируем на их сумму → строго batchKg суммарно
-  for (const l of dry) {
-    const c = components.get(l.componentId);
-    rows.push({
-      componentId: l.componentId,
-      name: c?.name ?? '(компонент удалён)',
-      kind: c?.kind ?? 'additive',
-      pct: l.pct,
-      isSolvent: false,
-      grams: (dryTotalG * l.pct) / dryPctSum,
-    });
-  }
-  // Растворители: % от фактической массы СВ
-  let wetTotalG = 0;
-  for (const l of wet) {
-    const c = components.get(l.componentId);
-    const g = (dryTotalG * l.pct) / 100;
-    wetTotalG += g;
-    rows.push({
-      componentId: l.componentId,
-      name: c?.name ?? '(компонент удалён)',
-      kind: c?.kind ?? 'solvent',
-      pct: l.pct,
-      isSolvent: true,
-      grams: g,
-    });
-  }
-
-  const allTotalG = dryTotalG + wetTotalG;
-  return {
-    rows,
-    dryTotalG,
-    wetTotalG,
-    allTotalG,
-    solidsPct: (dryTotalG / allTotalG) * 100,
-  };
+export function calcGrammages(recipe:Pick<MixRecipe,'lines'|'basis'>,components:Map<string,MixComponent>,batchKg:number){
+  if(recipe.basis!==SLURRY_BASIS)return null;
+  try{return calculateSlurryPlan(recipe.lines,[...components.values()],batchKg,recipe.basis);}catch{return null;}
 }
 
 export const fmtG = (g: number) =>
@@ -138,14 +96,13 @@ export interface PasteProperties {
   shearThinning?: { gammaDot: number; mPa_s: number }; // Кросс при опорном сдвиге
 }
 
-const PHI_M_DEFAULT = 0.62; // типичная максимальная упаковка полидисперсных частиц
 
 /** Средняя вязкость жидкой фазы по растворителям (массовое усреднение ln — стандарт для смесей) */
 function blendLiquidViscosity(wetRows: GrammageRow[], compMap: Map<string, MixComponent>): number {
   const items = wetRows
     .map((r) => ({ g: r.grams, v: compMap.get(r.componentId)?.viscosity }))
     .filter((x) => x.v && x.v > 0) as { g: number; v: number }[];
-  if (!items.length) return 0.001; // ≈ вода при 25°C, Па·с
+  if (!items.length) return NaN;
   const tot = items.reduce((s, x) => s + x.g, 0) || 1;
   const lnMix = items.reduce((s, x) => s + (x.g / tot) * Math.log(x.v / 1000), 0); // мПа·с → Па·с
   return Math.exp(lnMix);
@@ -155,7 +112,7 @@ function blendLiquidDensity(wetRows: GrammageRow[], compMap: Map<string, MixComp
   const items = wetRows
     .map((r) => ({ g: r.grams, d: compMap.get(r.componentId)?.densityTrue }))
     .filter((x) => x.d && x.d > 0) as { g: number; d: number }[];
-  if (!items.length) return 1.0;
+  if (!items.length) return NaN;
   const tot = items.reduce((s, x) => s + x.g, 0) || 1;
   // объёмное усреднение через удельные объёмы
   const invRho = items.reduce((s, x) => s + (x.g / tot) / x.d, 0);
@@ -177,8 +134,12 @@ export function calcPasteProperties(
   const wetRows = rows.filter((r) => r.isSolvent);
   if (!dryRows.length) return null;
 
-  const phiMax = opts.phiMax && opts.phiMax > 0.05 && opts.phiMax < 0.95 ? opts.phiMax : PHI_M_DEFAULT;
-  const shearRate = opts.shearRate && opts.shearRate > 0 ? opts.shearRate : 50; // 1/с — типовой рабочий сдвиг
+  const phiMax=opts.phiMax,shearRate=opts.shearRate;
+  if(!phiMax||!Number.isFinite(phiMax)||phiMax<=0||phiMax>=1||!shearRate||!Number.isFinite(shearRate)||shearRate<=0)return null;
+  // Solution density does not establish the dry-solid volume inside that solution.
+  if(rows.some(row=>!Number.isFinite(row.grams)||row.grams<0||!compMap.has(row.componentId)||![0,1].includes(compMap.get(row.componentId)!.solidsMassFraction!)))return null;
+  if(rows.some(row=>row.grams>0&&(!Number.isFinite(compMap.get(row.componentId)!.densityTrue)||!(compMap.get(row.componentId)!.densityTrue!>0)))||wetRows.some(row=>row.grams>0&&(!Number.isFinite(compMap.get(row.componentId)!.viscosity)||!(compMap.get(row.componentId)!.viscosity!>0))))return null;
+  if(!wetRows.some(row=>row.grams>0))return null;
 
   const solidsMassG = dryRows.reduce((s, r) => s + r.grams, 0);
   const liquidMassG = wetRows.reduce((s, r) => s + r.grams, 0);
@@ -194,19 +155,16 @@ export function calcPasteProperties(
     solidVolCm3 += rho && rho > 0 ? r.grams / rho : 0;
     if (c?.densitySettled && c.densitySettled > 0) { settledAcc += r.grams / c.densitySettled; settledW += r.grams; }
   }
-  // Компоненты без указанной плотности считаем как ρ=3 г/см³ (типично для оксидов), чтобы оценка не «плыла»
-  const missing = dryRows.filter((r) => { const c = compMap.get(r.componentId); return !c?.densityTrue || !(c.densityTrue > 0); });
-  if (missing.length) solidVolCm3 += missing.reduce((s, r) => s + r.grams / 3.0, 0);
-
   const rhoLiquid = blendLiquidDensity(wetRows, compMap);
   const liquidVolCm3 = liquidMassG / rhoLiquid;
   const pasteVolumeCm3 = solidVolCm3 + liquidVolCm3;
 
   const trueDensitySolid = solidsMassG / (solidVolCm3 || 1);
-  const bulkDensitySolid = settledW ? solidsMassG / (settledAcc || 1) : NaN;
+  const bulkDensitySolid = settledW===solidsMassG&&settledW>0 ? solidsMassG/settledAcc : NaN;
   const pasteDensity = totalMassG / (pasteVolumeCm3 || 1);
 
   const phi = solidVolCm3 / (pasteVolumeCm3 || 1);           // объёмная доля СВ = коэффициент упаковки
+  if(!Number.isFinite(phi)||phi>=phiMax)return null;
   const solidsPctMass = (solidsMassG / totalMassG) * 100;
   const porosity = Math.max(0, (1 - phi)) * 100;
 
@@ -231,13 +189,11 @@ export function calcPasteProperties(
   const crossRel = (shearRate: number) =>
     etaInfRel + (etaZeroRel - etaInfRel) / (1 + Math.pow(shearRate / critShear, mExp));
 
-  // Пересчёт в мПа·с: базовая вязкость η₀ жидкой фазы хранится в Па·с (умножить на 1000).
-  // Если в базе не указана вязкость растворителя — берём типовое значение растворителя шлама
-  // (вода ≈ 0.89 мПа·с), иначе получаем абсурдные единицы сП.
-  const hasLiquidViscosity = wetRows.some((r) => { const v = compMap.get(r.componentId)?.viscosity; return !!v && v > 0; });
-  const eta0Cp = hasLiquidViscosity ? eta0 * 1000 : 0.89;
+  // The liquid viscosity is entered; no default solvent or missing component is substituted.
+  const eta0Cp=eta0*1000;
   const toCp = (rel: number) => rel * eta0Cp; // безразмерная × мПа·с → мПа·с (сП)
 
+  if([einstein,maronpearson,mooney,crossRel(shearRate),eta0Cp,pasteDensity].some(v=>!Number.isFinite(v)))return null;
   return {
     solidsMassG, liquidMassG, totalMassG,
     solidsPctMass, solidsPctVol: phi * 100, packingFraction: phi,

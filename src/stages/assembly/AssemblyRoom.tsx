@@ -1,3 +1,6 @@
+import {AssemblyCellOutputForm} from './AssemblyCellOutputForm';
+import {appendAssemblyOperation} from '../../core/manufacturing/assemblyOperations';
+import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
 // Каркас комнаты «Сборка» (AssemblyRoom). Полностью офлайн.
 // Структура: сверху выбор партии (AssemblyRun), ниже — вкладки-подсекции, каждая
 // станция живёт в СВОЁМ файле (LiElectrodesStation, ZStackingStation, ...), чтобы
@@ -7,7 +10,7 @@
 //          🔦 B-с6 Лазер (призм.) · 📒 Журнал · 💬 Комментарии
 // Станции B-с3..B-с6 подключим в шаге Б2b отдельными файлами.
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
@@ -36,6 +39,8 @@ export function AssemblyModule() {
   const isTechManager = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const intakeRef=useRef(false);const [intakeBusy,setIntakeBusy]=useState(false);
+  const [intakeError,setIntakeError]=useState('');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
 
   const runs = useLiveQuery(async () => {
@@ -44,24 +49,12 @@ export function AssemblyModule() {
   }, []);
 
   // Партии, готовые принять в сборку: результаты сортировки ещё не взятые в работу
-  const sortRuns = useLiveQuery(() => db.sortRuns.toArray(), []);
+  const sortRuns = useLiveQuery(async()=> (await db.sortRuns.toArray()).filter(row=>row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0)), []);
 
   const selected = useMemo(
     () => (runs ?? []).find((r) => r.id === selectedId) ?? null,
     [runs, selectedId],
   );
-
-  // Номера аккумуляторов партии: вводятся на сборке, мигрируют со сборки → заливка → формовка
-  const [serialForm, setSerialForm] = useState({ prefix: '', start: '', end: '' });
-
-  const saveSerialRange = async () => {
-    if (!selected) return;
-    const start = Number(serialForm.start);
-    const end = Number(serialForm.end);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return;
-    const sr: SerialRange = { prefix: serialForm.prefix.trim() || undefined, start, end };
-    await db.assemblyRuns.put({ ...selected, serialRange: sr, updatedAt: new Date().toISOString() });
-  };
 
   const addComment = async (text: string) => {
     if (!currentUser || !text.trim()) return;
@@ -71,56 +64,33 @@ export function AssemblyModule() {
     });
   };
 
-  // Взять партию с сортировки в работу: создаём AssemblyRun по названию партии
+  // Принять полный положительный выход конкретной записи сортировки
   const takeBatch = async (srId: string) => {
     if (!currentUser) return;
     const sr = (sortRuns ?? []).find((x) => x.id === srId);
     if (!sr) return;
-    const spec = await db.sortSpecs.get(sr.specId);
-    const run: AssemblyRun = {
-      id: uuidv4(),
-      batchName: sr.batchName,
-      serialRange: undefined,        // номера аккумуляторов задаёт сборщик при взятии партии (мигрируют на заливку → формовку)
-      cellType: (spec?.electrodeType === 'strip' ? 'cylindrical' : 'prismatic') as CellType,
-      electrodeType: spec?.electrodeType,
-      coatingType: spec?.coatingType,
-      ops: [],
-      cellsOut: 0,
-      cellsScrap: 0,
-      defects: [],
-      workerId: currentUser.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    await db.assemblyRuns.put(run);
-    setSelectedId(run.id);
-    setTab('li-electrodes');
+    if(intakeRef.current)return;
+    intakeRef.current=true;setIntakeBusy(true);setIntakeError('');
+    try{
+      const run=await takeAssemblySource(sr,currentUser.id,uuidv4());
+      setSelectedId(run.id);setTab('journal');
+    }catch(cause){setIntakeError(cause instanceof Error?cause.message:'Приёмка не сохранена');}
+    finally{intakeRef.current=false;setIntakeBusy(false);}
+
   };
 
-  // Станция добавляет операцию в партию + пересчитывает итоги
+  // New entries are observations; their units are not converted into cell release.
   const addOp = async (op: AssemblyOp) => {
-    if (!selected || !currentUser) return;
-    const ops = [...selected.ops, op];
-    const lastBySub = ops.filter((o) => o.substation === op.substation).slice(-1)[0];
-    void lastBySub;
-    const updated: AssemblyRun = {
-      ...selected,
-      ops,
-      cellsOut: op.qtyOut,           // упрощённо: последняя операция задаёт итог годных
-      cellsScrap: (selected.cellsScrap ?? 0) + op.qtyScrap,
-      defects: [...selected.defects, ...op.defects],
-      updatedAt: new Date().toISOString(),
-    };
-    await db.assemblyRuns.put(updated);
+    if (!selected || !currentUser) throw new Error('Выберите доступную партию и войдите в профиль');
+    await appendAssemblyOperation(selected,op,currentUser.id);
   };
 
-  const sendToMaster = (run: AssemblyRun, forced: boolean) => {
+  const sendToMaster = (run: AssemblyRun) => {
     if (!currentUser) return;
-    const fresh = { ...run, workerId: currentUser.id, updatedAt: new Date().toISOString() };
-    db.assemblyRuns.put(fresh);
+    const fresh = run;
     setOutPacket({
       v: 1, type: 'assembly-run', stage: StageId.ASSEMBLY,
-      payload: fresh, from: currentUser.id, ts: Date.now(), forced,
+      payload: fresh, role:currentUser.role, from: currentUser.id, ts: Date.now(),
     });
   };
 
@@ -140,9 +110,11 @@ export function AssemblyModule() {
     <div className="p-4 space-y-4">
       <h2 className="text-lg font-bold text-white">🔋 Сборка элементов и батареек</h2>
       <p className="text-xs text-slate-400">
-        Каждая подсекция — отдельный файл в <code>src/stages/assembly/</code>. Данные приходят
-        с сортировки (название партии), результат уходит на формовку / master-устройства.
+        Принимается весь годный выход одной записи сортировки без разделения. Электроды не пересчитываются в ячейки.
+        Для каждой операции явно укажите полный источник или предшественника. Выход ячеек и номера задаются отдельным заявлением; это не QA-допуск.
       </p>
+
+      {intakeError && <p role="alert" className="text-red-300 text-sm">{intakeError}</p>}
 
       {/* Выбор активной партии для станций */}
       {(runs ?? []).length > 0 && tab !== 'incoming' && tab !== 'journal' && tab !== 'comments' && (
@@ -153,32 +125,11 @@ export function AssemblyModule() {
             <option value="">— выберите —</option>
             {(runs ?? []).map((r) => (
               <option key={r.id} value={r.id}>
-                {r.batchName} ({r.cellType === 'cylindrical' ? 'цилиндрич.' : 'призмат.'}, операций: {r.ops.length})
+                {r.batchName} ({r.cellOutput?(r.cellOutput.cellType==='cylindrical'?'цилиндрич.':'призмат.'):r.intake?'тип ячейки не задан':r.cellType === 'cylindrical' ? 'цилиндрич.' : 'призмат.'}, операций: {r.ops.length})
               </option>
             ))}
           </select>
-          {selected && (() => {
-            const sr = selected.serialRange;
-            return (
-              <span className="flex items-center gap-1.5 flex-wrap">
-                <input className={inputCls + ' w-20'} placeholder="префикс" value={serialForm.prefix}
-                  onChange={(e) => setSerialForm((f) => ({ ...f, prefix: e.target.value }))} />
-                <input className={inputCls + ' w-24'} placeholder="№ нач." type="number" value={serialForm.start}
-                  onChange={(e) => setSerialForm((f) => ({ ...f, start: e.target.value }))} />
-                <input className={inputCls + ' w-24'} placeholder="№ кон." type="number" value={serialForm.end}
-                  onChange={(e) => setSerialForm((f) => ({ ...f, end: e.target.value }))} />
-                <button onClick={saveSerialRange}
-                  className="px-2 py-1 bg-indigo-700 hover:bg-indigo-600 rounded text-xs text-white">🔢 Задать номера</button>
-                <span className="text-xs text-slate-300" title="Диапазон номеров аккумуляторов партии — уходит на заливку и формирование">
-                  № {sr ? `${sr.prefix ?? ''}${sr.start}…${sr.prefix ?? ''}${sr.end}` : 'не заданы'}
-                </span>
-                <button onClick={() => sendToMaster(selected, false)}
-                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
-                  📤 Отправить результат (QR/BLE/текст)
-                </button>
-              </span>
-            );
-          })()}
+          {selected?.serialRange&&<p className="text-xs text-slate-300">Сохранённые номера: {selected.serialRange.prefix??''}{selected.serialRange.start}–{selected.serialRange.end}. История не изменяется; новые номера задаются в заявлении выхода.</p>}
         </div>
       )}
 
@@ -194,7 +145,7 @@ export function AssemblyModule() {
       {tab === 'incoming' && (
         <div className="space-y-2">
           <p className="text-xs text-slate-400">Результаты сортировки (партии годных электродов). Нажмите «Взять в сборку».</p>
-          {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Пока нет партий с сортировки.</p>}
+          {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Нет партий с электродами для сборки. Полностью отбракованные результаты остаются в журнале сортировки.</p>}
           {(sortRuns ?? []).map((sr) => (
             <div key={sr.id} className="bg-slate-900 border border-slate-800 rounded p-3 flex items-center justify-between gap-3 flex-wrap">
               <div className="text-xs text-slate-300">
@@ -203,8 +154,9 @@ export function AssemblyModule() {
                 {sr.buckets.reduce((s, b) => s + b.count, 0)}, отбраковано: {sr.rejected}
                 <br /><span className="text-slate-500">{new Date(sr.createdAt).toLocaleString()}</span>
               </div>
-              <button onClick={() => takeBatch(sr.id)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
+              <p className="text-xs text-slate-400 break-all">Источник: {sr.id}</p>
+              <button disabled={intakeBusy} onClick={() => void takeBatch(sr.id)}
+                className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
                 ➡️ Взять в сборку
               </button>
             </div>
@@ -212,29 +164,29 @@ export function AssemblyModule() {
         </div>
       )}
 
-      {tab === 'li-electrodes' && (selected ? (
-        <LiElectrodesStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'li-electrodes' && (selected && !selected.cellOutput ? (
+        <LiElectrodesStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
-      {tab === 'z-stacking' && (selected ? (
-        <ZStackingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'z-stacking' && (selected && !selected.cellOutput ? (
+        <ZStackingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
-      {tab === 'winding' && (selected ? (
-        <WindingStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'winding' && (selected && !selected.cellOutput ? (
+        <WindingStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
-      {tab === 'crimp-cyl' && (selected ? (
-        <CrimpCylStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'crimp-cyl' && (selected && !selected.cellOutput ? (
+        <CrimpCylStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
-      {tab === 'us-prismatic' && (selected ? (
-        <UsPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'us-prismatic' && (selected && !selected.cellOutput ? (
+        <UsPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
-      {tab === 'laser-prismatic' && (selected ? (
-        <LaserPrismaticStation run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
-      ) : <NoBatch />)}
+      {tab === 'laser-prismatic' && (selected && !selected.cellOutput ? (
+        <LaserPrismaticStation key={selected.id} run={selected} workerId={currentUser?.id ?? ''} onAddOp={addOp} />
+      ) : selected?.cellOutput ? <p className="text-amber-200 text-sm">Выход уже заявлен. История доступна в журнале; новые операции не добавляются.</p> : <NoBatch />)}
 
       {tab === 'journal' && (
         <div className="space-y-2">
@@ -244,21 +196,20 @@ export function AssemblyModule() {
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div className="text-xs text-slate-300">
                   <span className="text-white font-semibold">🔋 {r.batchName}</span>
-                  {' '}· {r.cellType === 'cylindrical' ? 'цилиндрическая' : 'призматическая'}
+                  {' '}· {r.cellOutput?(r.cellOutput.cellType==='cylindrical'?'цилиндрическая':'призматическая'):r.intake?'тип ячейки не задан':r.cellType === 'cylindrical' ? 'цилиндрическая' : 'призматическая'}
                   {r.coatingType && <> · покрытие: {r.coatingType}</>}
-                  <br />операций: {r.ops.length} · ячеек годных: <b className="text-emerald-400">{r.cellsOut}</b> · брак: <span className="text-red-400">{r.cellsScrap}</span>
+                  {r.intake&&<p className="break-all">Источник сортировки: {r.intake.sortRunId} · принято {r.intake.electrodeCount} электродов · {r.intake.recordedBy} · {new Date(r.intake.recordedAt).toLocaleString()}</p>}
+                  <br />операций: {r.ops.length} · заявленный выход ячеек: <b className="text-emerald-400">{r.cellOutput?r.cellOutput.count:r.intake||r.operationLedger?'не определён':r.cellsOut}</b> · брак: <span className="text-red-400">{r.intake||r.operationLedger?'не определён':r.cellsScrap}</span>
                   {r.defects.length > 0 && <><br /><span className="text-red-400">⚠ {r.defects.join(', ')}</span></>}
                   <br /><span className="text-slate-500">{new Date(r.updatedAt).toLocaleString()}</span>
                 </div>
+                {currentUser&&(isTechManager||r.cellOutput)&&<AssemblyCellOutputForm key={r.id} run={r} actor={currentUser}/>}
                 <div className="flex gap-1">
                   <button onClick={() => { setSelectedId(r.id); setTab('li-electrodes'); }}
                     className="px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded text-xs text-white">Открыть</button>
-                  <button onClick={() => sendToMaster(r, false)}
+                  <button onClick={() => sendToMaster(r)}
                     className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">📤 Отправить</button>
-                  {isTechManager && (
-                    <button onClick={() => sendToMaster(r, true)}
-                      className="px-2 py-1 bg-amber-700 hover:bg-amber-600 rounded text-xs text-white" title="forced → slave">📌 Принудительно</button>
-                  )}
+
                 </div>
               </div>
             </div>

@@ -6,22 +6,24 @@
 // по категориям (толщина/масса из КД, допустимые дефекты из реестра) →
 // результат (sort-run) передаётся мастеру/технологу (master) и дальше на сборку.
 
-import React, { useMemo, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
-  CutRun, DefectEntry, ElectrodeShape, SortBucket, SortCategory, SortRun,
-  SortSpec, StageId, SyncPacket, UserRole,
+  CutRun, DefectEntry, ElectrodeShape, SortCategory, SortRun,
+  SortSpec, SortingWorkflow, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
+import { SortingWorkflowTab } from './SortingWorkflowTab';
 
 type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments';
 
 const inputCls =
-  'w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
+  'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
 const labelCls = 'block text-xs text-slate-400 mb-1';
 
 const shapeLabel = (s: ElectrodeShape) =>
@@ -50,13 +52,15 @@ export function SortingModule() {
     return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
 
+  const workflows = useLiveQuery(async () => db.sortingWorkflows.toArray(), []);
+
   const defects = useLiveQuery(async () => {
     const all = await db.defectRegistry.toArray();
     return all.sort((a, b) => (a.severity === b.severity ? a.title.localeCompare(b.title, 'ru') : a.severity === 'critical' ? -1 : 1));
   }, []);
 
   const tasks = useLiveQuery(async () => {
-    const all = await db.tasks.toArray();
+    const all = await listVisibleTasks();
     return all.filter((t) => t.stage === StageId.SORTING);
   }, []);
 
@@ -97,7 +101,10 @@ export function SortingModule() {
         <BatchesTab
           items={batches ?? []}
           specs={specs ?? []}
+          workflows={workflows ?? []}
+          runs={runs ?? []}
           onSort={(id) => { setSelectedBatchId(id); setTab('sort'); }}
+          onOpenJournal={() => setTab('journal')}
         />
       )}
 
@@ -108,46 +115,61 @@ export function SortingModule() {
           defects={defects ?? []}
           canEdit={isTechManager}
           userId={currentUser?.id ?? ''}
-          onSave={(spec, forced) => {
-            const fresh = { ...spec, updatedAt: Date.now() };
-            db.sortSpecs.put(fresh);
-            setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'sort-spec', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+          onSave={async (spec) => {
+            const actor=useAuthStore.getState().currentUser;
+            if(!actor)throw new Error('Нужен активный локальный профиль');
+            await db.transaction('rw',[db.sortSpecs,db.users],async()=>{
+              const active=await db.users.get(actor.id);
+              if(!active?.isActive||active.role!==actor.role||
+                 ![UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF].includes(active.role))
+                throw new Error('Нет прав на изменение спецификации');
+              const previous=await db.sortSpecs.get(spec.id);
+              if(previous && previous.updatedAt!==spec.updatedAt)
+                throw new Error('Спецификация изменена другим действием. Отмените правку и откройте актуальную версию.');
+              if(!previous && spec.authorId!==actor.id)
+                throw new Error('Автор новой спецификации не совпадает с активным профилем');
+              await db.sortSpecs.put({...spec,updatedAt:Math.max(Date.now(),(previous?.updatedAt??0)+1)});
             });
           }}
         />
       )}
 
-      {tab === 'sort' && (
-        <SortTab
+      <div className={tab === 'sort' ? '' : 'hidden'}>
+        <SortingWorkflowTab
           batches={batches ?? []}
           specs={specs ?? []}
           defects={defects ?? []}
+          runs={runs ?? []}
           selectedBatchId={selectedBatchId}
           onSelectBatch={setSelectedBatchId}
-          hasUser={!!currentUser}
-          onSave={(run) => {
-            const fresh = { ...run, workerId: currentUser!.id, updatedAt: Date.now() };
-            db.sortRuns.put(fresh);
-            setOutPacket({
-              v: 1, type: 'sort-run', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(),
-            });
+          workerId={currentUser?.id}
+          onHandoff={(history) => {
+            if (!currentUser) return;
+            setOutPacket({v:1,type:'sort-handoff',stage:StageId.SORTING,payload:history,from:currentUser.id,ts:Date.now()});
+          }}
+          onComplete={(saved) => {
+            if (!currentUser) return;
+            setOutPacket({v:1,type:'sort-run',stage:StageId.SORTING,payload:saved,from:currentUser.id,ts:Date.now()});
           }}
         />
-      )}
+      </div>
 
       {tab === 'defects' && (
         <DefectsTab
           defects={defects ?? []}
           canEdit={isTechManager}
-          onSave={(d) => {
-            const fresh = { ...d, updatedAt: Date.now() };
-            db.defectRegistry.put(fresh);
-            setOutPacket({
-              v: 1, type: 'defect-entry', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(),
+          onSave={async (defect) => {
+            const actor=useAuthStore.getState().currentUser;
+            if(!actor)throw new Error('Нужен активный локальный профиль');
+            await db.transaction('rw',[db.defectRegistry,db.users],async()=>{
+              const active=await db.users.get(actor.id);
+              if(!active?.isActive||active.role!==actor.role||
+                 ![UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF].includes(active.role))
+                throw new Error('Нет прав на изменение реестра дефектов');
+              const previous=await db.defectRegistry.get(defect.id);
+              if(previous && previous.updatedAt!==defect.updatedAt)
+                throw new Error('Запись дефекта изменена. Откройте актуальную версию перед повторной правкой.');
+              await db.defectRegistry.put({...defect,updatedAt:Math.max(Date.now(),(previous?.updatedAt??0)+1)});
             });
           }}
         />
@@ -156,13 +178,10 @@ export function SortingModule() {
       {tab === 'journal' && (
         <JournalTab
           runs={runs ?? []}
-          canForce={isTechManager}
-          onSend={(r, forced) => {
-            const fresh = { ...r, updatedAt: Date.now() };
-            db.sortRuns.put(fresh);
+          onSend={(run) => {
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'sort-run', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'sort-run', stage: StageId.SORTING,
+              payload: run, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
@@ -188,8 +207,9 @@ export function SortingModule() {
 }
 
 // ---------- 📥 Партии с нарезки ----------
-function BatchesTab({ items, specs, onSort }: {
-  items: CutRun[]; specs: SortSpec[]; onSort: (id: string) => void;
+function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
+  items: CutRun[]; specs: SortSpec[]; workflows: SortingWorkflow[]; runs: SortRun[];
+  onSort: (id: string) => void; onOpenJournal: () => void;
 }) {
   if (items.length === 0) {
     return (
@@ -204,7 +224,13 @@ function BatchesTab({ items, specs, onSort }: {
   return (
     <div className="space-y-3">
       {items.map((cr) => {
-        const spec = specs.find((s) => s.cutRunId === cr.id || s.batchName === cr.incomingId);
+        const spec = specs.find(s=>s.cutRunId===cr.id);
+        const workflow = workflows.find(w=>w.cutRunId===cr.id);
+        const record = runs.find(r=>r.cutRunId===cr.id || (!r.cutRunId && (r.batchName===cr.incomingId || (spec && r.specId===spec.id))));
+        const finished = !!record || !!workflow?.finalizedSortRunId;
+        const readyToFinalize = !!workflow && !workflow.finalizedSortRunId && workflow.stages.length===3;
+        const currentStation = workflow && !workflow.finalizedSortRunId && !readyToFinalize ?
+          ['Визуальный контроль','Контроль толщины','Контроль массы'][workflow.stages.length] : null;
         return (
           <div key={cr.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -226,14 +252,25 @@ function BatchesTab({ items, specs, onSort }: {
                 <div className="mt-1 text-xs">
                   {spec
                     ? <span className="text-emerald-300">📐 Спецификация КД получена: «{spec.parameterName}», категорий {spec.categories.length}</span>
-                    : <span className="text-slate-500">Спецификация технолога (КД) ещё не получена — дождитесь пакет «sort-spec»</span>}
+                    : <span className="text-amber-200">Спецификация КД отсутствует. Технолог должен создать её локально; импорт через общий QR/Bluetooth ключ заблокирован.</span>}
+                </div>
+                <div className="mt-2 text-xs space-y-1" aria-label="Статус сортировки">
+                  {finished ? <p className="text-emerald-300">✓ Сортировка завершена{record?.sortingWorkflow ? ` · ${record.sortingWorkflow.mode==='grading'?'градация':'годен / брак'}` : ''}</p> :
+                    workflow ? <>
+                      <p className="text-blue-300">{readyToFinalize
+                        ? 'Все три станции завершены · ожидает записи итогового результата'
+                        : `В работе · ${workflow.mode==='grading'?'градация':'годен / брак'} · следующая станция: ${currentStation}`}</p>
+                      <p className="text-slate-400">Завершено станций: {workflow.stages.length}/3 · прошло дальше: {workflow.stages.length ?
+                        workflow.stages[workflow.stages.length-1].passedCount : workflow.cutRunSnapshot.goodCount} шт</p>
+                    </> : <p className="text-slate-400">Сортировка ещё не начата</p>}
                 </div>
               </div>
               <button
-                onClick={() => onSort(cr.id)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white shrink-0"
+                onClick={() => finished && record ? onOpenJournal() : onSort(cr.id)}
+                className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white shrink-0"
               >
-                🔀 Сортировать
+                {finished && record ? '📒 Смотреть журнал' : readyToFinalize ? '✅ Завершить сортировку' :
+                  workflow ? '🔀 Продолжить сортировку' : '🔀 Сортировать'}
               </button>
             </div>
           </div>
@@ -247,10 +284,24 @@ function BatchesTab({ items, specs, onSort }: {
 function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   specs: SortSpec[]; batches: CutRun[]; defects: DefectEntry[];
   canEdit: boolean; userId: string;
-  onSave: (spec: SortSpec, forced: boolean) => void;
+  onSave: (spec: SortSpec) => Promise<void>;
 }) {
   const [editing, setEditing] = useState<SortSpec | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
+  const lock=useRef(false);
+  async function save(){
+    if(lock.current||!editing)return;
+    lock.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      await onSave(editing);
+      setEditing(null);
+      setSuccess('Сохранена локально. Передача спецификаций через общий QR/Bluetooth ключ запрещена.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Спецификация не сохранена');}
+    finally{lock.current=false;setBusy(false);}
+  }
 
   const blank = (): SortSpec => ({
     id: uuidv4(),
@@ -274,8 +325,10 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
         batches={batches}
         defects={defects}
         canEdit={canEdit}
+        busy={busy}
+        error={error}
         onCancel={() => setEditing(null)}
-        onSave={(forced) => { onSave(editing, forced); setEditing(null); }}
+        onSave={save}
         onChange={setEditing}
       />
     );
@@ -283,16 +336,17 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
 
   return (
     <div className="space-y-3">
+      {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
       {canEdit && (
         <button
-          onClick={() => { setIsNew(true); setEditing(blank()); }}
+          onClick={() => {setError('');setSuccess('');setIsNew(true); setEditing(blank()); }}
           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
         >
           ➕ Новая спецификация (КД)
         </button>
       )}
       {specs.length === 0 && (
-        <p className="text-slate-500 text-sm">Спецификаций пока нет. Технолог создаёт их здесь или присылает пакетом «sort-spec».</p>
+        <p className="text-slate-500 text-sm">Спецификаций пока нет. Технолог может создать их локально; импорт через общий QR/Bluetooth ключ заблокирован.</p>
       )}
       {specs.map((s) => (
         <div key={s.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
@@ -321,7 +375,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
             </div>
             {canEdit && (
               <button
-                onClick={() => { setIsNew(false); setEditing({ ...s, categories: s.categories.map((c) => ({ ...c })) }); }}
+                onClick={() => {setError('');setSuccess('');setIsNew(false); setEditing({ ...s, categories: s.categories.map((c) => ({ ...c })) }); }}
                 className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white shrink-0"
               >
                 ✏️ Изменить
@@ -334,9 +388,9 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   );
 }
 
-function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, onChange }: {
+function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCancel, onSave, onChange }: {
   spec: SortSpec; isNew: boolean; batches: CutRun[]; defects: DefectEntry[];
-  canEdit: boolean; onCancel: () => void; onSave: (forced: boolean) => void;
+  canEdit: boolean; busy:boolean; error:string; onCancel: () => void; onSave: () => void;
   onChange: (s: SortSpec) => void;
 }) {
   const set = (patch: Partial<SortSpec>) => onChange({ ...spec, ...patch });
@@ -371,7 +425,7 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, 
           <select className={inputCls} value={spec.electrodeType} disabled={!canEdit}
             onChange={(e) => set({ electrodeType: e.target.value as ElectrodeShape })}>
             <option value="strip">📏 Полосы (цилиндрические)</option>
-            <option value="plate">▭ Призматические</option>
+            <option value="prismatic">▭ Призматические</option>
           </select>
         </div>
         <div>
@@ -454,214 +508,38 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, 
           onChange={(e) => set({ techNotes: e.target.value })} />
       </div>
 
+      {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+      <p className="text-xs text-amber-200">Спецификации сохраняются только на этом устройстве. Общий ключ передачи не подтверждает права технолога.</p>
       <div className="flex flex-wrap gap-2">
-        <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-          disabled={!canEdit || !spec.batchName.trim()}
-          onClick={() => onSave(false)}>
-          💾 Сохранить и отправить (QR/BLE/текст)
-        </button>
-        {canEdit && (
-          <button className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded text-sm text-white"
-            disabled={!spec.batchName.trim()}
-            onClick={() => onSave(true)}>
-          👑 Принудительно (master → slave)
-          </button>
-        )}
-        <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={onCancel}>
-          Отмена
-        </button>
+        <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
+          disabled={busy||!canEdit || !spec.batchName.trim()}
+          onClick={onSave}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
+        <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white disabled:opacity-40" onClick={onCancel}>Отмена</button>
       </div>
     </div>
   );
-}
-
-// ---------- 🔀 Сортировка: разнос по категориям ----------
-function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, hasUser, onSave }: {
-  batches: CutRun[]; specs: SortSpec[]; defects: DefectEntry[];
-  selectedBatchId: string | null; onSelectBatch: (id: string) => void;
-  hasUser: boolean;
-  onSave: (run: SortRun) => void;
-}) {
-  const [batchId, setBatchId] = useState<string | null>(selectedBatchId);
-  const batch = batches.find((b) => b.id === batchId) ?? null;
-  const spec = useMemo(() => {
-    if (!batch) return null;
-    return specs.find((s) => s.cutRunId === batch.id)
-      ?? specs.find((s) => s.batchName === batch.incomingId) ?? null;
-  }, [batch, specs]);
-
-  const [counts, setCounts] = useState<Record<number, string>>({});
-  const [avgUm, setAvgUm] = useState<Record<number, string>>({});
-  const [avgMass, setAvgMass] = useState<Record<number, string>>({});
-  const [rejected, setRejected] = useState('');
-  const [defectIds, setDefectIds] = useState<string[]>([]);
-  const [notes, setNotes] = useState('');
-
-  const pickBatch = (id: string) => { setBatchId(id); onSelectBatch(id); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes(''); };
-
-  if (batches.length === 0) {
-    return <p className="text-slate-500 text-sm">Нет партий для сортировки — дождитесь данных с нарезки (вкладка «📥 Партии с нарезки»).</p>;
-  }
-
-  const totalSorted = Object.values(counts).reduce((s, v) => s + (Number(v) || 0), 0);
-  const goodIn = batch?.goodCount ?? 0;
-  const accounted = totalSorted + (Number(rejected) || 0);
-  const diff = goodIn - accounted;
-  const balanceOk = batch != null && diff === 0 && totalSorted > 0;
-
-  const save = () => {
-    if (!batch || !spec || !balanceOk) return;
-    const buckets: SortBucket[] = spec.categories
-      .map((c, i): SortBucket => ({
-        categoryName: c.name, count: Number(counts[i]) || 0,
-        avgThicknessUm: avgUm[i] ? Number(avgUm[i]) : undefined,
-        avgMassG: avgMass[i] ? Number(avgMass[i]) : undefined,
-      }))
-      .filter((b) => b.count > 0);
-    const defectTitles = defectIds.map((id) => defects.find((d) => d.id === id)?.title ?? id).join(', ');
-    onSave({
-      id: uuidv4(), specId: spec.id, batchName: batch.incomingId,
-      goodCount: batch.goodCount, buckets, rejected: Number(rejected) || 0,
-      defects: defectTitles || undefined, notes: notes.trim() || undefined,
-      workerId: '', createdAt: Date.now(), updatedAt: Date.now(),
-    });
-    setBatchId(null); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes('');
-  };
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <label className={labelCls}>Партия с нарезки</label>
-        <select className={inputCls} value={batchId ?? ''} onChange={(e) => pickBatch(e.target.value)}>
-          <option value="">— выберите партию —</option>
-          {batches.map((b) => (
-            <option key={b.id} value={b.id}>{b.incomingId} · годных {b.goodCount} шт</option>
-          ))}
-        </select>
-      </div>
-
-      {!batch && <p className="text-slate-500 text-sm">Выберите партию, чтобы начать разнос по категориям.</p>}
-
-      {batch && !spec && (
-        <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-3 text-sm text-amber-200">
-          ⚠ Для партии «{batch.incomingId}» нет спецификации технолога (КД). Дождитесь пакет «sort-spec»
-          или попросите технолога создать спецификацию во вкладке «📐 Спецификации КД».
-        </div>
-      )}
-
-      {batch && spec && (
-        <div className="bg-slate-800/80 border border-slate-600 rounded-lg p-4 space-y-3">
-          <div className="text-white font-semibold">🔀 Разнос партии «{batch.incomingId}» · {spec.parameterName} ({spec.unit})</div>
-          <div className="text-xs text-slate-400">Пришло годных с нарезки: <b className="text-emerald-300">{batch.goodCount}</b> шт</div>
-
-          <div className="space-y-2">
-            {spec.categories.map((c, i) => (
-              <div key={i} className="bg-slate-900/70 border border-slate-700 rounded p-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                  <b className="text-white text-sm">{c.name}</b>
-                  {c.minUm != null || c.maxUm != null ? <span>⌀ {c.minUm ?? '—'}–{c.maxUm ?? '—'} мкм</span> : null}
-                  {c.minMass != null || c.maxMass != null ? <span>масса {c.minMass ?? '—'}–{c.maxMass ?? '—'} г</span> : null}
-                  {c.allowedDefects && c.allowedDefects.length > 0 && (
-                    <span className="text-amber-300">доп.: {c.allowedDefects.map((id) => defects.find((d) => d.id === id)?.title ?? id).join(', ')}</span>
-                  )}
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div>
-                    <label className={labelCls}>Кол-во, шт</label>
-                    <input className={inputCls} type="number" min="0" value={counts[i] ?? ''}
-                      onChange={(e) => setCounts({ ...counts, [i]: e.target.value })} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Ср. толщина, мкм</label>
-                    <input className={inputCls} type="number" step="any" value={avgUm[i] ?? ''}
-                      onChange={(e) => setAvgUm({ ...avgUm, [i]: e.target.value })} placeholder="—" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Ср. масса, г</label>
-                    <input className={inputCls} type="number" step="any" value={avgMass[i] ?? ''}
-                      onChange={(e) => setAvgMass({ ...avgMass, [i]: e.target.value })} placeholder="—" />
-                  </div>
-                </div>
-                {(c.minUm != null || c.maxUm != null) && avgUm[i] && (
-                  <ControlHint num={Number(avgUm[i])} min={c.minUm} max={c.maxUm} what="толщина" />
-                )}
-                {(c.minMass != null || c.maxMass != null) && avgMass[i] && (
-                  <ControlHint num={Number(avgMass[i])} min={c.minMass} max={c.maxMass} what="масса" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className={labelCls}>Отбраковано (не подошли ни к одному сорту), шт</label>
-              <input className={inputCls} type="number" min="0" value={rejected}
-                onChange={(e) => setRejected(e.target.value)} placeholder="0" />
-            </div>
-            <div>
-              <label className={labelCls}>Замеченные дефекты (из реестра)</label>
-              <div className="flex flex-wrap gap-1">
-                {defects.map((d) => {
-                  const on = defectIds.includes(d.id);
-                  return (
-                    <button key={d.id}
-                      onClick={() => setDefectIds(on ? defectIds.filter((x) => x !== d.id) : [...defectIds, d.id])}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border ${on
-                        ? d.severity === 'critical'
-                          ? 'bg-rose-900/70 border-rose-600 text-rose-200'
-                          : 'bg-amber-900/60 border-amber-600 text-amber-200'
-                        : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                    >
-                      {d.severity === 'critical' ? '🔴' : '🟡'} {d.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Примечания оператора</label>
-            <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-          </div>
-
-          {/* Баланс партии */}
-          <div className={`rounded-lg p-3 text-sm border ${balanceOk
-            ? 'bg-emerald-900/30 border-emerald-700 text-emerald-200'
-            : 'bg-slate-900/70 border-slate-700 text-slate-300'}`}>
-            Разнесено: <b>{totalSorted}</b> + отбраковано <b>{Number(rejected) || 0}</b> = <b>{accounted}</b> из <b>{goodIn}</b> годных.
-            {diff > 0 && <span className="text-amber-300"> · не учтено {diff} шт</span>}
-            {diff < 0 && <span className="text-rose-300"> · перебор на {-diff} шт</span>}
-            {balanceOk ? ' ✅ баланс сходится' : ''}
-          </div>
-
-          <button
-            onClick={save}
-            disabled={!hasUser || !balanceOk}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
-          >
-            💾 Записать в журнал и отправить (sort-run → master)
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ControlHint({ num, min, max, what }: { num: number; min?: number; max?: number; what: string }) {
-  if (!Number.isFinite(num)) return null;
-  const below = min != null && num < min;
-  const above = max != null && num > max;
-  if (!below && !above) return <div className="mt-1 text-[11px] text-emerald-300">✓ {what} в допуске</div>;
-  return <div className="mt-1 text-[11px] text-rose-300">⚠ {what} вне допуска КД ({below ? 'ниже минимума' : 'выше максимума'}) — проверьте отнесение к сорту</div>;
 }
 
 // ---------- 🗂️ Реестр дефектов ----------
 function DefectsTab({ defects, canEdit, onSave }: {
   defects: DefectEntry[]; canEdit: boolean;
-  onSave: (d: DefectEntry) => void;
+  onSave: (d: DefectEntry) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<DefectEntry | null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
+  const lock=useRef(false);
+  async function save(){
+    if(lock.current||!draft)return;
+    lock.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      await onSave(draft);
+      setDraft(null);
+      setSuccess('Сохранено локально. При необходимости передавайте только проверенный сохранённый результат.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Дефект не сохранён');}
+    finally{lock.current=false;setBusy(false);}
+  }
 
   const critical = defects.filter((d) => d.severity === 'critical');
   const nonCritical = defects.filter((d) => d.severity === 'non-critical');
@@ -680,7 +558,7 @@ function DefectsTab({ defects, canEdit, onSave }: {
               </div>
               {canEdit && (
                 <button className="text-xs text-slate-400 hover:text-white"
-                  onClick={() => setDraft({ ...d })}>✏️</button>
+                  onClick={() => {setError('');setSuccess('');setDraft({ ...d });}}>✏️</button>
               )}
             </div>
           </div>
@@ -706,11 +584,11 @@ function DefectsTab({ defects, canEdit, onSave }: {
           <textarea className={inputCls} rows={2} value={draft.description ?? ''} onChange={(e) => set({ description: e.target.value })} /></div>
         <div><label className={labelCls}>Требуемое действие</label>
           <input className={inputCls} value={draft.action ?? ''} onChange={(e) => set({ action: e.target.value })} /></div>
-        <div className="flex gap-2">
-          <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-            disabled={!draft.title.trim()}
-            onClick={() => { onSave(draft); setDraft(null); }}>💾 Сохранить и отправить</button>
-          <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={() => setDraft(null)}>Отмена</button>
+        {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
+            disabled={busy||!draft.title.trim()} onClick={()=>void save()}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
+          <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={() => setDraft(null)}>Отмена</button>
         </div>
       </div>
     );
@@ -718,12 +596,13 @@ function DefectsTab({ defects, canEdit, onSave }: {
 
   return (
     <div className="space-y-4">
+      {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
       {canEdit && (
-        <button className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
-          onClick={() => setDraft({
+        <button className="min-h-11 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
+          onClick={() => {setError('');setSuccess('');setDraft({
             id: uuidv4(), title: '', severity: 'non-critical',
             createdAt: Date.now(), updatedAt: Date.now(),
-          })}>
+          });}}>
           ➕ Добавить дефект в реестр
         </button>
       )}
@@ -737,12 +616,12 @@ function DefectsTab({ defects, canEdit, onSave }: {
 }
 
 // ---------- 📒 Журнал сортировки ----------
-function JournalTab({ runs, canForce, onSend }: {
-  runs: SortRun[]; canForce: boolean;
-  onSend: (r: SortRun, forced: boolean) => void;
+function JournalTab({ runs, onSend }: {
+  runs: SortRun[];
+  onSend: (r: SortRun) => void;
 }) {
   if (runs.length === 0) {
-    return <p className="text-slate-500 text-sm">Журнал сортировки пуст. Записи появятся после разноса партий.</p>;
+    return <p className="text-slate-500 text-sm">Журнал сортировки пуст. Записи появятся после завершения трёх станций или из сохранённых исторических результатов.</p>;
   }
   return (
     <div className="space-y-3">
@@ -755,6 +634,7 @@ function JournalTab({ runs, canForce, onSend }: {
                 <span className="ml-2 text-xs font-normal text-slate-400">{new Date(r.createdAt).toLocaleString('ru-RU')}</span>
               </div>
               <div className="mt-1 text-xs text-slate-300">
+                {r.cutRunId&&<p className="break-all">Партия нарезки: {r.cutRunId} · Спецификация: {r.specId} (сохранённая версия)</p>}
                 Пришло годных: <b>{r.goodCount}</b> · Разнесено: {r.buckets.reduce((s, b) => s + b.count, 0)} ·
                 Отбраковано: <b className="text-rose-300">{r.rejected}</b>
               </div>
@@ -767,20 +647,31 @@ function JournalTab({ runs, canForce, onSend }: {
                   </span>
                 ))}
               </div>
+              {r.sortingWorkflow ? <details className="mt-3 rounded-lg border border-slate-600 bg-slate-900/60 p-3">
+                <summary className="text-sm text-blue-200 cursor-pointer">
+                  Этапы контроля: визуальный → толщина → масса · {r.sortingWorkflow.mode==='grading'?'градация':'годен / брак'}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {r.sortingWorkflow.stages.map((stage,i)=><div key={stage.station} className="border-b border-slate-700 pb-2 text-xs text-slate-300">
+                    <p className="text-white font-medium">{['1. Визуальный контроль','2. Контроль толщины','3. Контроль массы'][i]}</p>
+                    <p>На входе: {stage.inputCount} · годных: <b className="text-emerald-300">{stage.passedCount}</b> · брак: <b className="text-rose-300">{stage.rejectedCount}</b></p>
+                    {stage.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+                    {stage.rejectionReasons?.map(reason=><p key={reason.reason}>Причина брака: {reason.reason} · {reason.count} шт</p>)}
+                    <p className="text-slate-400">Оператор: {stage.workerId} · {new Date(stage.recordedAt).toLocaleString('ru-RU')}</p>
+                    {stage.notes&&<p className="text-slate-400">Примечание: {stage.notes}</p>}
+                  </div>)}
+                </div>
+              </details> :
+                <p className="mt-2 text-xs text-slate-400">Историческая запись: сведения по отдельным станциям не сохранились.</p>}
               {r.defects && <div className="mt-1 text-xs text-amber-300">⚠ Дефекты: {r.defects}</div>}
               {r.notes && <div className="mt-1 text-xs text-slate-400">📝 {r.notes}</div>}
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white"
-                onClick={() => onSend(r, false)}>
-                📤 Отправить партию дальше
+                onClick={() => onSend(r)}>
+                📤 Передать сохранённый результат
               </button>
-              {canForce && (
-                <button className="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded text-xs text-white"
-                  onClick={() => onSend(r, true)}>
-                  👑 Принудительно всем (master)
-                </button>
-              )}
+
             </div>
           </div>
         </div>

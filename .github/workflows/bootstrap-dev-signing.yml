@@ -1,0 +1,41 @@
+name: Initialize reusable development signing key
+
+on:
+  push:
+    branches: [feat/hybrid-server-foundation]
+    paths: ['.github/workflows/bootstrap-dev-signing.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  initialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/hybrid-server-foundation
+          persist-credentials: true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Generate and commit DEVELOPMENT-ONLY signing key once
+        run: |
+          set -euo pipefail
+          if [ -f .github/dev-signing.keystore.base64 ]; then
+            echo "Existing development key found; refusing to rotate it."
+            exit 0
+          fi
+          keytool -genkeypair -keystore "$RUNNER_TEMP/dev.keystore" \
+            -storetype PKCS12 -storepass development -keypass development \
+            -alias production-mf-dev -keyalg RSA -keysize 3072 -validity 3650 \
+            -dname "CN=Production MF Development, OU=Development, O=Production MF, C=US" -noprompt
+          base64 -w 0 "$RUNNER_TEMP/dev.keystore" > .github/dev-signing.keystore.base64
+          printf '\n' >> .github/dev-signing.keystore.base64
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/dev-signing.keystore.base64
+          git commit -m "chore(android): initialize reusable public development-only signing key"
+          git push origin HEAD:feat/hybrid-server-foundation
