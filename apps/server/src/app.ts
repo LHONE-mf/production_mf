@@ -15,6 +15,7 @@ import { registerInspectionReviewRoutes } from './inspection-review-routes.js';
 import { registerInspectionCriteriaRoutes } from './inspection-criteria-routes.js';
 import { registerDeviceChallengeRoutes } from './device-challenge-routes.js';
 import { registerInventoryRoutes } from './inventory-routes.js';
+import { registerInventoryCatalogRoutes } from './inventory-catalog-routes.js';
 
 function allowedBrowserOrigins(): Set<string> {
   // Android Capacitor's local WebView uses https://localhost. Other frontend
@@ -63,6 +64,7 @@ export function buildApp(pool: Pool) {
   registerInspectionReviewRoutes(app, pool);
   registerInspectionCriteriaRoutes(app, pool);
   registerInventoryRoutes(app, pool);
+  registerInventoryCatalogRoutes(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
     try {
