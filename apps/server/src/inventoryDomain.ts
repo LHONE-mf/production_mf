@@ -75,7 +75,7 @@ const fail = (code: Extract<InventoryResult, {ok:false}>['code'], message: strin
 export function transitionInventory(
   current: InventoryStock | undefined,
   op: InventoryOperation,
-  options: { mayAdjust: boolean } = { mayAdjust: false },
+  options: { mayAdjust: boolean; ownedReservation?: number } = { mayAdjust: false },
 ): InventoryResult {
   if (!validText(op.operationId) || !validText(op.stockId) ||
       !validText(op.actorId) || !validText(op.reason) ||
@@ -118,6 +118,8 @@ export function transitionInventory(
       break;
     case 'release_reservation':
       if (!validText(op.productionBatchId)) return fail('invalid', 'Production batch required');
+      if (!nonnegativeInt(options.ownedReservation) || op.quantity > options.ownedReservation)
+        return fail('blocked', 'Reservation ownership must be verified by the server');
       if (op.quantity > current.reserved) return fail('insufficient_stock', 'Not enough reserved stock');
       next.reserved -= op.quantity;
       break;
