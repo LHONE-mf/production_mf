@@ -25,8 +25,10 @@ into accepted stock is **not automatic**.
   immutable audit events. Only manager/chief can create catalogue entries.
 - **Quality:** every new stock receipt begins in **quarantine**. No release
   path is implemented: this is intentional until an approved QA disposition
-  workflow exists. The current server has no stock issue/return/reservation
-  endpoints or automatic production-room deduction.
+  workflow exists. The current server has no stock issue/return, QA-release
+  endpoints or automatic production-room deduction. Reservations are available
+  only for stock whose release was recorded through a future approved QA
+  workflow; no existing receipt is automatically released.
 
 ## Server routes
 
@@ -65,6 +67,48 @@ ungranted users or devices must not access inventory.
   change records in ascending server sequence, each with the corresponding
   original stock snapshot; bounded to 100 records. The server returns
   `nextCursor` and `hasMore`; a future cursor is rejected.
+
+### Controlled stock transactions (M1.2 server slice)
+
+`POST /inventory/stocks/:stockId/operations` accepts a version-checked,
+server-authenticated and fresh device-proofed operation. Every successful
+transaction atomically updates stock, reservation ownership (when relevant),
+and the immutable operation ledger. The exact same `operationId` + actor +
+device + normalized intent returns the original committed snapshot; a reused ID
+with a different intent returns HTTP 409. Stale stock revisions return 409.
+Stock records always retain their manufacturer lot and receipt identity.
+
+- **Transfer:** `{operationId,deviceId,kind:"transfer",expectedRevision,
+  quantity,reason,toLocationId}`. Available to authorized warehouse operators.
+  Only the entire **unreserved** container can be moved to an existing active
+  location; splitting, relabeling and partial transfers remain disabled.
+- **Adjustment:** `{operationId,deviceId,kind:"adjust",expectedRevision,
+  quantity,reason,adjustment:"increase"|"decrease"}`. Chief or explicitly
+  granted warehouse manager only. Corrections are appended as immutable events;
+  a decrease cannot take material reserved for production or create negative
+  stock.
+- **Reserve:** `{operationId,deviceId,kind:"reserve",expectedRevision,
+  quantity,reason,reservationId,productionBatchId}`. Chief/warehouse manager
+  only. The batch must exist in the same organization in an active production
+  state under a released/in-progress order. Material must already be marked
+  `released` under the separate QA policy; this API never releases it.
+- **Release reservation:** `{operationId,deviceId,
+  kind:"release_reservation",expectedRevision,quantity,reason,
+  reservationId,productionBatchId}`. Chief/warehouse manager only.
+  Verifies ownership of the exact reservation and batch, and supports
+  returning some or all of the reserved quantity to availability.
+- **Not implemented:** physical issue to production, return-from-production,
+  stock splitting, quality release/hold, and automated consumption. They must
+  not be advertised or faked by Android screens.
+
+Changes of these four kinds are now represented in the immutable confirmed
+change feed and validated by the inventory client's explicit pull function.
+There is **no automatic or offline Android outbox for non-receipt mutations**.
+Do not issue new movement requests from an offline phone yet; use controlled
+online operations after an authorized client interface has been added.
+The PostgreSQL reservation integration fixture explicitly synthesizes a
+released state in its disposable database to verify server arithmetic; it is
+not a manufacturing QA authorization mechanism.
 
 ### Synchronization contract
 
