@@ -45,6 +45,27 @@ it('keeps entered and stored values when recipe replacement is cancelled, and re
  const payload=(await db.localFormDrafts.toArray())[0].payload as {source:MixRecipe};expect(payload.source).toEqual(nextRecipe);
  expect(await db.mixBatches.count()).toBe(0);expect(await db.journal.count()).toBe(0);
 });
+it('requires deliberate confirmation before clearing an unsaved weighing draft',async()=>{
+ await fill('Код партии замеса','TEST-UNFINISHED');
+ await fill('Фактическая масса 1, г','999,7');
+ await fill('Основание навесок и состава','Local weighing note');
+ await checkpointed();
+ await click('Очистить форму для нового замеса');
+ expect(node.querySelector('[role="alertdialog"]')?.textContent).toContain('Очистить незавершённый замес');
+ expect(field('Фактическая масса 1, г').value).toBe('999,7');
+ await click('Оставить незавершённый замес');
+ expect(node.querySelector('[role="alertdialog"]')).toBeNull();
+ expect(field('Код партии замеса').value).toBe('TEST-UNFINISHED');
+ expect((await db.mixBatches.count())).toBe(0);
+ await click('Очистить форму для нового замеса');
+ await click('Подтвердить очистку черновика');
+ await wait(()=>expect(field('Код партии замеса').value).toBe(''));
+ expect(node.querySelector('[role="alertdialog"]')).toBeNull();
+ expect(field('Название состава').value).toBe('');
+ expect((await db.localFormDrafts.toArray())[0].payload).toBeNull();
+ expect(await db.mixBatches.count()).toBe(0);
+});
+
 it('blocks a recipe change during a pending production save and keeps that save bound to its original recipe and weights',async()=>{
  await fill('Код партии замеса','TEST-pending');await fill('Фактическая масса 1, г','1000');await fill('Основание навесок и состава','TEST supplied basis');await checkpointed();
  const gate=new Promise<void>(resolve=>{release=resolve;}),original=slurry.saveSlurryBatch;
