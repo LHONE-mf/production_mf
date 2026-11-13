@@ -19,14 +19,36 @@ export interface StorageQueuedOperation {
   error?:string;
   acknowledgedAt?:number;
 }
+export interface StorageDraft {
+  key:string; organizationId:string; actorId:string; deviceId:string;
+  payload:Record<string,string>; updatedAt:number;
+}
 class StorageOutboxDb extends Dexie {
   operations!:Table<StorageQueuedOperation,string>;
+  drafts!:Table<StorageDraft,string>;
   constructor() {
     super('ProductionMfStorageOutbox');
     this.version(1).stores({operations:'operationId, [organizationId+actorId+deviceId], state, queuedAt'});
+    this.version(2).stores({operations:'operationId, [organizationId+actorId+deviceId], state, queuedAt',drafts:'key'});
   }
 }
 export const storageOutbox=new StorageOutboxDb();
+export function storageDraftKey(connection:ServerConnection,kind:string) {
+  return [connection.organizationId,connection.serverActorId,connection.selectedDeviceId,kind].join(':');
+}
+export async function saveStorageDraft(connection:ServerConnection,kind:string,payload:Record<string,string>) {
+  const key=storageDraftKey(connection,kind);
+  await storageOutbox.drafts.put({key,organizationId:connection.organizationId,
+    actorId:connection.serverActorId,deviceId:connection.selectedDeviceId,
+    payload,updatedAt:Date.now()});
+}
+export async function loadStorageDraft(connection:ServerConnection,kind:string) {
+  return storageOutbox.drafts.get(storageDraftKey(connection,kind));
+}
+export async function clearStorageDraft(connection:ServerConnection,kind:string) {
+  await storageOutbox.drafts.delete(storageDraftKey(connection,kind));
+}
+
 
 const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function assertPath(kind:StorageCommandKind,path:string) {
