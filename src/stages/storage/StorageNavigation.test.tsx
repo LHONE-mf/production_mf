@@ -81,3 +81,30 @@ it('does not discard an unfinished receipt when a different recorded lot is open
  expect((await db.journal.toArray())).toHaveLength(1);
  expect((await db.journal.get('storage:saved-lot'))?.stage).toBe(StageId.STORAGE);
 });
+
+it('protects unfinished location fields on Back and Refresh without editing saved history',async()=>{
+ const page=await mount();
+ const receipt:StorageReceipt={version:1,kind:'receipt',id:'storage:location-lot',
+   material:'NMC powder',lotCode:'L-002',quantity:6,unit:'kg',location:'A-01',
+   evidence:'Received and counted',actorId:'warehouse',actorRole:UserRole.WORKER,recordedAt:Date.now()};
+ await saveStorageEvent(receipt,'warehouse');
+ await vi.waitFor(()=>expect(page.textContent).toContain('NMC powder'));
+ await click('История и место');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Новое место"]')).toBeTruthy());
+ await fill('Новое место','A-02');
+ await fill('Основание смены места','Observed by operator');
+ await click('К поступлениям');
+ expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain('Вернуться к поступлениям');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Новое место"]')?.value).toBe('A-02');
+ await click('Оставить текущую форму');
+ await click('Обновить историю явно');
+ expect(page.querySelector('[role="alertdialog"]')?.textContent).toContain('Обновить историю партии');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Основание смены места"]')?.value).toBe('Observed by operator');
+ await click('Оставить текущую форму');
+ expect(await db.journal.count()).toBe(1);
+ await click('Обновить историю явно');
+ await click('Сбросить незавершённую форму');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Новое место"]')?.value).toBe(''));
+ expect(page.textContent).toContain('Последнее место: A-01');
+ expect(await db.journal.count()).toBe(1);
+});
