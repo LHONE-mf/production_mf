@@ -35,10 +35,12 @@ it('keeps entered and stored values when recipe replacement is cancelled, and re
  await fill('Код партии замеса','TEST-retain');await fill('Фактическая масса 1, г','1000,0');await fill('Основание навесок и состава','TEST existing weighing record');await checkpointed();
  const before=await db.localFormDrafts.toArray();
  await render(nextRecipe);await wait(()=>expect(consumed).toHaveBeenCalledTimes(2));
- expect(confirmReplacement).toHaveBeenCalledTimes(1);expect(confirmReplacement.mock.calls[0][0]).toContain('черновик');
+ expect(confirmReplacement).not.toHaveBeenCalled();expect(node.querySelector('[role="alertdialog"]')?.textContent).toContain('TEST next recipe');
  expect(field('Название состава').value).toBe(recipe.name);expect(field('Код партии замеса').value).toBe('TEST-retain');expect(field('Фактическая масса 1, г').value).toBe('1000,0');expect(field('Основание навесок и состава').value).toBe('TEST existing weighing record');
  expect(await db.localFormDrafts.toArray()).toEqual(before);
- confirmReplacement.mockReturnValue(true);await render({...nextRecipe});await wait(()=>expect(field('Название состава').value).toBe(nextRecipe.name));await checkpointed();
+ await click('Оставить текущий черновик');expect(node.querySelector('[role="alertdialog"]')).toBeNull();
+ await render({...nextRecipe});await wait(()=>expect(node.querySelector('[role="alertdialog"]')).not.toBeNull());
+ await click('Заменить черновик рецептом');await wait(()=>expect(field('Название состава').value).toBe(nextRecipe.name));await checkpointed();
  expect(field('План СВ, кг').value).toBe('2');expect(field('Код партии замеса').value).toBe('');expect(field('Фактическая масса 1, г').value).toBe('');
  const payload=(await db.localFormDrafts.toArray())[0].payload as {source:MixRecipe};expect(payload.source).toEqual(nextRecipe);
  expect(await db.mixBatches.count()).toBe(0);expect(await db.journal.count()).toBe(0);
@@ -62,6 +64,7 @@ it('retains uncheckpointed input when draft persistence fails rather than replac
  try{await fill('Фактическая масса 1, г','987,5');await wait(()=>expect(node.textContent).toContain('TEST draft checkpoint failed'));}finally{db.localFormDrafts.hook('updating').unsubscribe(fail);}
  await render(nextRecipe);await wait(()=>expect(consumed).toHaveBeenCalledTimes(2));
  expect(confirmReplacement).not.toHaveBeenCalled();expect(field('Название состава').value).toBe(recipe.name);expect(field('Фактическая масса 1, г').value).toBe('987,5');expect(await db.localFormDrafts.toArray()).toEqual(before);
- await click('Повторить сохранение черновика');await checkpointed();await render({...nextRecipe});await wait(()=>expect(confirmReplacement).toHaveBeenCalledTimes(1));
+ await click('Повторить сохранение черновика');await checkpointed();await render({...nextRecipe});await wait(()=>expect(node.querySelector('[role="alertdialog"]')?.textContent).toContain('TEST next recipe'));
+ expect(confirmReplacement).not.toHaveBeenCalled();
  expect(field('Фактическая масса 1, г').value).toBe('987,5');expect(await db.mixBatches.count()).toBe(0);
 });
