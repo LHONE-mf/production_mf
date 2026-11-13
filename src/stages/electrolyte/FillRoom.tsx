@@ -185,7 +185,7 @@ function FillRoomContent({ box }: Props) {
                         cellsIn: r.cellsFilled, electrolyteName: r.electrolyteName,
                         fromFillRunId: r.id, receivedAt: now, updatedAt: now,
                       };
-                      setOutPacket({ v: 1, type: 'walzing-in', stage: StageId.WALZING, payload: wi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                      setOutPacket({ v: 1, type: 'walzing-in', stage: StageId.WALZING, payload: wi, from: currentUser.id, ts: Date.now() });
                     }}
                       className="text-xs bg-amber-800 hover:bg-amber-700 text-white rounded px-2 py-1"
                       disabled={transferBusy} title="Сохранить задание для вальцовки без подтверждения физической приёмки">🎡 На вальцовку ▸</button>
@@ -200,7 +200,7 @@ function FillRoomContent({ box }: Props) {
                         serialRange: r.serialRange, cellsIn: r.cellsFilled,
                         fromFillRunId: r.id, receivedAt: now, updatedAt: now,
                       };
-                      setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                      setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now() });
                     }}
                       className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
                       disabled={transferBusy} title="Сохранить задание формирования без подтверждения физической приёмки">⚡ На формовку ▸</button>
