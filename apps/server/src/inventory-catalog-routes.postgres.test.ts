@@ -68,14 +68,16 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
     expect((await get(url,'invalid',workerProof)).statusCode).toBe(401);
     expect((await get('/inventory/locations?deviceId='+chiefDevice,chiefToken,'')).statusCode).toBe(403);
     expect((await get('/inventory/access/me?deviceId='+chiefDevice)).json()).toMatchObject({
-      level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,
+      level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:false,
+      correctionRoleEligible:true,
     });
     const access=await post('/inventory/access',{changeId:randomUUID(),
       deviceId:chiefDevice,userId:worker,level:'operator',action:'grant'});
     expect(access.statusCode,access.body).toBe(201);
     expect((await get(url,workerToken,workerProof)).statusCode).toBe(200);
     expect((await get('/inventory/access/me?deviceId='+workerDevice,workerToken,workerProof)).json())
-      .toMatchObject({level:'operator',canManageCatalog:false,canCorrectStock:false});
+      .toMatchObject({level:'operator',canManageCatalog:false,canCorrectStock:false,
+        correctionRoleEligible:false});
     expect((await get('/inventory/materials?deviceId='+chiefDevice,workerToken,workerProof)).statusCode).toBe(403);
     expect((await get('/inventory/materials?deviceId=invalid',workerToken,workerProof)).statusCode).toBe(400);
   });
