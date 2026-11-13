@@ -88,14 +88,13 @@ export function CuttingModule() {
           incoming={incoming ?? []}
           selectedId={selectedId}
           onSelect={setSelectedId}
-          canForce={isTechManager}
           workerId={currentUser?.id}
-          onSave={async (run, forced) => {
+          onSave={async (run) => {
             const fresh = { ...run, updatedAt: Date.now() };
             await db.cuttingRuns.add(fresh);
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'cut-run', stage: StageId.CUTTING,
+              payload: fresh, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
@@ -105,11 +104,10 @@ export function CuttingModule() {
         <JournalTab
           runs={runs ?? []}
           incoming={incoming ?? []}
-          canForce={isTechManager}
-          onSend={(r, forced) => {
+          onSend={(r) => {
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'cut-run', stage: StageId.CUTTING,
-              payload: r, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'cut-run', stage: StageId.CUTTING,
+              payload: r, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
@@ -188,13 +186,12 @@ function IncomingTab({ items, onOpen }: { items: CuttingIncoming[]; onOpen: (id:
 
 // ---------- ✂️ Нарезка: калькулятор выхода + форма результата ----------
 function CutTab({
-  incoming, selectedId, onSelect, onSave, canForce, workerId,
+  incoming, selectedId, onSelect, onSave, workerId,
 }: {
   incoming: CuttingIncoming[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onSave: (run: CutRun, forced: boolean) => Promise<void>;
-  canForce: boolean;
+  onSave: (run: CutRun) => Promise<void>;
   workerId?: string;
 }) {
   const ci = incoming.find((i) => i.id === selectedId) ?? incoming[0] ?? null;
@@ -225,7 +222,7 @@ function CutTab({
     return <p className="text-slate-400 text-sm">Нет входящих рулонов — дождитесь пакет «cutting-roll».</p>;
   }
 
-  const save = async (forced: boolean) => {
+  const save = async () => {
     if (!workerId || savingRef.current) return;
     savingRef.current=true;setSaving(true);setError('');setMessage('');
     try{
@@ -234,7 +231,7 @@ function CutTab({
         breaks:breaks===''?undefined:Number(breaks),electrodeLengthMm:actualLen===''?undefined:Number(actualLen),
         geometry,defects,notes,
       },workerId,runId);
-      await onSave(run,forced);
+      await onSave(run);
       setRunId(uuidv4());setGoodCount('');setDefectCount('');setBreaks('');setDefects('');setNotes('');setActualLen('');
       setPhysicalLengthM('');setKerfMm('');setElectrodeWidthMm('');setUsableWebWidthMm('');
       setMessage('Запись сохранена на устройстве. Передача выполняется отдельно и требует ключ цеха.');
@@ -339,22 +336,13 @@ function CutTab({
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
           <button
-            onClick={() => void save(false)}
+            onClick={() => void save()}
             disabled={!workerId || saving || !goodCount || !defectCount}
             className="min-h-11 px-3 py-2 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 rounded text-sm text-white"
           >
             💾 Сохранить и отправить на сортировку (QR/текст/BLE)
           </button>
-          {canForce && (
-            <button
-              onClick={() => void save(true)}
-              disabled={!workerId || saving || !goodCount || !defectCount}
-              className="min-h-11 px-3 py-2 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded text-sm text-white"
-              title="Принудительная запись master'ом во все slave-устройства"
-            >
-              👑 Принудительно (master)
-            </button>
-          )}
+
         </div>
         {!workerId && <p className="text-xs text-amber-400">Войдите в профиль, чтобы сохранить результат.</p>}
       </div>
@@ -364,12 +352,11 @@ function CutTab({
 
 // ---------- 📒 Журнал нарезки ----------
 function JournalTab({
-  runs, incoming, canForce, onSend,
+  runs, incoming, onSend,
 }: {
   runs: CutRun[];
   incoming: CuttingIncoming[];
-  canForce: boolean;
-  onSend: (r: CutRun, forced: boolean) => void;
+  onSend: (r: CutRun) => void;
 }) {
   const mixNameOf = (run: CutRun) =>
     incoming.find((i) => i.id === run.incomingId)?.roll.mixName ?? 'рулон не принят';
@@ -406,21 +393,13 @@ function JournalTab({
             </div>
             <div className="flex gap-2">
               <button
-                onClick={() => onSend(r, false)}
+                onClick={() => onSend(r)}
                 className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white"
                 title="Партия нарезки → сортировка (QR/текст/Bluetooth)"
               >
                 📤 На сортировку
               </button>
-              {canForce && (
-                <button
-                  onClick={() => onSend(r, true)}
-                  className="px-2.5 py-1 bg-purple-700 hover:bg-purple-600 rounded text-xs text-white"
-                  title="Принудительная рассылка master → slave"
-                >
-                  👑 Master
-                </button>
-              )}
+
             </div>
           </div>
         </div>
