@@ -124,6 +124,64 @@ it('grades only by mass after passing thickness, keeping grade totals separate',
  expect(saved.sortingWorkflow?.stages.map(s=>s.station)).toEqual(['visual','thickness','mass']);
 });
 
+it('requires an explicit tap for count shortcuts and shows the previous operator at handoff',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ const passed=()=>page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]');
+ const failed=()=>page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]');
+ const complement=()=>[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Подставить годные = вход'));
+ expect(passed()?.value).toBe('');
+ expect(failed()?.value).toBe('');
+ expect(complement()?.disabled).toBe(true);
+ await clickRoomButton('Указать брак = 0');
+ expect(failed()?.value).toBe('0');
+ expect(passed()?.value).toBe(''); // no automatic quality classification
+ expect(complement()?.disabled).toBe(false);
+ await clickRoomButton('Подставить годные = вход');
+ expect(passed()?.value).toBe('10');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ expect(page.textContent).toContain('По журналу 1. Визуальный контроль: прошло 10 шт');
+ expect(page.textContent).toContain('оператор operator');
+ expect(page.textContent).toContain('не подтверждение физической передачи');
+ expect(passed()?.value).toBe(''); // a new station never inherits an operator decision
+ await typeCount('Отбраковано на станции','2');
+ await clickRoomButton('Подставить годные = вход');
+ expect(passed()?.value).toBe('8');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(1);
+});
+
+it('fills only explicitly empty mass grades with zero without overwriting chosen grade counts',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')).toBeTruthy());
+ const a=()=>page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]');
+ const b=()=>page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]');
+ expect(a()?.value).toBe('');expect(b()?.value).toBe('');
+ await typeCount('Количество сорта A','7');
+ await typeCount('Отбраковано на станции','1');
+ expect(b()?.value).toBe(''); // no mass grade assigned automatically
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(2);
+ await clickRoomButton('Пустые сорта = 0');
+ expect(a()?.value).toBe('7');expect(b()?.value).toBe('0');
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ expect((await db.sortingWorkflows.get('cut'))?.stages[2].grades).toEqual([
+  {categoryName:'A',count:7},{categoryName:'B',count:0},
+ ]);
+ expect(await db.sortRuns.count()).toBe(0); // no implicit finalization
+});
+
 it('restores unfinished station counts after closing and reopening the Sorting room',async()=>{
  const page=await mount();
  await clickRoomButton('Начать сортировку');
