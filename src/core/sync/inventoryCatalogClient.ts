@@ -62,7 +62,7 @@ function validatePage<T extends {id:string}>(
   if(raw.hasMore&&(items.length!==limit||raw.nextAfter!==previous))
     throw new Error('Invalid inventory catalogue continuation');
   if(!raw.hasMore&&raw.nextAfter!==null)
-    throw new Error('Unexpected inventory catalogue cursor');
+    throw new Error('Invalid inventory catalogue cursor');
   return {items,hasMore:raw.hasMore,nextAfter:raw.nextAfter as string|null};
 }
 
