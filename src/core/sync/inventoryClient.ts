@@ -131,12 +131,15 @@ export async function pullInventoryChanges(
   let previous=cursor;
   for(const item of changes){
     if(!item||!Number.isSafeInteger(item.sequence)||item.sequence<=previous||
-        !validId.test(item.operationId)||item.kind!=='receive'||
+        !validId.test(item.operationId)||
+        !['receive','transfer','adjust','reserve','release_reservation'].includes(item.kind)||
         typeof item.recordedAt!=='string'||!Number.isFinite(Date.parse(item.recordedAt)))
       throw new Error('Invalid inventory change order or identity');
     validateInventoryStock(item.stock);
-    if(item.stock.revision!==1||item.stock.quality!=='quarantine')
-      throw new Error('Unexpected inventory receipt snapshot');
+    if(item.kind==='receive'?
+        item.stock.revision!==1||item.stock.quality!=='quarantine':
+        item.stock.revision<=1)
+      throw new Error('Invalid inventory change revision');
     previous=item.sequence;
   }
   if((changes.length===0&&payload.nextCursor!==cursor)||
