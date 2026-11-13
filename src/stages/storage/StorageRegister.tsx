@@ -38,7 +38,7 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  const setDraft=(draft:ReceiptDraft)=>recovery.edit(form=>({...form,draft}));
  const setPlace=(place:string)=>recovery.edit(form=>({...form,place}));const setBasis=(basis:string)=>recovery.edit(form=>({...form,basis}));
  const [query,setQuery]=useState('');
- const [navigation,setNavigation]=useState<{kind:'new'|'lot';lotId?:string}|null>(null);
+ const [navigation,setNavigation]=useState<{kind:'new'|'lot'|'back'|'refresh';lotId?:string}|null>(null);
  const [packet,setPacket]=useState<SyncPacket|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');
  const [pending,setPending]=useState(false);const busy=useRef(false);
@@ -46,8 +46,8 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  // A new receipt or a different lot should never silently discard a local draft.
  // Confirmation is inline: no browser confirm() (unreliable in native WebViews).
  const dirty=!saved&&(
-   !!attempt||Object.values(draft).some(value=>value.trim()!=='')||
-   !!selected&&(place.trim()!==''||basis.trim()!=='')
+   !!attempt||(selected ? place.trim()!==''||basis.trim()!=='' :
+     Object.values(draft).some(value=>value.trim()!==''))
  );
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(undefined);return;}let active=true;setChecking(true);
@@ -73,12 +73,23 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  function clearMessages(){setSaved(undefined);setError('');setMessage('');}
  function resetAttempt(){clearMessages();recovery.edit(form=>({...form,attempt:null}));}
  async function performNewReceipt(){if(busy.current)return;busy.current=true;setPending(true);try{await recovery.reset();clearMessages();setNavigation(null);}catch(e){setError(String(e));}finally{busy.current=false;setPending(false);}}
- function performOpenLot(lot:RecordedLot){clearMessages();recovery.edit(form=>({...form,selected:lot,place:'',basis:'',attempt:null}));setNavigation(null);}
+ function performOpenLot(lot:RecordedLot){clearMessages();recovery.edit(form=>({...form,draft:{...emptyReceipt},selected:lot,place:'',basis:'',attempt:null}));setNavigation(null);}
+ function performBack(){clearMessages();recovery.edit(form=>({...form,selected:null,place:'',basis:'',attempt:null}));setNavigation(null);}
+ function performRefresh(){
+  if(!selected)return;
+  const latest=register?.lots.find(lot=>lot.receipt.id===selected.receipt.id);
+  if(!latest){setError('Партия больше не доступна, обновите реестр');return;}
+  clearMessages();recovery.edit(form=>({...form,selected:latest,place:'',basis:'',attempt:null}));setNavigation(null);
+ }
  function newReceipt(){if(busy.current||pending||checking)return;if(dirty){setNavigation({kind:'new'});return;}void performNewReceipt();}
  function openLot(lot:RecordedLot){if(busy.current||pending||checking)return;if(selected?.receipt.id===lot.receipt.id)return;if(dirty){setNavigation({kind:'lot',lotId:lot.receipt.id});return;}performOpenLot(lot);}
+ function goBack(){if(busy.current||pending||checking)return;if(dirty){setNavigation({kind:'back'});return;}performBack();}
+ function refresh(){if(busy.current||pending||checking)return;if(dirty){setNavigation({kind:'refresh'});return;}performRefresh();}
  function confirmNavigation(){
   if(!navigation||busy.current||pending||checking)return;
   if(navigation.kind==='new'){void performNewReceipt();return;}
+  if(navigation.kind==='back'){performBack();return;}
+  if(navigation.kind==='refresh'){performRefresh();return;}
   const lot=register?.lots.find(item=>item.receipt.id===navigation.lotId);
   if(!lot){setError('Выбранная партия больше не доступна, обновите реестр');return;}
   performOpenLot(lot);
@@ -96,7 +107,7 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
     className="rounded-lg border-2 border-amber-500 bg-slate-900 p-4 space-y-3">
     <h4 className="font-semibold text-amber-200">Есть незавершённые данные склада</h4>
     <p className="text-sm text-slate-200">
-      {navigation.kind==='new'?'Начать новое поступление?':'Открыть другую партию?'}
+      {navigation.kind==='new'?'Начать новое поступление?':navigation.kind==='lot'?'Открыть другую партию?':navigation.kind==='back'?'Вернуться к поступлениям?':'Обновить историю партии?'}
       {' '}Текущие незавершённые поля и попытка сохранения будут сброшены.
       Сохранённые записи в журнале останутся без изменений.
     </p>
@@ -132,9 +143,9 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
    </fieldset>
    <div className="flex flex-wrap gap-2"><button className={buttonClass} disabled={pending||checking||!!saved||!!recovery.error||!selected.location} onClick={()=>void persist(()=>({version:1,kind:'location',id:`storage:${uuidv4()}`,receiptId:selected.receipt.id,previousEventId:selected.history[selected.history.length-1].id,fromLocation:selected.location!,location:place.trim(),evidence:basis.trim(),actorId:actor.id,actorRole:actor.role,recordedAt:Date.now()}))}>Записать место</button>
     {attempt&&!saved&&<button className={buttonClass} disabled={pending||checking} onClick={resetAttempt}>Редактировать попытку</button>}
-    <button className={buttonClass} disabled={pending||checking} onClick={()=>{const latest=register?.lots.find(lot=>lot.receipt.id===selected.receipt.id);if(latest){clearMessages();recovery.edit(form=>({...form,selected:latest,attempt:null}));}}}>Обновить историю явно</button>
+    <button className={buttonClass} disabled={pending||checking} onClick={refresh}>Обновить историю явно</button>
     <button className={buttonClass} disabled={pending||checking||!selected.location} onClick={()=>void sendHistory(selected)}>Передать сохранённую историю</button>
-    <button className={buttonClass} disabled={pending||checking} onClick={()=>{clearMessages();recovery.edit(form=>({...form,selected:null,attempt:null}));}}>К поступлениям</button>
+    <button className={buttonClass} disabled={pending||checking} onClick={goBack}>К поступлениям</button>
    </div>
   </section>}
   <section className="space-y-3"><h4 className="font-semibold">Реестр записанных поступлений</h4>
