@@ -63,6 +63,22 @@ it('rejects invalid counts and a failed station write without losing operator in
  await clickRoomButton('Продолжить сортировку');
  expect(page.textContent).toContain('2. Контроль толщины');
 });
+it('offers a station handoff packet only after saving inspection decisions',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ expect(page.textContent).not.toContain('Передать станции (1/3)');
+ await typeCount('Прошло контроль','9');
+ await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Передать станции (1/3)'));
+ expect(await db.sortRuns.count()).toBe(0);
+ await clickRoomButton('Передать станции (1/3)');
+ const displayed=page.querySelector('[data-testid="packet"]');
+ expect(displayed?.textContent).toContain('"station":"visual"');
+ expect(displayed?.textContent).not.toContain('"station":"thickness"');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(1);
+});
 it('completes visual-thickness-mass in pass/fail mode, excluding failures and emitting saved packet',async()=>{
  const page=await mount();
  await clickRoomButton('Начать сортировку');
