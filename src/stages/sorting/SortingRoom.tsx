@@ -6,19 +6,19 @@
 // по категориям (толщина/масса из КД, допустимые дефекты из реестра) →
 // результат (sort-run) передаётся мастеру/технологу (master) и дальше на сборку.
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
-  CutRun, DefectEntry, ElectrodeShape, SortBucket, SortCategory, SortRun,
+  CutRun, DefectEntry, ElectrodeShape, SortCategory, SortRun,
   SortSpec, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
-import { saveSortingAllocation, validateSortPartition } from '../../core/manufacturing/sortingAllocation';
 import { PacketOutModal } from '../_ui/PacketOutModal';
+import { SortingWorkflowTab } from './SortingWorkflowTab';
 
 type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments';
 
@@ -129,19 +129,21 @@ export function SortingModule() {
         />
       )}
 
-      {tab === 'sort' && (
-        <SortTab
+      <div className={tab === 'sort' ? '' : 'hidden'}>
+        <SortingWorkflowTab
           batches={batches ?? []}
           specs={specs ?? []}
           defects={defects ?? []}
+          runs={runs ?? []}
           selectedBatchId={selectedBatchId}
           onSelectBatch={setSelectedBatchId}
           workerId={currentUser?.id}
-          onSave={(saved) => {
-            setOutPacket({v:1,type:'sort-run',stage:StageId.SORTING,payload:saved,from:currentUser!.id,ts:Date.now()});
+          onComplete={(saved) => {
+            if (!currentUser) return;
+            setOutPacket({v:1,type:'sort-run',stage:StageId.SORTING,payload:saved,from:currentUser.id,ts:Date.now()});
           }}
         />
-      )}
+      </div>
 
       {tab === 'defects' && (
         <DefectsTab
@@ -396,7 +398,7 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
           <select className={inputCls} value={spec.electrodeType} disabled={!canEdit}
             onChange={(e) => set({ electrodeType: e.target.value as ElectrodeShape })}>
             <option value="strip">📏 Полосы (цилиндрические)</option>
-            <option value="plate">▭ Призматические</option>
+            <option value="prismatic">▭ Призматические</option>
           </select>
         </div>
         <div>
@@ -489,190 +491,6 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
       </div>
     </div>
   );
-}
-
-// ---------- 🔀 Сортировка: разнос по категориям ----------
-function SortTab({ batches, specs, defects, selectedBatchId, onSelectBatch, workerId, onSave }: {
-  batches: CutRun[]; specs: SortSpec[]; defects: DefectEntry[];
-  selectedBatchId: string | null; onSelectBatch: (id: string) => void;
-  workerId?:string;
-  onSave: (run: SortRun) => void;
-}) {
-  const [batchId, setBatchId] = useState<string | null>(selectedBatchId);
-  const batch = batches.find((b) => b.id === batchId) ?? null;
-  const spec = useMemo(() => {
-    if (!batch) return null;
-    return specs.find(s=>s.cutRunId===batch.id)??null;
-  }, [batch, specs]);
-
-  const [busy,setBusy]=useState(false);const inFlight=useRef(false);
-  const [error,setError]=useState('');const [requestId,setRequestId]=useState(uuidv4);
-  const [basis,setBasis]=useState<{source:CutRun;spec:SortSpec}|null>(null);
-  const [counts, setCounts] = useState<Record<number, string>>({});
-  const [avgUm, setAvgUm] = useState<Record<number, string>>({});
-  const [avgMass, setAvgMass] = useState<Record<number, string>>({});
-  const [rejected, setRejected] = useState('');
-  const [defectIds, setDefectIds] = useState<string[]>([]);
-  const [notes, setNotes] = useState('');
-
-  const pickBatch = (id: string) => { setBasis(null);setError('');setRequestId(uuidv4()); setBatchId(id); onSelectBatch(id); setCounts({}); setAvgUm({}); setAvgMass({}); setRejected(''); setDefectIds([]); setNotes(''); };
-
-  if (batches.length === 0) {
-    return <p className="text-slate-500 text-sm">Нет партий для сортировки — дождитесь данных с нарезки (вкладка «📥 Партии с нарезки»).</p>;
-  }
-
-  const changed=()=>{if(!basis&&batch&&spec)setBasis({source:batch,spec});setRequestId(uuidv4());};
-  const countValues=[...Object.values(counts).map(v=>v===''?0:Number(v)),rejected===''?NaN:Number(rejected)];
-  const validCounts=countValues.every(v=>Number.isSafeInteger(v)&&v>=0)&&Number.isSafeInteger(batch?.goodCount)&&batch!.goodCount>0;
-  const totalSorted = Object.values(counts).reduce((s, v) => s + (Number(v) || 0), 0);
-  const goodIn = batch?.goodCount ?? 0;
-  const accounted = totalSorted + (Number(rejected) || 0);
-  const diff = goodIn - accounted;
-  const balanceOk = batch != null && diff === 0 && validCounts;
-
-  const save = async () => {
-    if (!batch || !spec || !balanceOk || !workerId || inFlight.current) return;
-    inFlight.current=true;setBusy(true);setError('');
-    try{
-      const selected=basis??{source:batch,spec};
-      const buckets=selected.spec.categories.map((c,i)=>({categoryName:c.name,count:counts[i]?Number(counts[i]):0,
-        avgThicknessUm:avgUm[i]?Number(avgUm[i]):undefined,avgMassG:avgMass[i]?Number(avgMass[i]):undefined}));
-      const saved=await saveSortingAllocation(selected.source,selected.spec,{id:requestId,buckets,rejected:Number(rejected),
-        defects:defectIds.map(id=>defects.find(d=>d.id===id)?.title??id).join(', ')||undefined,notes:notes.trim()||undefined},workerId);
-      onSave(saved);pickBatch('');
-    }catch(cause){setError(cause instanceof Error?cause.message:'Сортировка не сохранена');}
-    finally{inFlight.current=false;setBusy(false);}
-  };
-
-  return (
-    <div className="space-y-3">
-      {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
-      <p className="text-xs text-slate-400">Полный разнос одной партии нарезки: только целые количества. Нужна спецификация, явно связанная с этой партией. Пустая категория — без выделенных электродов; число отбракованных укажите явно, включая ноль. Это запись наблюдений, не приёмка ОТК и не складская операция.</p>
-      <button disabled={busy} onClick={()=>pickBatch(batchId??'')} className="min-h-11 text-sm text-slate-300">Сбросить черновик и перечитать источник</button>
-      <div>
-        <label className={labelCls}>Партия с нарезки</label>
-        <select disabled={busy} aria-label="Партия для сортировки" className={inputCls} value={batchId ?? ''} onChange={(e) => pickBatch(e.target.value)}>
-          <option value="">— выберите партию —</option>
-          {batches.map((b) => (
-            <option key={b.id} value={b.id}>{b.id} · источник {b.incomingId} · годных {b.goodCount} шт</option>
-          ))}
-        </select>
-      </div>
-
-      {!batch && <p className="text-slate-500 text-sm">Выберите партию, чтобы начать разнос по категориям.</p>}
-
-      {batch && !spec && (
-        <div className="bg-amber-900/30 border border-amber-700 rounded-lg p-3 text-sm text-amber-200">
-          ⚠ Для партии «{batch.incomingId}» нет спецификации технолога (КД). Дождитесь пакет «sort-spec»
-          или попросите технолога создать спецификацию во вкладке «📐 Спецификации КД».
-        </div>
-      )}
-
-      {batch && spec && (
-        <div className="bg-slate-800/80 border border-slate-600 rounded-lg p-4 space-y-3">
-          <div className="text-white font-semibold">🔀 Разнос партии «{batch.incomingId}» · {spec.parameterName} ({spec.unit})</div>
-          <div className="text-xs text-slate-400">Пришло годных с нарезки: <b className="text-emerald-300">{batch.goodCount}</b> шт</div>
-
-          <div className="space-y-2">
-            {spec.categories.map((c, i) => (
-              <div key={i} className="bg-slate-900/70 border border-slate-700 rounded p-2">
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                  <b className="text-white text-sm">{c.name}</b>
-                  {c.minUm != null || c.maxUm != null ? <span>⌀ {c.minUm ?? '—'}–{c.maxUm ?? '—'} мкм</span> : null}
-                  {c.minMass != null || c.maxMass != null ? <span>масса {c.minMass ?? '—'}–{c.maxMass ?? '—'} г</span> : null}
-                  {c.allowedDefects && c.allowedDefects.length > 0 && (
-                    <span className="text-amber-300">доп.: {c.allowedDefects.map((id) => defects.find((d) => d.id === id)?.title ?? id).join(', ')}</span>
-                  )}
-                </div>
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  <div>
-                    <label className={labelCls}>Кол-во, шт</label>
-                    <input aria-label={`Количество категории ${c.name}`} disabled={busy} className={inputCls} type="number" min="0" value={counts[i] ?? ''}
-                      onChange={(e) => {changed();setCounts({ ...counts, [i]: e.target.value });}} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Ср. толщина, мкм</label>
-                    <input disabled={busy} className={inputCls} type="number" step="any" value={avgUm[i] ?? ''}
-                      onChange={(e) => {changed();setAvgUm({ ...avgUm, [i]: e.target.value });}} placeholder="—" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Ср. масса, г</label>
-                    <input disabled={busy} className={inputCls} type="number" step="any" value={avgMass[i] ?? ''}
-                      onChange={(e) => {changed();setAvgMass({ ...avgMass, [i]: e.target.value });}} placeholder="—" />
-                  </div>
-                </div>
-                {(c.minUm != null || c.maxUm != null) && avgUm[i] && (
-                  <ControlHint num={Number(avgUm[i])} min={c.minUm} max={c.maxUm} what="толщина" />
-                )}
-                {(c.minMass != null || c.maxMass != null) && avgMass[i] && (
-                  <ControlHint num={Number(avgMass[i])} min={c.minMass} max={c.maxMass} what="масса" />
-                )}
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className={labelCls}>Отбраковано (не подошли ни к одному сорту), шт</label>
-              <input disabled={busy} className={inputCls} type="number" min="0" aria-label="Отбраковано при сортировке" value={rejected}
-                onChange={(e) => {changed();setRejected(e.target.value);}} placeholder="0" />
-            </div>
-            <div>
-              <label className={labelCls}>Замеченные дефекты (из реестра)</label>
-              <div className="flex flex-wrap gap-1">
-                {defects.map((d) => {
-                  const on = defectIds.includes(d.id);
-                  return (
-                    <button key={d.id}
-                      disabled={busy} onClick={() => {changed();setDefectIds(on ? defectIds.filter((x) => x !== d.id) : [...defectIds, d.id]);}}
-                      className={`text-[10px] px-1.5 py-0.5 rounded border ${on
-                        ? d.severity === 'critical'
-                          ? 'bg-rose-900/70 border-rose-600 text-rose-200'
-                          : 'bg-amber-900/60 border-amber-600 text-amber-200'
-                        : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                    >
-                      {d.severity === 'critical' ? '🔴' : '🟡'} {d.title}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className={labelCls}>Примечания оператора</label>
-            <textarea disabled={busy} className={inputCls} rows={2} value={notes} onChange={(e) => {changed();setNotes(e.target.value);}} />
-          </div>
-
-          {/* Баланс партии */}
-          <div className={`rounded-lg p-3 text-sm border ${balanceOk
-            ? 'bg-emerald-900/30 border-emerald-700 text-emerald-200'
-            : 'bg-slate-900/70 border-slate-700 text-slate-300'}`}>
-            Разнесено: <b>{totalSorted}</b> + отбраковано <b>{Number(rejected) || 0}</b> = <b>{accounted}</b> из <b>{goodIn}</b> годных.
-            {diff > 0 && <span className="text-amber-300"> · не учтено {diff} шт</span>}
-            {diff < 0 && <span className="text-rose-300"> · перебор на {-diff} шт</span>}
-            {balanceOk ? ' ✅ баланс сходится' : ''}
-          </div>
-
-          <button
-            onClick={()=>void save()}
-            disabled={!workerId || !balanceOk || busy}
-            className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
-          >
-            💾 Записать в журнал и отправить (sort-run → master)
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ControlHint({ num, min, max, what }: { num: number; min?: number; max?: number; what: string }) {
-  if (!Number.isFinite(num)) return null;
-  const below = min != null && num < min;
-  const above = max != null && num > max;
-  if (!below && !above) return <div className="mt-1 text-[11px] text-emerald-300">✓ {what} в допуске</div>;
-  return <div className="mt-1 text-[11px] text-rose-300">⚠ {what} вне допуска КД ({below ? 'ниже минимума' : 'выше максимума'}) — проверьте отнесение к сорту</div>;
 }
 
 // ---------- 🗂️ Реестр дефектов ----------
