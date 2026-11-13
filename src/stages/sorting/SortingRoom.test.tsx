@@ -57,6 +57,11 @@ it('rejects invalid counts and a failed station write without losing operator in
  await clickRoomButton('Сохранить 1.');
  await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(1));
  expect(page.textContent).toContain('2. Контроль толщины');
+ await clickRoomButton('Партии с нарезки');
+ await vi.waitFor(()=>expect(page.textContent).toContain('следующая станция: Контроль толщины'));
+ expect(page.textContent).toContain('Завершено станций: 1/3');
+ await clickRoomButton('Продолжить сортировку');
+ expect(page.textContent).toContain('2. Контроль толщины');
 });
 it('completes visual-thickness-mass in pass/fail mode, excluding failures and emitting saved packet',async()=>{
  const page=await mount();
@@ -83,6 +88,12 @@ it('completes visual-thickness-mass in pass/fail mode, excluding failures and em
    {station:'mass',inputCount:8,passedCount:7,rejectedCount:1},
   ]}});
  await vi.waitFor(()=>expect(page.querySelector('[data-testid="packet"]')?.textContent).toContain(saved.id));
+ await clickRoomButton('Партии с нарезки');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Сортировка завершена'));
+ await clickRoomButton('Смотреть журнал');
+ expect(page.textContent).toContain('Этапы контроля: визуальный');
+ expect(page.textContent).toContain('1. Визуальный контроль');
+ expect(page.textContent).toContain('3. Контроль массы');
 });
 it('grades only by mass after passing thickness, keeping grade totals separate',async()=>{
  const page=await mount();
