@@ -72,6 +72,8 @@ CREATE INDEX IF NOT EXISTS inventory_reservations_by_stock
 -- PostgreSQL transaction. operation_id must never be reused for a new intent.
 CREATE TABLE IF NOT EXISTS inventory_operations (
   operation_id uuid PRIMARY KEY,
+  -- Server commit-ordered feed for later offline client reconciliation.
+  sequence bigint GENERATED ALWAYS AS IDENTITY UNIQUE,
   organization_id uuid NOT NULL REFERENCES organizations(id),
   stock_id uuid NOT NULL,
   actor_id uuid NOT NULL,
@@ -117,6 +119,8 @@ CREATE TABLE IF NOT EXISTS inventory_access_events (
   FOREIGN KEY (organization_id,user_id) REFERENCES users(organization_id,id),
   FOREIGN KEY (organization_id,actor_id) REFERENCES users(organization_id,id)
 );
+CREATE INDEX IF NOT EXISTS inventory_operations_by_sequence
+  ON inventory_operations(organization_id,sequence);
 CREATE INDEX IF NOT EXISTS inventory_operations_by_stock
   ON inventory_operations(organization_id,stock_id,recorded_at,operation_id);
 
