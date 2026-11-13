@@ -68,7 +68,7 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
     expect((await get(url,'invalid',workerProof)).statusCode).toBe(401);
     expect((await get('/inventory/locations?deviceId='+chiefDevice,chiefToken,'')).statusCode).toBe(403);
     expect((await get('/inventory/access/me?deviceId='+chiefDevice)).json()).toMatchObject({
-      level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:false,
+      level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,
       correctionRoleEligible:true,
     });
     const access=await post('/inventory/access',{changeId:randomUUID(),
