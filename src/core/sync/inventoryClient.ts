@@ -86,6 +86,7 @@ export async function pushInventoryReceipts(
       const raw=await response.json() as {error?:unknown};
       if(typeof raw?.error!=='string'||!raw.error||raw.error.length>200)
         throw new Error('Invalid inventory rejection acknowledgement');
+      const rejectionReason=raw.error as string;
       await inventoryOutbox.transaction('rw',inventoryOutbox.operations,async()=>{
         const current=await inventoryOutbox.operations.get(queued.operationId);
         if(!current||current.state!=='pending'||
@@ -93,7 +94,7 @@ export async function pushInventoryReceipts(
             JSON.stringify(current.request)!==JSON.stringify(queued.request))
           throw new Error('Provisional receipt changed during rejection');
         await inventoryOutbox.operations.update(queued.operationId,{
-          state:response.status===409?'conflict':'rejected',error:raw.error,
+          state:response.status===409?'conflict':'rejected',error:rejectionReason,
         });
       });
       if(response.status===409)conflicts++;else rejected++;
