@@ -1,6 +1,6 @@
 import {db} from '../db';
 import type {CutRun,SortRun,SortSpec} from '../types';
-import {validateSortingWorkflowOutput} from './sortingWorkflowValidation';
+import {validateSortingWorkflow,validateSortingWorkflowOutput} from './sortingWorkflowValidation';
 
 const count=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
 export function validateSortPartition(run:SortRun):void {
@@ -54,11 +54,44 @@ export async function saveSortingAllocation(source:CutRun,spec:SortSpec,result:P
 }
 export async function receiveSortingAllocation(run:SortRun):Promise<SortRun>{
  return db.transaction('rw',db.sortRuns,db.sortingWorkflows,async()=>{
-  const previous=run?.id&&await db.sortRuns.get(run.id);
-  if(previous&&JSON.stringify(previous)===JSON.stringify(run))return previous;
-  if(run?.cutRunId&&await db.sortingWorkflows.get(run.cutRunId))
-   throw new Error('Партия уже проходит трёхстанционную сортировку; чужой результат не заменяет локальный');
   validateSortPartition(run);
-  return insertAllocation(run);
+  const previous=await db.sortRuns.get(run.id);
+  if(previous){
+   if(JSON.stringify(previous)!==JSON.stringify(run))
+    throw new Error('Итог сортировки с этим ID отличается от сохранённого');
+   // A replay must not silently reconcile an inconsistent local workflow.
+   if(run.cutRunId){
+    const local=await db.sortingWorkflows.get(run.cutRunId);
+    if(local)assertCompatibleFinalWorkflow(local,run);
+   }
+   return previous;
+  }
+  const local=run.cutRunId && await db.sortingWorkflows.get(run.cutRunId);
+  if(local)assertCompatibleFinalWorkflow(local,run);
+  const saved=await insertAllocation(run);
+  // The Visual/Thickness device may already hold an immutable station prefix.
+  // Receiving the Mass final report must close that prefix atomically so
+  // operators cannot continue an already finalized batch locally.
+  if(local && run.sortingWorkflow){
+   await db.sortingWorkflows.put(run.sortingWorkflow);
+  }
+  return saved;
  });
+}
+
+/** A final report can extend, but never contradict, locally recorded stations. */
+function assertCompatibleFinalWorkflow(local:import('../types').SortingWorkflow,run:SortRun):void {
+ validateSortingWorkflow(local);
+ const final=run.sortingWorkflow;
+ if(!final || !run.cutRunId || local.cutRunId!==run.cutRunId ||
+   local.mode!==final.mode || local.createdBy!==final.createdBy ||
+   local.createdAt!==final.createdAt ||
+   JSON.stringify(local.cutRunSnapshot)!==JSON.stringify(final.cutRunSnapshot) ||
+   JSON.stringify(local.specSnapshot)!==JSON.stringify(final.specSnapshot))
+  throw new Error('Итог сортировки не соответствует локальной партии, КД или режиму; история сохранена');
+ if(local.finalizedSortRunId && local.finalizedSortRunId!==run.id)
+  throw new Error('Для партии уже записан другой итог сортировки');
+ if(local.stages.length>final.stages.length ||
+   local.stages.some((stage,i)=>JSON.stringify(stage)!==JSON.stringify(final.stages[i])))
+  throw new Error('Итог сортировки противоречит сохранённым решениям станций; история сохранена');
 }
