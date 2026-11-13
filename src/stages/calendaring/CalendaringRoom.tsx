@@ -17,6 +17,7 @@ import { CuttingInstructionPanel } from './CuttingInstructionPanel';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { saveCalenderAssignment, saveCalenderResult, validateCalenderResult, hasCalenderResult } from './calenderJournal';
 import { measuredDryThicknessUm, plannedThicknessReductionPct } from '../_common/rollThickness';
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 
 // Параметры прокатки по рулону хранятся локально (мастер назначает их сам; на slave
 // они приходят пакетом roll-spec и пишутся apply.ts прямо в calenderRuns).
@@ -84,17 +85,17 @@ export function CalendaringModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 flex-wrap">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
+      <RoomWorkspaceHeader icon="🔄" title="Каландрирование"
+        description="Выберите рулон с нанесения, сохраните назначение параметров отдельно от фактических измерений прокатки и передайте только записанный результат."/>
+      <nav aria-label="Разделы каландрирования" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
+        {tabs.map(t => (
+          <button key={t.id} type="button" aria-pressed={tab === t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-          >
+            className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}>
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       {tab === 'rolls' && (
         <RollsTab rolls={rolls ?? []} onSelect={(id) => { setSelectedRollId(id); setTab('params'); }} canSendToCutting={isTechManager}
@@ -281,7 +282,10 @@ function ParamsTab({
   return (
     <div className="grid lg:grid-cols-2 gap-4">
       <div className="bg-slate-800 border border-slate-700 rounded-lg p-4 space-y-4">
-        <h3 className="text-white font-semibold text-sm">Назначение параметров прокатки (технолог / master)</h3>
+        <h3 className="text-white font-semibold">Назначение параметров прокатки</h3>
+        <p className="text-xs text-slate-300">Целевые параметры здесь не являются фактическими показаниями оборудования. Результат прокатки оператор записывает отдельно.</p>
+        <section aria-label="Источник и замер до прокатки" className="space-y-2 rounded border border-slate-600 p-3">
+          <h4 className="text-sm font-semibold text-white">1. Источник и замер до прокатки</h4>
         <div>
           <label className={labelCls}>Рулон с намазки</label>
           <select aria-label="Рулон для каландрирования" className={inputCls} value={rollId} onChange={(e) => {
@@ -298,7 +302,10 @@ function ParamsTab({
           </div>
         )}
         {roll && measuredDryThicknessUm(roll)===null && <p className="text-xs text-amber-200">Атрибутированный замер сухого электрода не указан. Ранее записанные значения сохранены, но источник не подтверждён; оценка обжатия недоступна.</p>}
-        <div className="grid grid-cols-2 gap-3">
+        </section>
+        <section aria-label="Назначенные параметры прокатки" className="space-y-3 rounded border border-slate-600 p-3">
+          <h4 className="text-sm font-semibold text-white">2. Назначенные параметры (план)</h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>Целевая полная толщина сухого электрода с фольгой, мкм *</label>
             <input aria-label="Целевая полная толщина, мкм" type="number" min="0" step="any" className={inputCls} value={targetThickness} onChange={(e) => setTargetThickness(e.target.value === '' ? '' : Number(e.target.value))} />
@@ -325,11 +332,13 @@ function ParamsTab({
         </label>
         <div>
           <label className={labelCls}>Примечание технолога</label>
-          <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="напр.: 2 прохода, контроль толщины каждые 50 м" />
+          <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Основание назначения, без предполагаемых измерений" />
         </div>
+        </section>
         {saveError && <p role="alert" className="text-red-200 text-sm">{saveError}</p>}
          {savedNote && <p role="status" className="text-emerald-200 text-sm">{savedNote}</p>}
         {!validParams && <p className="text-xs text-amber-200">Для назначения укажите положительную цель и явно выберите нагрев. При нагреве нужна температура; указанное усилие должно быть больше нуля. Это назначение параметров, не показания оборудования.</p>}
+        <h4 className="text-sm font-semibold text-white">3. Плановое сравнение и сохранение</h4>
         {reduction !== null && (
           <p className="text-xs text-blue-300">Плановое уменьшение полной толщины: ~{reduction}% ({roll && measuredDryThicknessUm(roll)} → {targetThickness} мкм). Это сравнение с целью, не фактическое обжатие, пористость или настройка зазора.</p>
         )}
@@ -409,9 +418,8 @@ function JournalTab({
   return (
     <div className="space-y-3">
       {resultError && <p role="alert" className="text-red-200 text-sm">{resultError}</p>}
-      <p className="text-xs text-slate-500">
-        Журнал прокатки: фактические зазоры валков, общая длина, толщина после прокатки, дефекты. Отправка результата
-        на нарезку — офлайн (QR/текст/Bluetooth). Если параметров ещё нет — назначьте их на вкладке «Параметры прокатки».
+      <p className="text-sm text-slate-300">
+        Записывайте фактически измеренные зазоры, длину полотна и толщину после прокатки. Назначенные параметры и наблюдения не взаимозаменяемы. Передача результатов доступна отдельно; это не QA-допуск.
       </p>
       {runs.length === 0 && (
         <div className="text-sm text-slate-400">
@@ -433,11 +441,17 @@ function JournalTab({
                   цель {r.params?.targetThicknessUm ?? '—'} мкм ({r.params?.targetThicknessBasis==='dry-electrode-including-foil'?'сухой электрод с фольгой':'основа не указана'}){r.params?.heating ? ` · 🔥 ${r.params.heatTempC ?? '—'}°C` : ''}
                   {r.params?.pressureTons ? ` · ${r.params.pressureTons} тс` : ''}{r.params?.edgeTrim ? ' · обрезка кромки' : ''}
                 </p>
+                <p className={`mt-1 text-xs ${hasCalenderResult(r) ? 'text-emerald-300' : 'text-amber-200'}`}>
+                  {hasCalenderResult(r) ? 'Фактический результат записан (без QA-допуска)' : 'Есть назначение; измеренный результат ещё не записан'}
+                </p>
               </div>
               <span className="text-slate-400 text-xs">{r.hasDefects ? '⚠ ' : ''}{open ? '▲' : '▼'}</span>
             </button>
             {open && (
               <div className="px-3 pb-3 pt-2 border-t border-slate-700/60 space-y-3">
+                <section aria-label="Фактические измерения прокатки" className="space-y-3 rounded border border-slate-600 p-3">
+                  <h4 className="text-sm font-semibold text-white">1. Фактические измерения прокатки</h4>
+                  <p className="text-xs text-slate-300">Пустые значения неизвестны, а не равны нулю. Для сохранения нужны положительные фактические зазоры, длина и толщина.</p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Зазоры валков, мм (проходы через пробел или ;) (через запятую)</label>
@@ -460,12 +474,14 @@ function JournalTab({
                   <input disabled={busy} type="checkbox" checked={d.hasDef} onChange={(e) => setDraft(r.id, { hasDef: e.target.checked })} className="accent-red-500" />
                   Наличие дефектов в ходе прокатки
                 </label>
+                </section>
                 <div>
                   <label className={labelCls}>Примечание оператора</label>
                   <input disabled={busy} className={inputCls} value={d.notes} onChange={(e) => setDraft(r.id, { notes: e.target.value })} />
                 </div>
+                <p className="text-xs text-slate-300">2. Проверьте записываемые наблюдения. Не является подтверждением QA или физической приёмки следующим участком.</p>
                 <div className="flex gap-2 flex-wrap">
-                  <button disabled={busy} onClick={() => void save(r)} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
+                  <button disabled={busy} onClick={() => void save(r) className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
                   <button disabled={busy} onClick={() => void save(r,true)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
                     Сохранить и передать результат (без задания)
                   </button>
