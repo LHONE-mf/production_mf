@@ -136,7 +136,8 @@ it('restores unfinished station counts after closing and reopening the Sorting r
  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
  await act(async()=>{root!.render(<SortingModule/>);});
  await vi.waitFor(()=>expect(node!.textContent).toContain('roll'));
- await clickRoomButton('Сортировать');
+ await vi.waitFor(()=>expect(node!.textContent).toContain('Продолжить сортировку'));
+ await clickRoomButton('Продолжить сортировку');
  await vi.waitFor(()=>expect(node!.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('7'));
  expect(node!.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('3');
  expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
