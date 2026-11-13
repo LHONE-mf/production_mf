@@ -3,7 +3,7 @@ import {useLiveQuery} from 'dexie-react-hooks';
 import {v4 as uuidv4} from 'uuid';
 import {db} from '../../core/db';
 import {completeSortingWorkflow, recordSortingStation, startSortingWorkflow} from '../../core/manufacturing/sortingWorkflow';
-import type {CutRun, DefectEntry, SortRun, SortSpec, SortingMode, SortingStation} from '../../core/types';
+import type {CutRun, DefectEntry, SortRun, SortSpec, SortingMode, SortingStation, SortingWorkflow} from '../../core/types';
 import {LocalDraftStatus, useLocalFormDraft} from '../_common/useLocalFormDraft';
 import {emptySortingDraft, emptyStationDraft, parseSortingDraft, sortingDraftKey, type SortingStationDraft} from './sortingDraft';
 
@@ -27,10 +27,11 @@ interface Props {
   onSelectBatch:(id:string)=>void;
   workerId?:string;
   onComplete:(run:SortRun)=>void;
+  onHandoff:(workflow:SortingWorkflow)=>void;
 }
 
 /** Operator entry is based on immutable three-station records, not old summary allocation. */
-export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,onSelectBatch,workerId,onComplete}:Props) {
+export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,onSelectBatch,workerId,onComplete,onHandoff}:Props) {
   const [mode,setMode] = useState<SortingMode>('pass-fail');
   const [specId,setSpecId] = useState('');
   const draft=useLocalFormDraft(workerId??'','sorting',emptySortingDraft,parseSortingDraft);
@@ -203,6 +204,21 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             {saved.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
             <p className="text-xs text-slate-400">Оператор: {saved.workerId} · {new Date(saved.recordedAt).toLocaleString('ru-RU')}</p>
             {saved.notes && <p className="text-xs text-slate-400">Примечание: {saved.notes}</p>}
+            {index===workflow.stages.length-1 && !workflow.finalizedSortRunId &&
+              <div className="mt-3 space-y-2 rounded-lg border border-blue-700/50 bg-blue-950/20 p-3">
+                <p className="text-xs text-slate-300">
+                  {index<2?'Следующая станция работает на другом телефоне? Передайте сохранённую историю партии.':'Можно передать всю сохранённую историю на устройство для итогового отчёта.'}
+                  Получатель должен иметь точно такую же партию нарезки и утверждённую локальную КД.
+                </p>
+                <button type="button" className="min-h-11 w-full rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white"
+                  onClick={()=>onHandoff(workflow)}>
+                  📤 Передать станции ({workflow.stages.length}/3) · QR / Bluetooth
+                </button>
+                <p className="text-[11px] text-amber-200">
+                  Общий ключ цеха подтверждает целостность пакета, но не личность оператора.
+                  Получатель должен сверить фактическую партию перед инспекцией.
+                </p>
+              </div>}
           </div> : current && !draft.ready ? <div className="mt-3"><LocalDraftStatus draft={draft} disabled={busy}/></div> : current && <div className="space-y-3 mt-3">
             <div className="rounded-lg bg-blue-950/30 border border-blue-800/60 p-3 space-y-1">
               <p className="text-sm text-white">На входе станции: <strong>{inputCount} шт</strong></p>
