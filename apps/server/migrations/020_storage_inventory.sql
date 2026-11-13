@@ -4,6 +4,11 @@
 -- server transaction with row locks, idempotency and revision validation.
 BEGIN;
 
+-- Existing identity tables use single-column PKs; add composite keys for
+-- tenant-bound foreign keys without modifying existing rows.
+CREATE UNIQUE INDEX IF NOT EXISTS inventory_users_org_id ON users(organization_id,id);
+CREATE UNIQUE INDEX IF NOT EXISTS inventory_devices_org_id ON devices(organization_id,id);
+
 CREATE TABLE IF NOT EXISTS inventory_materials (
   id uuid PRIMARY KEY,
   organization_id uuid NOT NULL REFERENCES organizations(id),
