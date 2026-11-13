@@ -51,7 +51,11 @@ jobs:
           disable-animations: true
           emulator-boot-timeout: 600
           force-avd-creation: false
-          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          # This run verifies the launch and status-bar insets. The larger
+          # native security/sync suite lives in the manual Android smoke job.
+          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ru.liion.production.ProductionMfLaunchTest
       - name: Upload Android test results even if tests fail
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
