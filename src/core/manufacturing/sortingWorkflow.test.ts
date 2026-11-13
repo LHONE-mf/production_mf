@@ -125,3 +125,27 @@ it('rolls back a failed station/final write and allows safe retry',async()=>{
  expect((await db.sortingWorkflows.get(wf.id))?.finalizedSortRunId).toBeUndefined();
  expect((await completeSortingWorkflow(wf.id,'final-1')).id).toBe('final-1');
 });
+
+it('does not merge distinct mass grades when Assembly has no grade-specific intake yet',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await recordSortingStation(workflow.id,visual);
+ await recordSortingStation(workflow.id,thickness);
+ await recordSortingStation(workflow.id,gradedMass);
+ const final=await completeSortingWorkflow(workflow.id,'graded-for-assembly');
+ const {takeAssemblySource}=await import('./assemblyIntake');
+ await expect(takeAssemblySource(final,'assembler','assembly-intake')).rejects.toThrow(/сорт|категор|grade/i);
+ expect(await db.assemblyRuns.count()).toBe(0);
+});
+it('passes station-bound summaries through packet validation without inventing measurement averages',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await recordSortingStation(workflow.id,visual);
+ await recordSortingStation(workflow.id,thickness);
+ await recordSortingStation(workflow.id,gradedMass);
+ const saved=await completeSortingWorkflow(workflow.id,'for-receipt');
+ const {receiveSortingAllocation}=await import('./sortingAllocation');
+ await db.sortRuns.delete(saved.id);
+ await db.sortingWorkflows.delete(workflow.id); // new receiver: source snapshots travel with the packet
+ await expect(receiveSortingAllocation({...saved,rejected:7})).rejects.toThrow();
+ await expect(receiveSortingAllocation({...saved,buckets:[{categoryName:'A',count:63},{categoryName:'B',count:29}]})).rejects.toThrow();
+ expect(await receiveSortingAllocation(saved)).toEqual(saved);
+});
