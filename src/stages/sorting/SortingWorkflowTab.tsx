@@ -4,6 +4,8 @@ import {v4 as uuidv4} from 'uuid';
 import {db} from '../../core/db';
 import {completeSortingWorkflow, recordSortingStation, startSortingWorkflow} from '../../core/manufacturing/sortingWorkflow';
 import type {CutRun, DefectEntry, SortRun, SortSpec, SortingMode, SortingStation} from '../../core/types';
+import {LocalDraftStatus, useLocalFormDraft} from '../_common/useLocalFormDraft';
+import {emptySortingDraft, emptyStationDraft, parseSortingDraft, sortingDraftKey, type SortingStationDraft} from './sortingDraft';
 
 const stationOrder: SortingStation[] = ['visual', 'thickness', 'mass'];
 const stationName: Record<SortingStation, string> = {
@@ -31,11 +33,7 @@ interface Props {
 export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,onSelectBatch,workerId,onComplete}:Props) {
   const [mode,setMode] = useState<SortingMode>('pass-fail');
   const [specId,setSpecId] = useState('');
-  const [passed,setPassed] = useState('');
-  const [rejected,setRejected] = useState('');
-  const [grades,setGrades] = useState<Record<string,string>>({});
-  const [reasonCounts,setReasonCounts] = useState<Record<string,string>>({});
-  const [notes,setNotes] = useState('');
+  const draft=useLocalFormDraft(workerId??'','sorting',emptySortingDraft,parseSortingDraft);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
   const [success,setSuccess] = useState('');
@@ -48,6 +46,15 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
     selectedBatchId ? (await db.sortingWorkflows.get(selectedBatchId)??null) : null,
   [selectedBatchId],null);
   const active=workflow && !workflow.finalizedSortRunId ? stationOrder[workflow.stages.length] : undefined;
+  const formKey=workflow&&active ? sortingDraftKey(workflow.id,workflow.stages.length) : null;
+  const form=formKey ? draft.value.entries[formKey]??emptyStationDraft() : emptyStationDraft();
+  const {passed,rejected,grades,reasonCounts,notes}=form;
+  function editForm(patch:Partial<SortingStationDraft>){
+    if(!formKey||!draft.ready)return;
+    draft.edit(old=>({
+      ...old,entries:{...old.entries,[formKey]:{...(old.entries[formKey]??emptyStationDraft()),...patch}},
+    }));
+  }
   const inputCount=workflow && active
     ? (workflow.stages.length===0 ? workflow.cutRunSnapshot.goodCount : workflow.stages[workflow.stages.length-1].passedCount)
     : 0;
@@ -67,7 +74,6 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const finalRun=runs.find(r=>workflow?.finalizedSortRunId===r.id);
 
   useEffect(()=>{
-    setPassed('');setRejected('');setGrades({});setReasonCounts({});setNotes('');
     setError('');setSuccess('');
   },[selectedBatchId,workflow?.stages.length]);
 
@@ -99,6 +105,9 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
         ? typedReasons.map(([id,value])=>({reason:id,count:Number(value)}))
         : undefined,
       notes:notes.trim()||undefined,
+    });
+    if(formKey)draft.edit(old=>{
+      const entries={...old.entries};delete entries[formKey];return {...old,entries};
     });
     setSuccess('Результат станции сохранён. Отбракованные электроды исключены из следующего этапа.');
   });
@@ -205,18 +214,18 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             {!gradedMass && <div>
               <label htmlFor="sort-passed" className={labelCls}>Прошло контроль, шт</label>
               <input id="sort-passed" aria-label="Прошло контроль" type="number" min="0" step="1"
-                inputMode="numeric" className={inputCls} value={passed} onChange={e=>setPassed(e.target.value)} disabled={busy}/>
+                inputMode="numeric" className={inputCls} value={passed} onChange={e=>editForm({passed:e.target.value})} disabled={busy}/>
             </div>}
             {gradedMass && gradeSpecs.map(c=><div key={c.name}>
               <label className={labelCls} htmlFor={'grade-'+c.name}>{c.name}, шт · {c.minMass??'—'}–{c.maxMass??'—'} г</label>
               <input id={'grade-'+c.name} aria-label={'Количество сорта '+c.name} type="number" min="0" step="1"
                 inputMode="numeric" className={inputCls} value={grades[c.name]??''} disabled={busy}
-                onChange={e=>setGrades(v=>({...v,[c.name]:e.target.value}))}/>
+                onChange={e=>editForm({grades:{...grades,[c.name]:e.target.value}})}/>
             </div>)}
             <div>
               <label htmlFor="sort-rejected" className={labelCls}>Отбраковано на станции, шт (включая 0)</label>
               <input id="sort-rejected" aria-label="Отбраковано на станции" type="number" min="0" step="1"
-                inputMode="numeric" className={inputCls} value={rejected} onChange={e=>setRejected(e.target.value)} disabled={busy}/>
+                inputMode="numeric" className={inputCls} value={rejected} onChange={e=>editForm({rejected:e.target.value})} disabled={busy}/>
             </div>
             {station==='visual' && defects.length>0 && <details className="rounded-lg border border-slate-700 p-3">
               <summary className="text-sm text-slate-200 cursor-pointer">Причины визуального брака (необязательно)</summary>
@@ -225,13 +234,13 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
                 <label className={labelCls} htmlFor={'reason-'+d.id}>{d.title} · шт</label>
                 <input id={'reason-'+d.id} aria-label={'Брак: '+d.title} type="number" min="0" step="1" inputMode="numeric"
                   className={inputCls} value={reasonCounts[d.id]??''} disabled={busy}
-                  onChange={e=>setReasonCounts(v=>({...v,[d.id]:e.target.value}))}/>
+                  onChange={e=>editForm({reasonCounts:{...reasonCounts,[d.id]:e.target.value}})}/>
               </div>)}
             </details>}
             <div>
               <label htmlFor="sort-notes" className={labelCls}>Комментарий оператора (необязательно)</label>
               <textarea id="sort-notes" className={inputCls} rows={2} value={notes} disabled={busy}
-                onChange={e=>setNotes(e.target.value)}/>
+                onChange={e=>editForm({notes:e.target.value})}/>
             </div>
             <div className={'rounded-lg p-3 text-sm border '+(balanced
               ?'border-emerald-700 bg-emerald-950/40 text-emerald-200'
@@ -241,8 +250,9 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
               {!validReasons&&<p className="text-amber-200">Количество по причинам брака не совпадает с общим браком.</p>}
             </div>
             <p className="text-xs text-slate-400">Оператор: {workerId??'не выбран'}. После записи станция блокируется от незаметного редактирования.</p>
+            <LocalDraftStatus draft={draft} disabled={busy}/>
             <button className="w-full min-h-12 rounded-lg bg-blue-600 px-4 text-white font-semibold disabled:opacity-40"
-              disabled={busy||!workerId||!balanced} onClick={()=>void saveStage()}>
+              disabled={busy||!workerId||!draft.ready||!balanced} onClick={()=>void saveStage()}>
               Сохранить {stationName[station]}
             </button>
           </div>}
