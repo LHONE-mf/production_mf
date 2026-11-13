@@ -78,7 +78,12 @@ it('completes visual-thickness-mass in pass/fail mode, excluding failures and em
  await clickRoomButton('Сохранить 3.');
  await vi.waitFor(()=>expect(page.textContent).toContain('Итоги сортировки'));
  expect(await db.sortRuns.count()).toBe(0);
+ await clickRoomButton('Партии с нарезки');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Все три станции завершены'));
+ expect(page.textContent).not.toContain('следующая станция: undefined');
  await clickRoomButton('Завершить сортировку');
+ expect(page.textContent).toContain('Итоги сортировки');
+ await clickRoomButton('Завершить сортировку и записать в журнал');
  await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
  const [saved]=await db.sortRuns.toArray();
  expect(saved).toMatchObject({cutRunId:'cut',goodCount:10,rejected:3,buckets:[{categoryName:'PASS',count:7}],
