@@ -12,44 +12,96 @@ async function mount(){
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
  useAuthStore.setState({currentUser:{id:'operator',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
  await db.cuttingRuns.add({id:'cut',incomingId:'roll',electrodeType:'strip',goodCount:10,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1});
- await db.sortSpecs.add({id:'spec',batchName:'roll',cutRunId:'cut',electrodeType:'strip',parameterName:'Thickness',unit:'um',categories:[{name:'A',criteria:'Entered criterion'}],authorId:'tech',createdAt:1,updatedAt:1});
+ await db.sortSpecs.add({id:'spec',batchName:'roll',cutRunId:'cut',electrodeType:'strip',parameterName:'Sorting KD',unit:'g',categories:[
+  {name:'A',criteria:'Mass grade A',minMass:1,maxMass:1.5,minUm:70,maxUm:80},
+  {name:'B',criteria:'Mass grade B',minMass:1.5,maxMass:2,minUm:70,maxUm:80},
+ ],authorId:'tech',createdAt:1,updatedAt:1});
  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
  await act(async()=>{root!.render(<SortingModule/>);});
  await vi.waitFor(()=>expect(node!.textContent).toContain('roll'));
  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Сортировать'))!.click();});
- await vi.waitFor(()=>expect(node!.querySelector('select')?.textContent).toContain('roll'));
- const select=node!.querySelector('select')!;
- await act(async()=>{select.value='cut';select.dispatchEvent(new Event('change',{bubbles:true}));});
+ await vi.waitFor(()=>expect(node!.querySelector<HTMLSelectElement>('[aria-label="Партия для сортировки"]')?.value).toBe('cut'));
  return node!;
 }
-function edit(index:number,value:string){const input=node!.querySelectorAll<HTMLInputElement>('input[type="number"]')[index];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event('input',{bubbles:true}));}
-it('rejects fractional partitions even when the displayed arithmetic total equals the input',async()=>{
- const page=await mount();await act(async()=>{edit(0,'1.5');edit(3,'8.5');});
- const save=[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Записать в журнал'))!;
- await act(async()=>{save.click();});
- expect(await db.sortRuns.count()).toBe(0);expect(page.querySelector('[data-testid="packet"]')).toBeNull();
+async function clickRoomButton(text:string){
+ const button=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes(text));
+ expect(button,'Expected button containing '+text).toBeTruthy();
+ await act(async()=>{button!.click();});
+}
+async function typeCount(label:string,value:string){
+ const input=node!.querySelector<HTMLInputElement>('[aria-label="'+label+'"]');
+ expect(input,'Missing input '+label).toBeTruthy();
+ await act(async()=>{
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);
+  input!.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+}
+it('rejects invalid counts and a failed station write without losing operator input',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await typeCount('Прошло контроль','1.5');await typeCount('Отбраковано на станции','8.5');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
+ expect([...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить 1.'))?.disabled).toBe(true);
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','2');
+ const fail=()=>{throw new Error('TEST-sorting-write-failed');};db.sortingWorkflows.hook('updating',fail);
+ try{
+  await clickRoomButton('Сохранить 1.');
+  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('TEST-sorting-write-failed'));
+ }finally{db.sortingWorkflows.hook('updating').unsubscribe(fail);}
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(0);
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('8');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(1));
+ expect(page.textContent).toContain('2. Контроль толщины');
 });
-
-it('retains a failed partition, exports only after commit and blocks another allocation',async()=>{
- const page=await mount();await act(async()=>{edit(0,'8');edit(3,'2');});
- const save=[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Записать в журнал'))!;
- const fail=()=>{throw new Error('Sorting storage unavailable');};db.sortRuns.hook('creating',fail);
- try{await act(async()=>{save.click();});await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('storage unavailable'));}
- finally{db.sortRuns.hook('creating').unsubscribe(fail);}
- expect(await db.sortRuns.count()).toBe(0);expect(page.querySelector('[data-testid="packet"]')).toBeNull();
- expect(page.querySelector<HTMLInputElement>('[aria-label="Количество категории A"]')!.value).toBe('8');
- await act(async()=>{save.click();save.click();});
+it('completes visual-thickness-mass in pass/fail mode, excluding failures and emitting saved packet',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect(page.querySelector('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.textContent).toContain('3. Контроль массы'));
+ await typeCount('Прошло контроль','7');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Итоги сортировки'));
+ expect(await db.sortRuns.count()).toBe(0);
+ await clickRoomButton('Завершить сортировку');
  await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
- const [saved]=await db.sortRuns.toArray();expect(saved).toMatchObject({cutRunId:'cut',goodCount:10,rejected:2,buckets:[{categoryName:'A',count:8}]});
+ const [saved]=await db.sortRuns.toArray();
+ expect(saved).toMatchObject({cutRunId:'cut',goodCount:10,rejected:3,buckets:[{categoryName:'PASS',count:7}],
+  sortingWorkflow:{mode:'pass-fail',stages:[
+   {station:'visual',inputCount:10,passedCount:9,rejectedCount:1},
+   {station:'thickness',inputCount:9,passedCount:8,rejectedCount:1},
+   {station:'mass',inputCount:8,passedCount:7,rejectedCount:1},
+  ]}});
  await vi.waitFor(()=>expect(page.querySelector('[data-testid="packet"]')?.textContent).toContain(saved.id));
- const select=page.querySelector<HTMLSelectElement>('[aria-label="Партия для сортировки"]')!;
- await act(async()=>{select.value='cut';select.dispatchEvent(new Event('change',{bubbles:true}));});
- await act(async()=>{edit(0,'8');edit(3,'2');});
- await act(async()=>{[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Записать в журнал'))!.click();});
- await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('уже распределена'));
- expect(await db.sortRuns.count()).toBe(1);
 });
-
+it('grades only by mass after passing thickness, keeping grade totals separate',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(async()=>expect(await db.sortingWorkflows.count()).toBe(1));
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect(page.textContent).toContain('2. Контроль толщины'));
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector('[aria-label="Количество сорта A"]')).toBeTruthy());
+ expect(page.querySelector('[aria-label="Прошло контроль"]')).toBeNull();
+ await typeCount('Количество сорта A','5');await typeCount('Количество сорта B','2');
+ await typeCount('Отбраковано на станции','1');await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Итоги сортировки'));
+ await clickRoomButton('Завершить сортировку');
+ await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
+ const saved=(await db.sortRuns.toArray())[0];
+ expect(saved).toMatchObject({goodCount:10,rejected:3,buckets:[{categoryName:'A',count:5},{categoryName:'B',count:2}]});
+ expect(saved.sortingWorkflow?.stages.map(s=>s.station)).toEqual(['visual','thickness','mass']);
+});
 
 async function referenceRoom(){
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
