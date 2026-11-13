@@ -39,16 +39,16 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  const setPlace=(place:string)=>recovery.edit(form=>({...form,place}));const setBasis=(basis:string)=>recovery.edit(form=>({...form,basis}));
  const [query,setQuery]=useState('');
  const [navigation,setNavigation]=useState<{kind:'new'|'lot';lotId?:string}|null>(null);
+ const [packet,setPacket]=useState<SyncPacket|null>(null);
+ const [error,setError]=useState('');const [message,setMessage]=useState('');
+ const [pending,setPending]=useState(false);const busy=useRef(false);
+ const [saved,setSaved]=useState<StorageEvent>();const [checking,setChecking]=useState(false);
  // A new receipt or a different lot should never silently discard a local draft.
  // Confirmation is inline: no browser confirm() (unreliable in native WebViews).
  const dirty=!saved&&(
    !!attempt||Object.values(draft).some(value=>value.trim()!=='')||
    !!selected&&(place.trim()!==''||basis.trim()!=='')
  );
- const [packet,setPacket]=useState<SyncPacket|null>(null);
- const [error,setError]=useState('');const [message,setMessage]=useState('');
- const [pending,setPending]=useState(false);const busy=useRef(false);
- const [saved,setSaved]=useState<StorageEvent>();const [checking,setChecking]=useState(false);
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(undefined);return;}let active=true;setChecking(true);
   void db.journal.get(attempt.id).then(row=>{if(!active||!row)return;if(row.params?.storageEvent!==JSON.stringify(attempt))throw Error('Сохранённая запись отличается от восстановленной попытки; история сохранена');setSaved(attempt);setMessage(attempt.kind==='receipt'?'Поступление записано':'Место записано');}).catch(e=>{if(active)setError(String(e));}).finally(()=>{if(active)setChecking(false);});
