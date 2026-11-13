@@ -110,12 +110,20 @@ export function SortingModule() {
           defects={defects ?? []}
           canEdit={isTechManager}
           userId={currentUser?.id ?? ''}
-          onSave={(spec, forced) => {
-            const fresh = { ...spec, updatedAt: Date.now() };
-            db.sortSpecs.put(fresh);
-            setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'sort-spec', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+          onSave={async (spec) => {
+            const actor=useAuthStore.getState().currentUser;
+            if(!actor)throw new Error('Нужен активный локальный профиль');
+            await db.transaction('rw',[db.sortSpecs,db.users],async()=>{
+              const active=await db.users.get(actor.id);
+              if(!active?.isActive||active.role!==actor.role||
+                 ![UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF].includes(active.role))
+                throw new Error('Нет прав на изменение спецификации');
+              const previous=await db.sortSpecs.get(spec.id);
+              if(previous && previous.updatedAt!==spec.updatedAt)
+                throw new Error('Спецификация изменена другим действием. Отмените правку и откройте актуальную версию.');
+              if(!previous && spec.authorId!==actor.id)
+                throw new Error('Автор новой спецификации не совпадает с активным профилем');
+              await db.sortSpecs.put({...spec,updatedAt:Math.max(Date.now(),(previous?.updatedAt??0)+1)});
             });
           }}
         />
@@ -139,12 +147,18 @@ export function SortingModule() {
         <DefectsTab
           defects={defects ?? []}
           canEdit={isTechManager}
-          onSave={(d) => {
-            const fresh = { ...d, updatedAt: Date.now() };
-            db.defectRegistry.put(fresh);
-            setOutPacket({
-              v: 1, type: 'defect-entry', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(),
+          onSave={async (defect) => {
+            const actor=useAuthStore.getState().currentUser;
+            if(!actor)throw new Error('Нужен активный локальный профиль');
+            await db.transaction('rw',[db.defectRegistry,db.users],async()=>{
+              const active=await db.users.get(actor.id);
+              if(!active?.isActive||active.role!==actor.role||
+                 ![UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF].includes(active.role))
+                throw new Error('Нет прав на изменение реестра дефектов');
+              const previous=await db.defectRegistry.get(defect.id);
+              if(previous && previous.updatedAt!==defect.updatedAt)
+                throw new Error('Запись дефекта изменена. Откройте актуальную версию перед повторной правкой.');
+              await db.defectRegistry.put({...defect,updatedAt:Math.max(Date.now(),(previous?.updatedAt??0)+1)});
             });
           }}
         />
@@ -153,12 +167,10 @@ export function SortingModule() {
       {tab === 'journal' && (
         <JournalTab
           runs={runs ?? []}
-          canForce={!!currentUser&&[UserRole.MASTER,UserRole.CHIEF].includes(currentUser.role)}
-          onSend={(r, forced) => {
-            const fresh = r;
+          onSend={(run) => {
             setOutPacket({
               v: 1, type: 'sort-run', stage: StageId.SORTING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              payload: run, from: currentUser!.id, ts: Date.now(),
             });
           }}
         />
@@ -243,10 +255,24 @@ function BatchesTab({ items, specs, onSort }: {
 function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   specs: SortSpec[]; batches: CutRun[]; defects: DefectEntry[];
   canEdit: boolean; userId: string;
-  onSave: (spec: SortSpec, forced: boolean) => void;
+  onSave: (spec: SortSpec) => Promise<void>;
 }) {
   const [editing, setEditing] = useState<SortSpec | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
+  const lock=useRef(false);
+  async function save(){
+    if(lock.current||!editing)return;
+    lock.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      await onSave(editing);
+      setEditing(null);
+      setSuccess('Сохранена локально. Передача спецификаций через общий QR/Bluetooth ключ запрещена.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Спецификация не сохранена');}
+    finally{lock.current=false;setBusy(false);}
+  }
 
   const blank = (): SortSpec => ({
     id: uuidv4(),
@@ -270,8 +296,10 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
         batches={batches}
         defects={defects}
         canEdit={canEdit}
+        busy={busy}
+        error={error}
         onCancel={() => setEditing(null)}
-        onSave={(forced) => { onSave(editing, forced); setEditing(null); }}
+        onSave={save}
         onChange={setEditing}
       />
     );
@@ -279,16 +307,17 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
 
   return (
     <div className="space-y-3">
+      {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
       {canEdit && (
         <button
-          onClick={() => { setIsNew(true); setEditing(blank()); }}
+          onClick={() => {setError('');setSuccess('');setIsNew(true); setEditing(blank()); }}
           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
         >
           ➕ Новая спецификация (КД)
         </button>
       )}
       {specs.length === 0 && (
-        <p className="text-slate-500 text-sm">Спецификаций пока нет. Технолог создаёт их здесь или присылает пакетом «sort-spec».</p>
+        <p className="text-slate-500 text-sm">Спецификаций пока нет. Технолог может создать их локально; импорт через общий QR/Bluetooth ключ заблокирован.</p>
       )}
       {specs.map((s) => (
         <div key={s.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
@@ -317,7 +346,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
             </div>
             {canEdit && (
               <button
-                onClick={() => { setIsNew(false); setEditing({ ...s, categories: s.categories.map((c) => ({ ...c })) }); }}
+                onClick={() => {setError('');setSuccess('');setIsNew(false); setEditing({ ...s, categories: s.categories.map((c) => ({ ...c })) }); }}
                 className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white shrink-0"
               >
                 ✏️ Изменить
@@ -330,9 +359,9 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   );
 }
 
-function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, onChange }: {
+function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCancel, onSave, onChange }: {
   spec: SortSpec; isNew: boolean; batches: CutRun[]; defects: DefectEntry[];
-  canEdit: boolean; onCancel: () => void; onSave: (forced: boolean) => void;
+  canEdit: boolean; busy:boolean; error:string; onCancel: () => void; onSave: () => void;
   onChange: (s: SortSpec) => void;
 }) {
   const set = (patch: Partial<SortSpec>) => onChange({ ...spec, ...patch });
@@ -450,22 +479,13 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, onCancel, onSave, 
           onChange={(e) => set({ techNotes: e.target.value })} />
       </div>
 
+      {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+      <p className="text-xs text-amber-200">Спецификации сохраняются только на этом устройстве. Общий ключ передачи не подтверждает права технолога.</p>
       <div className="flex flex-wrap gap-2">
-        <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-          disabled={!canEdit || !spec.batchName.trim()}
-          onClick={() => onSave(false)}>
-          💾 Сохранить и отправить (QR/BLE/текст)
-        </button>
-        {canEdit && (
-          <button className="px-3 py-1.5 bg-purple-700 hover:bg-purple-600 rounded text-sm text-white"
-            disabled={!spec.batchName.trim()}
-            onClick={() => onSave(true)}>
-          👑 Принудительно (master → slave)
-          </button>
-        )}
-        <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={onCancel}>
-          Отмена
-        </button>
+        <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
+          disabled={busy||!canEdit || !spec.batchName.trim()}
+          onClick={onSave}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
+        <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white disabled:opacity-40" onClick={onCancel}>Отмена</button>
       </div>
     </div>
   );
@@ -658,9 +678,23 @@ function ControlHint({ num, min, max, what }: { num: number; min?: number; max?:
 // ---------- 🗂️ Реестр дефектов ----------
 function DefectsTab({ defects, canEdit, onSave }: {
   defects: DefectEntry[]; canEdit: boolean;
-  onSave: (d: DefectEntry) => void;
+  onSave: (d: DefectEntry) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<DefectEntry | null>(null);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
+  const lock=useRef(false);
+  async function save(){
+    if(lock.current||!draft)return;
+    lock.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      await onSave(draft);
+      setDraft(null);
+      setSuccess('Сохранено локально. При необходимости передавайте только проверенный сохранённый результат.');
+    }catch(cause){setError(cause instanceof Error?cause.message:'Дефект не сохранён');}
+    finally{lock.current=false;setBusy(false);}
+  }
 
   const critical = defects.filter((d) => d.severity === 'critical');
   const nonCritical = defects.filter((d) => d.severity === 'non-critical');
@@ -679,7 +713,7 @@ function DefectsTab({ defects, canEdit, onSave }: {
               </div>
               {canEdit && (
                 <button className="text-xs text-slate-400 hover:text-white"
-                  onClick={() => setDraft({ ...d })}>✏️</button>
+                  onClick={() => {setError('');setSuccess('');setDraft({ ...d });}}>✏️</button>
               )}
             </div>
           </div>
@@ -705,11 +739,11 @@ function DefectsTab({ defects, canEdit, onSave }: {
           <textarea className={inputCls} rows={2} value={draft.description ?? ''} onChange={(e) => set({ description: e.target.value })} /></div>
         <div><label className={labelCls}>Требуемое действие</label>
           <input className={inputCls} value={draft.action ?? ''} onChange={(e) => set({ action: e.target.value })} /></div>
-        <div className="flex gap-2">
-          <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-            disabled={!draft.title.trim()}
-            onClick={() => { onSave(draft); setDraft(null); }}>💾 Сохранить и отправить</button>
-          <button className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={() => setDraft(null)}>Отмена</button>
+        {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
+            disabled={busy||!draft.title.trim()} onClick={()=>void save()}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
+          <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white" onClick={() => setDraft(null)}>Отмена</button>
         </div>
       </div>
     );
@@ -717,12 +751,13 @@ function DefectsTab({ defects, canEdit, onSave }: {
 
   return (
     <div className="space-y-4">
+      {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
       {canEdit && (
-        <button className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
-          onClick={() => setDraft({
+        <button className="min-h-11 px-3 py-2 bg-emerald-600 hover:bg-emerald-500 rounded text-sm text-white"
+          onClick={() => {setError('');setSuccess('');setDraft({
             id: uuidv4(), title: '', severity: 'non-critical',
             createdAt: Date.now(), updatedAt: Date.now(),
-          })}>
+          });}}>
           ➕ Добавить дефект в реестр
         </button>
       )}
@@ -736,9 +771,9 @@ function DefectsTab({ defects, canEdit, onSave }: {
 }
 
 // ---------- 📒 Журнал сортировки ----------
-function JournalTab({ runs, canForce, onSend }: {
-  runs: SortRun[]; canForce: boolean;
-  onSend: (r: SortRun, forced: boolean) => void;
+function JournalTab({ runs, onSend }: {
+  runs: SortRun[];
+  onSend: (r: SortRun) => void;
 }) {
   if (runs.length === 0) {
     return <p className="text-slate-500 text-sm">Журнал сортировки пуст. Записи появятся после разноса партий.</p>;
@@ -772,15 +807,10 @@ function JournalTab({ runs, canForce, onSend }: {
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white"
-                onClick={() => onSend(r, false)}>
+                onClick={() => onSend(r)}>
                 📤 Отправить партию дальше
               </button>
-              {canForce && (
-                <button className="px-3 py-1 bg-purple-700 hover:bg-purple-600 rounded text-xs text-white"
-                  onClick={() => onSend(r, true)}>
-                  👑 Повторить передачу (master)
-                </button>
-              )}
+
             </div>
           </div>
         </div>
