@@ -13,7 +13,7 @@ import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
   CutRun, DefectEntry, ElectrodeShape, SortCategory, SortRun,
-  SortSpec, StageId, SyncPacket, UserRole,
+  SortSpec, SortingWorkflow, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -51,6 +51,8 @@ export function SortingModule() {
     const all = await db.sortRuns.toArray();
     return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
+
+  const workflows = useLiveQuery(async () => db.sortingWorkflows.toArray(), []);
 
   const defects = useLiveQuery(async () => {
     const all = await db.defectRegistry.toArray();
@@ -99,7 +101,10 @@ export function SortingModule() {
         <BatchesTab
           items={batches ?? []}
           specs={specs ?? []}
+          workflows={workflows ?? []}
+          runs={runs ?? []}
           onSort={(id) => { setSelectedBatchId(id); setTab('sort'); }}
+          onOpenJournal={() => setTab('journal')}
         />
       )}
 
@@ -198,8 +203,9 @@ export function SortingModule() {
 }
 
 // ---------- 📥 Партии с нарезки ----------
-function BatchesTab({ items, specs, onSort }: {
-  items: CutRun[]; specs: SortSpec[]; onSort: (id: string) => void;
+function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
+  items: CutRun[]; specs: SortSpec[]; workflows: SortingWorkflow[]; runs: SortRun[];
+  onSort: (id: string) => void; onOpenJournal: () => void;
 }) {
   if (items.length === 0) {
     return (
@@ -215,6 +221,11 @@ function BatchesTab({ items, specs, onSort }: {
     <div className="space-y-3">
       {items.map((cr) => {
         const spec = specs.find(s=>s.cutRunId===cr.id);
+        const workflow = workflows.find(w=>w.cutRunId===cr.id);
+        const record = runs.find(r=>r.cutRunId===cr.id || (!r.cutRunId && (r.batchName===cr.incomingId || (spec && r.specId===spec.id))));
+        const finished = !!record || !!workflow?.finalizedSortRunId;
+        const currentStation = workflow && !workflow.finalizedSortRunId ?
+          ['Визуальный контроль','Контроль толщины','Контроль массы'][workflow.stages.length] : null;
         return (
           <div key={cr.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -236,14 +247,22 @@ function BatchesTab({ items, specs, onSort }: {
                 <div className="mt-1 text-xs">
                   {spec
                     ? <span className="text-emerald-300">📐 Спецификация КД получена: «{spec.parameterName}», категорий {spec.categories.length}</span>
-                    : <span className="text-slate-500">Спецификация технолога (КД) ещё не получена — дождитесь пакет «sort-spec»</span>}
+                    : <span className="text-amber-200">Спецификация КД отсутствует. Технолог должен создать её локально; импорт через общий QR/Bluetooth ключ заблокирован.</span>}
+                </div>
+                <div className="mt-2 text-xs space-y-1" aria-label="Статус сортировки">
+                  {finished ? <p className="text-emerald-300">✓ Сортировка завершена{record?.sortingWorkflow ? ` · ${record.sortingWorkflow.mode==='grading'?'градация':'годен / брак'}` : ''}</p> :
+                    workflow ? <>
+                      <p className="text-blue-300">В работе · {workflow.mode==='grading'?'градация':'годен / брак'} · следующая станция: {currentStation}</p>
+                      <p className="text-slate-400">Завершено станций: {workflow.stages.length}/3 · прошло дальше: {workflow.stages.length ?
+                        workflow.stages[workflow.stages.length-1].passedCount : workflow.cutRunSnapshot.goodCount} шт</p>
+                    </> : <p className="text-slate-400">Сортировка ещё не начата</p>}
                 </div>
               </div>
               <button
-                onClick={() => onSort(cr.id)}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white shrink-0"
+                onClick={() => finished && record ? onOpenJournal() : onSort(cr.id)}
+                className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white shrink-0"
               >
-                🔀 Сортировать
+                {finished && record ? '📒 Смотреть журнал' : workflow ? '🔀 Продолжить сортировку' : '🔀 Сортировать'}
               </button>
             </div>
           </div>
@@ -594,7 +613,7 @@ function JournalTab({ runs, onSend }: {
   onSend: (r: SortRun) => void;
 }) {
   if (runs.length === 0) {
-    return <p className="text-slate-500 text-sm">Журнал сортировки пуст. Записи появятся после разноса партий.</p>;
+    return <p className="text-slate-500 text-sm">Журнал сортировки пуст. Записи появятся после завершения трёх станций или из сохранённых исторических результатов.</p>;
   }
   return (
     <div className="space-y-3">
@@ -620,13 +639,29 @@ function JournalTab({ runs, onSend }: {
                   </span>
                 ))}
               </div>
+              {r.sortingWorkflow ? <details className="mt-3 rounded-lg border border-slate-600 bg-slate-900/60 p-3">
+                <summary className="text-sm text-blue-200 cursor-pointer">
+                  Этапы контроля: визуальный → толщина → масса · {r.sortingWorkflow.mode==='grading'?'градация':'годен / брак'}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {r.sortingWorkflow.stages.map((stage,i)=><div key={stage.station} className="border-b border-slate-700 pb-2 text-xs text-slate-300">
+                    <p className="text-white font-medium">{['1. Визуальный контроль','2. Контроль толщины','3. Контроль массы'][i]}</p>
+                    <p>На входе: {stage.inputCount} · годных: <b className="text-emerald-300">{stage.passedCount}</b> · брак: <b className="text-rose-300">{stage.rejectedCount}</b></p>
+                    {stage.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+                    {stage.rejectionReasons?.map(reason=><p key={reason.reason}>Причина брака: {reason.reason} · {reason.count} шт</p>)}
+                    <p className="text-slate-400">Оператор: {stage.workerId} · {new Date(stage.recordedAt).toLocaleString('ru-RU')}</p>
+                    {stage.notes&&<p className="text-slate-400">Примечание: {stage.notes}</p>}
+                  </div>)}
+                </div>
+              </details> :
+                <p className="mt-2 text-xs text-slate-400">Историческая запись: сведения по отдельным станциям не сохранились.</p>}
               {r.defects && <div className="mt-1 text-xs text-amber-300">⚠ Дефекты: {r.defects}</div>}
               {r.notes && <div className="mt-1 text-xs text-slate-400">📝 {r.notes}</div>}
             </div>
             <div className="flex flex-col gap-1 shrink-0">
               <button className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white"
                 onClick={() => onSend(r)}>
-                📤 Отправить партию дальше
+                📤 Передать сохранённый результат
               </button>
 
             </div>
