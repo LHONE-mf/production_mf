@@ -39,6 +39,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[checking,setChecking]=useState(false);
  const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);const lock=useRef(false);
  const [pendingRecipe,setPendingRecipe]=useState<MixRecipe|null>(null);
+ const [confirmReset,setConfirmReset]=useState(false);
  const [invalidField,setInvalidField]=useState<string|null>(null);const fieldInputs=useRef<Record<string,HTMLInputElement|null>>({});
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(null);return;}let active=true;setChecking(true);
@@ -108,7 +109,15 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
    if(cause instanceof SlurryFieldError){const key=cause.field==='measurementNote'?'note':cause.field;setInvalidField(key);fieldInputs.current[key]?.focus();}
   }finally{lock.current=false;setBusy(false);}
  };
- const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setError('');setInvalidField(null);}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
+ const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setPendingRecipe(null);setConfirmReset(false);setError('');setInvalidField(null);}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
+ const requestReset=()=>{
+  if(lock.current||checking)return;
+  // A new mixing operation must not erase raw weighings through a single mis-tap.
+  const unfinished=!saved&&(!!source||!!attempt||!!phi||!!shear||
+    Object.values(draft).some(value=>Array.isArray(value)?value.length>0:!!value));
+  if(unfinished){setConfirmReset(true);return;}
+  void reset();
+ };
  const field=(key:Exclude<keyof typeof draft,'lines'|'basis'>,label:string,decimal=false)=>{
   const required=key==='batchCode'||key==='recipeName'||key==='note';
   return <label className="block min-w-0 text-xs text-slate-300">{label}{required&&<span className="text-amber-200"> · обязательно</span>}<input ref={node=>{fieldInputs.current[key]=node;}} aria-label={label} aria-required={required||undefined} aria-invalid={invalidField===key||undefined} aria-describedby={key==='note'?'slurry-basis-help':undefined} className={input+' aria-invalid:border-red-400'} value={draft[key]} inputMode={decimal?'decimal':undefined} onChange={change(key)} disabled={key==='recipeName'&&!!source}/></label>;
@@ -118,6 +127,18 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   <h3 className="text-white font-semibold">⚖️ План и измеренные навески</h3>
   <p className="text-xs text-slate-400">План СВ в кг → расчётные навески в г. Фактические массы вводятся отдельно; пустое значение неизвестно. Тип материала не определяет его содержание СВ.</p>
   <LocalDraftStatus draft={recovery} disabled={busy||checking}/>
+  {confirmReset&&<section role="alertdialog" aria-label="Подтверждение очистки замеса"
+    className="rounded-lg border-2 border-amber-600 bg-slate-900 p-4 space-y-3">
+    <h4 className="text-amber-200 font-semibold">Очистить незавершённый замес?</h4>
+    <p className="text-sm text-slate-200">Код партии, фактические навески и другие данные черновика будут удалены.
+      Сохранённые замесы в журнале не изменятся.</p>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" className="min-h-11 rounded bg-amber-700 px-3 text-white disabled:opacity-40"
+        disabled={busy||checking} onClick={()=>void reset()}>Подтвердить очистку черновика</button>
+      <button type="button" className="min-h-11 rounded bg-slate-700 px-3 text-white"
+        onClick={()=>setConfirmReset(false)}>Оставить незавершённый замес</button>
+    </div>
+  </section>}
   {pendingRecipe&&<section role="alertdialog" aria-label="Подтверждение замены рецепта"
     className="rounded-lg border-2 border-amber-600 bg-slate-900 p-4 space-y-3">
     <h4 className="text-amber-200 font-semibold">Заменить текущий черновик?</h4>
@@ -178,7 +199,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
    <button disabled={busy||checking||!!saved||!!recovery.error} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
    {error&&attempt&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null}));setError('');}}>Изменить незаписанный черновик</button>}
    {!saved&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null,draft:{...form.draft,lines:form.draft.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
-   <button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>void reset()}>Очистить форму для нового замеса</button>
+   <button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={requestReset}>Очистить форму для нового замеса</button>
   </div>
   {packet&&<PacketOutModal packet={packet} onClose={()=>setPacket(null)}/>}
  </div>;
