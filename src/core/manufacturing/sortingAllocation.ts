@@ -1,8 +1,10 @@
 import {db} from '../db';
 import type {CutRun,SortRun,SortSpec} from '../types';
+import {validateSortingWorkflowOutput} from './sortingWorkflowValidation';
 
 const count=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=0;
 export function validateSortPartition(run:SortRun):void {
+ if(run?.sortingWorkflow)validateSortingWorkflowOutput(run);
  if(!run||typeof run.id!=='string'||!run.id||!count(run.goodCount)||run.goodCount===0||!count(run.rejected)||!Array.isArray(run.buckets))throw new Error('Количество должно быть целым, неотрицательным и точно представимым');
  const names=new Set<string>();let total=run.rejected;
  for(const bucket of run.buckets){
@@ -18,7 +20,7 @@ export function validateSortPartition(run:SortRun):void {
     spec.id!==run.specId||spec.cutRunId!==source.id||!['strip','prismatic'].includes(source.electrodeType)||spec.electrodeType!==source.electrodeType||!Array.isArray(spec.categories)||!spec.categories.length||spec.categories.some(c=>!c||typeof c.name!=='string'||!c.name.trim())||
     typeof run.workerId!=='string'||!run.workerId.trim()||!Number.isFinite(run.createdAt)||run.createdAt<=0||!Number.isFinite(new Date(run.createdAt).getTime()))throw new Error('Источник и версия спецификации сортировки не подтверждены');
   const categories=spec.categories.map(c=>c.name);
-  if(new Set(categories).size!==categories.length||run.buckets.some(b=>!categories.includes(b.categoryName)))throw new Error('Результат не соответствует категориям сохранённой спецификации');
+  if(new Set(categories).size!==categories.length||run.buckets.some(b=>!categories.includes(b.categoryName)&&!(run.sortingWorkflow?.mode==='pass-fail'&&b.categoryName==='PASS')))throw new Error('Результат не соответствует категориям сохранённой спецификации');
  }
 }
 /** Called within a transaction shared by local creation and receipt. */
@@ -40,9 +42,10 @@ export async function saveSortingAllocation(source:CutRun,spec:SortSpec,result:P
  const run:SortRun={...result,cutRunId:source.id,cutRunSnapshot:source,specSnapshot:spec,specId:spec.id,
    batchName:source.incomingId,goodCount:source.goodCount,workerId,createdAt:now,updatedAt:now};
  validateSortPartition(run);
- return db.transaction('rw',db.cuttingRuns,db.sortSpecs,db.sortRuns,async()=>{
+ return db.transaction('rw',db.cuttingRuns,db.sortSpecs,db.sortRuns,db.sortingWorkflows,async()=>{
   const previous=await db.sortRuns.get(run.id);
   if(previous)return insertAllocation({...run,createdAt:previous.createdAt,updatedAt:previous.updatedAt});
+  if(await db.sortingWorkflows.get(source.id))throw new Error('Партия уже проходит трёхстанционную сортировку; старый одностадийный разнос запрещён');
   const current=await db.cuttingRuns.get(source.id),currentSpec=await db.sortSpecs.get(spec.id);
   if(!current||!currentSpec||JSON.stringify(current)!==JSON.stringify(source)||JSON.stringify(currentSpec)!==JSON.stringify(spec))
    throw new Error('Партия или спецификация изменена. Выберите источник заново и проверьте значения.');
@@ -50,9 +53,11 @@ export async function saveSortingAllocation(source:CutRun,spec:SortSpec,result:P
  });
 }
 export async function receiveSortingAllocation(run:SortRun):Promise<SortRun>{
- return db.transaction('rw',db.sortRuns,async()=>{
+ return db.transaction('rw',db.sortRuns,db.sortingWorkflows,async()=>{
   const previous=run?.id&&await db.sortRuns.get(run.id);
   if(previous&&JSON.stringify(previous)===JSON.stringify(run))return previous;
+  if(run?.cutRunId&&await db.sortingWorkflows.get(run.cutRunId))
+   throw new Error('Партия уже проходит трёхстанционную сортировку; чужой результат не заменяет локальный');
   validateSortPartition(run);
   return insertAllocation(run);
  });
