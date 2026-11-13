@@ -2,9 +2,9 @@ name: CI — web and server
 
 on:
   push:
-    branches: [main, feat/hybrid-server-foundation]
+    branches: [main, feat/hybrid-server-foundation, feat/storage-authoritative-ledger]
   pull_request:
-    branches: [main]
+    branches: [main, feat/hybrid-server-foundation]
   workflow_dispatch:
 
 permissions:
@@ -75,7 +75,7 @@ jobs:
           import { readFile } from 'node:fs/promises';
           const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
           try {
-            for (const migration of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql', '009_m2_stage_handoffs.sql', '010_m2_step_evidence.sql', '011_m2_local_journal_links.sql', '012_m2_local_run_sources.sql', '013_m2_calender_cut_sources.sql', '014_m2_sort_assembly_sources.sql', '015_m2_inspection_observations.sql', '016_m2_inspection_reviews.sql', '017_m2_inspection_criteria.sql', '018_m2_local_source_withdrawals.sql', '019_m2_local_source_replacements.sql']) {
+            for (const migration of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql', '009_m2_stage_handoffs.sql', '010_m2_step_evidence.sql', '011_m2_local_journal_links.sql', '012_m2_local_run_sources.sql', '013_m2_calender_cut_sources.sql', '014_m2_sort_assembly_sources.sql', '015_m2_inspection_observations.sql', '016_m2_inspection_reviews.sql', '017_m2_inspection_criteria.sql', '018_m2_local_source_withdrawals.sql', '019_m2_local_source_replacements.sql', '020_storage_inventory.sql']) {
               await pool.query(await readFile('migrations/' + migration, 'utf8'));
               console.log('Applied CI migration:', migration);
             }
