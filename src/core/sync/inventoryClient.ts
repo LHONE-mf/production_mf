@@ -8,7 +8,7 @@ import {
 const validId=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** No automatic sync: callers must request a fresh device proof and explicitly run these. */
-async function inventoryRequest(
+export async function inventoryRequest(
   session:HybridSession,scope:InventoryScope,path:string,init?:RequestInit,
 ):Promise<Response>{
   inventoryScopeKey(scope);
