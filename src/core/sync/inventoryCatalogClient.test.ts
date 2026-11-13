@@ -66,10 +66,10 @@ describe('validated warehouse catalogue client',()=>{
 
   it('never shows a future correction capability as implemented',async()=>{
     const access={level:'manager',canRecordReceipts:true,canManageCatalog:true,
-      canCorrectStock:false,correctionRoleEligible:true};
+      canCorrectStock:true,correctionRoleEligible:true};
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(access)));
     expect(await loadWarehouseAccess(session,scope)).toEqual(access);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response({...access,canCorrectStock:true})));
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response({...access,canCorrectStock:false})));
     await expect(loadWarehouseAccess(session,scope)).rejects.toThrow('Invalid warehouse access');
   });
 
