@@ -107,6 +107,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   {attempt&&!saved&&!recovery.saving&&!recovery.error&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
   {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
   <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
+   <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2">1. Источник состава и план</h4>
    {!!tasks?.length&&<label className="block text-xs text-slate-300">Ссылка на видимое задание (без изменения статуса)<select aria-label="Задание замеса" className={input} value={draft.taskId} onChange={e=>setDraft({...draft,taskId:e.target.value})}><option value="">Без задания</option>{tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label>}
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('batchCode','Код партии замеса')}{field('recipeName','Название состава')}{field('targetKg','План СВ, кг',true)}</div>
    <p className="text-xs text-slate-400 break-all">{source?`Версия рецепта: ${source.name} · ${source.id} · ${source.updatedAt}`:'Источник состава: явный ручной план'}</p>
@@ -115,6 +116,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
     {!source&&<button className="min-h-11 px-3 rounded bg-blue-700 text-sm text-white" onClick={()=>setDraft(d=>({...d,lines:[...d.lines,{key:uuidv4(),componentId:'',pct:'',actual:''}]}))}>Добавить материал</button>}
     {source&&<button className="min-h-11 px-3 rounded bg-slate-700 text-sm text-white" onClick={()=>setSource(null)}>Перейти к ручному составу</button>}
    </div>
+   <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2 pt-2">2. Фактические навески</h4>
    {draft.lines.map((line,index)=>{const planned=calculation.plan?.rows[index]?.grams;let actual:number|undefined;try{actual=parseSlurryNumber(line.actual);}catch{}return <article key={line.key} className="space-y-2 rounded border border-slate-700 bg-slate-800/60 p-3 min-w-0">
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
      <label className="text-xs text-slate-300">Материал {index+1}<select aria-label={`Материал ${index+1}`} disabled={!!source} className={input} value={line.componentId} onChange={e=>lineChange(index,{componentId:e.target.value,component:catalog?.find(c=>c.id===e.target.value),actual:''})}><option value="">Выберите материал</option>{[...(line.component?[line.component]:[]),...(catalog??[]).filter(c=>c.id!==line.component?.id)].map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
@@ -126,6 +128,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
     {!source&&<button className="min-h-11 px-3 rounded bg-slate-700 text-xs text-white" onClick={()=>setDraft(d=>({...d,lines:d.lines.filter((_,i)=>i!==index)}))}>Убрать строку {index+1}</button>}
    </article>;})}
    {!calculation.plan&&<p className="text-xs text-amber-200">План недоступен: {calculation.error}</p>}
+   <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2 pt-2">3. Проверка расчёта</h4>
    <div className="space-y-1 rounded bg-slate-900 p-3 text-xs text-slate-300">
     <p>Плановая масса смеси: {number(calculation.plan?.allTotalG)} г</p>
     <p>Известная сумма навесок: {number(balance?.knownMassG)} г · неизвестных навесок: {balance?.missingCount??'—'}</p>
@@ -134,12 +137,15 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
     <p>Это расчёт по записанным массам и заявленному составу, без вывода о QA или запасах.</p>
    </div>
    {source?.mode?.length?<details className="text-xs text-slate-400"><summary>Плановый режим исходного рецепта (не фактический)</summary><pre className="whitespace-pre-wrap break-all">{JSON.stringify(source.mode,null,2)}</pre></details>:null}
+   <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2 pt-2">4. Измеренные свойства и источник наблюдений</h4>
    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{field('viscosity','Измеренная вязкость, мПа·с',true)}{field('fineness','Измеренный перетир, мкм',true)}{field('density','Измеренная плотность, г/см³',true)}{field('note','Основание навесок и состава')}{field('notes','Примечания / дефекты')}</div>
    <p id="slurry-basis-help" className="text-xs text-slate-400">Основание обязательно: укажите источник фактических навесок и сведений о составе, например ссылку на запись взвешивания или документ материалов. Уже предоставленные сведения достаточно указать ссылкой; до 2000 символов.</p>
    <p className="text-xs text-slate-400">Неизмеренные свойства оставьте пустыми. Модельная плотность или вязкость не подставляются в измерения и передачу.</p>
    <details className="space-y-2 text-xs text-slate-400"><summary>Отдельная теоретическая оценка плана</summary><div className="grid grid-cols-1 sm:grid-cols-2 gap-2"><label>Введённый φm<input aria-label="φm для модели" className={input} inputMode="decimal" value={phi} onChange={e=>setPhi(e.target.value)}/></label><label>Введённая скорость сдвига, 1/с<input aria-label="Скорость сдвига для модели" className={input} inputMode="decimal" value={shear} onChange={e=>setShear(e.target.value)}/></label></div><PastePropertiesPanel paste={paste} phiMax={Number(phi.replace(',','.'))}/></details>
   </fieldset>
   {error&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
+  <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2">5. Проверка и сохранение замеса</h4>
+  <p className="text-xs text-slate-300">Сохранённая запись фиксирует введённые данные и их источники. Она не означает расход со склада, выполнение оборудования или QA-допуск.</p>
   <div className="flex flex-wrap gap-2">
    <button disabled={busy||checking||!!saved||!!recovery.error} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
    {error&&attempt&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null}));setError('');}}>Изменить незаписанный черновик</button>}
