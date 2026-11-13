@@ -49,3 +49,78 @@ it('retains a failed partition, exports only after commit and blocks another all
  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('уже распределена'));
  expect(await db.sortRuns.count()).toBe(1);
 });
+
+
+async function referenceRoom(){
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
+ await db.open();
+ await db.users.add({id:'chief',login:'chief',fullName:'Chief Tester',password:'hashed-test',role:UserRole.CHIEF,isActive:true,createdAt:new Date()});
+ useAuthStore.setState({currentUser:(await db.users.get('chief'))!});
+ await db.cuttingRuns.add({id:'TEST-cut',incomingId:'TEST-roll',electrodeType:'strip',goodCount:10,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1});
+ node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+ await act(async()=>{root!.render(<SortingModule/>);});
+ await vi.waitFor(()=>expect(node!.textContent).toContain('TEST-roll'));
+ return node!;
+}
+async function clickText(text:string){
+ const button=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes(text));
+ expect(button, 'Expected button containing '+text).toBeTruthy();
+ await act(async()=>{button!.click();});
+}
+function enterText(input:HTMLInputElement,value:string){
+ Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);
+ input.dispatchEvent(new Event('input',{bubbles:true}));
+}
+
+it('retains spec editor on failed write and saves locally without forbidden packet',async()=>{
+ const page=await referenceRoom();
+ await clickText('Спецификации КД');
+ await clickText('Новая спецификация');
+ const fail=()=>{throw new Error('TEST-spec-write-failed');};
+ db.sortSpecs.hook('creating',fail);
+ try{
+  await clickText('Сохранить локально');
+  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('TEST-spec-write-failed'));
+ }finally{db.sortSpecs.hook('creating').unsubscribe(fail);}
+ expect(page.textContent).toContain('Новая спецификация сортировки');
+ expect(page.querySelector('[data-testid="packet"]')).toBeNull();
+ expect(await db.sortSpecs.count()).toBe(0);
+ await clickText('Сохранить локально');
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(1));
+ expect(page.textContent).toContain('Сохранена локально');
+ expect(page.querySelector('[data-testid="packet"]')).toBeNull();
+ expect(page.textContent).not.toContain('Принудительно');
+});
+
+it('does not close defect editor or offer transfer when its write fails',async()=>{
+ const page=await referenceRoom();
+ await clickText('Реестр дефектов');
+ await clickText('Добавить дефект');
+ const title=page.querySelector<HTMLInputElement>('input')!;
+ await act(async()=>enterText(title,'TEST-edge-delamination'));
+ const fail=()=>{throw new Error('TEST-defect-write-failed');};
+ db.defectRegistry.hook('creating',fail);
+ try{
+  await clickText('Сохранить локально');
+  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toContain('TEST-defect-write-failed'));
+ }finally{db.defectRegistry.hook('creating').unsubscribe(fail);}
+ expect((page.querySelector('input') as HTMLInputElement).value).toBe('TEST-edge-delamination');
+ expect(await db.defectRegistry.count()).toBe(0);
+ expect(page.querySelector('[data-testid="packet"]')).toBeNull();
+ await clickText('Сохранить локально');
+ await vi.waitFor(async()=>expect(await db.defectRegistry.count()).toBe(1));
+ expect(page.textContent).toContain('Сохранено локально');
+ expect(page.querySelector('[data-testid="packet"]')).toBeNull();
+});
+
+it('refuses stale local specification edits without replacing the newer record',async()=>{
+ const page=await referenceRoom();
+ await db.sortSpecs.add({id:'TEST-spec',batchName:'TEST-roll',cutRunId:'TEST-cut',electrodeType:'strip',parameterName:'Thickness',unit:'um',categories:[{name:'A',criteria:'Approved'}],authorId:'chief',createdAt:1,updatedAt:42});
+ await clickText('Спецификации КД');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Thickness'));
+ await clickText('Изменить');
+ await db.sortSpecs.update('TEST-spec',{parameterName:'Newer spec',updatedAt:43});
+ await clickText('Сохранить локально');
+ await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toMatch(/изменен|изменена|обновлен|обновлена/i));
+ expect((await db.sortSpecs.get('TEST-spec'))?.parameterName).toBe('Newer spec');
+});
