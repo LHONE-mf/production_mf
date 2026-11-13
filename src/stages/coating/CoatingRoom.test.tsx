@@ -107,3 +107,23 @@ it('never promotes estimated wet thickness to a measured dry-roll handover',asyn
   expect((await db.rollSpecs.get('legacy-wet-estimate'))?.thicknessBeforeUm).toBeUndefined();
   expect((await db.coatRuns.get('legacy-wet-estimate'))?.wetThicknessUm).toBe(200);
 });
+
+it('separates actual observations from estimates and keeps theoretical values collapsed on a phone',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'test-operator',login:'operator',fullName:'Operator',
+    password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()}});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CoatingModule/>);});
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('Подстройка линии'))!.click();});
+  await vi.waitFor(()=>expect(node!.querySelector('[aria-label="Измеренные наблюдения"]')).not.toBeNull());
+  const actual=node!.querySelector('[aria-label="Измеренные наблюдения"]')!;
+  const planned=node!.querySelector('[aria-label="План и назначенные параметры"]')!;
+  expect(actual.querySelector('[aria-label="Измеренная толщина сухого электрода, мкм"]')).not.toBeNull();
+  expect(planned.querySelector('[aria-label="Измеренная толщина сухого электрода, мкм"]')).toBeNull();
+  expect(planned.querySelector('[aria-label="Заданный зазор, мкм"]')).not.toBeNull();
+  const theoretical=[...node!.querySelectorAll('details')].find(d=>d.textContent?.includes('Теоретические оценки'))!;
+  expect(theoretical.open).toBe(false);
+  expect(theoretical.textContent).toContain('Только расчёт');
+  expect(node!.textContent).toContain('Проверка и сохранение локальной записи');
+  expect(await db.coatRuns.count()).toBe(0);
+});
