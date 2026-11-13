@@ -23,7 +23,6 @@ const labelCls = 'block text-xs text-slate-400 mb-1';
 
 export function CoatingModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
-  const isManager = !!currentUser && [UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('mixes');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
   const [handoverBusy,setHandoverBusy]=useState(false);
@@ -105,11 +104,10 @@ export function CoatingModule() {
         <JournalTab
           runs={runs ?? []}
           userName={userName}
-          canForce={isManager}
-          onSend={async (r, forced) => {
+          onSend={async (r) => {
             if(!currentUser||handoverRef.current)return;handoverRef.current=true;setHandoverBusy(true);setHandoverError('');
             try{const [saved,actor]=await Promise.all([db.coatRuns.get(r.id),db.users.get(currentUser.id)]);if(!actor?.isActive||actor.role!==currentUser.role)throw Error('Нужен активный локальный профиль отправителя');if(!saved||JSON.stringify(saved)!==JSON.stringify(r))throw Error('Запись изменилась; обновите выбор перед передачей');
-              setOutPacket({v:1,type:forced?'forced-push':'coat-run',stage:StageId.COATING,payload:saved,from:currentUser.id,role:currentUser.role,ts:Date.now(),forced:forced||undefined});
+              setOutPacket({v:1,type:'coat-run',stage:StageId.COATING,payload:saved,from:currentUser.id,role:currentUser.role,ts:Date.now()});
             }catch(e){setHandoverError(e instanceof Error?e.message:String(e));}finally{handoverRef.current=false;setHandoverBusy(false);}
           }}
           handoverBusy={handoverBusy}
@@ -187,12 +185,11 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
 
 // ── Вкладка: журнал нанесения ───────────────────────────────────────
 function JournalTab({
-  runs, userName, canForce, onSend, onSendRoll, handoverBusy,
+  runs, userName, onSend, onSendRoll, handoverBusy,
 }: {
   runs: CoatRun[];
   userName: (id: string) => string;
-  canForce: boolean;
-  onSend: (r: CoatRun, forced: boolean) => void;
+  onSend: (r: CoatRun) => void;
   onSendRoll: (r: CoatRun) => void;
   handoverBusy?:boolean;
 }) {
@@ -202,7 +199,7 @@ function JournalTab({
     <div className="space-y-3">
       <p className="text-xs text-slate-500">
         Журнал нанесения: подстроечные параметры (шнек, лента, печи), режим, длины сторон. Отправка master&apos;у —
-        офлайн (QR/текст, позже Bluetooth). ⚡ — принудительная допись мастером/начальником.
+        офлайн (QR/текст, позже Bluetooth). Принудительная запись через общий ключ запрещена.
       </p>
       {runs.length === 0 && <p className="text-sm text-slate-400">Записей пока нет — создайте на вкладке «Подстройка линии».</p>}
       {runs.map((r) => {
@@ -258,18 +255,14 @@ function JournalTab({
                 {r.defects && <p className="text-xs text-red-400">⚠ {r.defects}</p>}
                 {r.notes && <p className="text-xs text-slate-400">{r.notes}</p>}
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={() => onSend(r, false)} disabled={handoverBusy} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
+                  <button onClick={() => onSend(r)} disabled={handoverBusy} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">
                     📤 Отправить master&apos;у (QR/текст)
                   </button>
                   {!r.measuredDryThicknessUm && <p className="text-xs text-amber-200 w-full">Замер сухого электрода не указан. Передача не содержит измеренной толщины; оценка мокрого слоя не используется.</p>}
                   <button disabled={handoverBusy} onClick={() => onSendRoll(r)} className="min-h-11 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Рулон технологу (master): название замеса, толщина до прокатки, длины участков → каландрирование">
                     🔄 Рулон технологу (намазка → каландр)
                   </button>
-                  {canForce && (
-                    <button onClick={() => onSend(r, true)} disabled={handoverBusy} className="min-h-11 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-xs text-white">
-                      ⚡ Принудительно (forced)
-                    </button>
-                  )}
+
                 </div>
               </div>
             )}
