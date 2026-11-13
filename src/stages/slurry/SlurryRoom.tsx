@@ -14,6 +14,7 @@ import { GrammageCalculator } from './GrammageCalculator';
 import { RecipesDatabase } from './RecipesDatabase';
 import { ComponentsDatabase } from './ComponentsDatabase';
 import { MixBatchJournal } from './MixBatchJournal';
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 
 type Tab = 'calc' | 'recipes' | 'components' | 'journal' | 'comments';
 
@@ -30,10 +31,10 @@ function SlurryContent() {
   );
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'calc', label: '⚖️ Расчёт граммовок' },
-    { id: 'recipes', label: '📚 База замесов' },
-    { id: 'components', label: '🧱 База компонентов' },
-    { id: 'journal', label: '📒 Журнал замеса' },
+    { id: 'calc', label: '⚖️ Новый замес' },
+    { id: 'recipes', label: '📚 Рецепты' },
+    { id: 'components', label: '🧱 Материалы' },
+    { id: 'journal', label: '📒 Сохранённые замесы' },
     { id: 'comments', label: '💬 Комментарии' },
   ];
 
@@ -51,24 +52,22 @@ function SlurryContent() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">🧪 Комната замесов</h2>
-        <span className="text-xs text-slate-400">Офлайн · данные на устройстве</span>
-      </div>
+      <RoomWorkspaceHeader icon="🧪" title="Комната замесов" description="Выберите сохранённый рецепт или создайте явный ручной план, внесите фактические навески, проверьте данные и сохраните замес. Плановые массы и оценки не являются измеренными результатами."/>
 
-      <div className="flex gap-1 bg-slate-800 rounded-lg p-1 w-fit flex-wrap">
+      <nav aria-label="Разделы комнаты замесов" className="flex flex-wrap gap-2 rounded-lg bg-slate-800 p-2 min-w-0">
         {tabs.map((t) => (
           <button
             key={t.id}
+            type="button" aria-pressed={tab===t.id}
             onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-md text-sm transition ${
+            className={`min-h-11 px-3 py-2 rounded-md text-sm font-medium transition ${
               tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
             }`}
           >
             {t.label}
           </button>
         ))}
-      </div>
+      </nav>
 
       <div hidden={tab!=='calc'}><GrammageCalculator presetRecipe={preset} onPresetConsumed={() => setPreset(null)}/></div>
       {tab === 'recipes' && <RecipesDatabase onUse={useRecipe} />}
