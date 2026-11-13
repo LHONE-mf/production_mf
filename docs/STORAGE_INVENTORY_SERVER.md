@@ -42,6 +42,15 @@ ungranted users or devices must not access inventory.
   `{deviceId,id,code,name,category,baseUnit}`.
 - `POST /inventory/locations`: manager/chief creates a hierarchical location with
   `{deviceId,id,parentId,label,kind}`.
+- `GET /inventory/materials?deviceId=...&after=...&limit=50`: authorized,
+  device-proven organization-specific material catalogue; maximum 100 per page,
+  stable UUID-keyset pagination.
+- `GET /inventory/locations?deviceId=...&after=...&limit=50`: similarly
+  scoped location hierarchy; includes inactive locations for historical
+  provenance; maximum 100 per page.
+- `GET /inventory/access/me?deviceId=...`: effective Warehouse access
+  (`chief`, `manager`, or `operator`) and capability flags, checked
+  against current server grants. No generic Master elevation.
 - `POST /inventory/receipts`: authorized operator/manager/chief receives
   quarantined stock with
   `{operationId,deviceId,stockId,materialId,locationId,manufacturerLot,
