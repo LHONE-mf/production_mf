@@ -103,7 +103,7 @@ export async function loadWarehouseAccess(
       typeof raw.canManageCatalog!=='boolean'||
       typeof raw.canCorrectStock!=='boolean'||
       typeof raw.correctionRoleEligible!=='boolean'||
-      raw.canCorrectStock!==false||
+      raw.canCorrectStock!==(raw.level==='chief'||raw.level==='manager')||
       raw.canRecordReceipts!==true||
       raw.canManageCatalog!==(raw.level==='chief'||raw.level==='manager')||
       raw.correctionRoleEligible!==(raw.level==='chief'||raw.level==='manager'))
