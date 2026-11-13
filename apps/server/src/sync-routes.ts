@@ -16,7 +16,7 @@ const pullSchema = z.object({ cursor: z.coerce.number().int().nonnegative().defa
 const comparisonSchema = z.object({ deviceId: z.guid() }).strict();
 
 /** Every shared sync read/write requires the same short-lived, actor/session/device-bound grant. */
-async function deviceProofError(pool: Pool, principal: Principal, authorization: string, deviceId: string, proof: unknown) {
+export async function deviceProofError(pool: Pool, principal: Principal, authorization: string, deviceId: string, proof: unknown) {
   if (typeof proof !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(proof))
     return 'device_proof_required';
   const grant = await pool.query(`SELECT g.token_hash FROM device_proof_grants g
