@@ -131,7 +131,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
       <button type="button" className="min-h-11 rounded bg-slate-700 px-3 text-white"
         onClick={()=>setPendingRecipe(null)}>Оставить текущий черновик</button>
     </div>
-  </section>
+  </section>}
   {attempt&&!saved&&!recovery.saving&&!recovery.error&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
   {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
   <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
