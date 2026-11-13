@@ -9,7 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import {
-  CalenderParams, CalenderRun, CuttingIncoming, RollSpec, RollToTechPacket, StageId, SyncPacket, UserRole,
+  CalenderParams, CalenderRun, CuttingIncoming, RollSpec, StageId, SyncPacket, UserRole,
 } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
@@ -98,12 +98,12 @@ export function CalendaringModule() {
 
       {tab === 'rolls' && (
         <RollsTab rolls={rolls ?? []} onSelect={(id) => { setSelectedRollId(id); setTab('params'); }} canSendToCutting={isTechManager}
-          onSendResult={(run, forced) => {
+          onSendResult={(run) => {
             try{validateCalenderResult(run);}catch{return;}
             const fresh = run;
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'calender-result', stage: StageId.CALENDARING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'calender-result', stage: StageId.CALENDARING,
+              payload: fresh, from: currentUser!.id, ts: Date.now(),
             });
           }}
           runs={runs ?? []} userName={userName}
@@ -115,15 +115,6 @@ export function CalendaringModule() {
           rolls={rolls ?? []}
           selectedRollId={selectedRollId}
           canEdit={isTechManager}
-          onSaved={(roll, p) => {
-            // технолог (master) уточнил параметры → сохраняем локально и формируем пакет
-            // roll-spec с параметрами: slave применит их безусловно (forced от master'а)
-            const rp: RollToTechPacket = { roll, calenderParams: p };
-            setOutPacket({
-              v: 1, type: 'roll-spec', stage: StageId.CALENDARING,
-              payload: rp, from: currentUser!.id, ts: Date.now(), forced: true,
-            });
-          }}
         />
       )}
 
@@ -132,15 +123,13 @@ export function CalendaringModule() {
           rolls={rolls ?? []}
           runs={runs ?? []}
           userName={userName}
-          canForce={isTechManager}
           onNew={() => setTab('params')}
-          onSend={(r, forced) => {
-            const fresh = r;
+          onSend={(run) => {
             setOutPacket({
-              v: 1, type: forced ? 'forced-push' : 'calender-result', stage: StageId.CALENDARING,
-              payload: fresh, from: currentUser!.id, ts: Date.now(), forced: forced || undefined,
+              v: 1, type: 'calender-result', stage: StageId.CALENDARING,
+              payload: run, from: currentUser!.id, ts: Date.now(),
             });
-          }}
+          }
         />
       )}
 
@@ -173,7 +162,7 @@ function RollsTab({
   runs: CalenderRun[];
   userName: (id?: string) => string;
   canSendToCutting: boolean;
-  onSendResult: (r: CalenderRun, forced: boolean) => void;
+  onSendResult: (r: CalenderRun) => void;
 }) {
   const runByRoll = new Map(runs.map((r) => [r.rollId, r]));
   return (
@@ -221,7 +210,7 @@ function RollsTab({
                     </button>
                   )}
                   {run && hasCalenderResult(run) && canSendToCutting && !run.hasDefects && (
-                    <button onClick={() => onSendResult(run, false)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Результат прокатки → нарезка (QR/текст/Bluetooth)">
+                    <button onClick={() => onSendResult(run)} className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white" title="Результат прокатки → нарезка (QR/текст/Bluetooth)">
                       Передать результат (без задания)
                     </button>
                   )}
@@ -237,18 +226,19 @@ function RollsTab({
 
 // ── Вкладка: параметры прокатки (технолог/master назначает) ─────────
 function ParamsTab({
-  rolls, selectedRollId, canEdit, onSaved,
+  rolls, selectedRollId, canEdit,
 }: {
   rolls: RollSpec[];
   selectedRollId: string | null;
   canEdit: boolean;
-  onSaved: (roll: RollSpec, p: CalenderParams) => void;
+
 }) {
   const currentUser = useAuthStore((s) => s.currentUser);
   const [rollId, setRollId] = useState<string>(selectedRollId ?? rolls[0]?.id ?? '');
   const roll = rolls.find((r) => r.id === rollId);
 
   const [saveError,setSaveError]=useState('');
+  const [savedNote,setSavedNote]=useState('');
   const [saving,setSaving]=useState(false);
   const assignmentRef=useRef(false);
   const [targetThickness, setTargetThickness] = useState<number | ''>('');
@@ -264,9 +254,9 @@ function ParamsTab({
   const validParams=validTarget&&heating!==null&&(pressure===''||Number.isFinite(pressure)&&pressure>0)&&
     (!heating||heatTemp!==''&&Number.isFinite(heatTemp)&&heatTemp>=0);
 
-  const saveAndPush = async () => {
+  const saveAssignment = async () => {
     if (!roll || !currentUser || !validParams || heating===null || !canEdit || assignmentRef.current) return;
-    assignmentRef.current=true;setSaving(true);setSaveError('');
+    assignmentRef.current=true;setSaving(true);setSaveError('');setSavedNote('');
     try{
     const p: CalenderParams = {
       targetThicknessBasis:'dry-electrode-including-foil',
@@ -278,7 +268,7 @@ function ParamsTab({
       notes: notes.trim() || undefined,
     };
     await saveCalenderAssignment(roll,p,currentUser.id);
-    onSaved(roll,p);
+    setSavedNote('Параметры сохранены локально. Отправка назначений по общему QR/Bluetooth ключу заблокирована: он не подтверждает права технолога.');
     }catch(cause){setSaveError(cause instanceof Error?cause.message:'Назначение не сохранено');}
     finally{assignmentRef.current=false;setSaving(false);}
 
@@ -338,16 +328,17 @@ function ParamsTab({
           <textarea className={inputCls} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="напр.: 2 прохода, контроль толщины каждые 50 м" />
         </div>
         {saveError && <p role="alert" className="text-red-200 text-sm">{saveError}</p>}
+         {savedNote && <p role="status" className="text-emerald-200 text-sm">{savedNote}</p>}
         {!validParams && <p className="text-xs text-amber-200">Для назначения укажите положительную цель и явно выберите нагрев. При нагреве нужна температура; указанное усилие должно быть больше нуля. Это назначение параметров, не показания оборудования.</p>}
         {reduction !== null && (
           <p className="text-xs text-blue-300">Плановое уменьшение полной толщины: ~{reduction}% ({roll && measuredDryThicknessUm(roll)} → {targetThickness} мкм). Это сравнение с целью, не фактическое обжатие, пористость или настройка зазора.</p>
         )}
         <button
-          onClick={saveAndPush}
+          onClick={saveAssignment}
           disabled={!canEdit || !roll || !validParams || saving}
           className="w-full min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 rounded text-sm text-white"
         >
-          {canEdit ? '💾 Назначить и отправить на устройство каландра (QR/текст/BT)' : 'Только технолог/мастер/начальник может назначать параметры'}
+          {canEdit ? '💾 Сохранить параметры локально' : 'Только технолог/мастер/начальник может назначать параметры'}
         </button>
       </div>
 
@@ -356,7 +347,7 @@ function ParamsTab({
         <h4 className="text-white text-sm font-semibold">Как идёт поток данных</h4>
         <p>1️⃣ Участок нанесения формирует пакет «рулон технологу»: название замеса, толщина до прокатки, длины участков (стороны A/B).</p>
         <p>2️⃣ Технолог (master) принимает его офлайн (QR/текст/Bluetooth) и назначает здесь: толщина после прокатки, нагрев и температура, давление (тс), обрезка кромки.</p>
-        <p>3️⃣ Пакет возвращается на устройство каландра (slave) — задание с параметрами появляется у оператора.</p>
+        <p>3️⃣ Назначение доступно на этом устройстве после сохранения; передача этих параметров через общий QR/Bluetooth ключ заблокирована. Для другого устройства нужен авторизованный канал.</p>
         <p>4️⃣ Оператор прокатывает и вносит в журнал фактические зазоры валков, общую длину, толщину после прокатки, дефекты.</p>
         <p>5️⃣ Результат («calender-result») передаётся на участок нарезки электродов.</p>
       </div>
@@ -366,13 +357,12 @@ function ParamsTab({
 
 // ── Вкладка: журнал прокатки (оператор каландра) ────────────────────
 function JournalTab({
-  rolls, runs, userName, canForce, onSend, onNew,
+  rolls, runs, userName, onSend, onNew,
 }: {
   rolls: RollSpec[];
   runs: CalenderRun[];
   userName: (id?: string) => string;
-  canForce: boolean;
-  onSend: (r: CalenderRun, forced: boolean) => void;
+  onSend: (r: CalenderRun) => void;
   onNew: () => void;
 }) {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -403,7 +393,7 @@ function JournalTab({
     delete revisions.current[id];delete journalIds.current[id];
     setDrafts(d=>{const copy={...d};delete copy[id];return copy;});setResultError('');
   };
-  const save = async (r: CalenderRun,send=false,forced=false) => {
+  const save = async (r: CalenderRun,send=false) => {
     if(!currentUser||busyRef.current)return;
     busyRef.current=true;setBusy(true);setResultError('');
     try{
@@ -411,7 +401,7 @@ function JournalTab({
       const updated=await saveCalenderResult({...r,updatedAt:revisions.current[r.id]??r.updatedAt},
         draftFor(r),currentUser.id,journalIds.current[r.id]);
       resetDraft(r.id);
-      if(send)onSend(updated,forced);
+      if(send)onSend(updated);
     }catch(cause){setResultError(cause instanceof Error?cause.message:'Результат не сохранён');}
     finally{busyRef.current=false;setBusy(false);}
   };
@@ -480,9 +470,7 @@ function JournalTab({
                     Сохранить и передать результат (без задания)
                   </button>
                   <button disabled={busy} onClick={()=>resetDraft(r.id)} className="min-h-11 px-3 text-sm text-slate-300">Сбросить черновик</button>
-                  {canForce && (
-                    <button disabled={busy} onClick={() => void save(r,true,true)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded text-xs text-white">⚡ Принудительно (forced)</button>
-                  )}
+
                 </div>
               </div>
             )}
