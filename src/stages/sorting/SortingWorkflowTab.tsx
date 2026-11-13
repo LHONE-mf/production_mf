@@ -190,7 +190,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             {saved.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
             <p className="text-xs text-slate-400">Оператор: {saved.workerId} · {new Date(saved.recordedAt).toLocaleString('ru-RU')}</p>
             {saved.notes && <p className="text-xs text-slate-400">Примечание: {saved.notes}</p>}
-          </div> : current && <div className="space-y-3 mt-3">
+          </div> : current && !draft.ready ? <div className="mt-3"><LocalDraftStatus draft={draft} disabled={busy}/></div> : current && <div className="space-y-3 mt-3">
             <p className="text-sm text-slate-200">Передано на станцию: <strong className="text-white">{inputCount} шт</strong></p>
             <p className="text-xs text-slate-400">Каждый электрод оператор проверяет вручную по КД. Брак сразу удаляется из потока.</p>
             {station==='visual' && <>
