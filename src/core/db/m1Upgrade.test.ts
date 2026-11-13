@@ -16,7 +16,7 @@ afterEach(async () => {
  * migrations). Upgrading must add stores without clearing old manufacturing
  * data, queued edits, cursors or archived conflict evidence.
  */
-it('preserves v17 local production records through the v18–v20 additive upgrades', async () => {
+it('preserves v17 local production records through the v18–v21 additive upgrades', async () => {
   db.close();
   await db.delete();
   const legacy = new Dexie('LiIonProductionDB');
@@ -63,8 +63,9 @@ it('preserves v17 local production records through the v18–v20 additive upgrad
   }
 
   await db.open();
-  expect(db.verno).toBe(20);
+  expect(db.verno).toBe(21);
   expect(await db.localFormDrafts.count()).toBe(0);
+  expect(await db.sortingWorkflows.count()).toBe(0);
   expect((await db.tasks.get(taskId))?.title).toBe('Pre-upgrade work');
   expect((await db.journal.get('legacy-production-record'))?.stage).toBe('coating');
   expect((await db.hybridTaskOutbox.where('entityId').equals(taskId).first())?.state).toBe('conflict');
