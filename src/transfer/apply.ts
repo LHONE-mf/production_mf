@@ -7,6 +7,7 @@ import {receiveFillingResult} from '../core/manufacturing/fillingResults';
 import {receiveWalzingIncoming,receiveWalzingResult} from '../core/manufacturing/walzingResults';
 import {receiveAssemblyIntake} from '../core/manufacturing/assemblyIntake';
 import {receiveSortingAllocation} from '../core/manufacturing/sortingAllocation';
+import {receiveSortingHandoff} from '../core/manufacturing/sortingHandoff';
 import {validateCuttingIncoming,sameCuttingInstruction} from '../core/manufacturing/cuttingInstruction';
 // Применение входящегоSyncPacket к локальной базе (офлайн-синхронизация).
 // Legacy data may use freshness; protected records reject replacement. Forced and administrative writes are blocked at this boundary.
@@ -175,6 +176,12 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         }
         await db.cuttingRuns.put(cr);
         return { ok: true, message: `✂️ Партия нарезки получена: годных ${cr.goodCount}, дефектных ${cr.defectCount} → на сортировку` };
+      }
+      case 'sort-handoff': {
+        if(p.stage!==StageId.SORTING)
+          return {ok:false,message:'Пакет передачи станций должен относиться к комнате Сортировка'};
+        const received=await receiveSortingHandoff(p.payload);
+        return {ok:true,message:`Приняты сохранённые станции сортировки «${received.cutRunSnapshot.incomingId}»: ${received.stages.length}/3. Сверьте физическую партию перед следующей инспекцией`};
       }
       case 'sort-run': {
         // Sorting allocations are immutable; signed/forced packets cannot reallocate a cut run.
