@@ -11,6 +11,10 @@ import { transitionInventory, type InventoryStock, type InventoryUnit } from './
 const uuid = z.guid();
 const device = z.object({ deviceId: uuid }).strict();
 const page = device.extend({ after: uuid.optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
+const changesQuery = device.extend({
+  cursor: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+}).strict();
 const materialSchema = device.extend({
   id: uuid, code: z.string().trim().min(1).max(100),
   name: z.string().trim().min(1).max(200),
@@ -187,6 +191,33 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     const slice=result.rows.slice(0,limit);
     return {stocks:slice.map(row=>{const stock=toStock(row);return {...stock,available:stock.onHand-stock.reserved};}),
       hasMore:result.rows.length>limit,nextAfter:result.rows.length>limit?slice[slice.length-1].id:null};
+  });
+
+  // Read-only confirmed event feed. A client must persist the events and cursor
+  // together before advancing its local checkpoint. Never include provisional
+  // offline operations or unverified local Storage journal history here.
+  app.get('/inventory/changes', async(request,reply)=>{
+    const actor=await authenticate(pool,request.headers.authorization);
+    if(!actor)return reply.code(401).send({error:'unauthorized'});
+    const parsed=changesQuery.safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:'invalid_request'});
+    if(!(await inventoryPermission(pool,actor,'operator')))return reply.code(403).send({error:'forbidden'});
+    const proof=await proofError(pool,actor,request.headers.authorization,
+      parsed.data.deviceId,request.headers['x-device-proof']);
+    if(proof)return reply.code(403).send({error:proof});
+    const {cursor,limit}=parsed.data;
+    const max=await pool.query(`SELECT COALESCE(MAX(sequence),0)::text AS maximum
+      FROM inventory_operations WHERE organization_id=$1`,[actor.organization_id]);
+    if(cursor>safeCount(max.rows[0].maximum))return reply.code(409).send({error:'cursor_out_of_range'});
+    const result=await pool.query(`SELECT sequence,operation_id,kind,result_stock,recorded_at
+      FROM inventory_operations WHERE organization_id=$1 AND sequence>$2
+      ORDER BY sequence LIMIT $3`,[actor.organization_id,cursor,limit+1]);
+    const items=result.rows.slice(0,limit);
+    return {changes:items.map(row=>({
+      sequence:safeCount(row.sequence),operationId:row.operation_id,kind:row.kind,
+      stock:row.result_stock,recordedAt:new Date(row.recorded_at).toISOString(),
+    })),hasMore:result.rows.length>limit,
+      nextCursor:items.length?safeCount(items[items.length-1].sequence):cursor};
   });
 
   app.post('/inventory/receipts', async(request,reply)=>{
