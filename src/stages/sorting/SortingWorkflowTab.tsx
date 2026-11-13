@@ -204,11 +204,12 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             {saved.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
             <p className="text-xs text-slate-400">Оператор: {saved.workerId} · {new Date(saved.recordedAt).toLocaleString('ru-RU')}</p>
             {saved.notes && <p className="text-xs text-slate-400">Примечание: {saved.notes}</p>}
-            {index===workflow.stages.length-1 && !workflow.finalizedSortRunId &&
+            {index===workflow.stages.length-1 && index<2 && !workflow.finalizedSortRunId &&
               <div className="mt-3 space-y-2 rounded-lg border border-blue-700/50 bg-blue-950/20 p-3">
                 <p className="text-xs text-slate-300">
-                  {index<2?'Следующая станция работает на другом телефоне? Передайте сохранённую историю партии.':'Можно передать всю сохранённую историю на устройство для итогового отчёта.'}
+                  Следующая станция работает на другом телефоне? Передайте сохранённую историю партии.
                   Получатель должен иметь точно такую же партию нарезки и утверждённую локальную КД.
+                  Для приёма откройте «Синхронизация» на другом устройстве.
                 </p>
                 <button type="button" className="min-h-11 w-full rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white"
                   onClick={()=>onHandoff(workflow)}>
