@@ -224,7 +224,8 @@ function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
         const workflow = workflows.find(w=>w.cutRunId===cr.id);
         const record = runs.find(r=>r.cutRunId===cr.id || (!r.cutRunId && (r.batchName===cr.incomingId || (spec && r.specId===spec.id))));
         const finished = !!record || !!workflow?.finalizedSortRunId;
-        const currentStation = workflow && !workflow.finalizedSortRunId ?
+        const readyToFinalize = !!workflow && !workflow.finalizedSortRunId && workflow.stages.length===3;
+        const currentStation = workflow && !workflow.finalizedSortRunId && !readyToFinalize ?
           ['Визуальный контроль','Контроль толщины','Контроль массы'][workflow.stages.length] : null;
         return (
           <div key={cr.id} className="bg-slate-800/70 border border-slate-700 rounded-lg p-4">
@@ -252,7 +253,9 @@ function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
                 <div className="mt-2 text-xs space-y-1" aria-label="Статус сортировки">
                   {finished ? <p className="text-emerald-300">✓ Сортировка завершена{record?.sortingWorkflow ? ` · ${record.sortingWorkflow.mode==='grading'?'градация':'годен / брак'}` : ''}</p> :
                     workflow ? <>
-                      <p className="text-blue-300">В работе · {workflow.mode==='grading'?'градация':'годен / брак'} · следующая станция: {currentStation}</p>
+                      <p className="text-blue-300">{readyToFinalize
+                        ? 'Все три станции завершены · ожидает записи итогового результата'
+                        : `В работе · ${workflow.mode==='grading'?'градация':'годен / брак'} · следующая станция: ${currentStation}`}</p>
                       <p className="text-slate-400">Завершено станций: {workflow.stages.length}/3 · прошло дальше: {workflow.stages.length ?
                         workflow.stages[workflow.stages.length-1].passedCount : workflow.cutRunSnapshot.goodCount} шт</p>
                     </> : <p className="text-slate-400">Сортировка ещё не начата</p>}
@@ -262,7 +265,8 @@ function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
                 onClick={() => finished && record ? onOpenJournal() : onSort(cr.id)}
                 className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white shrink-0"
               >
-                {finished && record ? '📒 Смотреть журнал' : workflow ? '🔀 Продолжить сортировку' : '🔀 Сортировать'}
+                {finished && record ? '📒 Смотреть журнал' : readyToFinalize ? '✅ Завершить сортировку' :
+                  workflow ? '🔀 Продолжить сортировку' : '🔀 Сортировать'}
               </button>
             </div>
           </div>
