@@ -20,7 +20,7 @@ beforeEach(async()=>{
 afterEach(async()=>{
   if(root)await act(async()=>root!.unmount());
   root=undefined;node?.remove();node=undefined;
-  useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();
+  useAuthStore.setState({currentUser:null});db.close();await db.delete();vi.unstubAllGlobals();Reflect.deleteProperty(window,'confirm');
 });
 async function mount(){
   node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
@@ -85,9 +85,10 @@ it('resets the draft when selecting another source roll',async()=>{
   await act(async()=>{await db.cuttingRolls.add({...incoming,id:'other',createdAt:2,roll:{...incoming.roll,id:'other-roll',mixName:'Another roll'}});});
   const select=page.querySelector<HTMLSelectElement>('[aria-label="Рулон для нарезки"]')!;
   await vi.waitFor(()=>expect(select.options.length).toBe(2));
-  vi.spyOn(window,'confirm').mockReturnValue(true);
+  const accept=vi.fn(()=>true);
+  vi.stubGlobal('confirm',accept);Object.defineProperty(window,'confirm',{configurable:true,value:accept});
   await act(async()=>{select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));});
-  expect(window.confirm).toHaveBeenCalled();
+  expect(accept).toHaveBeenCalled();
   expect(page.querySelector<HTMLInputElement>('[aria-label="Измеренная длина полотна, м"]')!.value).toBe('');
   expect(page.querySelector<HTMLInputElement>('[aria-label="Годных электродов"]')!.value).toBe('');
   expect(page.textContent).not.toContain('Ожидаемо электродов:');
@@ -108,7 +109,8 @@ it('keeps an unfinished cutting record across room tabs and protects source chan
   expect(page.querySelector('[aria-label="Фактический результат нарезки"]')).not.toBeNull();
   expect(page.querySelector('[aria-label="Теоретический расчёт раскроя"]')).not.toBeNull();
   await act(async()=>{await db.cuttingRolls.add({...incoming,id:'other',createdAt:2,roll:{...incoming.roll,id:'roll2',mixName:'Second source roll'}});});
-  const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+  const confirm=vi.fn(()=>false);
+  vi.stubGlobal('confirm',confirm);Object.defineProperty(window,'confirm',{configurable:true,value:confirm});
   const select=page.querySelector<HTMLSelectElement>('[aria-label="Рулон для нарезки"]')!;
   await vi.waitFor(()=>expect(select.options.length).toBe(2));
   await act(async()=>{select.value='other';select.dispatchEvent(new Event('change',{bubbles:true}));});
