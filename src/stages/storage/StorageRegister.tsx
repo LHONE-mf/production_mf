@@ -38,6 +38,13 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  const setDraft=(draft:ReceiptDraft)=>recovery.edit(form=>({...form,draft}));
  const setPlace=(place:string)=>recovery.edit(form=>({...form,place}));const setBasis=(basis:string)=>recovery.edit(form=>({...form,basis}));
  const [query,setQuery]=useState('');
+ const [navigation,setNavigation]=useState<{kind:'new'|'lot';lotId?:string}|null>(null);
+ // A new receipt or a different lot should never silently discard a local draft.
+ // Confirmation is inline: no browser confirm() (unreliable in native WebViews).
+ const dirty=!saved&&(
+   !!attempt||Object.values(draft).some(value=>value.trim()!=='')||
+   !!selected&&(place.trim()!==''||basis.trim()!=='')
+ );
  const [packet,setPacket]=useState<SyncPacket|null>(null);
  const [error,setError]=useState('');const [message,setMessage]=useState('');
  const [pending,setPending]=useState(false);const busy=useRef(false);
@@ -65,8 +72,17 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
  }
  function clearMessages(){setSaved(undefined);setError('');setMessage('');}
  function resetAttempt(){clearMessages();recovery.edit(form=>({...form,attempt:null}));}
- async function newReceipt(){if(busy.current)return;busy.current=true;setPending(true);try{await recovery.reset();clearMessages();}catch(e){setError(String(e));}finally{busy.current=false;setPending(false);}}
- function openLot(lot:RecordedLot){clearMessages();recovery.edit(form=>({...form,selected:lot,place:'',basis:'',attempt:null}));}
+ async function performNewReceipt(){if(busy.current)return;busy.current=true;setPending(true);try{await recovery.reset();clearMessages();setNavigation(null);}catch(e){setError(String(e));}finally{busy.current=false;setPending(false);}}
+ function performOpenLot(lot:RecordedLot){clearMessages();recovery.edit(form=>({...form,selected:lot,place:'',basis:'',attempt:null}));setNavigation(null);}
+ function newReceipt(){if(busy.current||pending||checking)return;if(dirty){setNavigation({kind:'new'});return;}void performNewReceipt();}
+ function openLot(lot:RecordedLot){if(busy.current||pending||checking)return;if(selected?.receipt.id===lot.receipt.id)return;if(dirty){setNavigation({kind:'lot',lotId:lot.receipt.id});return;}performOpenLot(lot);}
+ function confirmNavigation(){
+  if(!navigation||busy.current||pending||checking)return;
+  if(navigation.kind==='new'){void performNewReceipt();return;}
+  const lot=register?.lots.find(item=>item.receipt.id===navigation.lotId);
+  if(!lot){setError('Выбранная партия больше не доступна, обновите реестр');return;}
+  performOpenLot(lot);
+ }
  const lots=(register?.lots??[]).filter(lot=>[lot.receipt.material,lot.receipt.materialReference,lot.receipt.lotCode,lot.receipt.supplier,lot.receipt.documentReference,...lot.history.map(e=>e.location)].some(value=>value?.toLocaleLowerCase('ru-RU').includes(query.trim().toLocaleLowerCase('ru-RU'))));
  if(!recovery.ready)return <LocalDraftStatus draft={recovery}/>;
  return <div className="space-y-4 break-words">
@@ -76,6 +92,21 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
    <p>Одна запись поступления на материал/партию/поставщика. Неизвестный поставщик сохраняется неизвестным. Повторные частичные поступления и разделение партии требуют отдельного порядка учёта.</p>
   </div>
   <LocalDraftStatus draft={recovery} disabled={pending||checking}/>
+  {navigation&&<section role="alertdialog" aria-label="Подтверждение смены складской формы"
+    className="rounded-lg border-2 border-amber-500 bg-slate-900 p-4 space-y-3">
+    <h4 className="font-semibold text-amber-200">Есть незавершённые данные склада</h4>
+    <p className="text-sm text-slate-200">
+      {navigation.kind==='new'?'Начать новое поступление?':'Открыть другую партию?'}
+      {' '}Текущие незавершённые поля и попытка сохранения будут сброшены.
+      Сохранённые записи в журнале останутся без изменений.
+    </p>
+    <div className="flex flex-wrap gap-2">
+      <button type="button" className="min-h-11 rounded bg-amber-700 px-4 text-white"
+        disabled={pending||checking} onClick={confirmNavigation}>Сбросить незавершённую форму</button>
+      <button type="button" className="min-h-11 rounded bg-slate-700 px-4 text-white"
+        onClick={()=>setNavigation(null)}>Оставить текущую форму</button>
+    </div>
+  </section>}
   {(register?.problems.length??0)>0&&<p role="alert" className="text-amber-300">История требует проверки: {register!.problems.length} записей/связей. Старые записи сохранены; новые записи заблокированы до проверки. {register!.problems[0]}</p>}
   {error&&<p role="alert" className="rounded border border-red-600 p-3 text-red-300">{error}</p>}
   {message&&<p role="status" className="text-green-300">{message}. Сохранено на устройстве, физический остаток не рассчитан.</p>}
@@ -89,7 +120,7 @@ function RegisterForActor({actor}:{actor:NonNullable<ReturnType<typeof useAuthSt
    <div className="flex flex-wrap gap-2">
     <button className={buttonClass} disabled={pending||checking||!!saved||!!recovery.error} onClick={()=>void persist(()=>({version:1,kind:'receipt',id:`storage:${uuidv4()}`,material:draft.material.trim(),materialReference:draft.materialReference.trim()||undefined,supplier:draft.supplier.trim()||undefined,documentReference:draft.documentReference.trim()||undefined,lotCode:draft.lotCode.trim(),quantity:parseQuantity(draft.quantity),unit:draft.unit as StorageReceipt['unit'],location:draft.location.trim(),evidence:draft.evidence.trim(),actorId:actor.id,actorRole:actor.role,recordedAt:Date.now()}))}>{pending?'Сохранение…':'Записать поступление'}</button>
     {attempt&&!saved&&<button className={buttonClass} disabled={pending||checking} onClick={resetAttempt}>Редактировать попытку</button>}
-    <button className={buttonClass} disabled={pending||checking} onClick={()=>void newReceipt()}>Новое поступление</button>
+    <button className={buttonClass} disabled={pending||checking} onClick={newReceipt}>Новое поступление</button>
    </div>
   </section>:<section className="space-y-3 rounded border border-slate-600 bg-slate-800 p-3">
    <h4 className="font-semibold">История партии {selected.receipt.lotCode}: {selected.receipt.material}</h4>
