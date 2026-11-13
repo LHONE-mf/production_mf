@@ -98,6 +98,9 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
     const decisions=gradedMass
       ? gradeSpecs.map(c=>({categoryName:c.name,count:Number(grades[c.name])}))
       : undefined;
+    // Flush every queued operator edit before committing a production decision.
+    // A failed local checkpoint must not turn an unsaved form into a station record.
+    await draft.checkpoint(current=>current);
     await recordSortingStation(workflow.id,{
       station:active,passedCount:accepted,rejectedCount:Number(rejected),workerId,
       grades:decisions,
@@ -106,9 +109,15 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
         : undefined,
       notes:notes.trim()||undefined,
     });
-    if(formKey)draft.edit(old=>{
-      const entries={...old.entries};delete entries[formKey];return {...old,entries};
-    });
+    // The station is already committed. A cleanup failure is not a failed inspection.
+    if(formKey)try{
+      await draft.checkpoint(old=>{
+        const entries={...old.entries};delete entries[formKey];return {...old,entries};
+      });
+    }catch{
+      setSuccess('Результат станции сохранён, но черновик не очищен. Запись производства не потеряна.');
+      return;
+    }
     setSuccess('Результат станции сохранён. Отбракованные электроды исключены из следующего этапа.');
   });
   const finalize=()=>runAction(async()=>{
@@ -252,7 +261,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             <p className="text-xs text-slate-400">Оператор: {workerId??'не выбран'}. После записи станция блокируется от незаметного редактирования.</p>
             <LocalDraftStatus draft={draft} disabled={busy}/>
             <button className="w-full min-h-12 rounded-lg bg-blue-600 px-4 text-white font-semibold disabled:opacity-40"
-              disabled={busy||!workerId||!draft.ready||!balanced} onClick={()=>void saveStage()}>
+              disabled={busy||!workerId||!draft.ready||!!draft.error||!balanced} onClick={()=>void saveStage()}>
               Сохранить {stationName[station]}
             </button>
           </div>}
