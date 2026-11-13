@@ -293,6 +293,30 @@ export function registerStorageRoutes(app:FastifyInstance,pool:Pool) {
         difference:after.difference});
     });
   });
+  app.get('/storage/materials',async(request,reply)=>{
+    const parsed=pageSchema.safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:'invalid_material_query'});
+    const actor=await authorized(pool,request,reply,parsed.data.deviceId);
+    if(!actor)return reply;
+    const response=await pool.query(
+      'SELECT id,name,category,unit FROM storage_materials WHERE organization_id=$1 AND ($2::uuid IS NULL OR id>$2::uuid) ORDER BY id LIMIT 101',
+      [actor.organization_id,parsed.data.after??null]);
+    const page=response.rows.slice(0,100);
+    return {items:page.map(row=>({id:row.id,name:row.name,category:row.category,unit:row.unit})),
+      hasMore:response.rows.length>100,nextAfter:response.rows.length>100?page[page.length-1].id:null};
+  });
+  app.get('/storage/locations',async(request,reply)=>{
+    const parsed=pageSchema.safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:'invalid_location_query'});
+    const actor=await authorized(pool,request,reply,parsed.data.deviceId);
+    if(!actor)return reply;
+    const response=await pool.query(
+      'SELECT id,warehouse,cabinet,shelf,container FROM storage_locations WHERE organization_id=$1 AND ($2::uuid IS NULL OR id>$2::uuid) ORDER BY id LIMIT 101',
+      [actor.organization_id,parsed.data.after??null]);
+    const page=response.rows.slice(0,100);
+    return {items:page.map(row=>({id:row.id,warehouse:row.warehouse,cabinet:row.cabinet,shelf:row.shelf,container:row.container})),
+      hasMore:response.rows.length>100,nextAfter:response.rows.length>100?page[page.length-1].id:null};
+  });
   app.get('/storage/stock',async(request,reply)=>{
     const parsed=pageSchema.safeParse(request.query);
     if(!parsed.success)return reply.code(400).send({error:'invalid_stock_query'});
