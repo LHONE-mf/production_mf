@@ -25,7 +25,6 @@ export function WalzingRoom(){const actor=useAuthStore(s=>s.currentUser?.id);ret
 function WalzingRoomContent() {
   const stage = StageId.WALZING;
   const currentUser = useAuthStore((s) => s.currentUser);
-  const isMaster = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
 
@@ -201,7 +200,7 @@ function WalzingRoomContent() {
                       serialRange: r.serialRange, cellsIn: r.cellsOut,
                       fromWalzRunId: r.id, receivedAt: now, updatedAt: now,
                     };
-                    setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now(), forced: isMaster || undefined });
+                    setOutPacket({ v: 1, type: 'formation-in', stage: StageId.FORMATION, payload: fi, from: currentUser.id, ts: Date.now() });
                   }}
                     className="text-xs bg-violet-800 hover:bg-violet-700 text-white rounded px-2 py-1"
                     title="Отправить партию (с номерами АК) на формирование">⚡ На формовку ▸</button>}
