@@ -67,8 +67,12 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const typedReasons=Object.entries(reasonCounts).filter(([,v])=>v!=='');
   const validReasons=typedReasons.length===0 || (typedReasons.every(([,v])=>count(v)) &&
     typedReasons.reduce((sum,[,v])=>sum+Number(v),0)===Number(rejected));
+  const balanceTotal=accepted+(count(rejected)?Number(rejected):0);
   const balanced=!!active && count(rejected) && (gradedMass?!!validGrades:count(passed)) &&
     Number.isSafeInteger(accepted+Number(rejected)) && accepted+Number(rejected)===inputCount && validReasons;
+  const previousStation=workflow && workflow.stages.length>0
+    ? workflow.stages[workflow.stages.length-1] : undefined;
+  const canFillPassed=!!active && !gradedMass && count(rejected) && Number(rejected)<=inputCount;
   const historical=runs.find(r=>r.cutRunId===batch?.id || (!r.cutRunId && batch &&
     (r.batchName===batch.incomingId || batchSpecs.some(s=>s.id===r.specId))));
   const finalRun=runs.find(r=>workflow?.finalizedSortRunId===r.id);
@@ -200,7 +204,17 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             <p className="text-xs text-slate-400">Оператор: {saved.workerId} · {new Date(saved.recordedAt).toLocaleString('ru-RU')}</p>
             {saved.notes && <p className="text-xs text-slate-400">Примечание: {saved.notes}</p>}
           </div> : current && !draft.ready ? <div className="mt-3"><LocalDraftStatus draft={draft} disabled={busy}/></div> : current && <div className="space-y-3 mt-3">
-            <p className="text-sm text-slate-200">Передано на станцию: <strong className="text-white">{inputCount} шт</strong></p>
+            <div className="rounded-lg bg-blue-950/30 border border-blue-800/60 p-3 space-y-1">
+              <p className="text-sm text-white">На входе станции: <strong>{inputCount} шт</strong></p>
+              {previousStation && <p className="text-xs text-blue-200">
+                По журналу {stationName[previousStation.station]}: прошло {previousStation.passedCount} шт,
+                брак {previousStation.rejectedCount} шт · оператор {previousStation.workerId}.
+              </p>}
+              <p className="text-xs text-slate-400">
+                Это количество по журналу предыдущей станции, а не подтверждение физической передачи.
+                Перед записью проверьте фактически полученные электроды.
+              </p>
+            </div>
             <p className="text-xs text-slate-400">Каждый электрод оператор проверяет вручную по КД. Брак сразу удаляется из потока.</p>
             {station==='visual' && <>
               <p className="text-sm text-slate-300">Проверьте внешний вид и допустимые дефекты по утверждённой КД.</p>
@@ -236,6 +250,24 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
               <input id="sort-rejected" aria-label="Отбраковано на станции" type="number" min="0" step="1"
                 inputMode="numeric" className={inputCls} value={rejected} onChange={e=>editForm({rejected:e.target.value})} disabled={busy}/>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-white disabled:opacity-40"
+                disabled={busy||!draft.ready} onClick={()=>editForm({rejected:'0'})}>
+                Указать брак = 0
+              </button>
+              {!gradedMass && <button type="button" className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-white disabled:opacity-40"
+                disabled={busy||!draft.ready||!canFillPassed}
+                onClick={()=>editForm({passed:String(inputCount-Number(rejected))})}>
+                Подставить годные = вход − брак
+              </button>}
+              {gradedMass && <button type="button" className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-white disabled:opacity-40"
+                disabled={busy||!draft.ready} onClick={()=>editForm({
+                  grades:Object.fromEntries(gradeSpecs.map(c=>[c.name,grades[c.name]===''||grades[c.name]===undefined?'0':grades[c.name]])),
+                })}>
+                Пустые сорта = 0
+              </button>}
+            </div>
+            <p className="text-xs text-slate-400">Быстрые кнопки только заполняют поля по вашему явному действию. Решение о качестве остаётся за оператором.</p>
             {station==='visual' && defects.length>0 && <details className="rounded-lg border border-slate-700 p-3">
               <summary className="text-sm text-slate-200 cursor-pointer">Причины визуального брака (необязательно)</summary>
               <p className="text-xs text-slate-400 mt-2">Если указываете причины, сумма должна совпадать с количеством брака.</p>
@@ -254,8 +286,13 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             <div className={'rounded-lg p-3 text-sm border '+(balanced
               ?'border-emerald-700 bg-emerald-950/40 text-emerald-200'
               :'border-slate-600 bg-slate-900 text-slate-300')}>
-              Учтено: {accepted+(Number(rejected)||0)} из {inputCount} шт.
+              Учтено: {balanceTotal} из {inputCount} шт.
               {balanced?' ✓ Баланс сходится':' Укажите целые количества без пропусков; сумма должна совпасть с входом.'}
+              {!balanced && Number.isSafeInteger(balanceTotal) && balanceTotal!==inputCount && 
+                <p className={balanceTotal>inputCount?'text-rose-300':'text-amber-200'}>
+                  {balanceTotal<inputCount?'Осталось распределить: '+(inputCount-balanceTotal)+' шт':
+                    'Превышение входа: '+(balanceTotal-inputCount)+' шт'}
+                </p>}
               {!validReasons&&<p className="text-amber-200">Количество по причинам брака не совпадает с общим браком.</p>}
             </div>
             <p className="text-xs text-slate-400">Оператор: {workerId??'не выбран'}. После записи станция блокируется от незаметного редактирования.</p>
