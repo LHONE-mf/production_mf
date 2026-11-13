@@ -8,7 +8,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { db } from '../../core/db';
 import { listVisibleTasks } from '../../core/sync/visibleTasks';
-import { CoatingMixSnapshot, CoatRun, RollToTechPacket, StageId, SyncPacket, UserRole } from '../../core/types';
+import { CoatingMixSnapshot, CoatRun, RollToTechPacket, StageId, SyncPacket } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
