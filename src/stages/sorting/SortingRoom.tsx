@@ -143,6 +143,10 @@ export function SortingModule() {
           selectedBatchId={selectedBatchId}
           onSelectBatch={setSelectedBatchId}
           workerId={currentUser?.id}
+          onHandoff={(history) => {
+            if (!currentUser) return;
+            setOutPacket({v:1,type:'sort-handoff',stage:StageId.SORTING,payload:history,from:currentUser.id,ts:Date.now()});
+          }}
           onComplete={(saved) => {
             if (!currentUser) return;
             setOutPacket({v:1,type:'sort-run',stage:StageId.SORTING,payload:saved,from:currentUser.id,ts:Date.now()});
