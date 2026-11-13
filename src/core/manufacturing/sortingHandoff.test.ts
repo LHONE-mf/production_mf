@@ -73,6 +73,55 @@ it('receives immutable sequential station prefixes using the existing signed QR 
   expect((await db.sortRuns.get('mass-final'))?.buckets).toEqual(final.buckets);
 });
 
+it('accepts a final Mass report on the Visual device and closes its local workflow',async()=>{
+ const {visual}=await sample();
+ await recordSortingStation(cut.id,{station:'mass',passedCount:8,rejectedCount:1,
+   workerId:'mass-operator',grades:[{categoryName:'A',count:5},{categoryName:'B',count:3}]});
+ const final=await completeSortingWorkflow(cut.id,'final-from-mass');
+ // Return to the Visual operator's device: only its own saved station exists.
+ await db.sortRuns.clear();
+ await db.sortingWorkflows.put(visual);
+ const report={...handoff(final),type:'sort-run' as const,from:'mass-operator'};
+ const signed=decodePacket(await encodePacket(report))!;
+ expect((await applyPacket(signed)).ok).toBe(true);
+ expect((await db.sortRuns.get(final.id))?.buckets).toEqual(final.buckets);
+ const reconciled=await db.sortingWorkflows.get(cut.id);
+ expect(reconciled).toEqual(final.sortingWorkflow);
+ expect(reconciled?.finalizedSortRunId).toBe(final.id);
+ expect((await applyPacket(signed)).ok).toBe(true);
+ expect(await db.sortRuns.count()).toBe(1);
+ await expect(recordSortingStation(cut.id,{station:'thickness',passedCount:9,
+   rejectedCount:2,workerId:'another'})).rejects.toThrow();
+});
+
+it('rejects contradictory Mass reports and rolls back both stores atomically',async()=>{
+ const {visual}=await sample();
+ await recordSortingStation(cut.id,{station:'mass',passedCount:8,rejectedCount:1,
+   workerId:'mass-operator',grades:[{categoryName:'A',count:5},{categoryName:'B',count:3}]});
+ const final=await completeSortingWorkflow(cut.id,'final-from-mass');
+ await db.sortRuns.clear();
+ await db.sortingWorkflows.put(visual);
+ const conflicting={...visual,stages:[{...visual.stages[0],passedCount:10,rejectedCount:2}]};
+ // A different valid local decision must not be replaced by the report.
+ await db.sortingWorkflows.put(conflicting);
+ const packet=decodePacket(await encodePacket({...handoff(final),type:'sort-run' as const}))!;
+ const rejected=await applyPacket(packet);
+ expect(rejected.ok).toBe(false);
+ expect(await db.sortRuns.count()).toBe(0);
+ expect(await db.sortingWorkflows.get(cut.id)).toEqual(conflicting);
+ await db.sortingWorkflows.put(visual);
+ const fail=()=>{throw Error('local-workflow-write-failed');};
+ db.sortingWorkflows.hook('updating',fail);
+ try{
+  const rollback=await applyPacket(packet);
+  expect(rollback.ok).toBe(false);
+  expect(rollback.message).toContain('local-workflow-write-failed');
+ }finally{db.sortingWorkflows.hook('updating').unsubscribe(fail);}
+ expect(await db.sortRuns.count()).toBe(0);
+ expect(await db.sortingWorkflows.get(cut.id)).toEqual(visual);
+ expect((await applyPacket(packet)).ok).toBe(true);
+});
+
 it('never replaces a divergent local inspection or a finished local history',async()=>{
   const {visual,thickness}=await sample();
   const mismatched={...visual,stages:[{...visual.stages[0],passedCount:10,rejectedCount:2}]};
