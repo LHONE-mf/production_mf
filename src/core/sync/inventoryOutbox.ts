@@ -1,5 +1,6 @@
 import Dexie, {type Table} from 'dexie';
 import type {HybridSession} from './hybridClient';
+import type {QueuedInventoryStockChange} from './inventoryStockOutbox';
 
 /**
  * Independent, opt-in inventory queue. Existing local Storage history and the
@@ -44,12 +45,17 @@ export class InventoryOutboxDatabase extends Dexie {
   operations!: Table<QueuedInventoryReceipt,string>;
   stocks!: Table<ConfirmedInventoryStock,[string,string]>;
   metadata!: Table<InventorySyncMetadata,string>;
+  stockOperations!: Table<QueuedInventoryStockChange,string>;
   constructor(){
     super('ProductionMfInventoryOutbox');
     this.version(1).stores({
       operations:'operationId,scopeKey,state,queuedAt',
       stocks:'[scopeKey+stockId],scopeKey',
       metadata:'key',
+    });
+    // Additive migration: existing receipts, confirmed stocks and cursor stay intact.
+    this.version(2).stores({
+      stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',
     });
   }
 }
