@@ -481,7 +481,7 @@ function JournalTab({
                 </div>
                 <p className="text-xs text-slate-300">2. Проверьте записываемые наблюдения. Не является подтверждением QA или физической приёмки следующим участком.</p>
                 <div className="flex gap-2 flex-wrap">
-                  <button disabled={busy} onClick={() => void save(r) className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
+                  <button disabled={busy} onClick={() => void save(r)} className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white">💾 Сохранить результат</button>
                   <button disabled={busy} onClick={() => void save(r,true)} className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 rounded text-xs text-white">
                     Сохранить и передать результат (без задания)
                   </button>
