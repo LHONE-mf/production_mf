@@ -129,7 +129,7 @@ export function CalendaringModule() {
               v: 1, type: 'calender-result', stage: StageId.CALENDARING,
               payload: run, from: currentUser!.id, ts: Date.now(),
             });
-          }
+          }}
         />
       )}
 
