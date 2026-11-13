@@ -67,8 +67,8 @@ CREATE TABLE IF NOT EXISTS inventory_reservations (
 CREATE INDEX IF NOT EXISTS inventory_reservations_by_stock
   ON inventory_reservations(organization_id,stock_id);
 
--- Append-only operation ledger; no trigger or API currently writes to it.
--- A later service must commit ledger + balances + sync acknowledgement in one
+-- Append-only operation ledger for idempotent server-confirmed receipts.
+-- The service must commit ledger + balances + acknowledgement in one
 -- PostgreSQL transaction. operation_id must never be reused for a new intent.
 CREATE TABLE IF NOT EXISTS inventory_operations (
   operation_id uuid PRIMARY KEY,
@@ -83,6 +83,9 @@ CREATE TABLE IF NOT EXISTS inventory_operations (
   resulting_revision integer NOT NULL CHECK (resulting_revision > 0),
   reason text NOT NULL CHECK (length(trim(reason))>0),
   production_batch_id uuid,
+  -- Canonical JSONB intent and immutable response snapshot for exact retries.
+  request_payload jsonb NOT NULL,
+  result_stock jsonb NOT NULL,
   from_location_id uuid,
   to_location_id uuid,
   recorded_at timestamptz NOT NULL DEFAULT now(),
@@ -90,7 +93,43 @@ CREATE TABLE IF NOT EXISTS inventory_operations (
   FOREIGN KEY (organization_id,actor_id) REFERENCES users(organization_id,id),
   FOREIGN KEY (organization_id,device_id) REFERENCES devices(organization_id,id)
 );
+-- Explicit access without widening the existing user role hierarchy.
+-- Until the chief assigns access, only the chief can use inventory endpoints.
+CREATE TABLE IF NOT EXISTS inventory_access (
+  organization_id uuid NOT NULL REFERENCES organizations(id),
+  user_id uuid NOT NULL,
+  level text NOT NULL CHECK (level IN ('operator','manager')),
+  granted_by uuid NOT NULL,
+  granted_at timestamptz NOT NULL DEFAULT now(),
+  active boolean NOT NULL DEFAULT true,
+  PRIMARY KEY (organization_id,user_id),
+  FOREIGN KEY (organization_id,user_id) REFERENCES users(organization_id,id),
+  FOREIGN KEY (organization_id,granted_by) REFERENCES users(organization_id,id)
+);
+CREATE TABLE IF NOT EXISTS inventory_access_events (
+  id uuid PRIMARY KEY,
+  organization_id uuid NOT NULL REFERENCES organizations(id),
+  user_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  level text NOT NULL CHECK (level IN ('operator','manager')),
+  action text NOT NULL CHECK (action IN ('grant','revoke')),
+  recorded_at timestamptz NOT NULL DEFAULT now(),
+  FOREIGN KEY (organization_id,user_id) REFERENCES users(organization_id,id),
+  FOREIGN KEY (organization_id,actor_id) REFERENCES users(organization_id,id)
+);
 CREATE INDEX IF NOT EXISTS inventory_operations_by_stock
   ON inventory_operations(organization_id,stock_id,recorded_at,operation_id);
+
+-- Never alter accepted operation history. Correct stock through new events.
+CREATE OR REPLACE FUNCTION forbid_inventory_operation_rewrite()
+RETURNS trigger LANGUAGE plpgsql AS $ BEGIN
+  RAISE EXCEPTION 'inventory operation history is immutable';
+END $;
+DROP TRIGGER IF EXISTS inventory_operation_immutable ON inventory_operations;
+CREATE TRIGGER inventory_operation_immutable BEFORE UPDATE OR DELETE
+  ON inventory_operations FOR EACH ROW EXECUTE FUNCTION forbid_inventory_operation_rewrite();
+DROP TRIGGER IF EXISTS inventory_access_event_immutable ON inventory_access_events;
+CREATE TRIGGER inventory_access_event_immutable BEFORE UPDATE OR DELETE
+  ON inventory_access_events FOR EACH ROW EXECUTE FUNCTION forbid_inventory_operation_rewrite();
 
 COMMIT;
