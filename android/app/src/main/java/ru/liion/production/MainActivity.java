@@ -23,35 +23,38 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BleBridgePlugin.class);
         registerPlugin(DeviceProofPlugin.class);
         super.onCreate(savedInstanceState);
-        // Android 15+ (and Android 16+) displays target-35 apps edge-to-edge.
-        // Make this behavior consistent on older Android versions too, and
-        // inset the native *container*, not the WebView's own drawing surface.
-        // WebView padding alone does not reliably move HTML below the status bar.
+        // Android 15+ enforces edge-to-edge for target SDK 35+. Inset the
+        // native content *container*, rather than the WebView drawing surface.
+        // On older Android versions keep the existing platform-managed layout.
         Window window = getWindow();
-        WindowCompat.setDecorFitsSystemWindows(window, false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
-            window.setStatusBarContrastEnforced(false);
-            window.setNavigationBarContrastEnforced(false);
+        if (android.os.Build.VERSION.SDK_INT >= 35) {
+            WindowCompat.setDecorFitsSystemWindows(window, false);
+            window.setStatusBarColor(Color.TRANSPARENT);
+            window.setNavigationBarColor(Color.TRANSPARENT);
+
+            // The transparent system bars show this dark background, while
+            // the WebView itself is laid out safely between the system bars.
+            final ViewGroup contentRoot = findViewById(android.R.id.content);
+            contentRoot.setBackgroundColor(Color.rgb(30, 41, 59));
+            ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (view, insets) -> {
+                Insets safe = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                        | WindowInsetsCompat.Type.displayCutout());
+                view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
+                return insets; // Preserve IME insets for WebView keyboard behavior.
+            });
+            ViewCompat.requestApplyInsets(contentRoot);
+        } else {
+            window.setStatusBarColor(Color.rgb(30, 41, 59));
+            window.setNavigationBarColor(Color.rgb(15, 23, 42));
         }
         WindowCompat.getInsetsController(window, window.getDecorView())
                 .setAppearanceLightStatusBars(false);
         WindowCompat.getInsetsController(window, window.getDecorView())
                 .setAppearanceLightNavigationBars(false);
-
-        // The content view occupies the full window. Its padding creates
-        // a safe, measurable layout area for all web screens and overlays.
-        // Keep the padding updated on rotation, gesture-mode changes, etc.
-        final ViewGroup contentRoot = findViewById(android.R.id.content);
-        contentRoot.setBackgroundColor(Color.rgb(30, 41, 59));
-        ViewCompat.setOnApplyWindowInsetsListener(contentRoot, (view, insets) -> {
-            Insets safe = insets.getInsets(WindowInsetsCompat.Type.systemBars()
-                    | WindowInsetsCompat.Type.displayCutout());
-            view.setPadding(safe.left, safe.top, safe.right, safe.bottom);
-            return insets;
-        });
-        ViewCompat.requestApplyInsets(contentRoot);
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
