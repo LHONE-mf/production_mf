@@ -50,6 +50,10 @@ describe('authoritative inventory transition contract',()=>{
     expect(transitionInventory(released,action('release_reservation',{productionBatchId:'batch-1'})))
       .toMatchObject({ok:false,code:'insufficient_stock'});
     expect(transitionInventory({...released,reserved:600_000},action('release_reservation',{productionBatchId:'batch-1'})))
+      .toMatchObject({ok:false,code:'blocked'});
+    expect(transitionInventory({...released,reserved:600_000},action('release_reservation',{productionBatchId:'batch-1'}),{mayAdjust:false,ownedReservation:100_000}))
+      .toMatchObject({ok:false,code:'blocked'});
+    expect(transitionInventory({...released,reserved:600_000},action('release_reservation',{productionBatchId:'batch-1'}),{mayAdjust:false,ownedReservation:600_000}))
       .toMatchObject({ok:true,available:1_900_000});
   });
   it('requires controlled server approval and never adjusts below reserved balance',()=>{
