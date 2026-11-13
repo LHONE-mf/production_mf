@@ -4,6 +4,8 @@ import {validateSortPartition} from './sortingAllocation';
 export function validateAssemblyIntake(run:AssemblyRun):void {
  if(!run?.intake||!run.sourceSort)throw new Error('Источник приёмки не указан');
  validateSortPartition(run.sourceSort);
+ if(run.sourceSort.sortingWorkflow?.mode==='grading')
+  throw new Error('Градации по массе нельзя объединять в одну партию сборки: требуется приёмка с указанием конкретного сорта и количества');
  const count=run.sourceSort.buckets.reduce((n,b)=>n+b.count,0);
  if(typeof run.id!=='string'||!run.id||typeof run.intake.recordedAt!=='string'||typeof run.intake.recordedBy!=='string'||!run.intake.recordedBy.trim()||run.workerId!==run.intake.recordedBy||run.createdAt!==run.intake.recordedAt||run.updatedAt!==run.createdAt||!Number.isFinite(new Date(run.intake.recordedAt).getTime())||
   !Array.isArray(run.defects)||run.defects.length>0||run.electrodesPerCell!==undefined||run.coatingType!==run.sourceSort.specSnapshot?.coatingType||run.cellType!=='unassigned'||run.electrodeType!==run.sourceSort.specSnapshot?.electrodeType||run.intake.sortRunId!==run.sourceSort.id||!run.sourceSort.cutRunId||!run.sourceSort.specSnapshot||
