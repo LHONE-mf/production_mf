@@ -5,7 +5,7 @@ import {setWorkshopKey,signPacket} from '../security';
 import {applyPacket} from '../../transfer/apply';
 import {decodePacket,encodePacket} from '../../transfer/packet';
 import {receiveSortingHandoff} from './sortingHandoff';
-import {startSortingWorkflow,recordSortingStation} from './sortingWorkflow';
+import {startSortingWorkflow,recordSortingStation,completeSortingWorkflow} from './sortingWorkflow';
 
 const cut:CutRun={id:'cut-handoff',incomingId:'coil-1',electrodeType:'strip',
   goodCount:12,defectCount:0,workerId:'cutter',createdAt:1,updatedAt:1};
@@ -58,6 +58,19 @@ it('receives immutable sequential station prefixes using the existing signed QR 
     workerId:'mass-operator',grades:[{categoryName:'A',count:5},{categoryName:'B',count:3}]});
   expect((await db.sortingWorkflows.get(cut.id))?.stages.map(s=>s.inputCount)).toEqual([12,11,9]);
   expect(await db.sortRuns.count()).toBe(0); // no silent final report
+  const final=await completeSortingWorkflow(cut.id,'mass-final');
+  expect(final).toMatchObject({rejected:4,buckets:[
+    {categoryName:'A',count:5},{categoryName:'B',count:3},
+  ],sortingWorkflow:{mode:'grading'}});
+  // A reporting device receives the completed immutable sort-run, not another
+  // editable copy of the already completed Mass workflow.
+  await db.sortRuns.clear();
+  await db.sortingWorkflows.clear();
+  const report={...handoff(final),type:'sort-run' as const,from:'mass-operator'};
+  const receipt=await applyPacket(decodePacket(await encodePacket(report))!);
+  expect(receipt.ok).toBe(true);
+  expect((await db.sortRuns.get('mass-final'))?.sortingWorkflow?.stages).toHaveLength(3);
+  expect((await db.sortRuns.get('mass-final'))?.buckets).toEqual(final.buckets);
 });
 
 it('never replaces a divergent local inspection or a finished local history',async()=>{
