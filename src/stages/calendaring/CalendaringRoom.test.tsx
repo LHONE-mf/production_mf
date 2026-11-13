@@ -46,7 +46,7 @@ it('starts with no sample machine settings and compares only the attributed dry 
   await act(async()=>{Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(target,'80');target.dispatchEvent(new Event('input',{bubbles:true}));});
   expect(node.textContent).toContain('Плановое уменьшение полной толщины: ~20%');
   expect(node.textContent).toContain('не фактическое обжатие');
-  const save=[...node.querySelectorAll('button')].find(button=>button.textContent?.includes('Назначить и отправить'))!;
+  const save=[...node.querySelectorAll('button')].find(button=>button.textContent?.includes('Сохранить параметры локально'))!;
   expect(save.disabled).toBe(true);
   const heating=node.querySelector<HTMLSelectElement>('[aria-label="Назначение нагрева валков"]')!;
   await act(async()=>{heating.value='no';heating.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -57,6 +57,8 @@ it('starts with no sample machine settings and compares only the attributed dry 
     targetThicknessUm:80,targetThicknessBasis:'dry-electrode-including-foil',heating:false,
   });
   expect((await db.calenderRuns.get('measured'))?.params?.pressureTons).toBeUndefined();
+  await vi.waitFor(()=>expect(node!.textContent).toContain('Параметры сохранены локально'));
+  expect(node!.querySelector('[data-testid="packet"]')).toBeNull();
 });
 
 it('retains untouched result fields when editing one measured value',async()=>{
