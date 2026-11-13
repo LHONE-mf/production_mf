@@ -97,3 +97,32 @@ it('offers a separate explicit cutting instruction rather than guessing a strip 
   await act(async()=>{root!.render(<CalendaringModule/>);});
   expect([...node.querySelectorAll('button')].some(b=>b.textContent==='✂️ Задание на нарезку')).toBe(true);
 });
+
+it('presents a touch-sized room workflow and separates assigned targets from measured results',async()=>{
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+  useAuthStore.setState({currentUser:{id:'tech',login:'tech',fullName:'Technologist',password:'test-only',
+    role:UserRole.TECHNOLOGIST,isActive:true,createdAt:new Date()}});
+  await db.rollSpecs.add({id:'roll-ui',mixName:'UI workflow roll',segLengthsM:[10],createdAt:1});
+  await db.calenderRuns.add({id:'roll-ui',rollId:'roll-ui',gapsMm:[],hasDefects:false,
+    params:{targetThicknessBasis:'dry-electrode-including-foil',targetThicknessUm:100,heating:false,edgeTrim:false},
+    workerId:'tech',createdAt:1,updatedAt:1});
+  node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+  await act(async()=>{root!.render(<CalendaringModule/>);});
+  await vi.waitFor(()=>expect(node!.textContent).toContain('UI workflow roll'));
+  expect(node!.textContent).toContain('Локальная запись · офлайн');
+  const tabs=node!.querySelector('nav[aria-label="Разделы каландрирования"]')!;
+  expect(tabs).not.toBeNull();
+  expect([...tabs.querySelectorAll('button')].every(b=>b.className.includes('min-h-11'))).toBe(true);
+  await act(async()=>{[...tabs.querySelectorAll('button')].find(b=>b.textContent?.includes('Параметры прокатки'))!.click();});
+  expect(node!.querySelector('[aria-label="Источник и замер до прокатки"]')).not.toBeNull();
+  expect(node!.querySelector('[aria-label="Назначенные параметры прокатки"]')).not.toBeNull();
+  expect(node!.textContent).toContain('Плановое сравнение');
+  await act(async()=>{[...tabs.querySelectorAll('button')].find(b=>b.textContent?.includes('Журнал прокатки'))!.click();});
+  await act(async()=>{[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes('UI workflow roll'))!.click();});
+  const actual=node!.querySelector('[aria-label="Фактические измерения прокатки"]')!;
+  expect(actual).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Измеренная длина, м"]')).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Измеренная толщина после, мкм"]')).not.toBeNull();
+  expect(actual.querySelector('[aria-label="Целевая полная толщина, мкм"]')).toBeNull();
+  expect(node!.textContent).toContain('Не является подтверждением QA');
+});
