@@ -119,6 +119,28 @@ integration('Storage authoritative receipt API (disposable PostgreSQL)',()=>{
     expect(recorded.rows[0].n).toBe(1);
   });
 
+  it('replicates only confirmed receipts with stable cursors to two authorized devices',async()=>{
+    const url='/inventory/changes?deviceId='+workerDevice+'&cursor=0&limit=1';
+    const workerFeed=await get(url,workerToken,workerProof);
+    expect(workerFeed.statusCode,workerFeed.body).toBe(200);
+    expect(workerFeed.json().changes).toHaveLength(1);
+    expect(workerFeed.json().changes[0]).toMatchObject({
+      kind:'receive',stock:{quality:'quarantine',revision:1,onHand:2_125_000},
+    });
+    const cursor=workerFeed.json().nextCursor as number;
+    expect(Number.isSafeInteger(cursor)).toBe(true);
+    const chiefFeed=await get('/inventory/changes?deviceId='+deviceId+'&cursor=0&limit=1');
+    expect(chiefFeed.statusCode,chiefFeed.body).toBe(200);
+    expect(chiefFeed.json().changes).toEqual(workerFeed.json().changes);
+    const replay=await get('/inventory/changes?deviceId='+workerDevice+'&cursor='+cursor,
+      workerToken,workerProof);
+    expect(replay.statusCode,replay.body).toBe(200);
+    expect(replay.json()).toMatchObject({changes:[],nextCursor:cursor,hasMore:false});
+    const future=await get('/inventory/changes?deviceId='+workerDevice+'&cursor='+(cursor+10000),
+      workerToken,workerProof);
+    expect(future.statusCode).toBe(409);
+  });
+
   it('rejects missing catalog identities and invalid stock quantities without ledger writes',async()=>{
     const invalid=receipt();
     for(const quantity of [-1,0,0.5,1e18]) {
