@@ -16,6 +16,7 @@ const params=z.object({
  from:z.iso.date().optional(),through:z.iso.date().optional(),
 }).strict();
 function count(raw:unknown):number{
+ if(raw===null||raw===undefined||raw==='')throw Error('invalid_inventory_report_sequence');
  const n=Number(raw);
  if(!Number.isSafeInteger(n)||n<0)throw Error('invalid_inventory_report_sequence');
  return n;
@@ -41,6 +42,8 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
      const result=await client.query(`SELECT o.sequence,o.operation_id,o.stock_id,o.kind,
        o.quantity,o.recorded_at,o.actor_id,o.device_id,o.reason,o.production_batch_id,
        o.from_location_id,o.to_location_id,
+       o.result_stock->>'onHand' AS on_hand_after,
+       o.result_stock->>'reserved' AS reserved_after,
        s.material_id,o.result_stock->>'manufacturerLot' AS manufacturer_lot,
        o.result_stock->>'locationId' AS location_id,
        m.material_code,m.display_name,m.base_unit
@@ -63,6 +66,7 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
      const items=slice.map(row=>({
        sequence:count(row.sequence),operationId:String(row.operation_id),
        stockId:String(row.stock_id),kind:String(row.kind),quantity:count(row.quantity),
+       onHandAfter:count(row.on_hand_after),reservedAfter:count(row.reserved_after),
        recordedAt:new Date(row.recorded_at).toISOString(),
        actorId:String(row.actor_id),deviceId:String(row.device_id),
        reason:String(row.reason),productionBatchId:row.production_batch_id??null,

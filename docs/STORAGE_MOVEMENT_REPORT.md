@@ -76,3 +76,14 @@ newer inventory history after a restore. This metadata is not an authorization
 token, and exports still omit credentials and unconfirmed local observations.
 The client rejects impossible UTC calendar dates (including invalid leap days)
 before requesting a movement report; the existing backend validation remains.
+
+## Auditable balance after each event
+
+The verified movement report and CSV now show the accepted **on-hand** and
+**reserved** balances immediately after the event, taken from that event's
+immutable `result_stock` snapshot, not the current warehouse balance. This
+is important because operation quantities are unsigned: a correction, transfer,
+reservation or QA decision must not be misread as a positive stock receipt.
+All rows remain proof-bound, organization-scoped and frozen to their report
+history/cursor; no stock mutation, schema change or local-history import occurs.
+Invalid or missing accepted balance snapshots reject the server response.

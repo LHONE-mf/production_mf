@@ -12,14 +12,14 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable invento
   const first=await get({stockId:id,limit:'1'});
   expect(first.statusCode,first.body).toBe(200);
   expect(first.json()).toMatchObject({epoch:f.epoch,hasMore:true,items:[{
-   stockId:id,kind:'receive',quantity:1000,materialCode:expect.any(String),
+   stockId:id,kind:'receive',quantity:1000,onHandAfter:1000,reservedAfter:0,materialCode:expect.any(String),
    materialName:'Synthetic issue powder',unit:'mg',
   }]});
   const {nextAfter,throughSequence}=first.json();
   expect(Number.isSafeInteger(nextAfter)).toBe(true);
   const second=await get({stockId:id,limit:'1',after:String(nextAfter),until:String(throughSequence)});
   expect(second.statusCode,second.body).toBe(200);
-  expect(second.json()).toMatchObject({hasMore:false,throughSequence,items:[{kind:'quality_change',stockId:id,quantity:0}]});
+  expect(second.json()).toMatchObject({hasMore:false,throughSequence,items:[{kind:'quality_change',stockId:id,quantity:0,onHandAfter:1000,reservedAfter:0}]});
   const count=(await f.pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[f.org])).rows[0].n;
   await f.stock();
   const held=await get({until:String(throughSequence),after:String(nextAfter)});
@@ -56,6 +56,8 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable invento
   expect(updated.statusCode,updated.body).toBe(200);
   expect(updated.json().items.map((r:{kind:string;locationId:string})=>[r.kind,r.locationId]))
     .toEqual([['receive',f.location],['quality_change',f.location],['transfer',destination]]);
+  expect(updated.json().items.map((r:{onHandAfter:number;reservedAfter:number})=>[r.onHandAfter,r.reservedAfter]))
+    .toEqual([[1000,0],[1000,0],[1000,0]]);
   expect(updated.json().items[2]).toMatchObject({kind:'transfer',
     fromLocationId:f.location,toLocationId:destination,locationId:destination});
   expect(updated.json().items[0]).toMatchObject({kind:'receive',

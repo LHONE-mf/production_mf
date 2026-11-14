@@ -4,7 +4,7 @@ const id='11000000-0000-4000-8000-000000000001';
 describe('inventory movement CSV',()=>{
  it('escapes leading spreadsheet formulas and multiline source descriptions',()=>{
   const p:MovementPage={epoch:id,throughSequence:3,hasMore:false,nextAfter:3,items:[{
-   sequence:3,operationId:id,stockId:id,kind:'receive',quantity:100,recordedAt:'2026-11-14T00:00:00.000Z',
+   sequence:3,operationId:id,stockId:id,kind:'receive',quantity:100,onHandAfter:100,reservedAfter:0,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'=RUN(1)\nquoted "note"',productionBatchId:null,
    materialId:id,materialCode:'-INPUT',materialName:' @SUM(1,2)',manufacturerLot:'"LOT,7"',
    locationId:id,fromLocationId:null,toLocationId:null,unit:'mg',
@@ -14,7 +14,8 @@ describe('inventory movement CSV',()=>{
   expect(csv).toContain('"\' @SUM(1,2)"');
   expect(csv).toContain('"\'=RUN(1)\nquoted ""note"""');
   expect(csv).toContain('"""LOT,7"""');
-  expect(csv).toContain('"100","mg"');
+  expect(csv).toContain('"100","mg","100","0"');
+  expect(csv).toContain('"On hand after event","Reserved after event"');
   expect(csv).toContain('"History ID","Through ledger sequence","Sequence"');
   expect(csv).toContain(`"${id}","3","3","2026-11-14T00:00:00.000Z"`);
   expect(csv).toContain('"Source location ID"');
@@ -31,7 +32,7 @@ describe('bounded immutable movement export',()=>{
  const empty=(epoch:string,until:number,after:number,rows:number[],more:boolean):MovementPage=>({
   epoch,throughSequence:until,hasMore:more,nextAfter:rows.length?rows[rows.length-1]:after,
   items:rows.map(sequence=>({sequence,operationId:id,stockId:id,kind:'receive',
-   quantity:1,recordedAt:'2026-11-14T00:00:00.000Z',
+   quantity:1,onHandAfter:1,reservedAfter:0,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'CI',productionBatchId:null,
    materialId:null,materialCode:null,materialName:null,manufacturerLot:null,
    locationId:null,fromLocationId:null,toLocationId:null,unit:null})),

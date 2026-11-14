@@ -80,7 +80,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
  }
  return <details className="rounded border border-slate-600 p-3" aria-label="Журнал движений склада">
   <summary className="min-h-11 cursor-pointer py-2">История движений · подтверждённый серверный журнал</summary>
-  <p>Журнал не включает локальные черновики, наблюдения без подтверждения, а также ещё не реализованный фактический расход в Slurry. Выдача и расход — разные события.</p>
+  <p>Журнал не включает локальные черновики, наблюдения без подтверждения, а также ещё не реализованный фактический расход в Slurry. Выдача и расход — разные события. Количество операции показано без знака: это не изменение физического остатка. Для проверки используйте остаток после события.</p>
   <div className="grid gap-2 sm:grid-cols-2">
    <label>Материал<select className={cls} value={draft.materialId} aria-label="Фильтр журнала по материалу" onChange={e=>edit('materialId',e.target.value)}>
     <option value="">Все материалы</option>
@@ -103,7 +103,8 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
    {page.items.map(item=><div role="group" aria-label={'Операция склада '+item.operationId} key={item.sequence} className="rounded border border-slate-600 p-2">
     <p>№ {item.sequence} · {new Date(item.recordedAt).toLocaleString('ru-RU')} · {item.kind}</p>
     <p>{item.materialName??'Материал не указан'} · {item.materialCode??''} · {item.manufacturerLot??''}</p>
-    <p>Контейнер {item.stockId} · {item.quantity} {item.unit??'ед.'} · партия производства {item.productionBatchId??'не указана'}</p>
+    <p>Контейнер {item.stockId} · Количество операции (без знака): {item.quantity} {item.unit??'ед.'} · партия производства {item.productionBatchId??'не указана'}</p>
+    <p>Подтверждённый остаток сразу после события: {item.onHandAfter} {item.unit??'ед.'}; из него зарезервировано: {item.reservedAfter} {item.unit??'ед.'}. Это исторические значения, не текущий остаток.</p>
     <p>Место после операции: {item.locationId??'не записано'}{item.kind==='transfer'&&<> · Исходное место: {item.fromLocationId??'не записано'} · Назначение: {item.toLocationId??'не записано'}</>}</p>
     <p>Основание: {item.reason} · Автор: {item.actorId}</p>
    </div>)}

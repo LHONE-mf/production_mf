@@ -4,7 +4,7 @@ import type {InventoryScope} from './inventoryOutbox';
 
 export interface MovementRow {
  sequence:number;operationId:string;stockId:string;kind:string;
- quantity:number;recordedAt:string;actorId:string;deviceId:string;
+ quantity:number;onHandAfter:number;reservedAfter:number;recordedAt:string;actorId:string;deviceId:string;
  reason:string;productionBatchId:string|null;materialId:string|null;
  materialCode:string|null;materialName:string|null;manufacturerLot:string|null;
  locationId:string|null;fromLocationId:string|null;toLocationId:string|null;unit:string|null;
@@ -41,7 +41,8 @@ function validateMovementPage(value:unknown,epoch:string,after:number,until:numb
   if(!record(raw)||!safe(raw.sequence)||raw.sequence<=previous||
      raw.sequence>value.throughSequence||!uuid.test(String(raw.operationId))||
      !uuid.test(String(raw.stockId))||typeof raw.kind!=='string'||!kind.test(raw.kind)||
-     !safe(raw.quantity)||typeof raw.recordedAt!=='string'||
+     !safe(raw.quantity)||!safe(raw.onHandAfter)||!safe(raw.reservedAfter)||
+     raw.reservedAfter>raw.onHandAfter||typeof raw.recordedAt!=='string'||
      !Number.isFinite(Date.parse(raw.recordedAt))||
      new Date(raw.recordedAt).toISOString()!==raw.recordedAt||
      !uuid.test(String(raw.actorId))||!uuid.test(String(raw.deviceId))||
@@ -120,12 +121,14 @@ export function inventoryMovementsCsv(page:MovementPage):string{
  };
  const lines=[
   ['History ID','Through ledger sequence','Sequence','Recorded UTC','Operation ID','Kind','Container ID','Material code',
-   'Material name','Manufacturer lot','Quantity','Unit','Location after event',
+   'Material name','Manufacturer lot','Operation quantity (unsigned)','Unit',
+   'On hand after event','Reserved after event','Location after event',
    'Source location ID','Destination location ID','Batch ID',
    'Actor ID','Device ID','Reason'],
   ...page.items.map(r=>[
    page.epoch,page.throughSequence,r.sequence,r.recordedAt,r.operationId,r.kind,r.stockId,r.materialCode,
-   r.materialName,r.manufacturerLot,r.quantity,r.unit,r.locationId,
+   r.materialName,r.manufacturerLot,r.quantity,r.unit,
+   r.onHandAfter,r.reservedAfter,r.locationId,
    r.fromLocationId,r.toLocationId,r.productionBatchId,r.actorId,r.deviceId,r.reason,
   ]),
  ];
