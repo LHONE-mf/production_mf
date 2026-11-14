@@ -119,6 +119,7 @@ try{
  await p.getByText('Сводка по материалам · физический и пригодный остаток',{exact:true}).click();
  // Actual PostgreSQL ledger history and safe CSV, exercised in the real browser.
  await p.getByText('История движений · подтверждённый серверный журнал',{exact:true}).click();
+ await p.getByLabel('Фильтр по историческому месту',{exact:true}).fill(locations[3]);
  await p.getByRole('button',{name:'Показать журнал',exact:true}).click();
  const movementRegion=p.getByRole('region',{name:'Результат журнала движений',exact:true});
  await movementRegion.getByText(/receive/).first().waitFor();
@@ -136,6 +137,10 @@ try{
  const fullCsv=await readFile(completeFile,'utf8');
  assert(fullCsv.includes('PVDF')&&fullCsv.includes('receive'));
  assert(!fullCsv.includes(actors[0].token)&&!fullCsv.includes(actors[0].proof));
+ await p.getByLabel('Фильтр по историческому месту',{exact:true}).fill(destination);
+ await p.getByRole('button',{name:'Показать журнал',exact:true}).click();
+ await movementRegion.getByText('Записей в выбранной области нет.',{exact:true}).waitFor();
+ await p.getByLabel('Фильтр по историческому месту',{exact:true}).fill('');
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[org])).rows[0].n,1,'Report changed accepted ledger');
  await p.screenshot({path:artifact+'/stock-movements-mobile.png',fullPage:true});
  await p.getByText('История движений · подтверждённый серверный журнал',{exact:true}).click();

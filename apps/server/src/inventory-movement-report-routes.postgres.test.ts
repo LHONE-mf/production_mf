@@ -62,6 +62,16 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable invento
     fromLocationId:f.location,toLocationId:destination,locationId:destination});
   expect(updated.json().items[0]).toMatchObject({kind:'receive',
     fromLocationId:null,toLocationId:null,locationId:f.location});
+  const origin=await get({stockId:id,locationId:f.location});
+  expect(origin.statusCode,origin.body).toBe(200);
+  expect(origin.json().items.map((r:{kind:string})=>r.kind)).toEqual(['receive','quality_change']);
+  const moved=await get({stockId:id,locationId:destination});
+  expect(moved.statusCode,moved.body).toBe(200);
+  expect(moved.json().items.map((r:{kind:string})=>r.kind)).toEqual(['transfer']);
+  const frozenDestination=await get({stockId:id,locationId:destination,until:frozenUntil});
+  expect(frozenDestination.statusCode,frozenDestination.body).toBe(200);
+  expect(frozenDestination.json().items).toEqual([]);
+  expect((await get({locationId:'not-a-location'})).statusCode).toBe(400);
  });
  it('filters by original server-ledger kind, material and UTC date; rejects impossible bounds',async()=>{
   const id=await f.stock();

@@ -87,3 +87,20 @@ reservation or QA decision must not be misread as a positive stock receipt.
 All rows remain proof-bound, organization-scoped and frozen to their report
 history/cursor; no stock mutation, schema change or local-history import occurs.
 Invalid or missing accepted balance snapshots reject the server response.
+
+## Historical location filter
+
+`locationId` filters the exact **location after each event** from its immutable
+`result_stock`, independently of the current stock projection. The screen labels
+it “Место после события (UUID)”. This is an exact location, without subtree
+expansion; a transfer appears under its recorded destination. Its source remains
+visible in the separate source-location column. Earlier receiving/QA events stay
+under their original location after a later transfer. The filter is carried into
+all pages and both CSV exports using the same frozen ledger upper cursor.
+Malformed UUIDs fail before the client request and at the server boundary.
+
+The actual PostgreSQL receive/QA/transfer regression checks original/destination
+and frozen pre-transfer views. Real mobile browser tests use the control for a
+matching and an empty location and download both scoped exports; the native
+WebView harness checks both states with a current device proof. No migration,
+stock write or reinterpretation of old history is involved.

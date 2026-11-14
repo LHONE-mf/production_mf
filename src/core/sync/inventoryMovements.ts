@@ -13,7 +13,7 @@ export interface MovementPage {
  epoch:string;throughSequence:number;items:MovementRow[];hasMore:boolean;nextAfter:number;
 }
 export interface MovementFilters {
- stockId?:string;materialId?:string;productionBatchId?:string;actorId?:string;
+ stockId?:string;materialId?:string;locationId?:string;productionBatchId?:string;actorId?:string;
  kind?:string;from?:string;through?:string;manufacturerLot?:string;
 }
 export type MovementOptions=MovementFilters&{after?:number;until?:number;limit?:number};
@@ -64,7 +64,7 @@ function validateMovementPage(value:unknown,epoch:string,after:number,until:numb
 export async function loadInventoryMovements(
  session:HybridSession,scope:InventoryScope,epoch:string,opts:MovementOptions={},
 ):Promise<MovementPage>{
- for(const id of [opts.stockId,opts.materialId,opts.productionBatchId,opts.actorId]){
+ for(const id of [opts.stockId,opts.materialId,opts.locationId,opts.productionBatchId,opts.actorId]){
   if(id!==undefined&&!uuid.test(id))throw Error('Invalid movement report identity');
  }
  if(opts.kind!==undefined&&!kind.test(opts.kind))throw Error('Invalid movement kind');
@@ -79,7 +79,7 @@ export async function loadInventoryMovements(
     (opts.until!==undefined&&(!safe(opts.until)||opts.until<after)))
   throw Error('Invalid movement cursor');
  const q=new URLSearchParams({deviceId:scope.deviceId,after:String(after),limit:String(limit)});
- for(const key of ['stockId','materialId','productionBatchId','actorId','kind','from','through','manufacturerLot'] as const){
+ for(const key of ['stockId','materialId','locationId','productionBatchId','actorId','kind','from','through','manufacturerLot'] as const){
   if(opts[key])q.set(key,opts[key]);
  }
  if(opts.until!==undefined)q.set('until',String(opts.until));

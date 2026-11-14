@@ -1,6 +1,17 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
+import {inventoryRequest} from './inventoryClient';
 import {collectMovementSnapshot,inventoryMovementsCsv,loadInventoryMovements,type MovementPage} from './inventoryMovements';
 const id='11000000-0000-4000-8000-000000000001';
+vi.mock('./inventoryClient',()=>({inventoryRequest:vi.fn()}));
+it('validates and sends the historical post-event location filter with frozen export bounds',async()=>{
+ vi.mocked(inventoryRequest).mockResolvedValue(new Response(JSON.stringify({epoch:id,throughSequence:3,hasMore:false,nextAfter:0,items:[]})));
+ await loadInventoryMovements({} as never,{deviceId:id} as never,id,{locationId:id,until:3});
+ const path=vi.mocked(inventoryRequest).mock.calls[0][2];
+ expect(path).toContain('locationId='+id);expect(path).toContain('until=3');
+ vi.mocked(inventoryRequest).mockClear();
+ await expect(loadInventoryMovements({} as never,{} as never,id,{locationId:'bad'})).rejects.toThrow('Invalid movement report identity');
+ expect(inventoryRequest).not.toHaveBeenCalled();
+});
 describe('inventory movement CSV',()=>{
  it('escapes leading spreadsheet formulas and multiline source descriptions',()=>{
   const p:MovementPage={epoch:id,throughSequence:3,hasMore:false,nextAfter:3,items:[{

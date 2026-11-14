@@ -232,6 +232,11 @@ async function finishReconciliation(issueId:string,stockId:string){
   assert(text.includes('Принято: 500000')&&text.includes('Возвращено: 200000')&&text.includes('Списано из выдачи: 0')&&text.includes('Неразнесено: 300000'),'Native reconciliation quantities differ from accepted handoff/return');
   assert(text.includes('Фактический расход: НЕ ЗАПИСАН'),'Native report invented actual consumption');
   assert(document.documentElement.scrollWidth<=innerWidth,'Native reconciliation overflow');panel!.open=false;
+  const movements=document.querySelector<HTMLDetailsElement>('[aria-label="Журнал движений склада"]');assert(movements,'Native movements panel missing');movements!.open=true;
+  await fill('Фильтр по историческому месту',fixture.locationId,false,movements!);await click('Показать журнал',movements!);
+  await until(()=>movements!.querySelector('[aria-label^="Операция склада "]'),'native location-scoped ledger');
+  await fill('Фильтр по историческому месту',crypto.randomUUID(),false,movements!);await click('Показать журнал',movements!);
+  await until(()=>movements!.textContent?.includes('Записей в выбранной области нет.'),'native other-location empty ledger');movements!.open=false;
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();

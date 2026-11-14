@@ -70,7 +70,6 @@ Real two-profile Chromium compares both screens and downloaded CSV with independ
 PostgreSQL outcomes; the native WebView harness now checks the report as well.
 See the resumption checkpoint for exact-SHA hosted verification.
 
-S8 remains partial: location-scoped historical movements, count/QA/genealogy report
-detail, full large-data acceptance and later actual-consumption/finished-acceptance
+S8 remains partial: count/QA/genealogy report detail, full large-data acceptance and later actual-consumption/finished-acceptance
 activity remain. Notification delivery is not claimed. S9A/S9B/S10 and all
 physical/device/deployment pilot gates remain separate unfinished work.

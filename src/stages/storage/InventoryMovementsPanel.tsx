@@ -18,7 +18,7 @@ const actions=[
 export function InventoryMovementsPanel({scope,session,epoch,materials}:{
  scope:InventoryScope;session:HybridSession;epoch:string;materials:InventoryMaterial[];
 }){
- const [draft,setDraft]=useState({materialId:'',stockId:'',manufacturerLot:'',productionBatchId:'',actorId:'',kind:'',from:'',through:''});
+ const [draft,setDraft]=useState({materialId:'',stockId:'',locationId:'',manufacturerLot:'',productionBatchId:'',actorId:'',kind:'',from:'',through:''});
  const [active,setActive]=useState<MovementFilters|null>(null);
  const [page,setPage]=useState<MovementPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const generation=useRef(0),identity=[scope.serverUrl,scope.organizationId,scope.actorId,scope.deviceId,epoch].join('|');
@@ -32,6 +32,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
   const filters:MovementFilters=next&&active?active:{
    ...(draft.materialId?{materialId:draft.materialId}:{}),
    ...(draft.stockId.trim()?{stockId:draft.stockId.trim()}:{}),
+   ...(draft.locationId.trim()?{locationId:draft.locationId.trim()}:{}),
    ...(draft.manufacturerLot.trim()?{manufacturerLot:draft.manufacturerLot.trim()}:{}),
    ...(draft.productionBatchId.trim()?{productionBatchId:draft.productionBatchId.trim()}:{}),
    ...(draft.actorId.trim()?{actorId:draft.actorId.trim()}:{}),
@@ -90,6 +91,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
     {actions.map(([value,label])=><option key={value} value={value}>{label}</option>)}
    </select></label>
    <label>Контейнер (UUID)<input className={cls} aria-label="Фильтр журнала по контейнеру" value={draft.stockId} onChange={e=>edit('stockId',e.target.value)} placeholder="Без фильтра"/></label>
+   <label>Место после события (UUID)<input className={cls} aria-label="Фильтр по историческому месту" value={draft.locationId} onChange={e=>edit('locationId',e.target.value)} placeholder="Точное место, без вложенных мест"/></label>
    <label>Партия производителя<input className={cls} aria-label="Фильтр по партии производителя" maxLength={200} value={draft.manufacturerLot} onChange={e=>edit('manufacturerLot',e.target.value)} placeholder="Точное совпадение"/></label>
    <label>Партия производства (UUID)<input className={cls} aria-label="Фильтр по партии производства" value={draft.productionBatchId} onChange={e=>edit('productionBatchId',e.target.value)} placeholder="Без фильтра"/></label>
    <label>Автор операции (UUID)<input className={cls} aria-label="Фильтр по автору операции" value={draft.actorId} onChange={e=>edit('actorId',e.target.value)} placeholder="Без фильтра"/></label>
