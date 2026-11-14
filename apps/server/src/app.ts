@@ -6,6 +6,7 @@ import {registerInventoryCountRoutes} from './inventory-count-routes.js';
 import {registerInventoryIdentificationRoutes} from './inventory-identification-routes.js';
 import {registerInventoryAlertRoutes} from './inventory-alert-routes.js';
 import {registerInventoryMovementReportRoutes} from './inventory-movement-report-routes.js';
+import {registerInventoryMaterialSummaryRoutes} from './inventory-material-summary-routes.js';
 import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
 import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
 import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
@@ -89,6 +90,7 @@ export function buildApp(pool: Pool) {
   registerInventoryIdentificationRoutes(app, pool);
   registerInventoryAlertRoutes(app, pool);
   registerInventoryMovementReportRoutes(app, pool);
+  registerInventoryMaterialSummaryRoutes(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
     try {
