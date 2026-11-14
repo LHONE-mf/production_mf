@@ -48,3 +48,15 @@ larger history sets, narrow the filters; external streaming export is pending.
 The number of exported events is not the same as a computed material-consumption
 quantity. Production consumption remains unimplemented until Slurry links
 actual issued stock to verified weighed usage.
+
+## Historical location correctness
+
+Each accepted ledger operation preserves a full `result_stock` snapshot.
+The movement report now derives each event's location and manufacturer lot from
+that immutable event snapshot rather than from the current `inventory_stocks`
+projection. A later transfer must not change the reported receiving location
+or any earlier quality-event location, even when an export is refreshed using
+a frozen upper ledger cursor. Material display names are current catalogue
+labels, not claims about historical names. The PostgreSQL integration
+regression performs real receiving, Chief QA and transfer APIs and verifies
+both the frozen and expanded reports.

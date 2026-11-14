@@ -35,11 +35,13 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
        FROM inventory_operations WHERE organization_id=$1`,[actor.organization_id])).rows[0];
      const upper=q.until??count(head.high);
      if(upper>count(head.high)||q.after>upper)issueFail(409,'inventory_report_cursor_out_of_range');
-     // Paginate by the immutable ledger sequence, never by a mutable stock location
-     // or manufacturer lot. A posted movement does not modify an earlier report page.
+     // Freeze event identity by the immutable ledger sequence. Historical location
+     // and maker lot come from its accepted result_stock, not today's stock row.
      const result=await client.query(`SELECT o.sequence,o.operation_id,o.stock_id,o.kind,
        o.quantity,o.recorded_at,o.actor_id,o.device_id,o.reason,o.production_batch_id,
-       s.material_id,s.manufacturer_lot,s.location_id,m.material_code,m.display_name,m.base_unit
+       s.material_id,o.result_stock->>'manufacturerLot' AS manufacturer_lot,
+       o.result_stock->>'locationId' AS location_id,
+       m.material_code,m.display_name,m.base_unit
        FROM inventory_operations o
        LEFT JOIN inventory_stocks s ON s.organization_id=o.organization_id AND s.id=o.stock_id
        LEFT JOIN inventory_materials m ON m.organization_id=s.organization_id AND m.id=s.material_id

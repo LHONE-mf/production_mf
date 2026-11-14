@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {afterEach,beforeEach,describe,expect,it} from 'vitest';
 import {createInventoryHandoffFixture} from './inventory-test-fixture.js';
 describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable inventory movement report',()=>{
@@ -24,6 +25,37 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable invento
   const held=await get({until:String(throughSequence),after:String(nextAfter)});
   expect(held.json().items).toHaveLength(1);
   expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[f.org])).rows[0].n).toBe(count+2);
+ });
+ it('retains the actual historical receipt location after an accepted container transfer',async()=>{
+  const id=await f.stock();
+  const before=await get({stockId:id});
+  expect(before.statusCode,before.body).toBe(200);
+  const frozenUntil=String(before.json().throughSequence);
+  expect(before.json().items.map((r:{locationId:string})=>r.locationId))
+    .toEqual([f.location,f.location]);
+
+  const destination=randomUUID();
+  const added=await f.post('/inventory/locations',{
+    id:destination,deviceId:f.actors[0].device,
+    parentId:null,label:'Historical report test warehouse',kind:'warehouse',
+  },0);
+  expect(added.statusCode,added.body).toBe(201);
+  const move=await f.post('/inventory/stocks/'+id+'/operations',{
+    operationId:randomUUID(),deviceId:f.actors[2].device,
+    kind:'transfer',expectedRevision:2,quantity:1000,
+    toLocationId:destination,reason:'Transfer between controlled warehouses',
+  },2);
+  expect(move.statusCode,move.body).toBe(201);
+  expect(move.json().stock.locationId).toBe(destination);
+
+  const frozen=await get({stockId:id,until:frozenUntil});
+  expect(frozen.statusCode,frozen.body).toBe(200);
+  expect(frozen.json().items.map((r:{kind:string;locationId:string})=>[r.kind,r.locationId]))
+    .toEqual([['receive',f.location],['quality_change',f.location]]);
+  const updated=await get({stockId:id});
+  expect(updated.statusCode,updated.body).toBe(200);
+  expect(updated.json().items.map((r:{kind:string;locationId:string})=>[r.kind,r.locationId]))
+    .toEqual([['receive',f.location],['quality_change',f.location],['transfer',destination]]);
  });
  it('filters by original server-ledger kind, material and UTC date; rejects impossible bounds',async()=>{
   const id=await f.stock();
