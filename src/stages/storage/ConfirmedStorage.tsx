@@ -1,3 +1,4 @@
+import {InventoryMovementsPanel} from './InventoryMovementsPanel';
 import {InventoryAlertsPanel} from './InventoryAlertsPanel';
 import {InventorySplitPanel} from './InventorySplitPanel';
 import {InventoryCounts} from './InventoryCounts';
@@ -98,6 +99,7 @@ export function ConfirmedStorage(){
     <p>Последняя успешная синхронизация: {new Date(visible.at).toLocaleString('ru-RU')}. Последние известные остатки; изменения на других устройствах требуют обновления.</p>
     {scope&&connection&&user&&<InventoryIdentificationPanel scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} onSelected={(kind,id)=>{setLocationFilter(kind==='location'?id:'');setSearch(kind==='container'?id:'');requestAnimationFrame(()=>document.getElementById('inventory-container-'+id)?.scrollIntoView({block:'start'}));}}/>}
     {scope&&connection&&<InventoryAlertsPanel key={'alerts:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
+    {scope&&connection&&<InventoryMovementsPanel key={'movements:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
     {locationFilter&&<p>Место / потомки: {visible.locations[locationFilter]??locationFilter} <button type="button" className="min-h-11 px-3" onClick={()=>setLocationFilter('')}>Снять фильтр места</button></p>}
     <label className="block">Поиск материала, партии, места<input className="block min-h-11 w-full rounded bg-slate-900 p-2" value={search} onChange={e=>setSearch(e.target.value)}/></label>
     {!visible.stocks.length&&<p>Подтверждённых остатков пока нет.</p>}
