@@ -1,4 +1,5 @@
 import {InventoryMaterialSummaryPanel} from './InventoryMaterialSummaryPanel';
+import {InventoryReconciliationPanel} from './InventoryReconciliationPanel';
 import {InventoryMovementsPanel} from './InventoryMovementsPanel';
 import {InventoryAlertsPanel} from './InventoryAlertsPanel';
 import {InventorySplitPanel} from './InventorySplitPanel';
@@ -102,6 +103,7 @@ export function ConfirmedStorage(){
     {scope&&connection&&<InventoryAlertsPanel key={'alerts:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
     {scope&&connection&&<InventoryMovementsPanel key={'movements:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
     {scope&&connection&&<InventoryMaterialSummaryPanel key={'materialSummary:'+key} scope={scope} session={connection.session} epoch={visible.epoch}/>}
+    {scope&&connection&&<InventoryReconciliationPanel key={'reconciliation:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
     {locationFilter&&<p>Место / потомки: {visible.locations[locationFilter]??locationFilter} <button type="button" className="min-h-11 px-3" onClick={()=>setLocationFilter('')}>Снять фильтр места</button></p>}
     <label className="block">Поиск материала, партии, места<input className="block min-h-11 w-full rounded bg-slate-900 p-2" value={search} onChange={e=>setSearch(e.target.value)}/></label>
     {!visible.stocks.length&&<p>Подтверждённых остатков пока нет.</p>}

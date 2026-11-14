@@ -1,3 +1,17 @@
+# Current session — S8 received-material reconciliation (2026-11-14)
+
+Branch `feat/storage-inventory-foundation`; draft PR https://github.com/LHONE-mf/production_mf/pull/5 against `feat/hybrid-server-foundation`. Starting SHA `d1acf0ba85e08175a3c31030cc68e5698a47f52d`; no newer work was present. New code adds the real received-issue reconciliation API, strict client and usable filtered/CSV screen. Exact published SHA and hosted checks are recorded below after push; current code is locally verified, not yet CI/native certified.
+
+- API: `apps/server/src/inventory-reconciliation-routes.ts`; immutable received snapshots and capped return/scrap outcomes, two independently frozen sequence bounds, no stock mutation or inferred consumption.
+- UI/client: `src/stages/storage/InventoryReconciliationPanel.tsx`, `src/core/sync/inventoryReconciliation.ts`; explicit refresh, batch/recipient/material/source filters, page/full bounded CSV, current-history validation, no obsolete-response download.
+- Engineering: 656 frontend tests; 277 server tests including 6 actual new PostgreSQL tests; typechecks/builds; actual two-profile Chromium and PWA worker test; pg_dump/two restores compare 44 tables. Native harness now checks the real report after received issue/return; hosted result pending. No production data/merge/deployment, new dependency or schema/Dexie migration.
+- Review: TDD RED/GREEN; mutation removing the null-consumption guard makes the regression fail; guard restored. Ponytail FULL, auxiliary simplification/complexity review and all six vendored engineering skills applied. GitHub live PR/check/review inspection used; Graphify graph checked and found stale at `0505307`, so current source controls findings. No applicable engineering connector was missing; unrelated Sites/Pets/visualization tools were not invoked. No agents spawned.
+- Dependency audit: server 0 advisories; frontend 2 low / 6 moderate, 0 high/critical. No dependency versions changed. These existing lower-severity advisories need S10 reachability review; do not force-upgrade.
+
+Next: finish remaining S8 location/count/QA/genealogy report detail; implement S9A real completed-output submit plus separate Storage quarantine acceptance; then S9B received-issue measured Slurry use. See [report contract](STORAGE_RECONCILIATION_REPORT.md). Physical OnePlus/ColorOS handling, signed installed upgrade, factory QA/count, printer/camera, deployed TLS and production restore remain PENDING acceptance gates.
+
+Historical checkpoint follows; its missing-feature statements may be superseded above.
+
 # Autonomous Storage checkpoint — 2026-11-14
 
 **S0–S7 are implemented; S8–S10 remain open; S8 identification first increment is implemented and awaiting exact-head native verification.** Continue on `feat/storage-inventory-foundation`, draft PR #5 based on `feat/hybrid-server-foundation`. No merge/main, production data, observational-journal import, arbitrary package merge or fabricated measurements. Owner D1–D8 remain approved; no routine confirmations. Use AGENTS.md and all six relevant vendored engineering skills plus simplification discipline. No subagents unless expressly authorized.

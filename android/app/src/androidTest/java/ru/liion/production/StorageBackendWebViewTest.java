@@ -133,6 +133,8 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("countChiefCorrection"));
                 assertTrue(result.getBoolean("countLostAckRetried"));
                 assertEquals(124000, result.getInt("countedQuantity"));
+                assertTrue(result.getBoolean("nativeIssueReconciliation"));
+                assertEquals(300000, result.getInt("reconciledOutstanding"));
                 assertTrue(result.getBoolean("nativeIdentityLookups"));
                 assertTrue(result.getBoolean("nativeOfflineIdentity"));
                 assertTrue(result.getBoolean("nativeCameraStreamStopped"));

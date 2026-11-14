@@ -209,6 +209,7 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   assert(released?.quality === 'released' && released.onHand === 2_125_000 && released.disposition === 'release', 'Native QA release altered quantity or missed genuine source');
   const issueId=await finishIssue(stock.stockId,expected.issueOperationId);
   const returned=await finishReturn(issueId,stock.stockId);
+  await finishReconciliation(issueId,stock.stockId);
   const warehouseWaste=await finishWarehouseScrap(returned.returnStockId);
   const split=await finishSplit(stock.stockId);
   const count=await finishCount(split.splitChildId);
@@ -216,7 +217,21 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 10, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste,...split,...count,...identification };
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification };
+}
+async function finishReconciliation(issueId:string,stockId:string){
+  await select('operator');await refresh();
+  const panel=document.querySelector<HTMLDetailsElement>('[aria-label="Сверка выданных материалов"]');assert(panel,'Native reconciliation panel missing');panel!.open=true;
+  await fill('Партия производства для сверки',fixture.batchId,false,panel!);
+  await fill('Получатель для сверки',fixture.operator,false,panel!);
+  await fill('Материал сверки выдач',fixture.materialId,false,panel!);
+  await fill('Исходный контейнер для сверки',stockId,false,panel!);
+  await click('Показать сверку выдач',panel!);
+  await until(()=>panel!.querySelector('[aria-label="Сверка выдачи '+issueId+'"]'),'native received issue report');
+  const text=panel!.querySelector('[aria-label="Сверка выдачи '+issueId+'"]')!.textContent!;
+  assert(text.includes('Принято: 500000')&&text.includes('Возвращено: 200000')&&text.includes('Списано из выдачи: 0')&&text.includes('Неразнесено: 300000'),'Native reconciliation quantities differ from accepted handoff/return');
+  assert(text.includes('Фактический расход: НЕ ЗАПИСАН'),'Native report invented actual consumption');
+  assert(document.documentElement.scrollWidth<=innerWidth,'Native reconciliation overflow');panel!.open=false;
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();

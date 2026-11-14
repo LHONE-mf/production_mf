@@ -12,6 +12,7 @@ import{storageReturnSmoke}from'./lib/storage-return-smoke.mjs';
 import{storageSplitSmoke}from'./lib/storage-split-smoke.mjs';
 import{storageCountSmoke}from'./lib/storage-count-smoke.mjs';
 import{storageIdentificationSmoke}from'./lib/storage-identification-smoke.mjs';
+import{storageReconciliationSmoke}from'./lib/storage-reconciliation-smoke.mjs';
 const require=createRequire(new URL('../apps/server/package.json',import.meta.url)),{Pool}=require('pg');
 const{chromium}=await import(process.env.STORAGE_PLAYWRIGHT_MODULE??'playwright');
 const url=new URL(process.env.POSTGRES_TEST_URL??'');assert(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname==='/production_mf_ci'&&url.username==='production_mf_ci','Disposable local test database/user required');
@@ -176,6 +177,7 @@ try{
  for(const [i,page]of pages.entries()){assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:artifact+'/operator-'+i+'.png',fullPage:true});}
  const issueResult=await storageIssueSmoke({pool,org,actors,pages,browser,connection,qualityStock,material,artifact});
  const issueScenarios=[...issueResult.scenarios,...await storageReturnSmoke({pool,org,pages,actors,connection,issueId:issueResult.issueId,qualityStock,locationId:locations[3],artifact})];
+ issueScenarios.push(...await storageReconciliationSmoke({pool,org,pages,issueId:issueResult.issueId,artifact}));
  issueScenarios.push(...await storageSplitSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],artifact}));
  issueScenarios.push(...await storageCountSmoke({pool,org,pages,actors,connection,qualityStock,artifact}));
  issueScenarios.push(...await storageIdentificationSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],batchId:(await pool.query('SELECT production_batch_id FROM inventory_issues WHERE id=$1',[issueResult.issueId])).rows[0].production_batch_id,artifact}));
