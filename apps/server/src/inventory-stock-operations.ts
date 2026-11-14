@@ -68,6 +68,9 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
       const fence=await inventoryWriteFence(client,actor.organization_id,request.headers['x-inventory-epoch']);
       if(fence){await client.query('ROLLBACK');return reply.code(fence==='inventory_epoch_required'?428:409).send({error:fence});}
       const requestPayload={...data,stockId};
+      if((await client.query('SELECT 1 FROM inventory_issue_events WHERE operation_id=$1',[data.operationId])).rowCount){
+        await client.query('ROLLBACK');return reply.code(409).send({error:'operation_id_reused'});
+      }
       const existing=await client.query(`SELECT organization_id,actor_id,device_id,stock_id,
           request_payload=$2::jsonb AS identical,result_stock
         FROM inventory_operations WHERE operation_id=$1`,
@@ -129,7 +132,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
       if(data.kind==='release_reservation'){
         const reservation=await client.query(`SELECT quantity FROM inventory_reservations
           WHERE organization_id=$1 AND id=$2 AND stock_id=$3
-            AND production_batch_id=$4 FOR UPDATE`,
+            AND production_batch_id=$4 AND issue_id IS NULL FOR UPDATE`,
           [actor.organization_id,data.reservationId,stockId,data.productionBatchId]);
         if(!reservation.rowCount){
           await client.query('ROLLBACK');

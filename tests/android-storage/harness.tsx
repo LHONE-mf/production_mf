@@ -2,6 +2,8 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { ConfirmedStorage } from '../../src/stages/storage/ConfirmedStorage';
+import { InventoryIssues } from '../../src/stages/storage/InventoryIssues';
+import { inventoryIssueProposals } from '../../src/core/sync/inventoryIssues';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
@@ -14,10 +16,10 @@ import { UserRole } from '../../src/core/types';
 import { db } from '../../src/core/db';
 import '../../src/index.css';
 
-type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string };
+type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number };
 const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
-let offline = false, loseAck = false, connection: ServerConnection, fixture: Fixture;
+let offline = false, loseAck = false, loseIssueAck = false, connection: ServerConnection, fixture: Fixture;
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
@@ -29,6 +31,7 @@ window.fetch = async (input, init) => {
       await response.arrayBuffer(); // Real transaction committed; only the acknowledgement is lost.
       throw new TypeError('CI acknowledgement lost after commit');
     }
+    if(loseIssueAck && /^\/inventory\/issues\/[^/]+\/operations$/.test(url.pathname) && response.ok){loseIssueAck=false;await response.arrayBuffer();throw new TypeError('CI issue acknowledgement lost after commit');}
     return response;
   }
   return originalFetch(input, init);
@@ -78,7 +81,7 @@ async function select(role: 'chief' | 'operator') {
   if (useAuthStore.getState().session?.userId === user.id) await useAuthStore.getState().verifyLocalSession();
   else useAuthStore.getState().login(user);
   setServerConnection(connection);
-  root.render(<ConfirmedStorage />);
+  root.render(<><ConfirmedStorage /><InventoryIssues /></>);
   await until(() => button('Обновить подтверждённые данные'), 'Storage mounted');
 }
 function button(text: string, root: ParentNode = document) { return [...root.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.disabled); }
@@ -115,6 +118,16 @@ async function receipt() {
   return (await inventoryQueueForScope(scope()))[0];
 }
 async function send() { await click('Проверить отправку / повтор'); await click('Подтвердить отправку тех же операций'); }
+async function refreshIssues(){await click('Обновить запросы и доступные партии');await until(()=>button('Обновить запросы и доступные партии')&&document.querySelector('[aria-label="Запрос материала в производство"]'),'issue scope loaded');}
+async function prepareIssueRequest(){
+  await refreshIssues();
+  await fill('Производственная партия и шаг',fixture.batchId+':1',false);await click('Загрузить материалы и получателей шага');
+  await fill('Материал для производства',fixture.materialId,false);await fill('Назначенный получатель',fixture.operator,false);await fill('Запрашиваемое количество','500000',false);
+  await fill('Основание запроса материала','Synthetic native batch requirement',false);await fill('Документ потребности','NATIVE-REQUIREMENT-42',false);
+  offline=true;await click('Сохранить запрос без выдачи');
+  await until(async()=> (await inventoryIssueProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='request'),'native frozen issue request');
+  return (await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='request')!;
+}
 async function prepare() {
   await select('chief'); await refresh();
   const open = (text: string) => { const summary = [...document.querySelectorAll('summary')].find(row => row.textContent === text); assert(summary, 'Missing native admin section'); summary!.click(); };
@@ -141,12 +154,14 @@ async function prepare() {
   await refresh();
   const access = await loadWarehouseAccess(connection.session, scope());
   assert(!access.canCorrectStock && !access.canManageCatalog, 'Operator permissions must be restricted');
-  offline = true;
+  const issueRequest=await prepareIssueRequest();
   const queued = await receipt();
   assert((await confirmedInventoryForScope(scope())).length === 0, 'No optimistic stock');
-  return { operationId: queued.operationId, request: queued.request };
+  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request };
 }
-async function finish(expected: { operationId: string; request: unknown }) {
+async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string }) {
+  const frozenIssue=(await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.operationId===expected.issueOperationId);
+  assert(frozenIssue?.fields.request===expected.issueRequest&&frozenIssue.fields.state==='pending','Process death changed frozen issue request');
   const restored = (await inventoryQueueForScope(scope()))[0];
   assert(restored?.operationId === expected.operationId && JSON.stringify(restored.request) === JSON.stringify(expected.request), 'Process death changed frozen intent');
   assert((await confirmedInventoryForScope(scope())).length === 0, 'Restart invented stock');
@@ -183,9 +198,46 @@ async function finish(expected: { operationId: string; request: unknown }) {
   await click('Подтвердить решение Chief ' + qa.operationId!.slice(0, 8), article!); await until(async () => (await inventoryOutbox.receivingDrafts.get(qa.key))?.fields.state === 'accepted', 'native genuine QA release');
   await refresh(); const released = (await confirmedInventoryForScope(scope())).find(row => row.stockId === stock.stockId);
   assert(released?.quality === 'released' && released.onHand === 2_125_000 && released.disposition === 'release', 'Native QA release altered quantity or missed genuine source');
+  const issueId=await finishIssue(stock.stockId,expected.issueOperationId);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
-  assert((await inventoryOutbox.acknowledgements.count()) === 3, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 2, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true };
+  assert((await inventoryOutbox.acknowledgements.count()) === 5, 'Logout destroyed retained evidence');
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 2, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true };
+}
+async function finishIssue(stockId:string,requestId:string){
+  await select('operator');await refreshIssues();
+  await click('Отправить сохранённое действие '+requestId.slice(0,8));
+  await until(async()=> (await inventoryIssueProposals(scope(),fixture.operator)).some(r=>r.operationId===requestId&&r.fields.state==='accepted'),'native request accepted');
+  const request=(await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.operationId===requestId)!,issueId=JSON.parse(request.fields.intent).issueId as string;
+  const denied=await originalFetch(fixture.serverUrl+'/inventory/issues/'+issueId+'/operations',{method:'POST',headers:{authorization:'Bearer '+connection.session.accessToken,'content-type':'application/json','x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':request.fields.epoch},body:JSON.stringify({operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,kind:'dispatch',expectedIssueRevision:1,expectedStockRevision:2,reason:'Forbidden native operator dispatch',evidence:'Must be denied'})});
+  assert(denied.status===403,'Native operator self-authorized issue');
+  await select('chief');await refreshIssues();
+  async function prepareAction(kind:'reserve'|'approve'|'dispatch'){
+    const card=document.querySelector<HTMLElement>('[aria-label="Выдача '+issueId+'"]');assert(card,'Native issue card missing');
+    await click('Загрузить контейнеры материала',card!);
+    await until(()=>button('Загрузить контейнеры материала',card!)&&card!.textContent?.includes('Последний прочитанный контейнер:')||kind==='reserve'&&!!card!.querySelector('option[value="'+stockId+'"]'),'native issue source loaded');
+    if(kind==='reserve')await fill('Исходный контейнер',stockId,false,card!);
+    await fill('Действие выдачи',kind,false,card!);await fill('Основание выдачи','Native actual physical handoff: '+kind,false,card!);await fill('Свидетельство передачи / одобрения','NATIVE-ISSUE-42 '+kind,false,card!);
+    await click('Сохранить действие для отдельного подтверждения',card!);await until(async()=> (await inventoryIssueProposals(scope(),fixture.chief)).some(r=>r.fields.kind===kind),'native frozen '+kind);
+    return (await inventoryIssueProposals(scope(),fixture.chief)).find(r=>r.fields.kind===kind)!;
+  }
+  for(const kind of ['reserve','approve','dispatch'] as const){
+    const action=await prepareAction(kind);if(kind==='dispatch')loseIssueAck=true;
+    await click('Отправить сохранённое действие '+action.operationId!.slice(0,8));
+    if(kind==='dispatch'){
+      await until(()=>document.querySelector('[aria-label="Запросы и выдача в производство"] [role="alert"]'),'native lost issue ACK');
+      assert((await inventoryOutbox.receivingDrafts.get(action.key))?.fields.state==='pending','Native lost issue ACK erased intent');await click('Отправить сохранённое действие '+action.operationId!.slice(0,8));
+    }
+    await until(async()=> (await inventoryOutbox.receivingDrafts.get(action.key))?.fields.state==='accepted','native '+kind+' accepted');
+    await until(()=>button('Обновить запросы и доступные партии'),'native issue refresh complete');
+  }
+  await select('operator');await refreshIssues();
+  const card=document.querySelector<HTMLElement>('[aria-label="Выдача '+issueId+'"]');assert(card&&!button('Загрузить контейнеры материала',card!),'Operator exposed Manager controls');
+  await fill('Основание выдачи','Assigned native recipient received physical package',false,card!);await fill('Свидетельство передачи / одобрения','NATIVE-RECEIPT-42',false,card!);await click('Сохранить действие для отдельного подтверждения',card!);
+  await until(async()=> (await inventoryIssueProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='receive'),'native frozen recipient receipt');
+  const receipt=(await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='receive')!;await click('Отправить сохранённое действие '+receipt.operationId!.slice(0,8));
+  await until(async()=> (await inventoryOutbox.receivingDrafts.get(receipt.key))?.fields.state==='accepted','native assigned receipt accepted');
+  await refresh();assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===1625000,'Recipient deducted twice or inferred consumption');
+  assert(document.documentElement.scrollWidth<=innerWidth,'Native issues overflow');return issueId;
 }
 (window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish };

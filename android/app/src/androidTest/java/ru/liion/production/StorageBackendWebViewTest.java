@@ -96,6 +96,11 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("operatorDenied"));
                 assertTrue(result.getBoolean("lostAckRetried"));
                 assertTrue(result.getBoolean("logoutConcealed"));
+                assertTrue(result.getBoolean("issueProcessDeath"));
+                assertTrue(result.getBoolean("chiefIssueApproved"));
+                assertTrue(result.getBoolean("issueLostAckRetried"));
+                assertTrue(result.getBoolean("assignedReceipt"));
+                assertEquals(500000, result.getInt("issuedQuantity"));
                 Log.i("ProductionMfStorage", "RESULT " + result);
             }
             Bitmap screenshot = instrumentation.getUiAutomation().takeScreenshot();

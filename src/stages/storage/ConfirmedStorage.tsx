@@ -17,7 +17,7 @@ import {pullInventoryChanges} from '../../core/sync/inventoryClient';
 import {confirmedInventoryForScope,inventoryQueueForScope,inventoryScopeKey,type ConfirmedInventoryStock,inventoryOutbox,type InventoryHistory} from '../../core/sync/inventoryOutbox';
 import {inventoryStockQueueForScope,reviewInventoryConflict} from '../../core/sync/inventoryStockOutbox';
 
-const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва',quality_change:'Решение о качестве (без движения количества)'} as Record<string,string>)[kind]??kind;
+const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва',issue:'Выдача в производство (не расход)',quality_change:'Решение о качестве (без движения количества)'} as Record<string,string>)[kind]??kind;
 export function ConfirmedStorage(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');

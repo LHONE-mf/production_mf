@@ -69,6 +69,12 @@ describe('authoritative inventory transition contract',()=>{
     expect(transitionInventory(released,action('return',{productionBatchId:'batch-1'})))
       .toMatchObject({ok:false,code:'invalid'});
   });
+  it('issues only the exact owned reservation after privileged approval, preserving every other reservation',()=>{
+    const current={...released,reserved:800_000},op=action('issue',{productionBatchId:'batch-1'});
+    expect(transitionInventory(current,op,{mayAdjust:false,mayIssue:true,ownedReservation:500_000})).toMatchObject({ok:true,stock:{onHand:1_500_000,reserved:300_000,revision:2},available:1_200_000});
+    for(const ownedReservation of [undefined,400_000,600_000])expect(transitionInventory(current,op,{mayAdjust:false,mayIssue:true,ownedReservation})).toMatchObject({ok:false});
+    expect(transitionInventory({...current,quality:'blocked'},op,{mayAdjust:false,mayIssue:true,ownedReservation:500_000})).toMatchObject({ok:false,code:'blocked'});
+  });
   it('transfers only a whole unreserved container',()=>{
     expect(transitionInventory(released,action('transfer',{toLocationId:'cabinet-2'})))
       .toMatchObject({ok:false,code:'invalid'});

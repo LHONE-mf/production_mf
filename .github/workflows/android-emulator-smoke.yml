@@ -14,6 +14,11 @@ on:
       - 'scripts/verify-android-storage.mjs'
       - 'apps/server/src/inventory-quality*'
       - 'apps/server/migrations/025_inventory_quality.sql'
+      - 'apps/server/migrations/026_inventory_issues.sql'
+      - 'apps/server/src/inventory-issue*'
+      - 'src/core/sync/inventoryIssue*'
+      - 'src/stages/storage/InventoryIssue*'
+      - 'scripts/lib/disposable-issue-batch.mjs'
       - '.github/workflows/android-emulator-smoke.yml'
 
 permissions:

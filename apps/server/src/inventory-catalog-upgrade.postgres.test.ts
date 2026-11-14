@@ -35,6 +35,13 @@ integration('Storage populated 001–023 catalogue upgrade (isolated schema)', (
       expect((await client.query('SELECT row_to_json(s) AS row FROM inventory_stocks s')).rows[0].row).toMatchObject({...oldStock,expires_at:null,manufactured_on:null,disposition:null});
       expect((await client.query('SELECT row_to_json(e) AS row FROM inventory_operations e')).rows[0].row).toEqual(oldEvent);
       expect((await client.query('SELECT count(*)::int AS n FROM inventory_quality_dispositions')).rows[0].n).toBe(0);
+      const reservation = randomUUID();
+      await client.query('INSERT INTO inventory_reservations(id,organization_id,stock_id,production_batch_id,quantity) VALUES($1,$2,$3,$4,100)', [reservation,org,stock,randomUUID()]);
+      const oldReservation = (await client.query('SELECT row_to_json(r) AS row FROM inventory_reservations r')).rows[0].row;
+      await client.query(await readFile('migrations/026_inventory_issues.sql','utf8'));
+      expect((await client.query('SELECT row_to_json(e) AS row FROM inventory_operations e')).rows[0].row).toEqual(oldEvent);
+      expect((await client.query('SELECT row_to_json(r) AS row FROM inventory_reservations r')).rows[0].row).toEqual({...oldReservation,issue_id:null});
+      expect((await client.query('SELECT count(*)::int AS n FROM inventory_issues')).rows[0].n).toBe(0);
       await expect(client.query('DELETE FROM inventory_operations WHERE operation_id=$1', [operation])).rejects.toThrow('immutable');
     } finally {
       await client.query('ROLLBACK'); await client.query('RESET search_path');

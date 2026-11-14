@@ -14,7 +14,7 @@ export async function inventoryWriteFence(client:PoolClient,organizationId:strin
 }
 
 /** Authorization must still hold after waiting for the inventory/restore lock. */
-export async function currentInventoryWriter(client:PoolClient,organizationId:string,actorId:string,deviceId:string,authorization:string,proof:unknown,required:'operator'|'manager'){
+export async function currentInventoryActor(client:PoolClient,organizationId:string,actorId:string,deviceId:string,authorization:string,proof:unknown){
  if(typeof proof!=='string')return null;
  const user=await client.query(`SELECT u.id,u.organization_id,u.role FROM device_proof_grants g
   JOIN devices d ON d.id=g.device_id AND d.organization_id=g.organization_id AND d.user_id=g.user_id
@@ -24,7 +24,10 @@ export async function currentInventoryWriter(client:PoolClient,organizationId:st
    AND g.session_token_hash=$5 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
    AND d.revoked_at IS NULL AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND u.active
   FOR SHARE OF g,d,s,u`,[tokenHash(proof),organizationId,actorId,deviceId,tokenHash(authorization.slice(7))]);
- const actor=user.rows[0];if(!actor)return null;
+ return user.rows[0] as {id:string;organization_id:string;role:string}|undefined;
+}
+export async function currentInventoryWriter(client:PoolClient,organizationId:string,actorId:string,deviceId:string,authorization:string,proof:unknown,required:'operator'|'manager'){
+ const actor=await currentInventoryActor(client,organizationId,actorId,deviceId,authorization,proof);if(!actor)return null;
  if(actor.role==='chief')return actor;
  const grant=await client.query('SELECT level FROM inventory_access WHERE organization_id=$1 AND user_id=$2 AND active FOR SHARE',[organizationId,actorId]);
  return grant.rows[0]?.level==='manager'||required==='operator'&&grant.rows[0]?.level==='operator'?actor:null;

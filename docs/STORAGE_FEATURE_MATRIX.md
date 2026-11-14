@@ -2,7 +2,7 @@
 
 Current verified runtime checkpoint: `a8a638575b47afe7e4c37110c5c32105d6bfe7dd`.
 Branch: `feat/storage-inventory-foundation`; draft [PR #5](https://github.com/LHONE-mf/production_mf/pull/5), based on `feat/hybrid-server-foundation`.
-S0–S3 are implemented and verified as described below. **S4–S10 remain incomplete.** No merge, production data change, permanent server, legacy-journal import or factory certification.
+S0–S3 are verified as described below. S4 now has real UI/API/durable intent and local multi-role browser/restore evidence; exact-head Route A verification is pending for this increment. **S5–S10 remain incomplete.** No merge, production data change, permanent server, legacy-journal import or factory certification.
 
 ## Exact-commit evidence
 
@@ -18,11 +18,11 @@ The final checkpoint documentation may advance the branch beyond this runtime co
 | Milestone / decision | UI | API / DB | Offline / retained intent | Verification / remaining work |
 | --- | --- | --- | --- | --- |
 | S0 audit | Live branch/PR/spec/skills reconciled | Baseline 116434b; parent branch preserved | Existing journals/queues retained | COMPLETE; Graphify remains on main 0505307, so live files are authoritative |
-| S1 Route A | Real native Storage and Chief catalogue/QA screens | Complete sorted migrations 001–025; guarded empty disposable setup; actual Fastify server | Original frozen receipt survives real process death; manual send/lost ACK | VERIFIED above; extend to issue/return/split/count when implemented; broader keyboard/rotation/upgrade coverage remains S10 |
+| S1 Route A | Real native Storage and Chief catalogue/QA screens | Complete sorted migrations 001–026; guarded empty disposable setup; actual Fastify server | Original frozen receipt survives real process death; manual send/lost ACK | VERIFIED above; extend to issue/return/split/count when implemented; broader keyboard/rotation/upgrade coverage remains S10 |
 | S2 catalog/admin | Material/location browser/create/edit; supplier reference; active flag; hierarchy parent selection; Chief paginated employee/effective-grant controls | 023 immutable creation/access context; 024 versioned edits and before/after audit; current proof/history/role rechecked under lock | Privileged preparation online-only; original scoped requests/replies persist in v7 draft namespace; explicit send/retry | IMPLEMENTED/VERIFIED; immutable codes/category/units; historical/occupied paths, active children and cycles guarded. Full audit/report browsing and richer navigation remain S8/S10 |
 | Receiving | Distinct package UUID; lot, exact quantity/unit, supplier/document, optional manufacture/expiry, review/manual send | Quarantine only; stable ID and exact ACK; repeated maker lot allowed | Durable original-profile draft/intent/ACK; no optimistic stock | VERIFIED; no observational journal becomes stock |
 | S3 QA / D1 | Chief-only release/hold/block/terminal reject, required reason/evidence; read-only scoped quality history; expiry visibility | 025 paired immutable stock/QA events, zero moved quantity, DB Chief/ledger/expiry guards, revision/history fencing | Online-only Chief review; durable intent/conflicts/ACK; quantity unchanged; old-epoch replay denied after recovery | IMPLEMENTED/VERIFIED; expired/rejected material cannot release; Manager/operator/Master denied |
-| S4 request/reservation/physical issue / D2 | No usable request/approval/dispatch/recipient workflow yet | Reservation API exists; physical issue deliberately unavailable | No issue workflow queue yet | NOT IMPLEMENTED; every final debit needs current Chief/explicit Manager approval; reservation is not issue or consumption |
+| S4 request/reservation/physical issue / D2 | Real scoped batch/material/recipient request, Manager/Chief reserve/approve/dispatch, assigned receipt/cancel/history | 026 additive owned reservations and immutable paired stock/handoff events; current proof/epoch/approval/recipient/revision checks | Original v7 scoped issue namespace; offline request/recipient freeze; privileged preparation online-only; explicit send/lost ACK/conflicts retained; atomic exact stock ACK | IMPLEMENTED; local actual PostgreSQL + Chief/operator/production-only browser + real dump/two restores pass. Exact-head native CI pending. See STORAGE_ISSUES.md. Issue is not consumption |
 | S5 return / D3, scrap | None | Accepted-issue return provenance/outstanding quantity contract absent | None | NOT IMPLEMENTED; eligible unused returns go directly available, unsafe returns held/denied |
 | S6 split/repack / D4 | Whole-container transfer/correction exists; split absent | No child genealogy/conservation transaction | Frozen whole-move/correction queues exist | NOT IMPLEMENTED split; Chief/Manager authorisation, new child IDs, conservation and races required |
 | S7 count / D5 | No sessions/observations/recount workflow | Privileged correction exists; no count evidence/session model | Frozen correction only | NOT IMPLEMENTED; count anytime, count alone never changes balance; Chief/Manager correction approval |
@@ -40,7 +40,7 @@ Chief owns grants; a generic production Master has no implicit warehouse manager
 | Items | Executable evidence now | Missing acceptance |
 | --- | --- | --- |
 | A1 | `inventory-quality.postgres.test.ts`, quality client/UI tests, actual browser/native Chief release | Later cross-feature integration |
-| A2–A3 | Existing correction authorisation and explicit Manager vs Master tests | Approved physical issue, split/count workflow |
+| A2–A3 | Existing correction plus S4 actual Manager/Chief vs operator/Master issue tests; separate approval/dispatch/recipient receipt, native candidate | Split/count workflow; current-head native issue evidence |
 | A4 | Current proof/tenant/history/revocation tests; real lock-wait races for receiving, catalog/grants and QA | Apply to every S4–S9 contract/read/export |
 | A5 | Offline lease/identity tests, browser reopen; native logout conceals cache while retaining ACK | Broader native account/device switch and upgrade matrix |
 | Q1–Q2 | Exact 2.125 kg conversion, separate same-lot containers in server/browser/native | Preserve on new paths |
@@ -58,3 +58,7 @@ Migrations 023–025 are additive; no date, stock or historical Chief decision i
 InventoryOutbox remains v7. Administrative/QA proposals use separate original-profile namespaces in the existing draft table and are included in recovery evidence. Keep frozen requests, rejected/conflicting outcomes and ACKs. Never reset local DBs, discard audit, silently rebase a proposal, or treat cache reconciliation as QA/stock permission. Roll back application code before additive schema; retain all evidence.
 
 Next is **S4**, with detailed resumption steps in [STORAGE_RESUMPTION_CHECKPOINT.md](STORAGE_RESUMPTION_CHECKPOINT.md). Implement request -> reserve -> Chief/Manager approve -> controlled dispatch -> authenticated assigned recipient receipt, exact package/batch provenance and no inferred consumption. Then continue S5–S10 in the owner's dependency order.
+
+## S4 implementation increment
+
+See [controlled handoff contract](STORAGE_ISSUES.md). Local browser report includes actual offline/cold-reload request, Chief physical dispatch lost-ACK retry, and an assigned production-only recipient denied broad warehouse reads. The actual dump/two restores compare 39 public tables and reconstruct 9 stock events, 1 generic remaining reservation, 1 received issue and 5 immutable handoff events. Native harness now adds a frozen request across force-stop, separate Chief approval/dispatch, lost issue ACK and assigned receipt; it is not yet claimed passing at this increment until the published SHA completes Route A. No dependency, Dexie version/reset, production mutation or merge.

@@ -1,13 +1,12 @@
 /**
- * Inventory domain contract for the future authoritative server.
+ * Exact quantity transitions used by the authoritative inventory routes.
  *
  * No existing local Storage journal is promoted to stock by this module.
  * Quantities are positive safe integers in an explicitly defined base unit
  * (e.g. mg, microlitres, mm or pieces), never floating-point stock balances.
  *
- * This is a pure, server-side transition function. It is NOT an API or a
- * production inventory service until authenticated transactional persistence
- * and synchronization are implemented.
+ * This pure function has no authority by itself. Authenticated routes enforce
+ * current permissions, history, provenance and transactional ledger writes.
  */
 export type InventoryUnit = 'mg' | 'ul' | 'mm' | 'pieces';
 export type InventoryQuality = 'quarantine' | 'released' | 'blocked';
@@ -78,7 +77,7 @@ const fail = (code: Extract<InventoryResult, {ok:false}>['code'], message: strin
 export function transitionInventory(
   current: InventoryStock | undefined,
   op: InventoryOperation,
-  options: { mayAdjust: boolean; ownedReservation?: number; now?: number } = { mayAdjust: false },
+  options: { mayAdjust: boolean; mayIssue?: boolean; ownedReservation?: number; now?: number } = { mayAdjust: false },
 ): InventoryResult {
   if (!validText(op.operationId) || !validText(op.stockId) ||
       !validText(op.actorId) || !validText(op.reason) ||
@@ -130,9 +129,13 @@ export function transitionInventory(
     case 'issue':
       if (!validText(op.productionBatchId)) return fail('invalid', 'Production batch required');
       if (current.quality !== 'released') return fail('blocked', 'Stock not released for production');
-      // Consume the batch reservation first, when explicitly identified.
-      // Reservation ownership MUST be validated by the persistent server ledger.
-      return fail('invalid', 'Issue requires server-side reservation ownership validation');
+      if (!options.mayIssue || options.ownedReservation !== op.quantity)
+        return fail('invalid', 'Issue requires privileged approval and an exact owned reservation');
+      if (op.quantity > current.reserved || op.quantity > current.onHand)
+        return fail('insufficient_stock', 'Owned reservation exceeds actual stock');
+      next.onHand -= op.quantity;
+      next.reserved -= op.quantity;
+      break;
     case 'return':
       return fail('invalid', 'Return requires verified original issue reference');
     case 'transfer':
