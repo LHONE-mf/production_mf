@@ -8,6 +8,8 @@ on:
     paths:
       - 'android/app/src/**'
       - 'tests/android-storage/**'
+      # A recorded milestone checkpoint also requests current-head native evidence.
+      - 'docs/STORAGE_FEATURE_MATRIX.md'
       - 'scripts/android-storage*'
       - 'scripts/verify-android-storage.mjs'
       - 'apps/server/src/inventory-quality*'
