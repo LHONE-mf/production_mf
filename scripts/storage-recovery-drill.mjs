@@ -1,3 +1,4 @@
+import{inventoryStockFromRow}from'../apps/server/dist/inventory-snapshot.js';
 /** Disposable local pg_dump/pg_restore drill. Never a production recovery command.
  * Build apps/server first. POSTGRES_TEST_URL must select localhost/production_mf_ci.
  * Uses the existing local storage-postgres-test container; creates/drops only run-owned DBs.
@@ -31,9 +32,9 @@ async function reconstructed(pool,repair=false){
   if(event.kind==='reserve'){assert(!reservations.has(r.reservationId));reservations.set(r.reservationId,{id:r.reservationId,stockId:s.stockId,batchId:r.productionBatchId,quantity:BigInt(r.quantity)});}
   if(event.kind==='release_reservation'){const existing=reservations.get(r.reservationId);assert(existing&&existing.stockId===s.stockId&&existing.batchId===r.productionBatchId);existing.quantity-=BigInt(r.quantity);assert(existing.quantity>=0n);if(!existing.quantity)reservations.delete(r.reservationId);}
  }
- if(repair){for(const s of stocks.values())await pool.query('UPDATE inventory_stocks SET on_hand=$3,reserved=$4,location_id=$5,quality=$6,revision=$7 WHERE organization_id=$1 AND id=$2',[org,s.stockId,String(s.onHand),String(s.reserved),s.locationId,s.quality,s.revision]);for(const r of reservations.values())await pool.query('UPDATE inventory_reservations SET quantity=$3 WHERE organization_id=$1 AND id=$2',[org,r.id,r.quantity.toString()]);}
+ if(repair){for(const s of stocks.values())await pool.query('UPDATE inventory_stocks SET on_hand=$3,reserved=$4,location_id=$5,quality=$6,revision=$7,expires_at=$8,manufactured_on=$9,disposition=$10 WHERE organization_id=$1 AND id=$2',[org,s.stockId,String(s.onHand),String(s.reserved),s.locationId,s.quality,s.revision,s.expiresAt??null,s.manufacturedOn??null,s.disposition??null]);for(const r of reservations.values())await pool.query('UPDATE inventory_reservations SET quantity=$3 WHERE organization_id=$1 AND id=$2',[org,r.id,r.quantity.toString()]);}
  const actual=(await pool.query('SELECT s.*,m.base_unit FROM inventory_stocks s JOIN inventory_materials m ON m.id=s.material_id WHERE s.organization_id=$1',[org])).rows;
- assert.equal(actual.length,stocks.size);for(const row of actual)assert.deepEqual(stocks.get(row.id),{stockId:row.id,materialId:row.material_id,manufacturerLot:row.manufacturer_lot,unit:row.base_unit,locationId:row.location_id,quality:row.quality,onHand:Number(row.on_hand),reserved:Number(row.reserved),revision:row.revision,available:Number(BigInt(row.on_hand)-BigInt(row.reserved))});
+ assert.equal(actual.length,stocks.size);for(const row of actual)assert.deepEqual(stocks.get(row.id),{...inventoryStockFromRow(row),available:Number(BigInt(row.on_hand)-BigInt(row.reserved))});
  const actualReservations=(await pool.query('SELECT * FROM inventory_reservations WHERE organization_id=$1',[org])).rows;assert.equal(actualReservations.length,reservations.size);for(const row of actualReservations)assert.deepEqual(reservations.get(row.id),{id:row.id,stockId:row.stock_id,batchId:row.production_batch_id,quantity:BigInt(row.quantity)});
  return{events:events.length,stocks:stocks.size,reservations:reservations.size};
 }
@@ -44,24 +45,25 @@ try{
  const material=randomUUID(),warehouse=randomUUID(),from=randomUUID(),to=randomUUID();await post(source,'/inventory/materials',{id:material,deviceId:device,code:'P',name:'Powder',category:'raw_material',baseUnit:'mg'});
  for(const location of[{id:warehouse,parentId:null,label:'Warehouse',kind:'warehouse'},{id:from,parentId:warehouse,label:'Cabinet A',kind:'cabinet'},{id:to,parentId:warehouse,label:'Cabinet B',kind:'cabinet'}])await post(source,'/inventory/locations',{...location,deviceId:device});
  const receiving=(quantity,document)=>({operationId:randomUUID(),deviceId:device,stockId:randomUUID(),materialId:material,locationId:from,manufacturerLot:'A',quantity,expectedRevision:0,reason:'Physical receipt fixture',supplier:'Supplier',receiptReference:document});
- const first=receiving(2125000,'Delivery 1');const firstAck=await post(source,'/inventory/receipts',first,epoch);
+ const first={...receiving(2125000,'Delivery 1'),expiresOn:'2099-12-31',manufacturedOn:'2026-01-01'};const firstAck=await post(source,'/inventory/receipts',first,epoch);
  const operation=(kind,expectedRevision,quantity,extra={})=>({operationId:randomUUID(),deviceId:device,kind,expectedRevision,quantity,reason:'Documented restore fixture',...extra});
  await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('transfer',1,2125000,{toLocationId:to}),epoch);
  await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('adjust',2,125000,{adjustment:'decrease'}),epoch);
- // Fixture-only approved QA state exercises reservations; no release API/policy is invented.
- await source.pool.query("UPDATE inventory_stocks SET quality='released' WHERE id=$1",[first.stockId]);const route=randomUUID(),order=randomUUID(),batch=randomUUID(),reservation=randomUUID();
+ // Genuine Chief disposition supplies the released state; no fixture QA bypass.
+ await post(source,'/inventory/stocks/'+first.stockId+'/quality-dispositions',{operationId:randomUUID(),stockId:first.stockId,deviceId:device,expectedRevision:3,disposition:'release',reason:'Synthetic Chief certificate review for restore drill',evidence:'CI-QA-RESTORE-42'},epoch);const route=randomUUID(),order=randomUUID(),batch=randomUUID(),reservation=randomUUID();
  await source.pool.query("INSERT INTO process_routes(organization_id,id,code,name,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Fixture route',$3)",[org,route,actor]);
  await source.pool.query("INSERT INTO process_route_versions(organization_id,route_id,version,state,approved_at,approved_by) VALUES($1,$2,1,'approved',now(),$3)",[org,route,actor]);
  await source.pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'P',$3,1,'released',10,'kg',$4)",[org,order,route,actor]);
  await source.pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'cathode','created',$4)",[org,batch,order,actor]);
- await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('reserve',3,1000000,{reservationId:reservation,productionBatchId:batch}),epoch);
- await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('release_reservation',4,400000,{reservationId:reservation,productionBatchId:batch}),epoch);
+ await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('reserve',4,1000000,{reservationId:reservation,productionBatchId:batch}),epoch);
+ await post(source,'/inventory/stocks/'+first.stockId+'/operations',operation('release_reservation',5,400000,{reservationId:reservation,productionBatchId:batch}),epoch);
  const second=receiving(1000000,'Delivery 2');await post(source,'/inventory/receipts',second,epoch);const reconstruction=await reconstructed(source.pool),expected=await snapshot(source.pool);
  const dump=await exec('docker',[...docker,'exec',container,'pg_dump','-Fc','--no-owner','--no-privileges','-U','production_mf_ci','-d',source.name],{env:environment,encoding:'buffer',maxBuffer:32*1024*1024});
  const lost=receiving(500000,'Committed after backup');await post(source,'/inventory/receipts',lost,epoch);
  const intact=await database('intact');await restore(intact.name,dump.stdout);assert.deepEqual(await snapshot(intact.pool),expected);assert.deepEqual(await reconstructed(intact.pool),reconstruction);
  assert.deepEqual((await post(intact,'/inventory/receipts',first,epoch,200)).stock,firstAck.stock);assert.deepEqual(await snapshot(intact.pool),expected);
  await assert.rejects(intact.pool.query("UPDATE inventory_operations SET reason='rewrite' WHERE organization_id=$1",[org]),/immutable/);
+ await assert.rejects(intact.pool.query("UPDATE inventory_quality_dispositions SET evidence='rewrite' WHERE organization_id=$1",[org]),/immutable/);
  const denied=await intact.app.inject({method:'GET',url:'/inventory/stream?deviceId='+revokedDevice.device,headers:headers(revokedDevice)});assert.equal(denied.statusCode,403);
  // Damage and actually repair only disposable quantity projections under stopped posting/locks.
  const client=await intact.pool.connect();try{await client.query('BEGIN');await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[org+':inventory-sequence']);await client.query('UPDATE inventory_streams SET posting_enabled=false WHERE organization_id=$1',[org]);await client.query('UPDATE inventory_stocks SET on_hand=on_hand+1 WHERE id=$1',[first.stockId]);await client.query('UPDATE inventory_reservations SET quantity=quantity+1 WHERE id=$1',[reservation]);await reconstructed(client,true);await client.query('UPDATE inventory_streams SET posting_enabled=true WHERE organization_id=$1',[org]);await client.query('COMMIT');}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}assert.deepEqual(await snapshot(intact.pool),expected);

@@ -1,3 +1,4 @@
+import {InventoryQualityPanel} from './InventoryQualityPanel';
 import {StorageAdministration} from './StorageAdministration';
 import {InventoryRecoveryPanel} from './InventoryRecoveryPanel';
 import {OfflineStorage} from './OfflineStorage';
@@ -16,7 +17,7 @@ import {pullInventoryChanges} from '../../core/sync/inventoryClient';
 import {confirmedInventoryForScope,inventoryQueueForScope,inventoryScopeKey,type ConfirmedInventoryStock,inventoryOutbox,type InventoryHistory} from '../../core/sync/inventoryOutbox';
 import {inventoryStockQueueForScope,reviewInventoryConflict} from '../../core/sync/inventoryStockOutbox';
 
-const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва'} as Record<string,string>)[kind]??kind;
+const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва',quality_change:'Решение о качестве (без движения количества)'} as Record<string,string>)[kind]??kind;
 export function ConfirmedStorage(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');
@@ -95,13 +96,15 @@ export function ConfirmedStorage(){
      <p>{visible.names[s.materialId]??s.materialId} · Партия производителя: {s.manufacturerLot}</p><p>Контейнер: {s.stockId}</p><p>Место: {visible.locations[s.locationId]??s.locationId}</p>
      <p>Качество: {s.quality==='quarantine'?'Карантин':s.quality==='released'?'Разрешено':'Заблокировано'} · Версия {s.revision}</p>
      <p>На руках: {s.onHand} {s.unit} · Резерв: {s.reserved} {s.unit} · Свободно по количеству: {s.available} {s.unit}</p><p>Карантин и блокировка запрещают использование в производстве.</p>
+     {s.expiresAt&&<p>Истечение годности (UTC): {new Date(s.expiresAt).toLocaleString('ru-RU',{timeZone:'UTC'})}. {Date.parse(s.expiresAt)<=now?'Срок истёк. Использование запрещено.':''}</p>}
+     {scope&&connection&&user&&<InventoryQualityPanel scope={scope} session={connection.session} localActorId={user.id} stock={s} canDecide={visible.access.level==='chief'} onChanged={()=>void refresh()}/>}
      {scope&&connection&&user&&<StockChangeForm {...{scope,stock:s,materialName:visible.names[s.materialId],sourceLocationName:visible.locations[s.locationId],session:connection.session,localActorId:user.id,locations:visible.places,canCorrect:visible.canCorrect,onQueued:()=>void queued()}}/>}
      <details><summary className="min-h-11 py-2 cursor-pointer">Полученная серверная история контейнера</summary><p>Из последних 200 изменений, полученных устройством. Полный журнал хранится на сервере; при обновлении старой версии история до сохранённого курсора может отсутствовать.</p>{visible.history.filter(h=>h.stockId===s.stockId).map(h=><p key={h.sequence}>{actionLabel(h.kind)} · {new Date(h.recordedAt).toLocaleString('ru-RU')} · Операция {h.operationId} · Версия {h.stock.revision} · {h.quantity??'—'} {h.stock.unit} · Автор {h.actorId??'не передан старым сервером'} · Устройство {h.deviceId??'не указано'} · {h.reason??'основание не передано старым сервером'} · Место после операции: {visible.locations[h.stock.locationId]??h.stock.locationId}</p>)}</details>
     </article>)}
     {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
     {scope&&connection&&user&&visible.access.canManageCatalog&&<StorageAdministration key={'administration:'+key} scope={scope} session={connection.session} localActorId={user.id} access={visible.access} materials={visible.materials} locations={visible.places} onChanged={()=>void refresh()}/>}
     <h4>Операции / Синхронизация ({visible.queue.length})</h4>
-    <p>Предложения не меняют подтверждённые остатки.</p>
+    <p>Предложения не меняют подтверждённые остатки. Решения QA и администрация подтверждаются отдельно в соответствующих разделах.</p>
     {visible.queue.some(q=>q.state==='pending')&&<button type="button" className="min-h-11 bg-blue-700 px-3" disabled={busy} onClick={()=>setConfirmSend(true)}>Проверить отправку / повтор</button>}
     {confirmSend&&<div role="alertdialog" aria-label="Подтверждение обмена"><p>Отправить до 20 ожидающих приёмок и до 20 изменений склада с сохранёнными ID и исходными версиями? Неизвестный ответ повторяется с тем же ID. Конфликты и отклонения не переотправляются.</p><button className="min-h-11 px-3" disabled={busy} onClick={()=>void send()}>Подтвердить отправку тех же операций</button><button className="min-h-11 px-3" disabled={busy} onClick={()=>setConfirmSend(false)}>Отмена отправки</button></div>}
     {visible.queue.map(q=><p key={q.id}>{actionLabel(q.kind)} · {q.id} · {q.state==='pending'?'Ожидает отправки':q.state==='conflict'?'Конфликт':q.state==='review'?'Требуется сверка истории':'Отклонено'} {q.error} · {new Date(q.at).toLocaleString('ru-RU')} · Контейнер: {q.stockId} · {q.quantity} {q.unit} · Исходная версия: {q.revision} {q.destination&&<>· Назначение: {visible.locations[q.destination]??q.destination}</>} · Основание: {q.reason}{q.reviewedAt&&<> · Сверено: {q.reviewReason}</>}{!q.reviewedAt&&['conflict','rejected','review'].includes(q.state)&&q.kind!=='Приёмка'&&<button className="min-h-11 px-3" onClick={()=>{setReviewId(q.id);setReviewReason('');}}>Сверить сохранённое предложение</button>}</p>)}

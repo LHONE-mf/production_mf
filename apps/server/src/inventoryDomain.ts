@@ -26,6 +26,9 @@ export interface InventoryStock {
   onHand: number;
   reserved: number;
   revision: number;
+  expiresAt?: string;
+  manufacturedOn?: string;
+  disposition?: 'release'|'hold'|'block'|'reject';
 }
 
 export interface InventoryOperation {
@@ -52,7 +55,7 @@ export interface InventoryOperation {
 
 export type InventoryResult =
   | { ok: true; stock: InventoryStock; available: number }
-  | { ok: false; code: 'invalid' | 'revision_conflict' | 'insufficient_stock' | 'blocked' | 'missing'; message: string };
+  | { ok: false; code: 'invalid' | 'revision_conflict' | 'insufficient_stock' | 'blocked' | 'expired' | 'missing'; message: string };
 
 const validText = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= 200;
@@ -75,7 +78,7 @@ const fail = (code: Extract<InventoryResult, {ok:false}>['code'], message: strin
 export function transitionInventory(
   current: InventoryStock | undefined,
   op: InventoryOperation,
-  options: { mayAdjust: boolean; ownedReservation?: number } = { mayAdjust: false },
+  options: { mayAdjust: boolean; ownedReservation?: number; now?: number } = { mayAdjust: false },
 ): InventoryResult {
   if (!validText(op.operationId) || !validText(op.stockId) ||
       !validText(op.actorId) || !validText(op.reason) ||
@@ -105,6 +108,7 @@ export function transitionInventory(
   if (current.revision !== op.expectedRevision)
     return fail('revision_conflict', 'Stock changed since last confirmed revision');
 
+  if((op.kind==='reserve'||op.kind==='issue')&&current.expiresAt&&Date.parse(current.expiresAt)<=(options.now??Date.now()))return fail('expired','Stock has expired');
   const available = current.onHand - current.reserved;
   const next = {...current, revision:current.revision + 1};
   if (!Number.isSafeInteger(next.revision)) return fail('invalid', 'Revision overflow');

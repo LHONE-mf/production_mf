@@ -1,3 +1,4 @@
+import {registerInventoryQualityRoutes} from './inventory-quality-routes.js';
 import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
 import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
 import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
@@ -72,6 +73,7 @@ export function buildApp(pool: Pool) {
   registerInventoryCatalogRoutes(app, pool);
   registerInventoryAdministrationRoutes(app, pool);
   registerInventoryCatalogChanges(app, pool);
+  registerInventoryQualityRoutes(app,pool);
   registerInventoryStockOperations(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {

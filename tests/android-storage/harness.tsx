@@ -5,6 +5,7 @@ import { ConfirmedStorage } from '../../src/stages/storage/ConfirmedStorage';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
+import { inventoryQualityProposals } from '../../src/core/sync/inventoryQuality';
 import { listInventoryAdministration } from '../../src/core/sync/inventoryAdministration';
 import { loadWarehouseAccess } from '../../src/core/sync/inventoryCatalogClient';
 import { inventoryOutbox, inventoryQueueForScope, confirmedInventoryForScope, type InventoryScope } from '../../src/core/sync/inventoryOutbox';
@@ -80,18 +81,18 @@ async function select(role: 'chief' | 'operator') {
   root.render(<ConfirmedStorage />);
   await until(() => button('Обновить подтверждённые данные'), 'Storage mounted');
 }
-function button(text: string) { return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.disabled); }
-async function click(text: string) {
-  await until(() => button(text), text);
-  button(text)!.click();
+function button(text: string, root: ParentNode = document) { return [...root.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.disabled); }
+async function click(text: string, root: ParentNode = document) {
+  await until(() => button(text, root), text);
+  button(text, root)!.click();
   await new Promise(resolve => setTimeout(resolve, 0));
 }
-async function fill(label: string, value: string, persisted = true) {
+async function fill(label: string, value: string, persisted = true, root: ParentNode = document) {
   await until(() => {
-    const control = document.querySelector(`[aria-label="${label}"]`);
+    const control = root.querySelector(`[aria-label="${label}"]`);
     return control && !control.matches(':disabled') && (!(control instanceof HTMLSelectElement) || [...control.options].some(option => option.value === value));
   }, label);
-  const element = document.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
+  const element = root.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
   element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
@@ -170,9 +171,21 @@ async function finish(expected: { operationId: string; request: unknown }) {
   assert((await confirmedInventoryForScope(scope())).length === 2, 'Second distinct package missing');
   assert(![...document.querySelectorAll('option')].some(option => option.textContent === 'Коррекция количества'), 'Operator correction exposed');
   assert(document.documentElement.scrollWidth <= innerWidth, 'Horizontal overflow');
+  const operatorQa = await originalFetch(fixture.serverUrl + '/inventory/stocks/' + stock.stockId + '/quality-dispositions', { method: 'POST', headers: { authorization: 'Bearer ' + connection.session.accessToken, 'content-type': 'application/json', 'x-device-proof': connection.session.deviceProofToken!, 'x-inventory-epoch': epoch }, body: JSON.stringify({ operationId: crypto.randomUUID(), stockId: stock.stockId, deviceId: connection.selectedDeviceId, expectedRevision: stock.revision, disposition: 'release', reason: 'Forbidden operator QA', evidence: 'Forbidden' }) });
+  assert(operatorQa.status === 403, 'Server accepted operator QA release');
+  await select('chief'); await refresh();
+  const article = [...document.querySelectorAll('article')].find(row => [...row.querySelectorAll('p')].some(text => text.textContent === 'Контейнер: ' + stock.stockId));
+  assert(article, 'Chief cannot see genuine received package');
+  const summary = [...article!.querySelectorAll('summary')].find(row => row.textContent === 'Решения о качестве / история'); assert(summary, 'QA screen missing'); summary!.click();
+  await fill('Решение о качестве', 'release', false, article!); await fill('Основание решения Chief', 'Native Chief certificate review', false, article!); await fill('Документ / свидетельство QA', 'NATIVE-QA-42', false, article!); await click('Проверить решение о качестве', article!);
+  await until(async () => (await inventoryQualityProposals(scope(), fixture.chief, stock.stockId)).length === 1, 'native Chief frozen QA');
+  const qa = (await inventoryQualityProposals(scope(), fixture.chief, stock.stockId))[0];
+  await click('Подтвердить решение Chief ' + qa.operationId!.slice(0, 8), article!); await until(async () => (await inventoryOutbox.receivingDrafts.get(qa.key))?.fields.state === 'accepted', 'native genuine QA release');
+  await refresh(); const released = (await confirmedInventoryForScope(scope())).find(row => row.stockId === stock.stockId);
+  assert(released?.quality === 'released' && released.onHand === 2_125_000 && released.disposition === 'release', 'Native QA release altered quantity or missed genuine source');
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
-  assert((await inventoryOutbox.acknowledgements.count()) === 2, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 2, quarantine: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true };
+  assert((await inventoryOutbox.acknowledgements.count()) === 3, 'Logout destroyed retained evidence');
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 2, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true };
 }
 (window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish };

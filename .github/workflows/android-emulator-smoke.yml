@@ -1,8 +1,18 @@
 name: Android emulator smoke and screenshot
 
-# Native emulator runs are intentionally manual: ordinary sync changes use fast CI.
+# Native verification is manual or limited to native/QA integration paths on the Storage branch.
 on:
   workflow_dispatch:
+  push:
+    branches: [feat/storage-inventory-foundation]
+    paths:
+      - 'android/app/src/**'
+      - 'tests/android-storage/**'
+      - 'scripts/android-storage*'
+      - 'scripts/verify-android-storage.mjs'
+      - 'apps/server/src/inventory-quality*'
+      - 'apps/server/migrations/025_inventory_quality.sql'
+      - '.github/workflows/android-emulator-smoke.yml'
 
 permissions:
   contents: read

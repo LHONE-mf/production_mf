@@ -1,10 +1,11 @@
+import {inventoryStockFromRow as toStock,inventoryExpiryInstant} from './inventory-snapshot.js';
 import {inventoryStream,inventoryWriteFence,currentInventoryWriter} from './inventory-stream.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
 import { authenticate, type Principal } from './auth.js';
 import { deviceProofError } from './sync-routes.js';
-import { transitionInventory, type InventoryStock, type InventoryUnit } from './inventoryDomain.js';
+import { transitionInventory } from './inventoryDomain.js';
 
 // Warehouse stock cannot be posted through the generic task sync endpoint.
 // Every write requires server authorization, a current actor-bound device proof,
@@ -19,6 +20,7 @@ const changesQuery = device.extend({
 const receiptSchema = device.extend({
   operationId: uuid, stockId: uuid, materialId: uuid, locationId: uuid,
   manufacturerLot: z.string().trim().min(1).max(200),
+  expiresOn:z.iso.date().refine(value=>value>='0001-01-01'&&value<'9999-12-31').optional(),manufacturedOn:z.iso.date().refine(value=>value>='0001-01-01'&&value<'9999-12-31').optional(),
   supplier: z.string().trim().min(1).max(200).optional(),
   receiptReference: z.string().trim().min(1).max(200).optional(),
   expectedRevision: z.literal(0), quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -37,17 +39,6 @@ function safeCount(raw: unknown): number {
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value < 0) throw new Error('unsafe_inventory_balance');
   return value;
-}
-function toStock(row: Record<string, unknown>): InventoryStock {
-  return {
-    stockId: String(row.id), materialId: String(row.material_id),
-    manufacturerLot: String(row.manufacturer_lot),
-    unit: String(row.base_unit) as InventoryUnit,
-    locationId: String(row.location_id),
-    quality: row.quality as InventoryStock['quality'],
-    onHand: safeCount(row.on_hand), reserved: safeCount(row.reserved),
-    revision: safeCount(row.revision),
-  };
 }
 
 export async function inventoryPermission(pool: Pool, actor: Principal, required: 'operator'|'manager') {
@@ -130,7 +121,7 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     if(proof)return reply.code(403).send({error:proof});
     const {after,limit}=parsed.data;
     const result=await pool.query(`SELECT s.id,s.material_id,s.manufacturer_lot,s.location_id,
-      s.quality,s.on_hand,s.reserved,s.revision,m.base_unit
+      s.quality,s.on_hand,s.reserved,s.revision,s.expires_at,s.manufactured_on,s.disposition,m.base_unit
       FROM inventory_stocks s JOIN inventory_materials m
         ON m.id=s.material_id AND m.organization_id=s.organization_id
       WHERE s.organization_id=$1 AND ($2::uuid IS NULL OR s.id>$2)
@@ -200,6 +191,7 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     const parsed=receiptSchema.safeParse(request.body);
     if(!parsed.success)return reply.code(400).send({error:'invalid_request'});
     const data=parsed.data;
+    if(data.manufacturedOn&&data.expiresOn&&data.manufacturedOn>data.expiresOn)return reply.code(400).send({error:'invalid_receipt_dates'});
     if(!(await inventoryPermission(pool,actor,'operator')))return reply.code(403).send({error:'forbidden'});
     const proof=await proofError(pool,actor,request.headers.authorization,data.deviceId,request.headers['x-device-proof']);
     if(proof)return reply.code(403).send({error:proof});
@@ -250,13 +242,13 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
         await client.query('ROLLBACK');
         return reply.code(400).send({error:calculated.code});
       }
-      const stock=calculated.stock;
+      const stock={...calculated.stock,...(data.expiresOn?{expiresAt:inventoryExpiryInstant(data.expiresOn)}:{}),...(data.manufacturedOn?{manufacturedOn:data.manufacturedOn}:{})};
       await client.query(`INSERT INTO inventory_stocks
         (id,organization_id,material_id,manufacturer_lot,supplier,receipt_reference,
-          location_id,quality,on_hand,reserved,revision)
-        VALUES($1,$2,$3,$4,$5,$6,$7,'quarantine',$8,0,1)`,
+          location_id,quality,on_hand,reserved,revision,expires_at,manufactured_on)
+        VALUES($1,$2,$3,$4,$5,$6,$7,'quarantine',$8,0,1,$9,$10)`,
         [data.stockId,actor.organization_id,data.materialId,data.manufacturerLot,
-        data.supplier??null,data.receiptReference??null,data.locationId,data.quantity]);
+        data.supplier??null,data.receiptReference??null,data.locationId,data.quantity,stock.expiresAt??null,stock.manufacturedOn??null]);
       const snapshot={...stock,available:calculated.available};
       await client.query(`INSERT INTO inventory_operations
         (operation_id,organization_id,stock_id,actor_id,device_id,kind,quantity,

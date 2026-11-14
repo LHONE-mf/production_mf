@@ -3,7 +3,7 @@ import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {requireFreshDeviceProof} from './deviceProofClient';
 import {
-  archiveInventoryAcknowledgement,inventoryOutbox,inventoryQueueForScope,inventoryScopeKey,validateInventoryStock,
+  sameInventoryStock as sameStock,inventoryExpiryAt,archiveInventoryAcknowledgement,inventoryOutbox,inventoryQueueForScope,inventoryScopeKey,validateInventoryStock,
   type InventoryScope,type InventoryStockSnapshot,type QueuedInventoryReceipt,type InventoryHistory,
 } from './inventoryOutbox';
 
@@ -33,12 +33,7 @@ export async function inventoryRequest(
   return response;
 }
 
-function sameStock(a:InventoryStockSnapshot,b:InventoryStockSnapshot){
-  return a.stockId===b.stockId&&a.materialId===b.materialId&&
-    a.manufacturerLot===b.manufacturerLot&&a.locationId===b.locationId&&
-    a.unit===b.unit&&a.quality===b.quality&&a.onHand===b.onHand&&
-    a.reserved===b.reserved&&a.revision===b.revision&&a.available===b.available;
-}
+
 
 async function acknowledgeReceipt(
   queued:QueuedInventoryReceipt,raw:unknown,expectedStatus:'confirmed'|'duplicate',epoch:string,
@@ -55,7 +50,7 @@ async function acknowledgeReceipt(
       snapshot.manufacturerLot!==queued.request.manufacturerLot||
       snapshot.quality!=='quarantine'||snapshot.revision!==1||
       snapshot.onHand!==queued.request.quantity||
-      snapshot.reserved!==0)
+      snapshot.reserved!==0||snapshot.expiresAt!==(queued.request.expiresOn?inventoryExpiryAt(queued.request.expiresOn):undefined)||snapshot.manufacturedOn!==queued.request.manufacturedOn)
     throw new Error('Inventory receipt acknowledgement differs from queued intent');
   await inventoryOutbox.transaction('rw',inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.acknowledgements,async()=>{
     const current=await inventoryOutbox.operations.get(queued.operationId);
@@ -143,10 +138,10 @@ async function pullInventoryChangesUnlocked(
   for(const item of changes){
     if(!item||!Number.isSafeInteger(item.sequence)||item.sequence<=previous||
         !validId.test(item.operationId)||
-        !['receive','transfer','adjust','reserve','release_reservation'].includes(item.kind)||
+        !['receive','transfer','adjust','reserve','release_reservation','quality_change'].includes(item.kind)||
         typeof item.recordedAt!=='string'||!Number.isFinite(Date.parse(item.recordedAt)))
       throw new Error('Invalid inventory change order or identity');
-    if(item.actorId!==undefined&&!validId.test(item.actorId)||item.deviceId!==undefined&&item.deviceId!==null&&!validId.test(item.deviceId)||item.reason!==undefined&&(typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>2000)||item.quantity!==undefined&&(!Number.isSafeInteger(item.quantity)||item.quantity<1))throw new Error('Invalid inventory history attribution');
+    if(item.actorId!==undefined&&!validId.test(item.actorId)||item.deviceId!==undefined&&item.deviceId!==null&&!validId.test(item.deviceId)||item.reason!==undefined&&(typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>2000)||item.quantity!==undefined&&(!Number.isSafeInteger(item.quantity)||item.quantity<(item.kind==='quality_change'?0:1)||item.kind==='quality_change'&&item.quantity!==0))throw new Error('Invalid inventory history attribution');
     validateInventoryStock(item.stock);
     if(item.kind==='receive'?
         item.stock.revision!==1||item.stock.quality!=='quarantine':

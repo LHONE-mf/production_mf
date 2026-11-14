@@ -1,7 +1,7 @@
 import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {
-  archiveInventoryAcknowledgement,inventoryOutbox,inventoryScopeKey,validateInventoryStock,
+  sameInventoryStock as sameStock,archiveInventoryAcknowledgement,inventoryOutbox,inventoryScopeKey,validateInventoryStock,
   type InventoryScope,type InventoryStockSnapshot,
 } from './inventoryOutbox';
 import {inventoryRequest,preflightInventoryStream} from './inventoryClient';
@@ -15,12 +15,7 @@ import {
  * The server is authoritative. A lost reply always retains the same operation
  * ID; accepted stock is never fabricated from a local provisional request.
  */
-function sameStock(a:InventoryStockSnapshot,b:InventoryStockSnapshot){
-  return a.stockId===b.stockId&&a.materialId===b.materialId&&
-    a.manufacturerLot===b.manufacturerLot&&a.locationId===b.locationId&&
-    a.unit===b.unit&&a.quality===b.quality&&a.onHand===b.onHand&&
-    a.reserved===b.reserved&&a.revision===b.revision&&a.available===b.available;
-}
+
 function expectedSnapshot(
   base:InventoryStockSnapshot,request:InventoryStockChangeRequest,
 ):InventoryStockSnapshot{

@@ -1,3 +1,4 @@
+import {inventoryStockFromRow as stockFrom} from './inventory-snapshot.js';
 import {inventoryWriteFence,currentInventoryWriter} from './inventory-stream.js';
 import type {FastifyInstance} from 'fastify';
 import type {Pool} from 'pg';
@@ -5,7 +6,7 @@ import {z} from 'zod';
 import {authenticate} from './auth.js';
 import {deviceProofError} from './sync-routes.js';
 import {inventoryPermission} from './inventory-routes.js';
-import {transitionInventory,type InventoryStock,type InventoryUnit} from './inventoryDomain.js';
+import {transitionInventory} from './inventoryDomain.js';
 
 // A deliberately narrow API: no issue, return, quality release or partial
 // container move. All operations are manager-confirmed where required.
@@ -39,16 +40,6 @@ function asCount(value:unknown) {
   const n=Number(value);
   if(!Number.isSafeInteger(n)||n<0)throw new Error('unsafe_inventory_balance');
   return n;
-}
-function stockFrom(row:Record<string,unknown>):InventoryStock{
-  return {
-    stockId:String(row.id),materialId:String(row.material_id),
-    manufacturerLot:String(row.manufacturer_lot),
-    unit:String(row.base_unit) as InventoryUnit,locationId:String(row.location_id),
-    quality:row.quality as InventoryStock['quality'],
-    onHand:asCount(row.on_hand),reserved:asCount(row.reserved),
-    revision:asCount(row.revision),
-  };
 }
 
 export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) {
@@ -92,7 +83,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
           {error:'operation_id_reused'});
       }
       const result=await client.query(`SELECT s.id,s.material_id,s.manufacturer_lot,
-          s.location_id,s.quality,s.on_hand,s.reserved,s.revision,m.base_unit
+          s.location_id,s.quality,s.on_hand,s.reserved,s.revision,s.expires_at,s.manufactured_on,s.disposition,m.base_unit
         FROM inventory_stocks s
         JOIN inventory_materials m ON m.id=s.material_id
           AND m.organization_id=s.organization_id
@@ -116,6 +107,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
           return reply.code(404).send({error:'destination_not_found'});
         }
       }
+      if(data.kind==='reserve'&&current.expiresAt&&Date.parse(current.expiresAt)<=Date.now()){await client.query('ROLLBACK');return reply.code(409).send({error:'expired'});}
       if(data.kind==='reserve'){
         // Only active, released production orders may acquire new reservations.
         // Physical stock still must be separately QA-released; this route

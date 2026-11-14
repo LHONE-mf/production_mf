@@ -26,14 +26,16 @@ export interface InventoryReceiptRequest {
   expectedRevision: 0;
   reason: string;
   supplier?: string;
-  receiptReference?: string;
+  receiptReference?: string;expiresOn?:string;manufacturedOn?:string;
 }
 export interface InventoryStockSnapshot {
   stockId: string;materialId: string;manufacturerLot: string;
   unit: 'mg'|'ul'|'mm'|'pieces';locationId: string;
   quality: 'quarantine'|'released'|'blocked';
   onHand: number;reserved: number;revision: number;available: number;
+  expiresAt?:string;manufacturedOn?:string;disposition?:'release'|'hold'|'block'|'reject';
 }
+export interface InventoryQualityRequest {operationId:string;stockId:string;deviceId:string;expectedRevision:number;disposition:'release'|'hold'|'block'|'reject';reason:string;evidence:string}
 export interface QueuedInventoryReceipt {
   operationId: string;scopeKey: string;request: InventoryReceiptRequest;
   queuedAt: number;state: 'pending'|'conflict'|'rejected'|'review';recoveryApprovalId?:string;error?: string;requiresStreamReview?:boolean;
@@ -46,7 +48,7 @@ interface InventorySyncMetadata {key:string;value:number;}
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;quantity?:number}
 export interface InventoryStreamState {scopeKey:string;epoch:string}
-export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
+export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest|InventoryQualityRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
 export class InventoryOutboxDatabase extends Dexie {
   recoveryArchives!:Table<{approvalId:string;scopeKey:string;epoch:string|null;evidence:InventoryRecoveryBundle;approval:InventoryRecoveryApproval;archivedAt:number},string>;
   streams!:Table<InventoryStreamState,string>;
@@ -96,6 +98,12 @@ export function inventoryScopeKey(scope:InventoryScope):string{
   return [origin.origin,scope.organizationId,scope.actorId,scope.deviceId].join('::');
 }
 
+export function validInventoryDate(value:unknown):value is string{
+ return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(value)&&value>='0001-01-01'&&value<'9999-12-31'&&Number.isFinite(Date.parse(value+'T00:00:00.000Z'))&&new Date(value+'T00:00:00.000Z').toISOString().slice(0,10)===value;
+}
+export function inventoryExpiryAt(expiresOn:string){if(!validInventoryDate(expiresOn))throw Error('Invalid inventory expiry date');return new Date(Date.parse(expiresOn+'T00:00:00.000Z')+86400000).toISOString();}
+export function sameInventoryStock(a:InventoryStockSnapshot,b:InventoryStockSnapshot){return (['stockId','materialId','manufacturerLot','locationId','unit','quality','onHand','reserved','revision','available','expiresAt','manufacturedOn','disposition'] as const).every(key=>a[key]===b[key]);}
+
 export function validateInventoryStock(stock:unknown):asserts stock is InventoryStockSnapshot{
   if(!stock||typeof stock!=='object')throw new Error('Invalid inventory stock');
   const s=stock as InventoryStockSnapshot;
@@ -104,7 +112,10 @@ export function validateInventoryStock(stock:unknown):asserts stock is Inventory
       !['quarantine','released','blocked'].includes(s.quality)||
       !Number.isSafeInteger(s.onHand)||s.onHand<0||!Number.isSafeInteger(s.reserved)||
       s.reserved<0||s.reserved>s.onHand||!positive(s.revision)||
-      s.available!==s.onHand-s.reserved)
+      s.available!==s.onHand-s.reserved||
+      (s.expiresAt!==undefined&&(typeof s.expiresAt!=='string'||!Number.isFinite(Date.parse(s.expiresAt))||new Date(s.expiresAt).toISOString()!==s.expiresAt))||
+      (s.manufacturedOn!==undefined&&!validInventoryDate(s.manufacturedOn))||
+      (s.disposition!==undefined&&(!['release','hold','block','reject'].includes(s.disposition)||(s.disposition==='release'?s.quality!=='released':s.quality!=='blocked'))))
     throw new Error('Invalid inventory stock');
 }
 
@@ -124,7 +135,10 @@ export async function queueInventoryReceipt(
       !text(draft.manufacturerLot,200)||!text(draft.reason,2000)||
       !positive(draft.quantity)||draft.expectedRevision!==0||
       (draft.supplier!==undefined&&!text(draft.supplier,200))||
-      (draft.receiptReference!==undefined&&!text(draft.receiptReference,200)))
+      (draft.receiptReference!==undefined&&!text(draft.receiptReference,200))||
+      (draft.expiresOn!==undefined&&!validInventoryDate(draft.expiresOn))||
+      (draft.manufacturedOn!==undefined&&!validInventoryDate(draft.manufacturedOn))||
+      (draft.expiresOn&&draft.manufacturedOn&&draft.manufacturedOn>draft.expiresOn))
     throw new Error('Invalid provisional receipt');
   const operationId=crypto.randomUUID();
   const request:InventoryReceiptRequest={

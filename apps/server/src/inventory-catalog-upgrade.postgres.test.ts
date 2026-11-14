@@ -31,6 +31,10 @@ integration('Storage populated 001–023 catalogue upgrade (isolated schema)', (
       expect((await client.query('SELECT * FROM inventory_materials')).rows[0]).toMatchObject({ id: material, material_code: 'OLD-CODE', display_name: 'Preserve name', base_unit: 'mg', active: true, revision: 1, supplier_reference: null });
       expect((await client.query('SELECT * FROM inventory_locations')).rows[0]).toMatchObject({ id: place, label: 'Preserve historical warehouse', active: true, revision: 1 });
       expect((await client.query('SELECT count(*)::int AS n FROM inventory_catalog_events')).rows[0].n).toBe(0);
+      const qualityMigration=await readFile('migrations/025_inventory_quality.sql','utf8');await client.query(qualityMigration);await client.query(qualityMigration);
+      expect((await client.query('SELECT row_to_json(s) AS row FROM inventory_stocks s')).rows[0].row).toMatchObject({...oldStock,expires_at:null,manufactured_on:null,disposition:null});
+      expect((await client.query('SELECT row_to_json(e) AS row FROM inventory_operations e')).rows[0].row).toEqual(oldEvent);
+      expect((await client.query('SELECT count(*)::int AS n FROM inventory_quality_dispositions')).rows[0].n).toBe(0);
       await expect(client.query('DELETE FROM inventory_operations WHERE operation_id=$1', [operation])).rejects.toThrow('immutable');
     } finally {
       await client.query('ROLLBACK'); await client.query('RESET search_path');

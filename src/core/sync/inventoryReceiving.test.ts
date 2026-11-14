@@ -42,3 +42,13 @@ it('freezes whole-container stock intent atomically and rejects a stale source r
  expect((await inventoryOutbox.stockOperations.get(id))?.request.quantity).toBe(2125000);
  expect((await inventoryOutbox.stocks.toArray())[0].locationId).toBe(stock.locationId);
 });
+it('preserves optional manufacture/expiry intent and uses an inclusive UTC expiry date without calendar normalization',async()=>{
+ const {validInventoryDate,inventoryExpiryAt}=await import('./inventoryOutbox');
+ expect(inventoryExpiryAt('2028-02-29')).toBe('2028-03-01T00:00:00.000Z');
+ for(const value of ['2026-02-30','2026-13-01','9999-12-31','2026-11-14T00:00:00Z'])expect(validInventoryDate(value)).toBe(false);
+ await saveReceivingDraft(key,0,{expiresOn:'2099-12-31',manufacturedOn:'2026-01-01'});
+ await expect(freezeReceivingDraft(key,1,session,scope,{...fields,expiresOn:'2026-01-01',manufacturedOn:'2026-02-01'})).rejects.toThrow();
+ const id=await freezeReceivingDraft(key,1,session,scope,{...fields,expiresOn:'2099-12-31',manufacturedOn:'2026-01-01'});
+ expect((await inventoryOutbox.operations.get(id))?.request).toMatchObject({expiresOn:'2099-12-31',manufacturedOn:'2026-01-01'});
+ expect(await inventoryOutbox.stocks.count()).toBe(0);
+});
