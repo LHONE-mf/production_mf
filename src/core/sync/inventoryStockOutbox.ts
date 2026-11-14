@@ -29,6 +29,7 @@ export interface QueuedInventoryStockChange {
   queuedAt:number;
   state:'pending'|'conflict'|'rejected';
   error?:string;
+  requiresStreamReview?:boolean;
   reviewedAt?:number;
   reviewReason?:string;
 }

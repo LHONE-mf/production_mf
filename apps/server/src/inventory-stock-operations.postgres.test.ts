@@ -10,13 +10,14 @@ const integration=process.env.POSTGRES_TEST_URL?describe:describe.skip;
 integration('Storage controlled stock operations (disposable PostgreSQL)',()=>{
   const pool=new Pool({connectionString:process.env.POSTGRES_TEST_URL});
   const app=buildApp(pool);
+  const epoch=randomUUID();
   const org=randomUUID(),chief=randomUUID(),warehouseUser=randomUUID();
   const chiefToken=randomBytes(32).toString('base64url');
   const warehouseToken=randomBytes(32).toString('base64url');
   const keys=generateKeyPairSync('ed25519');
   let chiefDevice='',workerDevice='',chiefProof='',workerProof='';
   const headers=(token:string,proof='')=>({
-    authorization:'Bearer '+token,...(proof?{'x-device-proof':proof}:{}),
+    authorization:'Bearer '+token,'x-inventory-epoch':epoch,...(proof?{'x-device-proof':proof}:{}),
   });
   const post=(url:string,payload:object,token=chiefToken,proof=chiefProof)=>
     app.inject({method:'POST',url,headers:headers(token,proof),payload});
@@ -75,6 +76,7 @@ integration('Storage controlled stock operations (disposable PostgreSQL)',()=>{
       const added=await post('/inventory/locations',{deviceId:chiefDevice,...l});
       expect(added.statusCode,added.body).toBe(201);
     }
+    await pool.query('INSERT INTO inventory_streams(organization_id,epoch) VALUES($1,$2) ON CONFLICT(organization_id) DO UPDATE SET epoch=EXCLUDED.epoch',[org,epoch]);
   });
   afterAll(async()=>{await app.close();await pool.end();});
 

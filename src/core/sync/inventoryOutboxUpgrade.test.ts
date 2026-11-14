@@ -52,7 +52,7 @@ describe('Storage inventory outbox upgrade',()=>{
     old.close();
 
     await inventoryOutbox.open();
-    expect(await inventoryOutbox.operations.get(operationId)).toEqual(originalReceipt);
+    expect(await inventoryOutbox.operations.get(operationId)).toEqual({...originalReceipt,requiresStreamReview:true});
     expect(await inventoryOutbox.stocks.get([scopeKey,stockId])).toEqual(originalStock);
     expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);
     expect(await inventoryStockQueueForScope(scope)).toEqual([]);
@@ -64,7 +64,7 @@ describe('Storage inventory outbox upgrade',()=>{
     expect((await inventoryStockQueueForScope(scope))[0]).toMatchObject({
       operationId:pendingId,state:'pending',
     });
-    expect(await inventoryOutbox.operations.get(operationId)).toEqual(originalReceipt);
+    expect(await inventoryOutbox.operations.get(operationId)).toEqual({...originalReceipt,requiresStreamReview:true});
     expect(await inventoryOutbox.stocks.get([scopeKey,stockId])).toEqual(originalStock);
     expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);
     inventoryOutbox.close();await inventoryOutbox.open();
@@ -97,4 +97,10 @@ it('adds v5 offline views without resetting v4 history, frozen forms or cursor',
  const event={scopeKey,sequence:12,stockId,operationId:'77777777-7777-4777-8777-777777777777',reason:'Existing audit'};const form={key:scopeKey,revision:8,operationId:event.operationId,fields:{reason:'Frozen evidence'}};
  await old.table('history').put(event);await old.table('receivingDrafts').put(form);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();
  expect(await inventoryOutbox.history.get([scopeKey,12])).toEqual(event);expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(form);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.offlineViews.count()).toBe(0);
+});
+it('keeps v5 pending intent unchanged and marks its unknown pre-epoch outcome for administrator review',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});old.version(3).stores({receivingDrafts:'key'});old.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});old.version(5).stores({offlineViews:'localActorId,scopeKey'});await old.open();
+ const row={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,state:'pending',queuedAt:123,request:{reason:'Original physical evidence',quantity:2125000}};
+ await old.table('operations').put(row);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();expect(await inventoryOutbox.operations.get(row.operationId)).toEqual({...row,requiresStreamReview:true});expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.acknowledgements.count()).toBe(0);
 });

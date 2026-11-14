@@ -1,3 +1,4 @@
+import {inventoryStream,inventoryWriteFence,currentInventoryWriter} from './inventory-stream.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -193,6 +194,25 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
       hasMore:result.rows.length>limit,nextAfter:result.rows.length>limit?slice[slice.length-1].id:null};
   });
 
+  app.get('/inventory/stream',async(request,reply)=>{
+    const actor=await authenticate(pool,request.headers.authorization);
+    if(!actor)return reply.code(401).send({error:'unauthorized'});
+    const parsed=device.safeParse(request.query);
+    if(!parsed.success)return reply.code(400).send({error:'invalid_request'});
+    if(!(await inventoryPermission(pool,actor,'operator')))return reply.code(403).send({error:'forbidden'});
+    const proof=await proofError(pool,actor,request.headers.authorization,parsed.data.deviceId,request.headers['x-device-proof']);
+    if(proof)return reply.code(403).send({error:proof});
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))',[actor.organization_id+':inventory-sequence']);
+      const stream=await inventoryStream(client,actor.organization_id);
+      const head=await client.query('SELECT COALESCE(MAX(sequence),0)::text AS sequence FROM inventory_operations WHERE organization_id=$1',[actor.organization_id]);
+      await client.query('COMMIT');
+      return{organizationId:actor.organization_id,actorId:actor.id,deviceId:parsed.data.deviceId,epoch:stream.epoch,postingEnabled:stream.posting_enabled,sequence:safeCount(head.rows[0].sequence)};
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+  });
+
   // Read-only confirmed event feed. A client must persist the events and cursor
   // together before advancing its local checkpoint. Never include provisional
   // offline operations or unverified local Storage journal history here.
@@ -205,20 +225,27 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     const proof=await proofError(pool,actor,request.headers.authorization,
       parsed.data.deviceId,request.headers['x-device-proof']);
     if(proof)return reply.code(403).send({error:proof});
-    const {cursor,limit}=parsed.data;
-    const max=await pool.query(`SELECT COALESCE(MAX(sequence),0)::text AS maximum
-      FROM inventory_operations WHERE organization_id=$1`,[actor.organization_id]);
-    if(cursor>safeCount(max.rows[0].maximum))return reply.code(409).send({error:'cursor_out_of_range'});
-    const result=await pool.query(`SELECT sequence,operation_id,kind,result_stock,recorded_at,actor_id,device_id,reason,quantity
-      FROM inventory_operations WHERE organization_id=$1 AND sequence>$2
-      ORDER BY sequence LIMIT $3`,[actor.organization_id,cursor,limit+1]);
-    const items=result.rows.slice(0,limit);
-    return {changes:items.map(row=>({
-      sequence:safeCount(row.sequence),operationId:row.operation_id,kind:row.kind,
-      stock:row.result_stock,recordedAt:new Date(row.recorded_at).toISOString(),
-      actorId:row.actor_id,deviceId:row.device_id,reason:row.reason,quantity:safeCount(row.quantity),
-    })),hasMore:result.rows.length>limit,
-      nextCursor:items.length?safeCount(items[items.length-1].sequence):cursor};
+    const client=await pool.connect();
+    try{
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))',[actor.organization_id+':inventory-sequence']);
+      const stream=await inventoryStream(client,actor.organization_id);
+      const {cursor,limit}=parsed.data;
+      const max=await client.query(`SELECT COALESCE(MAX(sequence),0)::text AS maximum
+        FROM inventory_operations WHERE organization_id=$1`,[actor.organization_id]);
+      if(cursor>safeCount(max.rows[0].maximum)){await client.query('ROLLBACK');return reply.code(409).send({error:'cursor_out_of_range'});}
+      const result=await client.query(`SELECT sequence,operation_id,kind,result_stock,recorded_at,actor_id,device_id,reason,quantity
+        FROM inventory_operations WHERE organization_id=$1 AND sequence>$2
+        ORDER BY sequence LIMIT $3`,[actor.organization_id,cursor,limit+1]);
+      const items=result.rows.slice(0,limit);
+      await client.query('COMMIT');
+      return {epoch:stream.epoch,postingEnabled:stream.posting_enabled,changes:items.map(row=>({
+        sequence:safeCount(row.sequence),operationId:row.operation_id,kind:row.kind,
+        stock:row.result_stock,recordedAt:new Date(row.recorded_at).toISOString(),
+        actorId:row.actor_id,deviceId:row.device_id,reason:row.reason,quantity:safeCount(row.quantity),
+      })),hasMore:result.rows.length>limit,
+        nextCursor:items.length?safeCount(items[items.length-1].sequence):cursor};
+    }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
   });
 
   app.post('/inventory/receipts', async(request,reply)=>{
@@ -237,6 +264,9 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
       // operation IDs and competing first receipts from racing each other.
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
         [actor.organization_id+':inventory-sequence']);
+      if(!await currentInventoryWriter(client,actor.organization_id,actor.id,data.deviceId,request.headers.authorization!,request.headers['x-device-proof'],'operator')){await client.query('ROLLBACK');return reply.code(403).send({error:'forbidden'});}
+      const fence=await inventoryWriteFence(client,actor.organization_id,request.headers['x-inventory-epoch']);
+      if(fence){await client.query('ROLLBACK');return reply.code(fence==='inventory_epoch_required'?428:409).send({error:fence});}
       const prior=await client.query(`SELECT organization_id,actor_id,device_id,stock_id,
           request_payload=$2::jsonb AS identical,result_stock
         FROM inventory_operations WHERE operation_id=$1`,

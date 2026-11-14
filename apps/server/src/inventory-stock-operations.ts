@@ -1,5 +1,6 @@
+import {inventoryWriteFence,currentInventoryWriter} from './inventory-stream.js';
 import type {FastifyInstance} from 'fastify';
-import type {Pool,PoolClient} from 'pg';
+import type {Pool} from 'pg';
 import {z} from 'zod';
 import {authenticate} from './auth.js';
 import {deviceProofError} from './sync-routes.js';
@@ -50,18 +51,6 @@ function stockFrom(row:Record<string,unknown>):InventoryStock{
   };
 }
 
-// Grant recheck under row lock: a concurrent manager revoke cannot slip
-// between authorization and the stock write. Chief is separately authenticated.
-async function lockedAccess(client:PoolClient,orgId:string,actorId:string,
-                            role:string,required:'operator'|'manager') {
-  if(role==='chief')return true;
-  const grant=await client.query(`SELECT level FROM inventory_access
-    WHERE organization_id=$1 AND user_id=$2 AND active=true FOR UPDATE`,
-    [orgId,actorId]);
-  return grant.rows[0]?.level==='manager' ||
-    (required==='operator'&&grant.rows[0]?.level==='operator');
-}
-
 export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) {
   app.post('/inventory/stocks/:stockId/operations',async(request,reply)=>{
     const actor=await authenticate(pool,request.headers.authorization);
@@ -84,10 +73,9 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
       // feed commits, and serializes changed-intent retries across devices.
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
         [actor.organization_id+':inventory-sequence']);
-      if(!(await lockedAccess(client,actor.organization_id,actor.id,actor.role,required))){
-        await client.query('ROLLBACK');
-        return reply.code(403).send({error:'forbidden'});
-      }
+      if(!await currentInventoryWriter(client,actor.organization_id,actor.id,data.deviceId,request.headers.authorization!,request.headers['x-device-proof'],required)){await client.query('ROLLBACK');return reply.code(403).send({error:'forbidden'});}
+      const fence=await inventoryWriteFence(client,actor.organization_id,request.headers['x-inventory-epoch']);
+      if(fence){await client.query('ROLLBACK');return reply.code(fence==='inventory_epoch_required'?428:409).send({error:fence});}
       const requestPayload={...data,stockId};
       const existing=await client.query(`SELECT organization_id,actor_id,device_id,stock_id,
           request_payload=$2::jsonb AS identical,result_stock

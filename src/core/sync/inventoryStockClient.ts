@@ -1,10 +1,10 @@
 import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {
-  inventoryOutbox,inventoryScopeKey,validateInventoryStock,
+  archiveInventoryAcknowledgement,inventoryOutbox,inventoryScopeKey,validateInventoryStock,
   type InventoryScope,type InventoryStockSnapshot,
 } from './inventoryOutbox';
-import {inventoryRequest} from './inventoryClient';
+import {inventoryRequest,preflightInventoryStream} from './inventoryClient';
 import {
   inventoryStockQueueForScope,
   type InventoryStockChangeRequest,type QueuedInventoryStockChange,
@@ -45,7 +45,7 @@ function expectedSnapshot(
 }
 async function acknowledgeStockChange(
   queued:QueuedInventoryStockChange,raw:unknown,
-  expectedStatus:'confirmed'|'duplicate',
+  expectedStatus:'confirmed'|'duplicate',epoch:string,
 ){
   if(!raw||typeof raw!=='object')throw new Error('Invalid stock change acknowledgement');
   const ack=raw as {status?:string;operationId?:string;stock?:unknown};
@@ -58,7 +58,7 @@ async function acknowledgeStockChange(
     throw new Error('Stock change acknowledgement differs from queued intent');
   const snapshot=ack.stock;
   await inventoryOutbox.transaction('rw',
-    inventoryOutbox.stockOperations,inventoryOutbox.stocks,async()=>{
+    inventoryOutbox.stockOperations,inventoryOutbox.stocks,inventoryOutbox.acknowledgements,async()=>{
       const current=await inventoryOutbox.stockOperations.get(queued.operationId);
       if(!current||current.scopeKey!==queued.scopeKey||
           current.state!=='pending'||current.stockId!==queued.stockId||
@@ -70,6 +70,7 @@ async function acknowledgeStockChange(
         throw new Error('Conflicting confirmed stock state');
       if(!prior||prior.revision<snapshot.revision)
         await inventoryOutbox.stocks.put({...snapshot,scopeKey:queued.scopeKey});
+      await archiveInventoryAcknowledgement({operationId:queued.operationId,scopeKey:queued.scopeKey,epoch,kind:queued.request.kind,stockId:queued.stockId,request:queued.request,base:queued.base,stock:snapshot,receivedAt:Date.now()});
       await inventoryOutbox.stockOperations.delete(queued.operationId);
     });
 }
@@ -82,17 +83,19 @@ async function pushPendingInventoryStockChangesUnlocked(
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)
     throw new Error('Invalid inventory stock change push limit');
   const scopeKey=inventoryScopeKey(scope);
-  const pending=(await inventoryStockQueueForScope(scope))
-    .filter(row=>row.state==='pending').slice(0,limit);
+  const proposals=(await inventoryStockQueueForScope(scope)).filter(row=>row.state==='pending');
+  const pending=proposals.slice(0,limit);
+  const epoch=await preflightInventoryStream(session,scope);
+  if(proposals.some(row=>row.requiresStreamReview))throw Error('Намерение старой версии требует сверки администратора; исходная очередь сохранена.');
   let accepted=0,conflicts=0,rejected=0;
   for(const queued of pending){
     const response=await inventoryRequest(session,scope,
       '/inventory/stocks/'+encodeURIComponent(queued.stockId)+'/operations',{
-        method:'POST',body:JSON.stringify(queued.request),
+        method:'POST',headers:{'x-inventory-epoch':epoch},body:JSON.stringify(queued.request),
       });
     if(response.status===201||response.status===200){
       await acknowledgeStockChange(queued,await response.json(),
-        response.status===200?'duplicate':'confirmed');
+        response.status===200?'duplicate':'confirmed',epoch);
       accepted++;continue;
     }
     if(response.status===400||response.status===404||response.status===409){

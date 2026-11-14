@@ -5,7 +5,7 @@ const scope={serverUrl:'https://inventory.example',organizationId:'11111111-1111
 const now=Date.now(),login=now-1000;
 const access={level:'operator' as const,canRecordReceipts:true,canManageCatalog:false,canCorrectStock:false,correctionRoleEligible:false,offlineView:{organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId,issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+3600000).toISOString()}};
 const input=()=>({scope,access,materials:[],locations:[],localActorId:'local-user',localSessionIssuedAt:login,localSessionExpiresAt:now+7200000,syncedAt:now,generation:beginInventoryOfflineView()});
-beforeEach(async()=>{await inventoryOutbox.open();});afterEach(async()=>{await invalidateInventoryOfflineViews();inventoryOutbox.close();await inventoryOutbox.delete();localStorage.clear();});
+beforeEach(async()=>{await inventoryOutbox.open();await inventoryOutbox.streams.put({scopeKey:inventoryScopeKey(scope),epoch:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'});});afterEach(async()=>{await invalidateInventoryOfflineViews();inventoryOutbox.close();await inventoryOutbox.delete();localStorage.clear();});
 it('restores a bounded original scope after reopen without bearer/proof credentials',async()=>{
  await cacheInventoryOfflineView(input());inventoryOutbox.close();await inventoryOutbox.open();
  const cached=await loadInventoryOfflineView('local-user',login,now+1000);

@@ -3,7 +3,7 @@ import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {requireFreshDeviceProof} from './deviceProofClient';
 import {
-  inventoryOutbox,inventoryQueueForScope,inventoryScopeKey,validateInventoryStock,
+  archiveInventoryAcknowledgement,inventoryOutbox,inventoryQueueForScope,inventoryScopeKey,validateInventoryStock,
   type InventoryScope,type InventoryStockSnapshot,type QueuedInventoryReceipt,type InventoryHistory,
 } from './inventoryOutbox';
 
@@ -26,6 +26,10 @@ export async function inventoryRequest(
     },
   });
   if(response.status===401||response.status===403)await invalidateInventoryOfflineViews();
+  if([409,428].includes(response.status)){
+    const body=await response.clone().json().catch(()=>null);
+    if(['inventory_epoch_changed','inventory_epoch_required','inventory_posting_suspended','cursor_out_of_range'].includes(body?.error)){await invalidateInventoryOfflineViews();throw Error('История склада восстановлена, приостановлена или несовместима. Требуется проверка администратора; очередь сохранена.');}
+  }
   return response;
 }
 
@@ -37,7 +41,7 @@ function sameStock(a:InventoryStockSnapshot,b:InventoryStockSnapshot){
 }
 
 async function acknowledgeReceipt(
-  queued:QueuedInventoryReceipt,raw:unknown,expectedStatus:'confirmed'|'duplicate',
+  queued:QueuedInventoryReceipt,raw:unknown,expectedStatus:'confirmed'|'duplicate',epoch:string,
 ){
   if(!raw||typeof raw!=='object')throw new Error('Invalid inventory receipt acknowledgement');
   const ack=raw as {status?:string;operationId?:string;stock?:unknown};
@@ -53,7 +57,7 @@ async function acknowledgeReceipt(
       snapshot.onHand!==queued.request.quantity||
       snapshot.reserved!==0)
     throw new Error('Inventory receipt acknowledgement differs from queued intent');
-  await inventoryOutbox.transaction('rw',inventoryOutbox.operations,inventoryOutbox.stocks,async()=>{
+  await inventoryOutbox.transaction('rw',inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.acknowledgements,async()=>{
     const current=await inventoryOutbox.operations.get(queued.operationId);
     if(!current||current.state!=='pending'||
         JSON.stringify(current.request)!==JSON.stringify(queued.request)||
@@ -64,6 +68,7 @@ async function acknowledgeReceipt(
       throw new Error('Confirmed inventory snapshot conflict');
     if(!before||before.revision<snapshot.revision)
       await inventoryOutbox.stocks.put({...snapshot,scopeKey:queued.scopeKey});
+    await archiveInventoryAcknowledgement({operationId:queued.operationId,scopeKey:queued.scopeKey,epoch,kind:'receive',stockId:snapshot.stockId,request:queued.request,stock:snapshot,receivedAt:Date.now()});
     await inventoryOutbox.operations.delete(queued.operationId);
   });
 }
@@ -74,15 +79,18 @@ async function pushInventoryReceiptsUnlocked(
 ):Promise<{accepted:number;conflicts:number;rejected:number}>{
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)
     throw new Error('Invalid inventory push limit');
-  const pending=(await inventoryQueueForScope(scope)).filter(row=>row.state==='pending').slice(0,limit);
+  const proposals=(await inventoryQueueForScope(scope)).filter(row=>row.state==='pending');
+  const pending=proposals.slice(0,limit);
+  const epoch=await preflightInventoryStream(session,scope);
+  if(proposals.some(row=>row.requiresStreamReview))throw Error('В очереди есть намерение старой версии с неизвестным ответом. Требуется сверка администратора; исходные ID и данные сохранены.');
   let accepted=0,conflicts=0,rejected=0;
   for(const queued of pending){
     const response=await inventoryRequest(session,scope,'/inventory/receipts',{
-      method:'POST',body:JSON.stringify(queued.request),
+      method:'POST',headers:{'x-inventory-epoch':epoch},body:JSON.stringify(queued.request),
     });
     if(response.status===200||response.status===201){
       await acknowledgeReceipt(queued,await response.json(),
-        response.status===200?'duplicate':'confirmed');
+        response.status===200?'duplicate':'confirmed',epoch);
       accepted++;
       continue;
     }
@@ -123,8 +131,9 @@ async function pullInventoryChangesUnlocked(
     '&cursor='+cursor+'&limit='+limit);
   if(!response.ok)throw new Error('Inventory change pull failed: HTTP '+response.status);
   const payload=await response.json() as {
-    changes?:unknown;nextCursor?:unknown;hasMore?:unknown;
+    changes?:unknown;nextCursor?:unknown;hasMore?:unknown;epoch?:unknown;postingEnabled?:unknown;
   };
+  await validateInventoryStream(scope,payload.epoch,payload.postingEnabled);
   if(!Array.isArray(payload.changes)||payload.changes.length>limit||
       typeof payload.hasMore!=='boolean'||
       !Number.isSafeInteger(payload.nextCursor)||Number(payload.nextCursor)<cursor)
@@ -149,7 +158,9 @@ async function pullInventoryChangesUnlocked(
       (changes.length>0&&payload.nextCursor!==previous))
     throw new Error('Invalid inventory cursor acknowledgement');
   // Apply all snapshots and checkpoint the cursor in the SAME transaction.
-  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,async()=>{
+  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,inventoryOutbox.streams,async()=>{
+    const priorStream=await inventoryOutbox.streams.get(scopeKey);if(priorStream&&priorStream.epoch!==payload.epoch)throw Error('История склада изменена в другом окне');
+    await inventoryOutbox.streams.put({scopeKey,epoch:payload.epoch as string});
     const currentCursor=(await inventoryOutbox.metadata.get(key))?.value??0;
     if(currentCursor!==cursor)throw new Error('Inventory cursor advanced while pulling');
     for(const item of changes){
@@ -173,4 +184,23 @@ export function pushInventoryReceipts(session:HybridSession,scope:InventoryScope
 }
 export function pullInventoryChanges(session:HybridSession,scope:InventoryScope,limit=50){
  return withInventorySync(scope,()=>pullInventoryChangesUnlocked(session,scope,limit));
+}
+
+async function validateInventoryStream(scope:InventoryScope,epoch:unknown,postingEnabled:unknown){
+ if(typeof epoch!=='string'||!validId.test(epoch)||typeof postingEnabled!=='boolean')throw Error('Некорректная версия истории склада. Обновите сервер; очередь сохранена.');
+ const scopeKey=inventoryScopeKey(scope),prior=await inventoryOutbox.streams.get(scopeKey);
+ if(prior&&prior.epoch!==epoch){await invalidateInventoryOfflineViews();throw Error('История склада восстановлена. Требуется проверка администратора; исходные операции сохранены.');}
+ if(!postingEnabled){await invalidateInventoryOfflineViews();throw Error('История склада приостановлена после восстановления. Требуется сверка администратора; очередь сохранена.');}
+ return epoch;
+}
+export async function preflightInventoryStream(session:HybridSession,scope:InventoryScope){
+ const response=await inventoryRequest(session,scope,'/inventory/stream?deviceId='+encodeURIComponent(scope.deviceId));
+ if(!response.ok)throw Error('Проверка истории склада недоступна: HTTP '+response.status+'. Очередь сохранена.');
+ const body=await response.json();
+ if(!body||typeof body!=='object'||body.organizationId!==scope.organizationId||body.actorId!==scope.actorId||body.deviceId!==scope.deviceId||!Number.isSafeInteger(body.sequence)||body.sequence<0)throw Error('Некорректная область истории склада');
+ const scopeKey=inventoryScopeKey(scope),cursor=(await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value??0;
+ const epoch=await validateInventoryStream(scope,body.epoch,body.postingEnabled);
+ if(cursor>body.sequence){await invalidateInventoryOfflineViews();throw Error('Курсор опережает восстановленную историю. Требуется сверка; очередь сохранена.');}
+ await inventoryOutbox.transaction('rw',inventoryOutbox.streams,async()=>{const prior=await inventoryOutbox.streams.get(scopeKey);if(prior&&prior.epoch!==epoch)throw Error('История склада изменена в другом окне');await inventoryOutbox.streams.put({scopeKey,epoch});});
+ return epoch;
 }

@@ -1,3 +1,4 @@
+import {stubInventoryFetch,inventoryTestEpoch} from './inventoryTestHelpers';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {
   inventoryOutbox,inventoryQueueForScope,confirmedInventoryForScope,
@@ -30,14 +31,15 @@ const stock={
   unit:'mg' as const,quality:'quarantine' as const,
   onHand:draft.quantity,reserved:0,revision:1,available:draft.quantity,
 };
-function response(status:number,body:unknown){
-  return {status,ok:status>=200&&status<300,json:async()=>body} as Response;
+function response(status:number,body:unknown):Response{
+  return {status,ok:status>=200&&status<300,json:async()=>body&&typeof body==='object'&&'changes' in body?{epoch:inventoryTestEpoch,postingEnabled:true,...body}:body,clone:()=>response(status,body)} as Response;
 }
 
 beforeEach(async()=>{
   await inventoryOutbox.open();
   await inventoryOutbox.transaction('rw',
-    inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,async()=>{
+    [inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,inventoryOutbox.streams,inventoryOutbox.acknowledgements],async()=>{
+      await inventoryOutbox.streams.clear();await inventoryOutbox.acknowledgements.clear();
       await inventoryOutbox.history.clear();
       await inventoryOutbox.operations.clear();
       await inventoryOutbox.stocks.clear();
@@ -60,12 +62,12 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
   });
   it('keeps unknown network outcomes provisional, then atomically accepts exact server acknowledgement',async()=>{
     const id=await queueInventoryReceipt(session,scope,draft);
-    vi.stubGlobal('fetch',vi.fn().mockRejectedValueOnce(new Error('Connection lost')));
+    stubInventoryFetch(vi.fn().mockRejectedValueOnce(new Error('Connection lost')));
     await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('Connection lost');
     expect((await inventoryQueueForScope(scope))[0].operationId).toBe(id);
     expect(await confirmedInventoryForScope(scope)).toEqual([]);
     const fetchMock=vi.fn().mockResolvedValue(response(201,{status:'confirmed',operationId:id,stock}));
-    vi.stubGlobal('fetch',fetchMock);
+    stubInventoryFetch(fetchMock);
     expect(await pushInventoryReceipts(session,scope)).toEqual({accepted:1,conflicts:0,rejected:0});
     expect(await inventoryQueueForScope(scope)).toEqual([]);
     expect(await confirmedInventoryForScope(scope)).toEqual([expect.objectContaining(stock)]);
@@ -75,17 +77,17 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
   });
   it('accepts a valid exact retry and does not allow forged acknowledgements',async()=>{
     const id=await queueInventoryReceipt(session,scope,draft);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{
       status:'duplicate',operationId:id,stock:{...stock,manufacturerLot:'different'},
     })));
     await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('differs');
     expect((await inventoryQueueForScope(scope))[0].state).toBe('pending');
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{status:'duplicate',operationId:id,stock})));
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{status:'duplicate',operationId:id,stock})));
     expect((await pushInventoryReceipts(session,scope)).accepted).toBe(1);
   });
   it('shows a real conflict without inventing confirmed stock',async()=>{
     await queueInventoryReceipt(session,scope,draft);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{error:'stock_id_reused'})));
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(409,{error:'stock_id_reused'})));
     expect(await pushInventoryReceipts(session,scope)).toEqual({accepted:0,conflicts:1,rejected:0});
     expect((await inventoryQueueForScope(scope))[0]).toMatchObject({
       state:'conflict',error:'stock_id_reused',
@@ -102,11 +104,11 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
       {changes:[],nextCursor:3,hasMore:false},
     ];
     for(const payload of invalid){
-      vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,payload)));
+      stubInventoryFetch(vi.fn().mockResolvedValue(response(200,payload)));
       await expect(pullInventoryChanges(session,scope)).rejects.toThrow('Invalid inventory');
       expect(await confirmedInventoryForScope(scope)).toEqual([]);
     }
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{
       changes:[change],nextCursor:2,hasMore:false,
     })));
     expect(await pullInventoryChanges(session,scope)).toEqual({received:1,hasMore:false,cursor:2});
@@ -133,7 +135,7 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
       sequence:i+1,operationId,kind:kinds[i],stock:snapshots[i],
       recordedAt:new Date().toISOString(),
     }));
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{
       changes,nextCursor:4,hasMore:false,
     })));
     expect(await pullInventoryChanges(session,scope)).toEqual({
@@ -146,7 +148,7 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
     ))?.value).toBe(4);
   });
   it('isolates inventory data by server organization actor and device',async()=>{
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{
       changes:[{sequence:1,operationId:'77777777-7777-4777-8777-777777777777',
         kind:'receive',stock,recordedAt:new Date().toISOString()}],nextCursor:1,hasMore:false,
     })));
@@ -157,7 +159,7 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
   });
   it('rejects unsafe server URLs or wrong proof before sending queued receipts',async()=>{
     await queueInventoryReceipt(session,scope,draft);
-    const fetchMock=vi.fn();vi.stubGlobal('fetch',fetchMock);
+    const fetchMock=vi.fn();stubInventoryFetch(fetchMock);
     await expect(pushInventoryReceipts({...session,serverUrl:'http://untrusted.example'},scope)).rejects.toThrow();
     await expect(pushInventoryReceipts({...session,deviceProofDeviceId:'99999999-9999-4999-8999-999999999999'},scope)).rejects.toThrow();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -170,7 +172,7 @@ it('serializes receipt, stock and feed work for the same scope and releases the 
  let entered!:()=>void,release!:(value:Response)=>void;
  const started=new Promise<void>(resolve=>{entered=resolve;});
  const waiting=new Promise<Response>(resolve=>{release=resolve;});
- const fetchMock=vi.fn(()=>{entered();return waiting;});vi.stubGlobal('fetch',fetchMock);
+ const fetchMock=vi.fn(()=>{entered();return waiting;});stubInventoryFetch(fetchMock);
  const first=pushInventoryReceipts(session,scope);
  const settled=first.then(value=>({value}),error=>({error}));
  try{await started;
@@ -180,13 +182,47 @@ it('serializes receipt, stock and feed work for the same scope and releases the 
   expect(fetchMock).toHaveBeenCalledTimes(1);
  }finally{release(response(403,{error:'forbidden'}));await settled;}
  await expect(first).rejects.toThrow('HTTP 403');
- vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{changes:[],nextCursor:0,hasMore:false})));
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{changes:[],nextCursor:0,hasMore:false})));
  expect((await pullInventoryChanges(session,scope)).cursor).toBe(0);
  expect((await inventoryQueueForScope(scope))[0].state).toBe('pending');
 });
 it('rolls back history and cursor when feed attribution is malformed',async()=>{
  const payload={changes:[{sequence:1,operationId:'77777777-7777-4777-8777-777777777777',kind:'receive',stock,recordedAt:new Date().toISOString(),actorId:'forged'}],nextCursor:1,hasMore:false};
- vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,payload)));
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(200,payload)));
  await expect(pullInventoryChanges(session,scope)).rejects.toThrow('attribution');
  expect(await inventoryOutbox.history.count()).toBe(0);expect(await inventoryOutbox.metadata.count()).toBe(0);expect(await inventoryOutbox.stocks.count()).toBe(0);
+});
+it('checks restored history before uploading and keeps unknown receipts pending',async()=>{
+ await queueInventoryReceipt(session,scope,draft);
+ const fetchMock=vi.fn(async(_url:URL,init?:RequestInit)=>{
+  if(init?.method==='POST')return response(201,{status:'confirmed',operationId:'wrong',stock});
+  return response(200,{organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId,epoch:'99999999-9999-4999-8999-999999999999',postingEnabled:false,sequence:0});
+ });vi.stubGlobal('fetch',fetchMock);
+ await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('восстанов');
+ expect(fetchMock.mock.calls.some(call=>call[1]?.method==='POST')).toBe(false);
+ expect((await inventoryQueueForScope(scope))[0].state).toBe('pending');
+});
+it('retains accepted acknowledgement evidence and exports only the original authenticated scope',async()=>{
+ const id=await queueInventoryReceipt(session,scope,draft);
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(201,{status:'confirmed',operationId:id,stock})));
+ await pushInventoryReceipts(session,scope);
+ expect((await inventoryOutbox.acknowledgements.get(id))?.epoch).toBe(inventoryTestEpoch);
+ await inventoryOutbox.acknowledgements.add({operationId:'88888888-8888-4888-8888-888888888888',scopeKey:'another-scope',epoch:inventoryTestEpoch,kind:'receive',stockId:stock.stockId,stock,request:{...draft,operationId:id,deviceId:scope.deviceId},receivedAt:Date.now()});
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{level:'operator',canRecordReceipts:true,canManageCatalog:false,canCorrectStock:false,correctionRoleEligible:false})));
+ const {inventoryRecoveryEvidence}=await import('./inventoryRecovery');const bundle=await inventoryRecoveryEvidence(session,{...scope,accessToken:session.accessToken} as InventoryScope,'local-user');
+ expect(bundle.acknowledgements.map(row=>row.operationId)).toEqual([id]);expect(JSON.stringify(bundle)).not.toContain(session.accessToken);expect(JSON.stringify(bundle)).not.toContain(session.deviceProofToken);
+ expect(await inventoryOutbox.acknowledgements.count()).toBe(2);
+});
+it('does not silently upload pre-upgrade pending work without a reviewed history boundary',async()=>{
+ const id=await queueInventoryReceipt(session,scope,draft);await inventoryOutbox.operations.update(id,{requiresStreamReview:true});
+ const fetch=vi.fn();stubInventoryFetch(fetch);await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('старой версии');expect(fetch).not.toHaveBeenCalled();expect((await inventoryOutbox.operations.get(id))?.request).toMatchObject(draft);
+});
+it('never adopts a replacement epoch or turns a restore rejection into a business conflict',async()=>{
+ const id=await queueInventoryReceipt(session,scope,draft);
+ const scopeKey=scope.serverUrl+'::'+scope.organizationId+'::'+scope.actorId+'::'+scope.deviceId;
+ await inventoryOutbox.streams.put({scopeKey,epoch:'99999999-9999-4999-8999-999999999999'});
+ const fetch=vi.fn();stubInventoryFetch(fetch);await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('восстанов');expect(fetch).not.toHaveBeenCalled();expect((await inventoryOutbox.streams.get(scopeKey))?.epoch).toBe('99999999-9999-4999-8999-999999999999');
+ await inventoryOutbox.streams.put({scopeKey,epoch:inventoryTestEpoch});
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(409,{error:'inventory_epoch_changed'})));
+ await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('восстанов');expect((await inventoryOutbox.operations.get(id))?.state).toBe('pending');expect(await inventoryOutbox.acknowledgements.count()).toBe(0);
 });

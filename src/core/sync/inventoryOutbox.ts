@@ -1,7 +1,7 @@
 import Dexie, {type Table} from 'dexie';
 import type {InventoryOfflineView} from './inventoryOfflineView';
 import type {HybridSession} from './hybridClient';
-import type {QueuedInventoryStockChange} from './inventoryStockOutbox';
+import type {QueuedInventoryStockChange,InventoryStockChangeRequest} from './inventoryStockOutbox';
 
 /**
  * Independent, opt-in inventory queue. Existing local Storage history and the
@@ -35,7 +35,7 @@ export interface InventoryStockSnapshot {
 }
 export interface QueuedInventoryReceipt {
   operationId: string;scopeKey: string;request: InventoryReceiptRequest;
-  queuedAt: number;state: 'pending'|'conflict'|'rejected';error?: string;
+  queuedAt: number;state: 'pending'|'conflict'|'rejected';error?: string;requiresStreamReview?:boolean;
 }
 export interface ConfirmedInventoryStock extends InventoryStockSnapshot {
   scopeKey: string;
@@ -44,7 +44,11 @@ interface InventorySyncMetadata {key:string;value:number;}
 
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;quantity?:number}
+export interface InventoryStreamState {scopeKey:string;epoch:string}
+export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
 export class InventoryOutboxDatabase extends Dexie {
+  streams!:Table<InventoryStreamState,string>;
+  acknowledgements!:Table<InventoryAcknowledgement,string>;
   offlineViews!:Table<InventoryOfflineView,string>;
   history!:Table<InventoryHistory,[string,number]>;
   receivingDrafts!:Table<ReceivingDraft,string>;
@@ -66,6 +70,9 @@ export class InventoryOutboxDatabase extends Dexie {
     this.version(3).stores({receivingDrafts:'key'});
     this.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});
     this.version(5).stores({offlineViews:'localActorId,scopeKey'});
+    this.version(6).stores({streams:'scopeKey',acknowledgements:'operationId,scopeKey,epoch'}).upgrade(async tx=>{
+      for(const name of ['operations','stockOperations'])await tx.table(name).where('state').equals('pending').modify({requiresStreamReview:true});
+    });
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();
@@ -143,4 +150,11 @@ export function beginInventoryOfflineView():string|null{
 export function invalidateInventoryOfflineViews(){
  try{localStorage.removeItem(inventoryOfflineGenerationKey);}catch{/* Blocked localStorage also prevents restoring a view. */}
  return inventoryOutbox.offlineViews.clear().catch(()=>{});
+}
+
+/** Called inside the same transaction as projection and pending-row acknowledgement. */
+export async function archiveInventoryAcknowledgement(record:InventoryAcknowledgement){
+ const prior=await inventoryOutbox.acknowledgements.get(record.operationId);
+ if(prior){const {receivedAt:_old,...old}=prior,{receivedAt:_new,...next}=record;if(JSON.stringify(old)!==JSON.stringify(next))throw Error('Conflicting retained inventory acknowledgement');}
+ else await inventoryOutbox.acknowledgements.add(record);
 }

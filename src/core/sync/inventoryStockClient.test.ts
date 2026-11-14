@@ -1,3 +1,4 @@
+import {stubInventoryFetch,inventoryTestEpoch} from './inventoryTestHelpers';
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {inventoryOutbox,inventoryScopeKey,queueInventoryReceipt,
   type InventoryScope} from './inventoryOutbox';
@@ -38,16 +39,17 @@ const adjust={
 };
 const reservationId='88888888-8888-4888-8888-888888888888';
 const productionBatchId='99999999-9999-4999-8999-999999999999';
-const response=(status:number,payload:unknown)=>({
-  status,ok:status>=200&&status<300,json:async()=>payload,
+const response=(status:number,payload:unknown):Response=>({
+  status,ok:status>=200&&status<300,json:async()=>payload,clone:()=>response(status,payload),
 }) as Response;
 const snapshot=(patch:Record<string,unknown>={})=>({...base,revision:2,...patch});
 
 beforeEach(async()=>{
   await inventoryOutbox.open();
-  await inventoryOutbox.transaction('rw',inventoryOutbox.operations,
-    inventoryOutbox.stockOperations,inventoryOutbox.stocks,inventoryOutbox.metadata,
+  await inventoryOutbox.transaction('rw',[inventoryOutbox.operations,
+    inventoryOutbox.stockOperations,inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.streams,inventoryOutbox.acknowledgements],
     async()=>{
+      await inventoryOutbox.streams.clear();await inventoryOutbox.acknowledgements.clear();
       await inventoryOutbox.operations.clear();
       await inventoryOutbox.stockOperations.clear();
       await inventoryOutbox.stocks.clear();
@@ -103,7 +105,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
 
   it('keeps timed-out stock movements and the original ID for exact retry',async()=>{
     const id=await queueInventoryStockChange(session,scope,transfer);
-    vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('Connection lost')));
+    stubInventoryFetch(vi.fn().mockRejectedValue(new Error('Connection lost')));
     await expect(pushPendingInventoryStockChanges(session,scope)).rejects.toThrow('Connection lost');
     expect((await inventoryStockQueueForScope(scope))[0]).toMatchObject({
       operationId:id,state:'pending',
@@ -113,7 +115,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     const fetchMock=vi.fn().mockResolvedValue(response(201,{
       status:'confirmed',operationId:id,stock:good,
     }));
-    vi.stubGlobal('fetch',fetchMock);
+    stubInventoryFetch(fetchMock);
     expect(await pushPendingInventoryStockChanges(session,scope))
       .toEqual({accepted:1,conflicts:0,rejected:0});
     expect(await inventoryStockQueueForScope(scope)).toEqual([]);
@@ -133,7 +135,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     let entered:()=>void=()=>{};
     const started=new Promise<void>(resolve=>{entered=resolve;});
     const fetchMock=vi.fn().mockImplementationOnce(()=>{entered();return waiting;});
-    vi.stubGlobal('fetch',fetchMock);
+    stubInventoryFetch(fetchMock);
     const first=pushPendingInventoryStockChanges(session,scope);
     // Attach a handler immediately; every started operation must settle before teardown.
     const settled=first.then(value=>({value}),error=>({error}));
@@ -155,10 +157,10 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     await queueInventoryStockChange(session,scope,{
       ...transfer,expectedRevision:2,toLocationId:source,
     });
-    vi.stubGlobal('fetch',vi.fn().mockRejectedValueOnce(new Error('Offline again')));
+    stubInventoryFetch(vi.fn().mockRejectedValueOnce(new Error('Offline again')));
     await expect(pushPendingInventoryStockChanges(session,scope))
       .rejects.toThrow('Offline again');
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(409,{
       error:'revision_conflict',currentRevision:3,
     })));
     expect((await pushPendingInventoryStockChanges(session,scope)).conflicts).toBe(1);
@@ -166,14 +168,14 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
 
   it('does not acknowledge a forged server snapshot, then accepts valid duplicate response',async()=>{
     const id=await queueInventoryStockChange(session,scope,adjust);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(201,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(201,{
       status:'confirmed',operationId:id,
       stock:snapshot({onHand:1751,available:1751}),
     })));
     await expect(pushPendingInventoryStockChanges(session,scope))
       .rejects.toThrow('differs from queued intent');
     expect((await inventoryStockQueueForScope(scope))[0].state).toBe('pending');
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{
       status:'duplicate',operationId:id,
       stock:snapshot({onHand:1750,available:1750}),
     })));
@@ -184,10 +186,10 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
 
   it('preserves conflicts without rebase, and retains server auth errors for later retry',async()=>{
     await queueInventoryStockChange(session,scope,transfer);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(403,{error:'forbidden'})));
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(403,{error:'forbidden'})));
     await expect(pushPendingInventoryStockChanges(session,scope)).rejects.toThrow('HTTP 403');
     expect((await inventoryStockQueueForScope(scope))[0].state).toBe('pending');
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(409,{
       error:'revision_conflict',currentRevision:3,
     })));
     expect(await pushPendingInventoryStockChanges(session,scope))
@@ -197,7 +199,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
       request:{expectedRevision:1},
     });
     expect((await confirmedInventoryForScope(scope))[0]).toMatchObject(base);
-    const noFetch=vi.fn();vi.stubGlobal('fetch',noFetch);
+    const noFetch=vi.fn();stubInventoryFetch(noFetch);
     expect(await pushPendingInventoryStockChanges(session,scope))
       .toEqual({accepted:0,conflicts:0,rejected:0});
     expect(noFetch).not.toHaveBeenCalled();
@@ -212,7 +214,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
       productionBatchId,reservationId};
     const reserveOpId=await queueInventoryStockChange(session,scope,reserve);
     expect((await confirmedInventoryForScope(scope))[0].available).toBe(2000);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(201,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(201,{
       status:'confirmed',operationId:reserveOpId,
       stock:{...released,revision:2,reserved:500,available:1500},
     })));
@@ -221,7 +223,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
       expectedRevision:2,quantity:200,reason:'Batch requires less material',
       productionBatchId,reservationId};
     const releaseOpId=await queueInventoryStockChange(session,scope,release);
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(201,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(201,{
       status:'confirmed',operationId:releaseOpId,
       stock:{...released,revision:3,reserved:300,available:1700},
     })));
@@ -235,7 +237,7 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     await inventoryOutbox.stocks.put({...base,
       scopeKey:inventoryScopeKey(scope),revision:3,locationId:destination,
       onHand:1500,available:1500});
-    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(201,{
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(201,{
       status:'confirmed',operationId:id,stock:snapshot({locationId:destination}),
     })));
     expect((await pushPendingInventoryStockChanges(session,scope)).accepted).toBe(1);
@@ -247,7 +249,7 @@ it('retains reviewed conflicts and requires a new operation ID for an explicit r
  const {reviewInventoryConflict}=await import('./inventoryStockOutbox');
  const id=await queueInventoryStockChange(session,scope,transfer);
  await expect(reviewInventoryConflict(scope,id,'Checked')).rejects.toThrow();
- vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{error:'revision_conflict'})));
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(409,{error:'revision_conflict'})));
  await pushPendingInventoryStockChanges(session,scope);
  await expect(reviewInventoryConflict({...scope,actorId:reservationId},id,'Checked')).rejects.toThrow();
  await reviewInventoryConflict(scope,id,'Compared server stock and physical location; prior proposal not posted');

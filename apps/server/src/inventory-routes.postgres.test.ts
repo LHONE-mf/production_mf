@@ -1,4 +1,5 @@
 import {generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {Pool} from 'pg';
 import {buildApp} from './app.js';
@@ -6,14 +7,16 @@ import {tokenHash} from './auth.js';
 
 const integration=process.env.POSTGRES_TEST_URL?describe:describe.skip;
 integration('Storage authoritative receipt API (disposable PostgreSQL)',()=>{
-  const pool=new Pool({connectionString:process.env.POSTGRES_TEST_URL});
+  const applicationName='inventory-restore-'+randomUUID();
+  const pool=new Pool({connectionString:process.env.POSTGRES_TEST_URL,application_name:applicationName});
   const app=buildApp(pool);
+  const epoch=randomUUID();
   const org=randomUUID(),chief=randomUUID(),worker=randomUUID();
   const adminToken=randomBytes(32).toString('base64url');
   const workerToken=randomBytes(32).toString('base64url');
   const keys=generateKeyPairSync('ed25519');
   const headers=(token:string,proof?:string)=>({
-    authorization:'Bearer '+token,...(proof?{'x-device-proof':proof}:{}),
+    authorization:'Bearer '+token,'x-inventory-epoch':epoch,...(proof?{'x-device-proof':proof}:{}),
   });
   let deviceId='',adminProof='',workerProof='',workerDevice='';
   const post=(url:string,payload:object,token=adminToken,proof=adminProof)=>
@@ -57,6 +60,7 @@ integration('Storage authoritative receipt API (disposable PostgreSQL)',()=>{
     }
     ({id:deviceId,proof:adminProof}=await enroll(chief,adminToken));
     ({id:workerDevice,proof:workerProof}=await enroll(worker,workerToken));
+    await pool.query('INSERT INTO inventory_streams(organization_id,epoch) VALUES($1,$2) ON CONFLICT(organization_id) DO UPDATE SET epoch=EXCLUDED.epoch',[org,epoch]);
   });
   afterAll(async()=>{await app.close();await pool.end();});
 
@@ -141,6 +145,53 @@ integration('Storage authoritative receipt API (disposable PostgreSQL)',()=>{
       workerToken,workerProof);
     expect(future.statusCode).toBe(409);
   });
+
+  it('reapplies the additive restore migration without changing populated stock, ledger or epoch',async()=>{
+    const beforeStock=(await pool.query('SELECT * FROM inventory_stocks WHERE organization_id=$1 ORDER BY id',[org])).rows;
+    const beforeLedger=(await pool.query('SELECT * FROM inventory_operations WHERE organization_id=$1 ORDER BY sequence',[org])).rows;
+    const migration=await readFile('migrations/021_inventory_restore_fence.sql','utf8');await pool.query(migration);await pool.query(migration);
+    expect((await pool.query('SELECT epoch FROM inventory_streams WHERE organization_id=$1',[org])).rows[0].epoch).toBe(epoch);
+    expect((await pool.query('SELECT * FROM inventory_stocks WHERE organization_id=$1 ORDER BY id',[org])).rows).toEqual(beforeStock);
+    expect((await pool.query('SELECT * FROM inventory_operations WHERE organization_id=$1 ORDER BY sequence',[org])).rows).toEqual(beforeLedger);
+  });
+
+  it('fences restore races before posting or replay and requires controlled re-enablement',async()=>{
+    const input={...receipt(),deviceId};
+    const first=await post('/inventory/receipts',input);expect(first.statusCode,first.body).toBe(201);
+    const before=(await pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[org])).rows[0].n;
+    const missing=await app.inject({method:'POST',url:'/inventory/receipts',headers:{authorization:'Bearer '+adminToken,'x-device-proof':adminProof},payload:{...receipt(),deviceId}});
+    expect(missing.statusCode).toBe(428);
+    const blocker=await pool.connect();let pending:Promise<Awaited<ReturnType<typeof post>>>|undefined;
+    const restored=randomUUID(),newIntent={...receipt(),deviceId};
+    try{
+      await blocker.query('BEGIN');await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[org+':inventory-sequence']);
+      await blocker.query('UPDATE inventory_streams SET epoch=$2,posting_enabled=false WHERE organization_id=$1',[org,restored]);
+      pending=Promise.resolve(post('/inventory/receipts',newIntent));const deadline=Date.now()+4000;
+      while(!(await pool.query("SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND query LIKE '%pg_advisory_xact_lock(hashtextextended%' AND wait_event_type='Lock'",[applicationName])).rowCount){if(Date.now()>deadline)throw Error('Stock transaction did not wait on restore lock');await new Promise(r=>setTimeout(r,10));}
+      await blocker.query('COMMIT');expect((await pending).json()).toEqual({error:'inventory_epoch_changed'});
+      expect((await post('/inventory/receipts',input)).json()).toEqual({error:'inventory_epoch_changed'});
+      const suspended=await app.inject({method:'POST',url:'/inventory/receipts',headers:{...headers(adminToken,adminProof),'x-inventory-epoch':restored},payload:input});
+      expect(suspended.json()).toEqual({error:'inventory_posting_suspended'});
+      expect((await pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[org])).rows[0].n).toBe(before);
+      expect((await get('/inventory/stream?deviceId='+deviceId)).json()).toMatchObject({epoch:restored,postingEnabled:false,organizationId:org,actorId:chief,deviceId});
+      await pool.query('UPDATE inventory_streams SET posting_enabled=true WHERE organization_id=$1',[org]);
+      const replay=await app.inject({method:'POST',url:'/inventory/receipts',headers:{...headers(adminToken,adminProof),'x-inventory-epoch':restored},payload:input});
+      expect(replay.statusCode,replay.body).toBe(200);expect(replay.json().stock).toEqual(first.json().stock);
+    }finally{await blocker.query('ROLLBACK');blocker.release();if(pending)await pending;await pool.query('UPDATE inventory_streams SET epoch=$2,posting_enabled=true WHERE organization_id=$1',[org,epoch]);}
+  },10000);
+
+  it('rechecks revoked session authority after waiting for the stock lock',async()=>{
+    const blocker=await pool.connect();let pending:Promise<Awaited<ReturnType<typeof post>>>|undefined;
+    const input={...receipt(),deviceId};
+    try{
+      await blocker.query('BEGIN');await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[org+':inventory-sequence']);
+      await blocker.query('UPDATE sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1',[tokenHash(adminToken)]);
+      pending=Promise.resolve(post('/inventory/receipts',input));const deadline=Date.now()+4000;
+      while(!(await pool.query("SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND query LIKE '%pg_advisory_xact_lock(hashtextextended%' AND wait_event_type='Lock'",[applicationName])).rowCount){if(Date.now()>deadline)throw Error('Stock transaction did not reach authorization barrier');await new Promise(r=>setTimeout(r,10));}
+      await blocker.query('COMMIT');expect((await pending).statusCode).toBe(403);
+      expect((await pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE operation_id=$1',[input.operationId])).rows[0].n).toBe(0);
+    }finally{await blocker.query('ROLLBACK');blocker.release();if(pending)await pending;await pool.query('UPDATE sessions SET revoked_at=NULL WHERE token_hash=$1',[tokenHash(adminToken)]);}
+  },10000);
 
   it('rejects missing catalog identities and invalid stock quantities without ledger writes',async()=>{
     const invalid=receipt();

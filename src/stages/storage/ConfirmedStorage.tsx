@@ -1,3 +1,4 @@
+import {InventoryRecoveryPanel} from './InventoryRecoveryPanel';
 import {OfflineStorage} from './OfflineStorage';
 import {beginInventoryOfflineView,cacheInventoryOfflineView} from '../../core/sync/inventoryOfflineView';
 import React,{useEffect,useRef,useState} from 'react';
@@ -105,6 +106,7 @@ export function ConfirmedStorage(){
    </>}
   </>}
   {reviewId&&fresh&&<div role="alertdialog" aria-label="Сверка конфликта"><p>Операция {reviewId} останется с исходным запросом и отказом. Сверка не подтверждает движение. После обновления остатков можно явно создать новое предложение с новым ID.</p><label>Результат сверки<input aria-label="Результат сверки" className="min-h-11 w-full bg-slate-900 p-2" maxLength={2000} value={reviewReason} onChange={e=>setReviewReason(e.target.value)}/></label><button className="min-h-11 px-3" disabled={!reviewReason.trim()} onClick={()=>{if(scope)void reviewInventoryConflict(scope,reviewId,reviewReason).then(()=>{setReviewId('');return queued();}).catch(e=>setError(String(e)));}}>Сохранить сверку без перепроведения</button><button className="min-h-11 px-3" onClick={()=>setReviewId('')}>Отмена сверки</button></div>}
+  {fresh&&scope&&connection&&user&&<InventoryRecoveryPanel key={key} scope={scope} session={connection.session} localActorId={user.id}/>}
   {message&&<p role="status">{message}</p>}
   {error&&<p role="alert">{error}</p>}
   {error&&fresh&&!visible&&<OfflineStorage now={now} liveScope={scope??undefined}/>}

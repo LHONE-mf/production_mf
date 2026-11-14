@@ -26,7 +26,7 @@ it('loads real client reads only on explicit refresh and hides the view on logou
  const actor='22222222-2222-4222-8222-222222222222',device='33333333-3333-4333-8333-333333333333';
  setServerConnection({serverUrl:'https://inventory.example',organizationId:'11111111-1111-4111-8111-111111111111',serverActorId:actor,selectedDeviceId:device,serverRole:'chief',enrolledDeviceId:device,myDevices:[device],session:{serverUrl:'https://inventory.example',accessToken:'A'.repeat(43),deviceProofDeviceId:device,deviceProofToken:'B'.repeat(43),deviceProofExpiresAt:Date.now()+300000}});
  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);
- const fetch=vi.fn(async(url:URL,_init?:RequestInit)=>({ok:true,json:async()=>url.pathname.endsWith('/me')?{level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,correctionRoleEligible:true}:url.pathname.endsWith('/materials')?{materials:[],hasMore:false,nextAfter:null}:url.pathname.endsWith('/locations')?{locations:[],hasMore:false,nextAfter:null}:{changes:[],nextCursor:0,hasMore:false}}));vi.stubGlobal('fetch',fetch);
+ const fetch=vi.fn(async(url:URL,_init?:RequestInit)=>({ok:true,json:async()=>url.pathname.endsWith('/me')?{level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,correctionRoleEligible:true}:url.pathname.endsWith('/materials')?{materials:[],hasMore:false,nextAfter:null}:url.pathname.endsWith('/locations')?{locations:[],hasMore:false,nextAfter:null}:{epoch:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',postingEnabled:true,changes:[],nextCursor:0,hasMore:false}}));vi.stubGlobal('fetch',fetch);
  const node=document.createElement('div'),root=createRoot(node);
  try{
   await act(async()=>root.render(<ConfirmedStorage/>));expect(fetch).not.toHaveBeenCalled();

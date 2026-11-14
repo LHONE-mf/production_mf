@@ -47,7 +47,7 @@ export function buildApp(pool: Pool) {
   void app.register(cors, {
     origin: (origin, callback) => callback(null, Boolean(origin && origins.has(origin))),
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'x-device-proof'],
+    allowedHeaders: ['authorization', 'content-type', 'x-device-proof','x-inventory-epoch'],
     maxAge: 600,
     credentials: false,
   });
