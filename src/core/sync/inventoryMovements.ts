@@ -20,6 +20,11 @@ export type MovementOptions=MovementFilters&{after?:number;until?:number;limit?:
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const kind=/^[a-z][a-z_]{0,39}$/;
 const date=/^\d{4}-\d{2}-\d{2}$/;
+const validUtcDate=(value:string)=>{
+ if(!date.test(value))return false;
+ const parsed=new Date(value+'T00:00:00Z');
+ return Number.isFinite(parsed.getTime())&&parsed.toISOString().slice(0,10)===value;
+};
 const record=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const safe=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const optionalText=(v:unknown):v is string|null=>v===null||(typeof v==='string'&&v.length<=200);
@@ -64,7 +69,7 @@ export async function loadInventoryMovements(
  if(opts.kind!==undefined&&!kind.test(opts.kind))throw Error('Invalid movement kind');
  if(opts.manufacturerLot!==undefined&&(!opts.manufacturerLot.trim()||opts.manufacturerLot.length>200))throw Error('Invalid manufacturer lot');
  for(const value of [opts.from,opts.through]){
-  if(value!==undefined&&(!date.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))))
+  if(value!==undefined&&!validUtcDate(value))
    throw Error('Invalid movement date');
  }
  if(opts.from&&opts.through&&opts.from>opts.through)throw Error('Invalid movement date range');
@@ -114,12 +119,12 @@ export function inventoryMovementsCsv(page:MovementPage):string{
   return '"'+safeValue.replace(/"/g,'""')+'"';
  };
  const lines=[
-  ['Sequence','Recorded UTC','Operation ID','Kind','Container ID','Material code',
+  ['History ID','Through ledger sequence','Sequence','Recorded UTC','Operation ID','Kind','Container ID','Material code',
    'Material name','Manufacturer lot','Quantity','Unit','Location after event',
    'Source location ID','Destination location ID','Batch ID',
    'Actor ID','Device ID','Reason'],
   ...page.items.map(r=>[
-   r.sequence,r.recordedAt,r.operationId,r.kind,r.stockId,r.materialCode,
+   page.epoch,page.throughSequence,r.sequence,r.recordedAt,r.operationId,r.kind,r.stockId,r.materialCode,
    r.materialName,r.manufacturerLot,r.quantity,r.unit,r.locationId,
    r.fromLocationId,r.toLocationId,r.productionBatchId,r.actorId,r.deviceId,r.reason,
   ]),

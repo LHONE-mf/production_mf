@@ -66,3 +66,13 @@ The report and CSV also expose immutable `from_location_id` and
 post-event location from `result_stock`. These fields are read-only and do
 not affect physical inventory. The UI explicitly labels the location as
 "after the event" to avoid confusing it with the current shelf.
+
+## Export provenance and UTC date validation
+
+Each data row in the movement CSV now includes the server-confirmed inventory
+history ID and the frozen ledger upper sequence, so an exported row can be
+traced back to the correct historical snapshot rather than confused with a
+newer inventory history after a restore. This metadata is not an authorization
+token, and exports still omit credentials and unconfirmed local observations.
+The client rejects impossible UTC calendar dates (including invalid leap days)
+before requesting a movement report; the existing backend validation remains.

@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {collectMovementSnapshot,inventoryMovementsCsv,type MovementPage} from './inventoryMovements';
+import {collectMovementSnapshot,inventoryMovementsCsv,loadInventoryMovements,type MovementPage} from './inventoryMovements';
 const id='11000000-0000-4000-8000-000000000001';
 describe('inventory movement CSV',()=>{
  it('escapes leading spreadsheet formulas and multiline source descriptions',()=>{
@@ -15,6 +15,8 @@ describe('inventory movement CSV',()=>{
   expect(csv).toContain('"\'=RUN(1)\nquoted ""note"""');
   expect(csv).toContain('"""LOT,7"""');
   expect(csv).toContain('"100","mg"');
+  expect(csv).toContain('"History ID","Through ledger sequence","Sequence"');
+  expect(csv).toContain(`"${id}","3","3","2026-11-14T00:00:00.000Z"`);
   expect(csv).toContain('"Source location ID"');
   expect(csv).toContain('"Destination location ID"');
   expect(csv).not.toContain('undefined');
@@ -55,5 +57,17 @@ describe('bounded immutable movement export',()=>{
    if(after===0)return empty(id,2,0,[1],true);
    return empty('22000000-0000-4000-8000-000000000002',2,1,[2],false);
   },2)).rejects.toThrow(/history changed/);
+ });
+});
+
+
+describe('movement report UTC calendar validation',()=>{
+ it('rejects invalid calendar days before touching the network',async()=>{
+  for(const bad of ['2026-02-31','2027-02-29','2026-04-31','2026-13-01','2026-00-10']){
+   await expect(loadInventoryMovements({} as never,{} as never,id,{from:bad}))
+    .rejects.toThrow('Invalid movement date');
+   await expect(loadInventoryMovements({} as never,{} as never,id,{through:bad}))
+    .rejects.toThrow('Invalid movement date');
+  }
  });
 });
