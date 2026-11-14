@@ -79,6 +79,32 @@ export async function loadInventoryMovements(
  if(!response.ok)throw Error('Movement report unavailable: HTTP '+response.status);
  return validateMovementPage(await response.json() as unknown,epoch,after,opts.until,limit);
 }
+/** Read every page of one frozen ledger snapshot; fail rather than export an incomplete file. */
+export async function collectMovementSnapshot(
+ fetchPage:(after:number,until:number)=>Promise<MovementPage>,
+ until:number,maxRows=10_000,
+):Promise<MovementPage>{
+ if(!safe(until)||!Number.isSafeInteger(maxRows)||maxRows<1)throw Error('Invalid export bound');
+ const items:MovementRow[]=[];
+ let after=0,epoch:string|undefined;
+ while(true){
+  const page=await fetchPage(after,until);
+  if(page.throughSequence!==until||(epoch!==undefined&&page.epoch!==epoch))
+   throw Error('Movement export history changed');
+  epoch=page.epoch;
+  if(page.items.length&&page.items[0].sequence<=after)
+   throw Error('Movement export cursor stalled');
+  if(items.length+page.items.length>maxRows||(page.hasMore&&items.length+page.items.length>=maxRows))
+   throw Error('Too many movement rows; narrow the filters and try again');
+  items.push(...page.items);
+  if(!page.hasMore)return{epoch,throughSequence:until,items,hasMore:false,
+   nextAfter:page.nextAfter};
+  if(page.nextAfter<=after||page.items.length===0)
+   throw Error('Movement export cursor stalled');
+  after=page.nextAfter;
+ }
+}
+
 /** CSV contains only the fetched immutable event page; never include request payloads or credentials. */
 export function inventoryMovementsCsv(page:MovementPage):string{
  const cell=(input:unknown)=>{

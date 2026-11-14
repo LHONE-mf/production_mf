@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import type {HybridSession} from '../../core/sync/hybridClient';
 import type {InventoryScope} from '../../core/sync/inventoryOutbox';
 import type {InventoryMaterial} from '../../core/sync/inventoryCatalogClient';
-import {inventoryMovementsCsv,loadInventoryMovements,
+import {collectMovementSnapshot,inventoryMovementsCsv,loadInventoryMovements,
  type MovementFilters,type MovementPage} from '../../core/sync/inventoryMovements';
 
 const cls='block min-h-11 w-full rounded bg-slate-900 p-2';
@@ -50,12 +50,30 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
   }catch(cause){if(token===generation.current){setPage(null);setError('Не удалось получить журнал: '+String(cause));}}
   finally{if(token===generation.current)setBusy(false);}
  }
- function download(){
-  if(!page)return;
-  const blob=new Blob([inventoryMovementsCsv(page)],{type:'text/csv;charset=utf-8'});
+ function saveCsv(content:string,name:string){
+  const blob=new Blob([content],{type:'text/csv;charset=utf-8'});
   const url=URL.createObjectURL(blob),link=document.createElement('a');
-  link.href=url;link.download='production-mf-movements-page.csv';
+  link.href=url;link.download=name;
   document.body.appendChild(link);link.click();link.remove();URL.revokeObjectURL(url);
+ }
+ function download(){
+  if(page)saveCsv(inventoryMovementsCsv(page),'production-mf-movements-page.csv');
+ }
+ async function downloadFull(){
+  if(!page||busy||!active)return;
+  const token=++generation.current;
+  setBusy(true);setError('');
+  try{
+   const frozen=page.throughSequence;
+   const full=await collectMovementSnapshot(
+    (after,until)=>loadInventoryMovements(session,scope,epoch,{
+     ...active,after,until,limit:100,
+    }),frozen,10_000);
+   if(token===generation.current)
+    saveCsv(inventoryMovementsCsv(full),'production-mf-movements-snapshot.csv');
+  }catch(cause){if(token===generation.current)
+    setError('Выгрузка отменена без неполного файла: '+String(cause));}
+  finally{if(token===generation.current)setBusy(false);}
  }
  return <details className="rounded border border-slate-600 p-3" aria-label="Журнал движений склада">
   <summary className="min-h-11 cursor-pointer py-2">История движений · подтверждённый серверный журнал</summary>
@@ -83,9 +101,10 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
     <p>Основание: {item.reason} · Автор: {item.actorId}</p>
    </div>)}
    {!page.items.length&&<p>Записей в выбранной области нет.</p>}
-   <p>CSV экспортирует только показанную проверенную страницу. Полный отчёт требует выгрузки всех страниц в рамках одной истории и времени среза.</p>
+   <p>Можно скачать текущую страницу или все события этого серверного среза (до 10 000 строк). При превышении лимита выгрузка прерывается без неполного файла — уточните фильтры.</p>
    <div className="flex flex-wrap gap-2">
     <button type="button" className="min-h-11 rounded bg-blue-700 px-3" onClick={download}>Скачать CSV страницы журнала</button>
+    <button type="button" disabled={busy} className="min-h-11 rounded border px-3 disabled:opacity-50" onClick={()=>void downloadFull()}>Скачать весь срез до 10 000 строк</button>
     {page.hasMore&&<button type="button" disabled={busy} className="min-h-11 rounded border px-3" onClick={()=>void load(true)}>Следующая страница</button>}
    </div>
   </section>}

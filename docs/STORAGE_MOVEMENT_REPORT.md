@@ -33,3 +33,18 @@ alerts, full all-pages exports and aggregate reports still need implementation.
 S9 manufacturing handoff/Slurry actual consumption and S10 acceptance are
 also pending. No factory data, Android device or production deployment is
 changed by this reporting slice.
+
+## S8 follow-up: bounded full-snapshot export
+
+Operators may explicitly export a complete filtered movement snapshot of at most
+10,000 events. The client re-requests all pages from `after=0` using the same
+`until=throughSequence` captured in the first report, verifies each page
+epoch/sequence, and fails without a partial file if a page errors, history
+changes, a cursor stalls, or the result exceeds the cap. Every page requires
+fresh authorization and device proof. CSV escaping is identical to the page
+export. This is a one-off download, not a scheduled background export. For
+larger history sets, narrow the filters; external streaming export is pending.
+
+The number of exported events is not the same as a computed material-consumption
+quantity. Production consumption remains unimplemented until Slurry links
+actual issued stock to verified weighed usage.
