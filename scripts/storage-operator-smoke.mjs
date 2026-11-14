@@ -113,6 +113,13 @@ try{
  const movementCsv=await readFile(movementFile,'utf8');
  assert(movementCsv.includes('Operation ID')&&movementCsv.includes('PVDF')&&movementCsv.includes('receive'));
  assert(!movementCsv.includes(actors[0].token)&&!movementCsv.includes(actors[0].proof));
+ const fullDownload=p.waitForEvent('download');
+ await movementRegion.getByRole('button',{name:'Скачать весь срез до 10 000 строк',exact:true}).click();
+ const completeFile=artifact+'/stock-movements-snapshot.csv';
+ await(await fullDownload).saveAs(completeFile);
+ const fullCsv=await readFile(completeFile,'utf8');
+ assert(fullCsv.includes('PVDF')&&fullCsv.includes('receive'));
+ assert(!fullCsv.includes(actors[0].token)&&!fullCsv.includes(actors[0].proof));
  assert.equal((await pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[org])).rows[0].n,1,'Report changed accepted ledger');
  await p.screenshot({path:artifact+'/stock-movements-mobile.png',fullPage:true});
  await p.getByText('История движений · подтверждённый серверный журнал',{exact:true}).click();
