@@ -30,3 +30,15 @@ it('leaves the saved draft intact if validation fails inside the queue transacti
  expect((await inventoryOutbox.receivingDrafts.get(key))?.operationId).toBeUndefined();
  expect(await inventoryOutbox.operations.count()).toBe(0);
 });
+it('freezes whole-container stock intent atomically and rejects a stale source revision',async()=>{
+ const {freezeStockDraft}=await import('./inventoryReceiving');
+ const {inventoryScopeKey}=await import('./inventoryOutbox');
+ const stock={stockId:fields.stockId,materialId:fields.materialId,locationId:fields.locationId,manufacturerLot:'A',unit:'mg' as const,quality:'quarantine' as const,onHand:2125000,reserved:0,available:2125000,revision:1};
+ await inventoryOutbox.stocks.put({...stock,scopeKey:inventoryScopeKey(scope)});
+ await saveReceivingDraft(key,0,{reason:'Physical movement'});
+ await expect(freezeStockDraft(key,1,session,scope,{kind:'transfer',stockId:stock.stockId,expectedRevision:2,quantity:stock.onHand,toLocationId:'77777777-7777-4777-8777-777777777777',reason:'Physical movement'})).rejects.toThrow('Stock changed');
+ expect((await inventoryOutbox.receivingDrafts.get(key))?.operationId).toBeUndefined();
+ const id=await freezeStockDraft(key,1,session,scope,{kind:'transfer',stockId:stock.stockId,expectedRevision:1,quantity:stock.onHand,toLocationId:'77777777-7777-4777-8777-777777777777',reason:'Physical movement'});
+ expect((await inventoryOutbox.stockOperations.get(id))?.request.quantity).toBe(2125000);
+ expect((await inventoryOutbox.stocks.toArray())[0].locationId).toBe(stock.locationId);
+});

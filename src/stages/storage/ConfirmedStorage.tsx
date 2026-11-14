@@ -1,4 +1,5 @@
 import React,{useEffect,useRef,useState} from 'react';
+import {StockChangeForm} from './StockChangeForm';
 import {ReceivingForm} from './ReceivingForm';
 import {pushInventoryReceipts} from '../../core/sync/inventoryClient';
 import {pushPendingInventoryStockChanges} from '../../core/sync/inventoryStockClient';
@@ -14,7 +15,7 @@ import {inventoryStockQueueForScope} from '../../core/sync/inventoryStockOutbox'
 export function ConfirmedStorage(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');
- const [view,setView]=useState<{key:string;at:number;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;error?:string}[]}|null>(null);
+ const [view,setView]=useState<{key:string;at:number;canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;error?:string}[]}|null>(null);
  const generation=useRef(0),sending=useRef(false);
  const [confirmSend,setConfirmSend]=useState(false),[message,setMessage]=useState('');
  const scope=connection?{serverUrl:connection.serverUrl,organizationId:connection.organizationId,actorId:connection.serverActorId,deviceId:connection.selectedDeviceId}:null;
@@ -28,7 +29,7 @@ export function ConfirmedStorage(){
   if(!scope||!connection||!fresh||busy)return;
   const run=++generation.current;setBusy(true);setError('');
   try{
-   await loadWarehouseAccess(connection.session,scope);
+   const access=await loadWarehouseAccess(connection.session,scope);
    const names:Record<string,string>={},locations:Record<string,string>={},materials:InventoryMaterial[]=[],places:InventoryLocation[]=[];
    for(const [load,target,label] of [[loadInventoryMaterials,names,'name'],[loadInventoryLocations,locations,'label']] as const){
     let after:string|undefined;
@@ -48,14 +49,15 @@ export function ConfirmedStorage(){
    }
    const [stocks,receipts,operations]=await Promise.all([confirmedInventoryForScope(scope),inventoryQueueForScope(scope),inventoryStockQueueForScope(scope)]);
    if(run!==generation.current)return;
-   setView({key,at:Date.now(),materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error}))]});
+   setView({key,at:Date.now(),canCorrect:access.canCorrectStock,materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt}))]});
   }catch(e){if(run===generation.current){setView(null);setError('Обновление недоступно. Проверьте подключение, сеанс и полномочия в разделе Синхронизация. '+(e instanceof Error?e.message:''));}}
   finally{if(run===generation.current)setBusy(false);}
  }
  async function queued(){
   if(!scope)return;const run=generation.current;
-  const receipts=await inventoryQueueForScope(scope);
-  if(run===generation.current)setView(v=>v?{...v,queue:[...v.queue.filter(q=>q.kind!=='Приёмка'),...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error}))]}:v);
+  try{const [receipts,operations]=await Promise.all([inventoryQueueForScope(scope),inventoryStockQueueForScope(scope)]);
+  if(run===generation.current)setView(v=>v?{...v,queue:[...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt})),...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt}))]}:v);
+  }catch(e){if(run===generation.current)setError('Очередь сохранена, но не прочитана: '+String(e));}
  }
  async function send(){
   if(!scope||!connection||!fresh||sending.current||busy)return;
@@ -67,7 +69,7 @@ export function ConfirmedStorage(){
    if(run!==generation.current)return;
    const stock=await pushPendingInventoryStockChanges(connection.session,scope);
    if(run===generation.current){setMessage(`Принято: ${receipt.accepted+stock.accepted}; конфликтов: ${receipt.conflicts+stock.conflicts}; отклонено: ${receipt.rejected+stock.rejected}. Обновите подтверждённые данные.`);await queued();}
-  }catch(e){if(run===generation.current){setError('Ответ может быть неизвестен. Повторите обмен с теми же ID после проверки доступа. '+String(e));await queued();}}
+  }catch(e){if(run===generation.current){setView(null);setError('Ответ может быть неизвестен. Повторите обмен с теми же ID после проверки доступа. '+String(e));await queued();}}
   finally{sending.current=false;if(run===generation.current){setBusy(false);setConfirmSend(false);}}
  }
  return <section aria-label="Подтверждённый склад" className="min-w-0 space-y-3 rounded-lg bg-slate-800 p-3 break-words">
@@ -84,13 +86,14 @@ export function ConfirmedStorage(){
      <p>{visible.names[s.materialId]??s.materialId} · Партия производителя: {s.manufacturerLot}</p><p>Контейнер: {s.stockId}</p><p>Место: {visible.locations[s.locationId]??s.locationId}</p>
      <p>Качество: {s.quality==='quarantine'?'Карантин':s.quality==='released'?'Разрешено':'Заблокировано'} · Версия {s.revision}</p>
      <p>На руках: {s.onHand} {s.unit} · Резерв: {s.reserved} {s.unit} · Свободно по количеству: {s.available} {s.unit}</p><p>Карантин и блокировка запрещают использование в производстве.</p>
+     {scope&&connection&&user&&<StockChangeForm {...{scope,stock:s,session:connection.session,localActorId:user.id,locations:visible.places,canCorrect:visible.canCorrect,onQueued:()=>void queued()}}/>}
     </article>)}
     {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
     <h4>Операции / Синхронизация ({visible.queue.length})</h4>
     <p>Предложения не меняют подтверждённые остатки.</p>
     {visible.queue.some(q=>q.state==='pending')&&<button type="button" className="min-h-11 bg-blue-700 px-3" disabled={busy} onClick={()=>setConfirmSend(true)}>Проверить отправку / повтор</button>}
     {confirmSend&&<div role="alertdialog" aria-label="Подтверждение обмена"><p>Отправить до 20 ожидающих приёмок и до 20 изменений склада с сохранёнными ID и исходными версиями? Неизвестный ответ повторяется с тем же ID. Конфликты и отклонения не переотправляются.</p><button className="min-h-11 px-3" disabled={busy} onClick={()=>void send()}>Подтвердить отправку тех же операций</button><button className="min-h-11 px-3" disabled={busy} onClick={()=>setConfirmSend(false)}>Отмена отправки</button></div>}
-    {visible.queue.map(q=><p key={q.id}>{q.kind} · {q.id} · {q.state==='pending'?'Ожидает отправки':q.state==='conflict'?'Конфликт':'Отклонено'} {q.error}</p>)}
+    {visible.queue.map(q=><p key={q.id}>{q.kind} · {q.id} · {q.state==='pending'?'Ожидает отправки':q.state==='conflict'?'Конфликт':'Отклонено'} {q.error} · {new Date(q.at).toLocaleString('ru-RU')} · Основание: {q.reason}</p>)}
    </>}
   </>}
   {message&&<p role="status">{message}</p>}

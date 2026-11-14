@@ -38,3 +38,15 @@ M2 limitations: catalogue currently requires an explicit online refresh and a fr
 Next: M3 whole-container transfer and manager/chief correction UI with persisted proposals, explicit stock detail/history and stale-version handling; M4 serialize all receipt/stock/pull calls per scope, preserve cursor/history atomically, two-session lost-ACK/revocation checks; M5 full integration/native pilot; M6 documented QA/issue/return/split/cutover decisions. No QA release, physical issue, return, split or automatic consumption was introduced.
 
 Final local M2 checks: frontend typecheck, 86 files / 574 tests, PWA production build and git diff --check passed. CI is checked after pushing; no local server integration run is claimed for this client-only change.
+
+## Stock controls milestone — 2026-11-14
+
+Receiving commit cf9af27 passed CI web/server https://github.com/LHONE-mf/production_mf/actions/runs/43542778651 including real PostgreSQL; Run Tests 43542778619 also checked separately at release checkpoint.
+
+M3 adds StockChangeForm.tsx inside each stock detail, a shared transactional stock-draft freeze, and current server access flags in ConfirmedStorage. Operators can propose only whole unreserved container transfers; manager/chief access exposes exact integer-base-unit increase/decrease correction. Source revision and quantity remain frozen in a scoped durable draft. Preview and explicit queue confirmation precede sending. Stale versions do not silently rebase. Replacing an unfinished draft/current source version requires confirmation; a new draft after accepted submission checks no outstanding stock proposal remains. Reason/evidence is required. Server validation and exact acknowledgement remain authoritative. Queue now shows local time/reason. Submission failures hide the authorized view and preserve all input/queues for reauthentication/refresh.
+
+Executed focused tests: stock UI operator transfer and manager correction, frozen quantity/revision, no network or optimistic stock change; atomic freeze rejects stale revision with no partially frozen draft. Phone/desktop Chromium checked transfer preview, preserved ID across reload, unchanged confirmed revision, no overflow/page errors. This was an isolated component harness, not a physical warehouse handover or live authenticated server pilot.
+
+M3 remains partial in history/conflict resolution: a stock with a retained conflict/rejection cannot be proposed again until an explicit audited local review path is added. No queue row is silently deleted. Existing posted history is on the server; local timeline/detail and safe reviewed-conflict/new-intent flow are next. Reservations remain gated pending approved QA prerequisites; no release toggle, issue, return, partial transfer or consumption shortcut exists.
+
+Final local stock-control checks: frontend typecheck, 87 files / 577 tests, PWA build and git diff --check passed. Server/API behavior unchanged; current commit PostgreSQL regression is verified through CI after push.

@@ -28,3 +28,13 @@ export async function freezeReceivingDraft(key:string,revision:number,session:Hy
   await inventoryOutbox.receivingDrafts.put({...prior,revision:revision+1,operationId});return operationId;
  });
 }
+
+export async function freezeStockDraft(key:string,revision:number,session:HybridSession,scope:InventoryScope,request:import('./inventoryStockOutbox').InventoryStockChangeDraft){
+ const {queueInventoryStockChange}=await import('./inventoryStockOutbox');
+ return inventoryOutbox.transaction('rw',inventoryOutbox.receivingDrafts,inventoryOutbox.stockOperations,inventoryOutbox.stocks,async()=>{
+  const prior=await inventoryOutbox.receivingDrafts.get(key);
+  if(!prior||prior.revision!==revision||prior.operationId)throw Error('Предложение изменено или уже подтверждено');
+  const operationId=await queueInventoryStockChange(session,scope,request);
+  await inventoryOutbox.receivingDrafts.put({...prior,revision:revision+1,operationId});return operationId;
+ });
+}
