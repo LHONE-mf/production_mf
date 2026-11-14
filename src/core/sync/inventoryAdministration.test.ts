@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
-import { freezeInventoryAdministration, listInventoryAdministration, sendInventoryAdministration, loadWarehouseUsers } from './inventoryAdministration';
+import { freezeInventoryAdministration, listInventoryAdministration, sendInventoryAdministration, loadWarehouseUsers, loadWarehouseAlertPolicies } from './inventoryAdministration';
 import { inventoryOutbox } from './inventoryOutbox';
 const scope={serverUrl:'https://inventory.example',organizationId:'11111111-1111-4111-8111-111111111111',actorId:'22222222-2222-4222-8222-222222222222',deviceId:'33333333-3333-4333-8333-333333333333'};
 const session={serverUrl:scope.serverUrl,accessToken:'A'.repeat(43),deviceProofToken:'B'.repeat(43),deviceProofDeviceId:scope.deviceId,deviceProofExpiresAt:Date.now()+300000};
@@ -71,4 +71,52 @@ it('freezes an edit with its original revision and checks the versioned acknowle
  await expect(sendInventoryAdministration(session,scope,'local',row.key)).rejects.toThrow('acknowledgement');
  expectedRevision=2;await sendInventoryAdministration(session,scope,'local',row.key);
  const accepted=(await listInventoryAdministration(scope,'local'))[0];expect(accepted.fields.state).toBe('accepted');expect(JSON.parse(accepted.fields.request).expectedRevision).toBe(1);
+});
+
+it('persists a material alert policy across a lost acknowledgement and exact retry',async()=>{
+ const posts:string[]=[];let lose=true;
+ vi.stubGlobal('fetch',vi.fn(async(url:URL,init?:RequestInit)=>{
+  if(url.pathname==='/inventory/access/me')return response(access);
+  if(url.pathname==='/inventory/stream')return response(stream);
+  expect(url.pathname).toBe('/inventory/alert-policies');
+  posts.push(String(init?.body));
+  if(lose){lose=false;throw new TypeError('Unknown server acknowledgement');}
+  const body=JSON.parse(String(init?.body));
+  return response({status:'duplicate',changeId:body.changeId,
+    policy:{materialId:body.materialId,lowAvailable:body.lowAvailable,
+      expiryDays:body.expiryDays,active:body.active,
+      revision:body.expectedRevision+1,updatedBy:scope.actorId,
+      updatedAt:'2026-11-14T20:00:00.000Z'}});
+ }));
+ const policy={resource:'alert_policy' as const,materialId:'44444444-4444-4444-8444-444444444444',
+  expectedRevision:0,lowAvailable:1500000,expiryDays:21,active:true,
+  reason:'Approved safety stock for production powder'};
+ const frozen=await freezeInventoryAdministration(session,scope,'local',policy);
+ expect(posts).toHaveLength(0);
+ inventoryOutbox.close();await inventoryOutbox.open();
+ const restored=(await listInventoryAdministration(scope,'local'))[0];
+ expect(restored).toEqual(frozen);
+ expect(restored.fields.request).not.toMatch(/accessToken|deviceProofToken/);
+ await expect(sendInventoryAdministration(session,scope,'local',frozen.key)).rejects.toThrow('Unknown server acknowledgement');
+ expect((await listInventoryAdministration(scope,'local'))[0].fields.state).toBe('pending');
+ await sendInventoryAdministration(session,scope,'local',frozen.key);
+ expect(posts).toHaveLength(2);expect(posts[0]).toBe(posts[1]);
+ expect((await listInventoryAdministration(scope,'local'))[0].fields.state).toBe('accepted');
+});
+it('rejects unexpected material alert policy history, malformed values and invalid pages',async()=>{
+ const row={materialId:'44444444-4444-4444-8444-444444444444',
+  lowAvailable:400,expiryDays:30,active:true,revision:1,updatedBy:scope.actorId,
+  updatedAt:'2026-11-14T20:00:00.000Z'};
+ let policies:unknown={epoch,policies:[row],hasMore:false,nextAfter:null};
+ vi.stubGlobal('fetch',vi.fn(async(url:URL)=>{
+  if(url.pathname==='/inventory/stream')return response(stream);
+  if(url.pathname==='/inventory/alert-policies')return response(policies);
+  throw Error('Unexpected URL');
+ }));
+ expect((await loadWarehouseAlertPolicies(session,scope)).items).toEqual([row]);
+ policies={epoch:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',policies:[row],hasMore:false,nextAfter:null};
+ await expect(loadWarehouseAlertPolicies(session,scope)).rejects.toThrow('policy');
+ policies={epoch,policies:[{...row,lowAvailable:-1}],hasMore:false,nextAfter:null};
+ await expect(loadWarehouseAlertPolicies(session,scope)).rejects.toThrow('policy');
+ await expect(loadWarehouseAlertPolicies(session,scope,undefined,101)).rejects.toThrow('page');
 });
