@@ -14,7 +14,7 @@ export interface MovementPage {
 }
 export interface MovementFilters {
  stockId?:string;materialId?:string;productionBatchId?:string;actorId?:string;
- kind?:string;from?:string;through?:string;
+ kind?:string;from?:string;through?:string;manufacturerLot?:string;
 }
 export type MovementOptions=MovementFilters&{after?:number;until?:number;limit?:number};
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -62,6 +62,7 @@ export async function loadInventoryMovements(
   if(id!==undefined&&!uuid.test(id))throw Error('Invalid movement report identity');
  }
  if(opts.kind!==undefined&&!kind.test(opts.kind))throw Error('Invalid movement kind');
+ if(opts.manufacturerLot!==undefined&&(!opts.manufacturerLot.trim()||opts.manufacturerLot.length>200))throw Error('Invalid manufacturer lot');
  for(const value of [opts.from,opts.through]){
   if(value!==undefined&&(!date.test(value)||!Number.isFinite(Date.parse(value+'T00:00:00Z'))))
    throw Error('Invalid movement date');
@@ -72,7 +73,7 @@ export async function loadInventoryMovements(
     (opts.until!==undefined&&(!safe(opts.until)||opts.until<after)))
   throw Error('Invalid movement cursor');
  const q=new URLSearchParams({deviceId:scope.deviceId,after:String(after),limit:String(limit)});
- for(const key of ['stockId','materialId','productionBatchId','actorId','kind','from','through'] as const){
+ for(const key of ['stockId','materialId','productionBatchId','actorId','kind','from','through','manufacturerLot'] as const){
   if(opts[key])q.set(key,opts[key]);
  }
  if(opts.until!==undefined)q.set('until',String(opts.until));

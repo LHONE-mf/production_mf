@@ -11,6 +11,7 @@ const params=z.object({
  limit:z.coerce.number().int().min(1).max(100).default(50),
  stockId:z.guid().optional(),materialId:z.guid().optional(),
  productionBatchId:z.guid().optional(),actorId:z.guid().optional(),
+ manufacturerLot:z.string().trim().min(1).max(200).optional(),
  kind:z.string().regex(/^[a-z][a-z_]{0,39}$/).optional(),
  from:z.iso.date().optional(),through:z.iso.date().optional(),
 }).strict();
@@ -54,9 +55,10 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
          AND ($8::text IS NULL OR o.kind=$8)
          AND ($9::date IS NULL OR o.recorded_at >= ($9::date::timestamp AT TIME ZONE 'UTC'))
          AND ($10::date IS NULL OR o.recorded_at < (($10::date+INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC'))
+         AND ($12::text IS NULL OR o.result_stock->>'manufacturerLot'=$12)
        ORDER BY o.sequence LIMIT $11`,
        [actor.organization_id,q.after,upper,q.stockId??null,q.materialId??null,
-        q.productionBatchId??null,q.actorId??null,q.kind??null,q.from??null,q.through??null,q.limit+1]);
+        q.productionBatchId??null,q.actorId??null,q.kind??null,q.from??null,q.through??null,q.limit+1,q.manufacturerLot??null]);
      const slice=result.rows.slice(0,q.limit);
      const items=slice.map(row=>({
        sequence:count(row.sequence),operationId:String(row.operation_id),

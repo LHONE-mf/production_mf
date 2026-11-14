@@ -71,6 +71,16 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authenticated immutable invento
   expect((await get({until:'0',after:'2'})).statusCode).toBe(409);
   expect((await get({limit:'101'})).statusCode).toBe(400);
  });
+ it('filters by exact manufacturer lot from immutable event snapshots',async()=>{
+  const id=await f.stock();
+  const matched=await get({manufacturerLot:'SAME-MAKER-LOT'});
+  expect(matched.statusCode,matched.body).toBe(200);
+  expect(matched.json().items.map((row:{stockId:string})=>row.stockId)).toEqual([id,id]);
+  const other=await get({manufacturerLot:'OTHER-LOT'});
+  expect(other.statusCode,other.body).toBe(200);
+  expect(other.json().items).toEqual([]);
+  expect((await get({manufacturerLot:' '.repeat(201)})).statusCode).toBe(400);
+ });
  it('denies production-only, revoked-warehouse and wrong-device proof; never exposes secrets',async()=>{
   await f.stock();
   expect((await get({},4)).statusCode).toBe(403);
