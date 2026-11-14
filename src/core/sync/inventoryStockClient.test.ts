@@ -130,15 +130,24 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     const id=await queueInventoryStockChange(session,scope,transfer);
     let unblock:(response:Response)=>void=()=>{};
     const waiting=new Promise<Response>(resolve=>{unblock=resolve;});
-    const fetchMock=vi.fn().mockReturnValueOnce(waiting);
+    let entered:()=>void=()=>{};
+    const started=new Promise<void>(resolve=>{entered=resolve;});
+    const fetchMock=vi.fn().mockImplementationOnce(()=>{entered();return waiting;});
     vi.stubGlobal('fetch',fetchMock);
     const first=pushPendingInventoryStockChanges(session,scope);
-    await expect(pushPendingInventoryStockChanges(session,scope))
-      .rejects.toThrow('already in progress');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    unblock(response(201,{
-      status:'confirmed',operationId:id,stock:snapshot({locationId:destination}),
-    }));
+    // Attach a handler immediately; every started operation must settle before teardown.
+    const settled=first.then(value=>({value}),error=>({error}));
+    try {
+      await started;
+      await expect(pushPendingInventoryStockChanges(session,scope))
+        .rejects.toThrow('already in progress');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      unblock(response(201,{
+        status:'confirmed',operationId:id,stock:snapshot({locationId:destination}),
+      }));
+      await settled;
+    }
     expect((await first).accepted).toBe(1);
     expect(await pushPendingInventoryStockChanges(session,scope))
       .toEqual({accepted:0,conflicts:0,rejected:0});
