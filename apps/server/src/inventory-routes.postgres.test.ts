@@ -126,6 +126,7 @@ integration('Storage authoritative receipt API (disposable PostgreSQL)',()=>{
     expect(workerFeed.json().changes).toHaveLength(1);
     expect(workerFeed.json().changes[0]).toMatchObject({
       kind:'receive',stock:{quality:'quarantine',revision:1,onHand:2_125_000},
+      deviceId:workerDevice,quantity:2_125_000,actorId:expect.any(String),reason:expect.any(String),
     });
     const cursor=workerFeed.json().nextCursor as number;
     expect(Number.isSafeInteger(cursor)).toBe(true);

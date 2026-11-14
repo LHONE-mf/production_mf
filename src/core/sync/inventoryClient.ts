@@ -1,8 +1,9 @@
+import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {requireFreshDeviceProof} from './deviceProofClient';
 import {
   inventoryOutbox,inventoryQueueForScope,inventoryScopeKey,validateInventoryStock,
-  type InventoryScope,type InventoryStockSnapshot,type QueuedInventoryReceipt,
+  type InventoryScope,type InventoryStockSnapshot,type QueuedInventoryReceipt,type InventoryHistory,
 } from './inventoryOutbox';
 
 const validId=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -65,7 +66,7 @@ async function acknowledgeReceipt(
 }
 
 /** Submit frozen provisional receipts one by one. Unknown network status is retryable. */
-export async function pushInventoryReceipts(
+async function pushInventoryReceiptsUnlocked(
   session:HybridSession,scope:InventoryScope,limit=20,
 ):Promise<{accepted:number;conflicts:number;rejected:number}>{
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)
@@ -107,7 +108,7 @@ export async function pushInventoryReceipts(
   return {accepted,conflicts,rejected};
 }
 
-export async function pullInventoryChanges(
+async function pullInventoryChangesUnlocked(
   session:HybridSession,scope:InventoryScope,limit=50,
 ):Promise<{received:number;hasMore:boolean;cursor:number}>{
   if(!Number.isSafeInteger(limit)||limit<1||limit>100)
@@ -125,9 +126,7 @@ export async function pullInventoryChanges(
       typeof payload.hasMore!=='boolean'||
       !Number.isSafeInteger(payload.nextCursor)||Number(payload.nextCursor)<cursor)
     throw new Error('Invalid inventory change feed');
-  const changes=payload.changes as Array<{
-    sequence:number;operationId:string;kind:string;stock:unknown;recordedAt:string;
-  }>;
+  const changes=payload.changes as Array<Omit<InventoryHistory,'scopeKey'|'stockId'>>;
   let previous=cursor;
   for(const item of changes){
     if(!item||!Number.isSafeInteger(item.sequence)||item.sequence<=previous||
@@ -135,6 +134,7 @@ export async function pullInventoryChanges(
         !['receive','transfer','adjust','reserve','release_reservation'].includes(item.kind)||
         typeof item.recordedAt!=='string'||!Number.isFinite(Date.parse(item.recordedAt)))
       throw new Error('Invalid inventory change order or identity');
+    if(item.actorId!==undefined&&!validId.test(item.actorId)||item.deviceId!==undefined&&item.deviceId!==null&&!validId.test(item.deviceId)||item.reason!==undefined&&(typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>2000)||item.quantity!==undefined&&(!Number.isSafeInteger(item.quantity)||item.quantity<1))throw new Error('Invalid inventory history attribution');
     validateInventoryStock(item.stock);
     if(item.kind==='receive'?
         item.stock.revision!==1||item.stock.quality!=='quarantine':
@@ -146,11 +146,14 @@ export async function pullInventoryChanges(
       (changes.length>0&&payload.nextCursor!==previous))
     throw new Error('Invalid inventory cursor acknowledgement');
   // Apply all snapshots and checkpoint the cursor in the SAME transaction.
-  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.metadata,async()=>{
+  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,async()=>{
     const currentCursor=(await inventoryOutbox.metadata.get(key))?.value??0;
     if(currentCursor!==cursor)throw new Error('Inventory cursor advanced while pulling');
     for(const item of changes){
       const stock=item.stock as InventoryStockSnapshot;
+      const priorEvent=await inventoryOutbox.history.get([scopeKey,item.sequence]);
+      if(priorEvent&&(priorEvent.operationId!==item.operationId||priorEvent.kind!==item.kind||!sameStock(priorEvent.stock,stock)))throw new Error('Conflicting inventory history');
+      await inventoryOutbox.history.put({...item,scopeKey,stockId:stock.stockId});
       const before=await inventoryOutbox.stocks.get([scopeKey,stock.stockId]);
       if(before&&before.revision===stock.revision&&!sameStock(before,stock))
         throw new Error('Conflicting confirmed inventory snapshots');
@@ -160,4 +163,11 @@ export async function pullInventoryChanges(
     await inventoryOutbox.metadata.put({key,value:payload.nextCursor as number});
   });
   return {received:changes.length,hasMore:payload.hasMore as boolean,cursor:payload.nextCursor as number};
+}
+
+export function pushInventoryReceipts(session:HybridSession,scope:InventoryScope,limit=20){
+ return withInventorySync(scope,()=>pushInventoryReceiptsUnlocked(session,scope,limit));
+}
+export function pullInventoryChanges(session:HybridSession,scope:InventoryScope,limit=50){
+ return withInventorySync(scope,()=>pullInventoryChangesUnlocked(session,scope,limit));
 }

@@ -37,7 +37,8 @@ function response(status:number,body:unknown){
 beforeEach(async()=>{
   await inventoryOutbox.open();
   await inventoryOutbox.transaction('rw',
-    inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.metadata,async()=>{
+    inventoryOutbox.operations,inventoryOutbox.stocks,inventoryOutbox.metadata,inventoryOutbox.history,async()=>{
+      await inventoryOutbox.history.clear();
       await inventoryOutbox.operations.clear();
       await inventoryOutbox.stocks.clear();
       await inventoryOutbox.metadata.clear();
@@ -109,6 +110,7 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
       changes:[change],nextCursor:2,hasMore:false,
     })));
     expect(await pullInventoryChanges(session,scope)).toEqual({received:1,hasMore:false,cursor:2});
+    expect((await inventoryOutbox.history.toArray())[0]).toMatchObject({sequence:2,operationId:opId,stockId:stock.stockId});
     expect(await confirmedInventoryForScope(scope)).toEqual([expect.objectContaining(stock)]);
   });
   it('atomically applies authoritative transfer and correction snapshots after receipt',async()=>{
@@ -161,4 +163,30 @@ describe('Storage provisional offline queue and confirmed synchronization',()=>{
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await inventoryQueueForScope(scope))[0].state).toBe('pending');
   });
+});
+it('serializes receipt, stock and feed work for the same scope and releases the lock on failure',async()=>{
+ const {pushPendingInventoryStockChanges}=await import('./inventoryStockClient');
+ await queueInventoryReceipt(session,scope,draft);
+ let entered!:()=>void,release!:(value:Response)=>void;
+ const started=new Promise<void>(resolve=>{entered=resolve;});
+ const waiting=new Promise<Response>(resolve=>{release=resolve;});
+ const fetchMock=vi.fn(()=>{entered();return waiting;});vi.stubGlobal('fetch',fetchMock);
+ const first=pushInventoryReceipts(session,scope);
+ const settled=first.then(value=>({value}),error=>({error}));
+ try{await started;
+  await expect(pushPendingInventoryStockChanges(session,scope)).rejects.toThrow('already in progress');
+  await expect(pushInventoryReceipts(session,scope)).rejects.toThrow('already in progress');
+  await expect(pullInventoryChanges(session,scope)).rejects.toThrow('already in progress');
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+ }finally{release(response(403,{error:'forbidden'}));await settled;}
+ await expect(first).rejects.toThrow('HTTP 403');
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,{changes:[],nextCursor:0,hasMore:false})));
+ expect((await pullInventoryChanges(session,scope)).cursor).toBe(0);
+ expect((await inventoryQueueForScope(scope))[0].state).toBe('pending');
+});
+it('rolls back history and cursor when feed attribution is malformed',async()=>{
+ const payload={changes:[{sequence:1,operationId:'77777777-7777-4777-8777-777777777777',kind:'receive',stock,recordedAt:new Date().toISOString(),actorId:'forged'}],nextCursor:1,hasMore:false};
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(200,payload)));
+ await expect(pullInventoryChanges(session,scope)).rejects.toThrow('attribution');
+ expect(await inventoryOutbox.history.count()).toBe(0);expect(await inventoryOutbox.metadata.count()).toBe(0);expect(await inventoryOutbox.stocks.count()).toBe(0);
 });

@@ -82,3 +82,12 @@ it('preserves populated v2 stock proposals when adding v3 receiving drafts',asyn
  await inventoryOutbox.open();expect(await inventoryOutbox.stockOperations.get(row.operationId)).toEqual(row);
  expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.receivingDrafts.count()).toBe(0);
 });
+it('upgrades v3 with frozen receiving evidence to v4 without resetting its checkpoint',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});
+ old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});
+ old.version(3).stores({receivingDrafts:'key'});await old.open();
+ const draft={key:scopeKey,revision:8,fields:{reason:'Receiving evidence'},operationId:'77777777-7777-4777-8777-777777777777'};
+ await old.table('receivingDrafts').put(draft);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();
+ await inventoryOutbox.open();expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(draft);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.history.count()).toBe(0);
+});

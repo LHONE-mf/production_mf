@@ -42,7 +42,9 @@ export interface ConfirmedInventoryStock extends InventoryStockSnapshot {
 interface InventorySyncMetadata {key:string;value:number;}
 
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
+export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;quantity?:number}
 export class InventoryOutboxDatabase extends Dexie {
+  history!:Table<InventoryHistory,[string,number]>;
   receivingDrafts!:Table<ReceivingDraft,string>;
   operations!: Table<QueuedInventoryReceipt,string>;
   stocks!: Table<ConfirmedInventoryStock,[string,string]>;
@@ -60,6 +62,7 @@ export class InventoryOutboxDatabase extends Dexie {
       stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',
     });
     this.version(3).stores({receivingDrafts:'key'});
+    this.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();

@@ -85,3 +85,9 @@ describe('validated warehouse catalogue client',()=>{
     await expect(loadInventoryLocations(session,scope)).rejects.toThrow('HTTP 403');
   });
 });
+it('shows full location ancestry and rejects a cyclic local hierarchy',async()=>{
+ const {inventoryLocationPath}=await import('./inventoryCatalogClient');
+ const a={id:'a',parentId:null,label:'Cabinet',kind:'cabinet' as const,active:true},b={id:'b',parentId:'a',label:'Shelf',kind:'shelf' as const,active:true};
+ expect(inventoryLocationPath([a,b],'b')).toBe('Cabinet / Shelf');
+ expect(()=>inventoryLocationPath([{...a,parentId:'b'},b],'b')).toThrow('hierarchy');
+});

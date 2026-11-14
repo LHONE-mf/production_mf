@@ -243,3 +243,17 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
       .toMatchObject({revision:3,onHand:1500,available:1500});
   });
 });
+it('retains reviewed conflicts and requires a new operation ID for an explicit replacement',async()=>{
+ const {reviewInventoryConflict}=await import('./inventoryStockOutbox');
+ const id=await queueInventoryStockChange(session,scope,transfer);
+ await expect(reviewInventoryConflict(scope,id,'Checked')).rejects.toThrow();
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{error:'revision_conflict'})));
+ await pushPendingInventoryStockChanges(session,scope);
+ await expect(reviewInventoryConflict({...scope,actorId:reservationId},id,'Checked')).rejects.toThrow();
+ await reviewInventoryConflict(scope,id,'Compared server stock and physical location; prior proposal not posted');
+ const prior=await inventoryOutbox.stockOperations.get(id);
+ expect(prior).toMatchObject({state:'conflict',request:{expectedRevision:1},reviewReason:expect.any(String)});
+ const replacement=await queueInventoryStockChange(session,scope,transfer);
+ expect(replacement).not.toBe(id);expect(await inventoryOutbox.stockOperations.count()).toBe(2);
+ expect((await confirmedInventoryForScope(scope))[0]).toMatchObject(base);
+});

@@ -29,6 +29,8 @@ export interface QueuedInventoryStockChange {
   queuedAt:number;
   state:'pending'|'conflict'|'rejected';
   error?:string;
+  reviewedAt?:number;
+  reviewReason?:string;
 }
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const positive=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>0;
@@ -111,8 +113,8 @@ export async function queueInventoryStockChange(
     // A second local proposal based on the same confirmed row would have
     // ambiguous physical ordering. Require resolution/sync before queuing it.
     const other=await inventoryOutbox.stockOperations
-      .where('[scopeKey+stockId]').equals([scopeKey,stockId]).first();
-    if(other)throw new Error('Resolve the existing provisional stock operation first');
+      .where('[scopeKey+stockId]').equals([scopeKey,stockId]).toArray();
+    if(other.some(row=>!row.reviewedAt))throw new Error('Resolve the existing provisional stock operation first');
     await inventoryOutbox.stockOperations.add({
       operationId,scopeKey,stockId,request,base:{...base},queuedAt:Date.now(),
       state:'pending',
@@ -124,4 +126,15 @@ export async function inventoryStockQueueForScope(scope:InventoryScope){
   const scopeKey=inventoryScopeKey(scope);
   return (await inventoryOutbox.stockOperations.where('scopeKey').equals(scopeKey).toArray())
     .sort((a,b)=>a.queuedAt-b.queuedAt||a.operationId.localeCompare(b.operationId));
+}
+
+/** Local review preserves original rejection/intent; it never posts or changes stock. */
+export async function reviewInventoryConflict(scope:InventoryScope,operationId:string,reason:string){
+ if(!reason.trim()||reason.length>2000)throw Error('Укажите результат сверки');
+ const scopeKey=inventoryScopeKey(scope);
+ await inventoryOutbox.transaction('rw',inventoryOutbox.stockOperations,async()=>{
+  const row=await inventoryOutbox.stockOperations.get(operationId);
+  if(!row||row.scopeKey!==scopeKey||!['conflict','rejected'].includes(row.state)||row.reviewedAt)throw Error('Операция не доступна для сверки');
+  await inventoryOutbox.stockOperations.update(operationId,{reviewedAt:Date.now(),reviewReason:reason.trim()});
+ });
 }

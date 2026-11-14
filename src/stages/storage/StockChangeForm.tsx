@@ -1,3 +1,4 @@
+import {inventoryLocationPath} from '../../core/sync/inventoryCatalogClient';
 import React,{useEffect,useRef,useState} from 'react';
 import {inventoryOutbox,inventoryScopeKey,type InventoryScope,type InventoryStockSnapshot,type ReceivingDraft} from '../../core/sync/inventoryOutbox';
 import {saveReceivingDraft,freezeStockDraft,toInventoryBaseUnits} from '../../core/sync/inventoryReceiving';
@@ -5,11 +6,11 @@ import type {InventoryStockChangeDraft} from '../../core/sync/inventoryStockOutb
 import type {HybridSession} from '../../core/sync/hybridClient';
 import type {InventoryLocation} from '../../core/sync/inventoryCatalogClient';
 
-export function StockChangeForm(props:{scope:InventoryScope;session:HybridSession;localActorId:string;stock:InventoryStockSnapshot;locations:InventoryLocation[];canCorrect:boolean;onQueued:()=>void}){
+export function StockChangeForm(props:{scope:InventoryScope;session:HybridSession;localActorId:string;stock:InventoryStockSnapshot;locations:InventoryLocation[];canCorrect:boolean;onQueued:()=>void;materialName?:string;sourceLocationName?:string}){
  const key=JSON.stringify([inventoryScopeKey(props.scope),props.localActorId,'stock',props.stock.stockId]);
  return <ScopedStockChange key={key} {...props} draftKey={key}/>;
 }
-function ScopedStockChange({scope,session,stock,locations,canCorrect,onQueued,draftKey}:{scope:InventoryScope;session:HybridSession;stock:InventoryStockSnapshot;locations:InventoryLocation[];canCorrect:boolean;localActorId:string;onQueued:()=>void;draftKey:string}){
+function ScopedStockChange({scope,session,stock,locations,canCorrect,onQueued,draftKey,materialName=stock.materialId,sourceLocationName=stock.locationId}:{scope:InventoryScope;session:HybridSession;stock:InventoryStockSnapshot;locations:InventoryLocation[];canCorrect:boolean;localActorId:string;onQueued:()=>void;draftKey:string;materialName?:string;sourceLocationName?:string}){
  const [draft,setDraft]=useState<ReceivingDraft>(),[error,setError]=useState(''),[preview,setPreview]=useState<Extract<InventoryStockChangeDraft,{kind:'transfer'|'adjust'}>>(),[busy,setBusy]=useState(false),[restart,setRestart]=useState(false);
  const row=useRef<ReceivingDraft>(),chain=useRef(Promise.resolve()),alive=useRef(true),failed=useRef(false),locked=useRef(false);
  useEffect(()=>{alive.current=true;void(async()=>{try{const prior=await inventoryOutbox.receivingDrafts.get(draftKey);const saved=prior??await saveReceivingDraft(draftKey,0,{kind:'transfer',revision:String(stock.revision),onHand:String(stock.onHand),destination:'',quantity:'',reason:'',direction:'decrease'});if(!saved.fields||Object.values(saved.fields).some(v=>typeof v!=='string'))throw Error('Повреждённое предложение сохранено для проверки');row.current=saved;if(alive.current)setDraft(saved);}catch(e){if(alive.current)setError(String(e));}})();return()=>{alive.current=false;};},[draftKey]);
@@ -38,7 +39,7 @@ function ScopedStockChange({scope,session,stock,locations,canCorrect,onQueued,dr
    const saved=await inventoryOutbox.transaction('rw',inventoryOutbox.receivingDrafts,inventoryOutbox.stockOperations,async()=>{
     const current=await inventoryOutbox.receivingDrafts.get(draftKey);
     if(!current||current.revision!==row.current?.revision)throw Error('Предложение изменено в другом окне');
-    const outstanding=await inventoryOutbox.stockOperations.where('[scopeKey+stockId]').equals([inventoryScopeKey(scope),stock.stockId]).count();
+    const outstanding=await inventoryOutbox.stockOperations.where('[scopeKey+stockId]').equals([inventoryScopeKey(scope),stock.stockId]).filter(row=>!row.reviewedAt).count();
     if(outstanding)throw Error('Сначала отправьте или разберите предыдущее предложение. Конфликт не изменяется автоматически.');
     const next={key:draftKey,revision:current.revision+1,fields:{kind:'transfer',revision:String(stock.revision),onHand:String(stock.onHand),destination:'',quantity:'',reason:'',direction:'decrease'}};
     await inventoryOutbox.receivingDrafts.put(next);return next;
@@ -52,14 +53,14 @@ function ScopedStockChange({scope,session,stock,locations,canCorrect,onQueued,dr
  <fieldset disabled={!!preview||locked.current} className="space-y-2">
  <label className="block">Действие склада<select name="kind" aria-label="Действие склада" defaultValue={draft.fields.kind} className="block min-h-11 w-full bg-slate-900"><option value="transfer">Переместить весь контейнер</option>{canCorrect&&<option value="adjust">Коррекция количества</option>}</select></label>
  <p>Перемещение всего контейнера: {draft.fields.onHand} {stock.unit}. Резерв должен быть нулевым.</p>
- <label className="block">Место назначения<select name="destination" aria-label="Место назначения" defaultValue={draft.fields.destination} className="block min-h-11 w-full bg-slate-900"><option value="">Выберите другое место</option>{locations.filter(l=>l.active&&l.id!==stock.locationId).map(l=><option key={l.id} value={l.id}>{l.label} · {l.id.slice(0,8)}</option>)}</select></label>
+ <label className="block">Место назначения<select name="destination" aria-label="Место назначения" defaultValue={draft.fields.destination} className="block min-h-11 w-full bg-slate-900"><option value="">Выберите другое место</option>{locations.filter(l=>l.active&&l.id!==stock.locationId).map(l=><option key={l.id} value={l.id}>{inventoryLocationPath(locations,l.id)} · {l.id.slice(0,8)}</option>)}</select></label>
  {canCorrect&&<><label className="block">Направление коррекции<select className="block min-h-11 bg-slate-900" name="direction" defaultValue={draft.fields.direction}><option value="decrease">Уменьшить</option><option value="increase">Увеличить</option></select></label><label className="block">Величина коррекции ({stock.unit})<input aria-label="Величина коррекции" name="quantity" inputMode="decimal" defaultValue={draft.fields.quantity} className="block min-h-11 w-full bg-slate-900 p-2"/></label></>}
  <label className="block">Основание изменения<input aria-label="Основание изменения" name="reason" maxLength={2000} defaultValue={draft.fields.reason} className="block min-h-11 w-full bg-slate-900 p-2"/></label>
  </fieldset><button type="submit" disabled={busy||!!preview||failed.current} className="min-h-11 bg-blue-700 px-3">Проверить изменение</button>
  </form>}
  {!draft.operationId&&<button type="button" className="min-h-11 px-3" onClick={()=>setRestart(true)}>Сверить заново после обновления остатков</button>}
  {restart&&<div role="alertdialog"><p>Поля незавершённой формы будут заменены. Предыдущее отправленное предложение должно быть принято. Новое использует текущую подтверждённую версию {stock.revision}; сначала обновите остатки. Старый ID остаётся в серверной истории.</p><button className="min-h-11 px-3" disabled={busy} onClick={()=>void startNew()}>Подтвердить новый черновик</button><button className="min-h-11 px-3" disabled={busy} onClick={()=>setRestart(false)}>Оставить прежний</button></div>}
- {preview&&<div role="alertdialog" aria-label="Подтверждение изменения"><p>{stock.manufacturerLot} · {stock.stockId} · {preview.kind==='transfer'?'Весь контейнер в '+(locations.find(l=>l.id===preview.toLocationId)?.label??preview.toLocationId):'Коррекция '+preview.adjustment} · {preview.quantity} {stock.unit} · Версия {preview.expectedRevision}</p><p>Подтвердите физическую проверку. Остаток изменится только после принятия сервером.</p><button className="min-h-11 px-3" disabled={busy} onClick={()=>void confirm()}>Сохранить изменение в очередь</button><button className="min-h-11 px-3" disabled={busy} onClick={()=>setPreview(undefined)}>Вернуться к изменению</button></div>}
+ {preview&&<div role="alertdialog" aria-label="Подтверждение изменения"><p>{materialName} · {stock.manufacturerLot} · {stock.stockId} · Источник: {sourceLocationName} · Качество: {stock.quality} · {preview.kind==='transfer'?'Весь контейнер в '+(locations.find(l=>l.id===preview.toLocationId)?.label??preview.toLocationId):'Коррекция: '+(preview.adjustment==='increase'?'увеличить':'уменьшить')} · {preview.quantity} {stock.unit} · Версия {preview.expectedRevision}</p><p>Подтвердите физическую проверку. Остаток изменится только после принятия сервером.</p><button className="min-h-11 px-3" disabled={busy} onClick={()=>void confirm()}>Сохранить изменение в очередь</button><button className="min-h-11 px-3" disabled={busy} onClick={()=>setPreview(undefined)}>Вернуться к изменению</button></div>}
  <p>Резервирование требует утверждённого QA-допуска и действующей производственной партии. Физическая выдача, возврат и частичное перемещение пока недоступны.</p>
  {error&&<p role="alert">{error}</p>}
  </details>;

@@ -209,13 +209,14 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     const max=await pool.query(`SELECT COALESCE(MAX(sequence),0)::text AS maximum
       FROM inventory_operations WHERE organization_id=$1`,[actor.organization_id]);
     if(cursor>safeCount(max.rows[0].maximum))return reply.code(409).send({error:'cursor_out_of_range'});
-    const result=await pool.query(`SELECT sequence,operation_id,kind,result_stock,recorded_at
+    const result=await pool.query(`SELECT sequence,operation_id,kind,result_stock,recorded_at,actor_id,device_id,reason,quantity
       FROM inventory_operations WHERE organization_id=$1 AND sequence>$2
       ORDER BY sequence LIMIT $3`,[actor.organization_id,cursor,limit+1]);
     const items=result.rows.slice(0,limit);
     return {changes:items.map(row=>({
       sequence:safeCount(row.sequence),operationId:row.operation_id,kind:row.kind,
       stock:row.result_stock,recordedAt:new Date(row.recorded_at).toISOString(),
+      actorId:row.actor_id,deviceId:row.device_id,reason:row.reason,quantity:safeCount(row.quantity),
     })),hasMore:result.rows.length>limit,
       nextCursor:items.length?safeCount(items[items.length-1].sequence):cursor};
   });

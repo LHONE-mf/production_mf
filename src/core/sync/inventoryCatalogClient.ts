@@ -110,3 +110,15 @@ export async function loadWarehouseAccess(
     throw new Error('Invalid warehouse access response');
   return raw as unknown as WarehouseAccess;
 }
+
+/** Preserve full physical context when leaf labels repeat. */
+export function inventoryLocationPath(locations:InventoryLocation[],id:string):string{
+ const names:string[]=[],seen=new Set<string>();
+ let current:string|null=id;
+ while(current){
+  if(seen.has(current)||seen.size>=100)throw Error('Invalid inventory location hierarchy');
+  seen.add(current);const row=locations.find(location=>location.id===current);
+  names.unshift(row?.label??current);current=row?.parentId??null;
+ }
+ return names.join(' / ');
+}
