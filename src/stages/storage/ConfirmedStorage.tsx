@@ -40,7 +40,7 @@ export function ConfirmedStorage(){
     let after:string|undefined;
     for(let page=0;page<100;page++){
      const result=await load(connection.session,scope,after,100);
-     for(const row of result.items){target[row.id]=label==='name'?(row as {name:string}).name:(row as {label:string}).label;if(label==='name')materials.push(row as InventoryMaterial);else places.push(row as InventoryLocation);}
+     for(const row of result.items){target[row.id]=label==='name'?`${(row as InventoryMaterial).name} (${(row as InventoryMaterial).code})`:(row as {label:string}).label;if(label==='name')materials.push(row as InventoryMaterial);else places.push(row as InventoryLocation);}
      if(!result.hasMore)break;
      if(page===99)throw Error('Каталог слишком большой. Требуется уточнение области доступа.');
      after=result.nextAfter!;

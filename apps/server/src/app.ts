@@ -1,3 +1,4 @@
+import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
 import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
 import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
 import Fastify from 'fastify';
@@ -70,6 +71,7 @@ export function buildApp(pool: Pool) {
   registerInventoryRecoveryRoutes(app,pool);
   registerInventoryCatalogRoutes(app, pool);
   registerInventoryAdministrationRoutes(app, pool);
+  registerInventoryCatalogChanges(app, pool);
   registerInventoryStockOperations(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {

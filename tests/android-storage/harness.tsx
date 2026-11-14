@@ -5,6 +5,7 @@ import { ConfirmedStorage } from '../../src/stages/storage/ConfirmedStorage';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
+import { listInventoryAdministration } from '../../src/core/sync/inventoryAdministration';
 import { loadWarehouseAccess } from '../../src/core/sync/inventoryCatalogClient';
 import { inventoryOutbox, inventoryQueueForScope, confirmedInventoryForScope, type InventoryScope } from '../../src/core/sync/inventoryOutbox';
 import { useAuthStore } from '../../src/core/store/authStore';
@@ -85,15 +86,17 @@ async function click(text: string) {
   button(text)!.click();
   await new Promise(resolve => setTimeout(resolve, 0));
 }
-async function fill(label: string, value: string) {
+async function fill(label: string, value: string, persisted = true) {
   await until(() => {
     const control = document.querySelector(`[aria-label="${label}"]`);
-    return control && !control.matches(':disabled');
+    return control && !control.matches(':disabled') && (!(control instanceof HTMLSelectElement) || [...control.options].some(option => option.value === value));
   }, label);
   const element = document.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
   element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  if (!persisted) { await until(() => element.value === value, 'form field: ' + label); return; }
   await until(async () => {
     const drafts = await inventoryOutbox.receivingDrafts.toArray();
     return drafts.some(draft => Object.values(draft.fields).includes(value)) &&
@@ -112,6 +115,28 @@ async function receipt() {
 }
 async function send() { await click('Проверить отправку / повтор'); await click('Подтвердить отправку тех же операций'); }
 async function prepare() {
+  await select('chief'); await refresh();
+  const open = (text: string) => { const summary = [...document.querySelectorAll('summary')].find(row => row.textContent === text); assert(summary, 'Missing native admin section'); summary!.click(); };
+  open('Администрирование склада · Chief');
+  await fill('Код материала', 'NATIVE-ADMIN', false); await fill('Название материала', 'Native synthetic component', false);
+  await fill('Категория материала', 'component', false); await fill('Базовая единица', 'pieces', false);
+  await click('Проверить новый материал');
+  await until(async () => (await listInventoryAdministration(scope(), fixture.chief)).some(row => row.fields.kind === 'material'), 'native catalogue proposal');
+  const creation = (await listInventoryAdministration(scope(), fixture.chief)).find(row => row.fields.kind === 'material')!;
+  await click('Подтвердить отправку предложения ' + creation.operationId!.slice(0, 8));
+  await until(async () => (await inventoryOutbox.receivingDrafts.get(creation.key))?.fields.state === 'accepted', 'native catalogue accepted');
+  await until(() => button('Обновить подтверждённые данные'), 'catalogue refresh complete');
+  open('Изменить справочники');
+  await fill('Материал для изменения', creation.operationId!, false);
+  await fill('Новое название материала', 'Native corrected component', false); await fill('Артикул поставщика', 'NATIVE-ITEM-42', false);
+  await fill('Основание изменения материала', 'Synthetic supplier document checked on Android', false);
+  await click('Проверить изменение материала');
+  await until(async () => (await listInventoryAdministration(scope(), fixture.chief)).some(row => row.fields.kind === 'material_change'), 'native catalogue edit proposal');
+  const edit = (await listInventoryAdministration(scope(), fixture.chief)).find(row => row.fields.kind === 'material_change')!;
+  assert(JSON.parse(edit.fields.request).expectedRevision === 1, 'Native editor did not freeze original version');
+  await click('Подтвердить отправку предложения ' + edit.operationId!.slice(0, 8));
+  await until(async () => (await inventoryOutbox.receivingDrafts.get(edit.key))?.fields.state === 'accepted', 'native catalogue edit accepted');
+  await select('operator');
   await refresh();
   const access = await loadWarehouseAccess(connection.session, scope());
   assert(!access.canCorrectStock && !access.canManageCatalog, 'Operator permissions must be restricted');

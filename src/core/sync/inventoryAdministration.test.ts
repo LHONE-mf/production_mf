@@ -56,3 +56,19 @@ it('validates effective grant pages and rejects forged roles, order, cursors and
  await expect(loadWarehouseUsers(session,scope)).rejects.toThrow('grant');
  await expect(loadWarehouseUsers(session,scope,undefined,101)).rejects.toThrow('page');
 });
+
+it('freezes an edit with its original revision and checks the versioned acknowledgement',async()=>{
+ let expectedRevision=1;
+ vi.stubGlobal('fetch',vi.fn(async(url:URL,init?:RequestInit)=>{
+  if(url.pathname==='/inventory/access/me')return response(access);
+  if(url.pathname==='/inventory/stream')return response(stream);
+  const body=JSON.parse(String(init?.body));
+  expect(url.pathname).toBe('/inventory/materials/44444444-4444-4444-8444-444444444444/changes');
+  expect(body.expectedRevision).toBe(1);
+  return response({id:body.id,code:'CODE',name:body.name,category:'component',baseUnit:'pieces',supplierReference:null,active:true,revision:expectedRevision});
+ }));
+ const row=await freezeInventoryAdministration(session,scope,'local',{resource:'material_change',id:'44444444-4444-4444-8444-444444444444',expectedRevision:1,name:'Edited',supplierReference:null,active:true,reason:'Correct name with evidence'});
+ await expect(sendInventoryAdministration(session,scope,'local',row.key)).rejects.toThrow('acknowledgement');
+ expectedRevision=2;await sendInventoryAdministration(session,scope,'local',row.key);
+ const accepted=(await listInventoryAdministration(scope,'local'))[0];expect(accepted.fields.state).toBe('accepted');expect(JSON.parse(accepted.fields.request).expectedRevision).toBe(1);
+});

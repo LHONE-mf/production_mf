@@ -3,6 +3,10 @@
 Authoritative plan: owner handoff dated 2026-11-14, milestones S0–S10.
 Working branch `feat/storage-inventory-foundation`; draft [PR #5](https://github.com/LHONE-mf/production_mf/pull/5), based on `feat/hybrid-server-foundation`. Never merge or touch production data as part of this work.
 
+## Current checkpoint
+
+S0 audit complete. S1 baseline native/backend bridge verified on e51d2ab and again on S2a 83938e3. S2 catalogue/grant creation/editing is implemented, with current-SHA verification tracked below. S3–S10 remain open; the table preserves original audit findings and subsequent milestone sections identify delivered changes. No production data, merge or factory acceptance.
+
 ## S0 audit (2026-11-14)
 
 Live remote and local HEAD are `116434b8388f488cd7f4eae567d07676562fc9dd`.
@@ -85,3 +89,15 @@ All catalogue and grant writes now require current history (`x-inventory-epoch`)
 Local verification: frontend typecheck and focused UI/client tests; server 36 files / 211 tests passed against real disposable PostgreSQL, including explicit Manager vs generic Master, Chief-only scoped discovery, lost-ACK creation retry, actor/device audit immutability, suspension, actual lock-wait revocation for catalogue/grants, and populated additive migration reapplication. Actual two-profile browser now exercises catalogue/location/grant UI and catalogue lost-ACK retry alongside all previous Storage/recovery scenarios. A duplicate sibling React key reproduced accumulating receiving forms during browser refreshes; unique component keys fix it, and the browser checks one receiving form remains.
 
 S2 remains PARTIAL: versioned material metadata/location editing, active/inactive controls and fuller navigation/detail need completion. S3–S10 feature gaps above remain open. The prior e51d2ab native success is baseline evidence, not verification of this subsequent administration slice. Current-SHA CI/native evidence must be checked after push. Rollback requires reverting application code first; keep additive audit data and original outbox rows, never drop/reset them to roll back UI.
+
+### S2b planned acceptance and migration
+
+Next slice: versioned material name/supplier-reference/active editing, immutable codes/units/category; versioned location label/parent/active editing with active-child, hierarchy/cycle and occupied/historical-subtree protection. Chief/explicit Manager only, same proof/history/lock/idempotency contract. Existing catalogue history has no fabricated backfill; record pre-edit snapshots in new events. Additive migration 024 must preserve populated stock, events and v7 queues. Inactive material cannot receive new stock. This is independent catalogue work while exact-SHA Route A for S2a runs; stock QA/issue semantics remain unchanged until S3/S4.
+
+### S2b — versioned catalogue editing
+
+IMPLEMENTED: material name/supplier item reference/active editor, immutable material code/category/unit; location label/parent/active editor with hierarchy/cycle, active-child and occupied/historical-subtree protection. Chief/explicit Manager only. Metadata revisions are independent of stock revisions; no metadata edit mutates stock. Migration 024 adds revision/default-active/reference fields and immutable before snapshots without inventing historical records. Existing cache/outbox versions stay unchanged; inactive material cannot receive new stock. Review/send still freezes the original version and history; refreshing never rebases the selected editor.
+
+Local verification: 607 frontend tests, 214 real PostgreSQL server tests; typechecks and builds; actual browser creation/edit/grant and all previous inventory/recovery scenarios; populated 001–023 upgrade/reapplication in a unique disposable schema preserves existing stock/ledger and metadata identities. Current source also extends native preparation with actual Chief catalogue creation and supplier-reference editing; hosted verification is required after pushing. The prior S2a commit 83938e3 is VERIFIED IN CI: [web/server](https://github.com/LHONE-mf/production_mf/actions/runs/43582672978), [tests](https://github.com/LHONE-mf/production_mf/actions/runs/43582672910), [Android](https://github.com/LHONE-mf/production_mf/actions/runs/43582781912), [artifact](https://github.com/LHONE-mf/production_mf/actions/runs/43582781912/artifacts/14108858415). That native run predates the new Chief editor scenario.
+
+S2 catalogue/grant operations are implemented; full report/history browsing, supplier/stock filtering, date/threshold policy, QR labels, tab navigation for future workflows and broader accessibility/native UX remain tracked in S8/S10. No absent QA/issue/count workflow has a placeholder tab. Next S3: genuine Chief-only QA release/hold/block/reject with documented evidence, current proof/history/expected stock revision, immutable stock feed event, expiry ineligibility, usable screen and browser/native tests. Receipts remain quarantined until S3 is implemented and verified.

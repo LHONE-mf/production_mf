@@ -26,7 +26,7 @@ function ScopedReceiving({scope,session,materials,locations,onQueued,draftKey}:{
  }
  const fields=draft?.fields,material=materials.find(m=>m.id===fields?.materialId),location=locations.find(l=>l.id===fields?.locationId);
  function request(){
-  if(!fields||!material||!location||!location.active||!fields.manufacturerLot.trim()||!fields.reason.trim())throw Error('Выберите материал и активное место, укажите партию производителя и основание');
+  if(!fields||!material||material.active===false||!location||!location.active||!fields.manufacturerLot.trim()||!fields.reason.trim())throw Error('Выберите материал и активное место, укажите партию производителя и основание');
   return {stockId:fields.stockId,materialId:material.id,locationId:location.id,manufacturerLot:fields.manufacturerLot.trim(),quantity:toInventoryBaseUnits(fields.quantity,fields.unit||material.baseUnit,material.baseUnit),expectedRevision:0 as const,reason:fields.reason.trim(),...(fields.supplier.trim()?{supplier:fields.supplier.trim()}:{}),...(fields.receiptReference.trim()?{receiptReference:fields.receiptReference.trim()}: {})};
  }
  async function confirm(){
@@ -45,7 +45,7 @@ function ScopedReceiving({scope,session,materials,locations,onQueued,draftKey}:{
  return <section aria-label="Серверная приёмка" className="space-y-3 rounded border border-slate-600 p-3">
  <h4>Приёмка в подтверждённый склад</h4><p>Новая упаковка получает отдельный ID, даже для той же партии производителя. Сохранение в очередь не меняет остаток. После подтверждения сервером — карантин.</p>
  <fieldset disabled={!!draft?.operationId||saving&&preview} className="space-y-2">
- <label className="block">Материал приёмки<select aria-label="Материал приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.materialId} onChange={e=>edit('materialId',e.target.value)}><option value="">Выберите материал</option>{materials.map(m=><option key={m.id} value={m.id}>{m.name} ({m.baseUnit})</option>)}</select></label>
+ <label className="block">Материал приёмки<select aria-label="Материал приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.materialId} onChange={e=>edit('materialId',e.target.value)}><option value="">Выберите материал</option>{materials.filter(m=>m.active!==false).map(m=><option key={m.id} value={m.id}>{m.name} ({m.baseUnit})</option>)}</select></label>
  {input('manufacturerLot','Партия производителя',200)}
  <label className="block">Место приёмки<select aria-label="Место приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.locationId} onChange={e=>edit('locationId',e.target.value)}><option value="">Выберите место</option>{locations.filter(l=>l.active).map(l=><option key={l.id} value={l.id}>{inventoryLocationPath(locations,l.id)} · {l.id.slice(0,8)}</option>)}</select></label>
  {input('quantity','Количество приёмки',30)}

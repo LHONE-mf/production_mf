@@ -1,3 +1,4 @@
+import {StorageCatalogEditor} from './StorageCatalogEditor';
 import React, { useEffect, useRef, useState } from 'react';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import type { InventoryScope, ReceivingDraft } from '../../core/sync/inventoryOutbox';
@@ -11,6 +12,8 @@ const parents: Record<InventoryLocation['kind'], InventoryLocation['kind'][]> = 
 function summary(row: ReceivingDraft) {
   try {
     const request = JSON.parse(row.fields.request);
+    if(row.fields.kind==='material_change')return `Изменение материала ${request.id}: ${request.name} · артикул ${request.supplierReference??'не указан'} · ${request.active?'Активен':'Неактивен'} · версия ${request.expectedRevision} · ${request.reason}`;
+    if(row.fields.kind==='location_change')return `Изменение места ${request.id}: ${request.label} · ${request.active?'Активно':'Неактивно'} · версия ${request.expectedRevision} · ${request.reason}`;
     return row.fields.kind === 'material' ? `Материал: ${request.code} · ${request.name} · ${request.baseUnit}` : row.fields.kind === 'location' ? `Место: ${request.label}` : `Доступ сотрудника ${request.userId}: ${request.level === 'manager' ? 'Менеджер склада' : 'Оператор склада'} · ${request.action === 'grant' ? 'Выдать' : 'Отозвать'}`;
   } catch { return 'Повреждённое предложение сохранено для сверки'; }
 }
@@ -38,7 +41,7 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
     <summary className="min-h-11 cursor-pointer py-2">Администрирование склада · {levels[access.level]}</summary>
     <p>Создание справочников и изменение доступа доступны онлайн после проверки устройства. Проверка сохраняет отдельное предложение; отправка требует отдельного подтверждения. Неизвестный ответ повторяется с тем же ID.</p>
     <label className="block">Поиск по загруженным справочникам<input aria-label="Поиск по загруженным справочникам" className={control} value={search} onChange={event => setSearch(event.target.value)} /></label>
-    <details><summary className="min-h-11 cursor-pointer py-2">Материалы ({materials.length})</summary>{materials.filter(row => `${row.code} ${row.name} ${row.category}`.toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{row.code} · {row.name} · {row.category} · {row.baseUnit} · {row.id}</p>)}</details>
+    <details><summary className="min-h-11 cursor-pointer py-2">Материалы ({materials.length})</summary>{materials.filter(row => `${row.code} ${row.name} ${row.category} ${row.supplierReference??''}`.toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{row.code} · {row.name} · {row.category} · {row.baseUnit} · {row.active===false?'Неактивен':'Активен'} · Артикул: {row.supplierReference??'не указан'} · Версия {row.revision??'не передана'} · {row.id}</p>)}</details>
     <details><summary className="min-h-11 cursor-pointer py-2">Места ({locations.length})</summary>{locations.filter(row => inventoryLocationPath(locations, row.id).toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{inventoryLocationPath(locations, row.id)} · {row.active ? 'Активно' : 'Неактивно'} · {row.id}</p>)}</details>
     <form aria-label="Новый материал" className="space-y-2" onSubmit={event => { event.preventDefault(); void prepare({ resource: 'material', ...material, code: material.code.trim(), name: material.name.trim() }); }}>
       <h4>Новый материал</h4><p>Код и базовая единица задают отдельную идентичность. Повторный код не создаёт другой материал.</p>
@@ -58,6 +61,7 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
         <button className={button}>Проверить новое место</button>
       </fieldset>
     </form>
+    <StorageCatalogEditor materials={materials} locations={locations} busy={busy} onPrepare={draft=>void prepare(draft)}/>
     {access.level === 'chief' && <section aria-label="Доступ к складу" className="space-y-2">
       <h4>Доступ к складу — Chief</h4><p>Роль Master в производстве сама по себе не даёт полномочий менеджера склада.</p>
       <button type="button" className={button} disabled={busy} onClick={() => void work(async () => { const page = await loadWarehouseUsers(session, scope); setUsers(page.items); setAfter(page.nextAfter); })}>Загрузить сотрудников</button>

@@ -5,14 +5,14 @@ import {inventoryRequest} from './inventoryClient';
 // Server-confirmed catalogues are read-only until a durable, scoped local
 // catalogue cache is introduced. They do not modify stock or offline receipts.
 export interface InventoryMaterial {
-  id:string;code:string;name:string;
+  id:string;code:string;name:string;revision?:number;active?:boolean;supplierReference?:string|null;
   category:'raw_material'|'component'|'electrode'|'cell';
   baseUnit:'mg'|'ul'|'mm'|'pieces';
 }
 export interface InventoryLocation {
   id:string;parentId:string|null;label:string;
   kind:'warehouse'|'cabinet'|'rack'|'shelf'|'container_area';
-  active:boolean;
+  active:boolean;revision?:number;
 }
 export interface InventoryPage<T> {
   items:T[];hasMore:boolean;nextAfter:string|null;
@@ -36,7 +36,10 @@ export function material(x:unknown):x is InventoryMaterial{
   return typeof x.id==='string'&&uuid.test(x.id)&&nonempty(x.code,100)&&
     nonempty(x.name,200)&&
     ['raw_material','component','electrode','cell'].includes(String(x.category))&&
-    ['mg','ul','mm','pieces'].includes(String(x.baseUnit));
+    ['mg','ul','mm','pieces'].includes(String(x.baseUnit))&&
+    (x.revision===undefined||(Number.isSafeInteger(x.revision)&&Number(x.revision)>0&&Number(x.revision)<=2147483647))&&
+    (x.active===undefined||typeof x.active==='boolean')&&
+    (x.supplierReference===undefined||x.supplierReference===null||nonempty(x.supplierReference,200));
 }
 export function location(x:unknown):x is InventoryLocation{
   if(!isRecord(x))return false;
@@ -44,7 +47,7 @@ export function location(x:unknown):x is InventoryLocation{
     (x.parentId===null||(typeof x.parentId==='string'&&uuid.test(x.parentId)))&&
     nonempty(x.label,200)&&
     ['warehouse','cabinet','rack','shelf','container_area'].includes(String(x.kind))&&
-    typeof x.active==='boolean';
+    typeof x.active==='boolean'&&(x.revision===undefined||(Number.isSafeInteger(x.revision)&&Number(x.revision)>0&&Number(x.revision)<=2147483647));
 }
 function validatePage<T extends {id:string}>(
   raw:unknown,key:'materials'|'locations',

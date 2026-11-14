@@ -235,6 +235,43 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
     expect((await pool.query('SELECT device_id,epoch FROM inventory_access_events WHERE organization_id=$1 ORDER BY recorded_at DESC LIMIT 1',[org])).rows[0].device_id).toBe(chiefDevice);
   });
 
+  it('versioned material edits preserve identity, enforce current privileges and replay the exact accepted result',async()=>{
+    const id=randomUUID(),created=await post('/inventory/materials',{deviceId:chiefDevice,id,code:'EDIT-'+id,name:'Original name',category:'component',baseUnit:'pieces'});
+    expect(created.statusCode,created.body).toBe(201);
+    const body={id,deviceId:chiefDevice,changeId:randomUUID(),expectedRevision:1,name:'Corrected name',supplierReference:'Supplier item 42',active:false,reason:'Corrected supplier reference; stop future receiving'};
+    expect((await post('/inventory/materials/'+id+'/changes',{...body,deviceId:workerDevice},workerToken,workerProof)).statusCode).toBe(403);
+    const accepted=await post('/inventory/materials/'+id+'/changes',body);
+    expect(accepted.statusCode,accepted.body).toBe(201);
+    expect(accepted.json()).toMatchObject({id,code:'EDIT-'+id,name:body.name,baseUnit:'pieces',revision:2,active:false,supplierReference:'Supplier item 42'});
+    expect((await post('/inventory/materials/'+id+'/changes',body)).json()).toEqual(accepted.json());
+    expect((await post('/inventory/materials/'+id+'/changes',{...body,name:'Changed same ID'})).statusCode).toBe(409);
+    expect((await post('/inventory/materials/'+id+'/changes',{...body,changeId:randomUUID()})).statusCode).toBe(409);
+    expect((await post('/inventory/materials/'+id+'/changes',{...body,changeId:randomUUID(),expectedRevision:2,code:'RENAMED'})).statusCode).toBe(400);
+    const foreign=(await pool.query('SELECT id FROM inventory_materials WHERE organization_id=$1 LIMIT 1',[otherOrg])).rows[0].id;
+    expect((await post('/inventory/materials/'+foreign+'/changes',{...body,id:foreign,changeId:randomUUID()})).statusCode).toBe(404);
+    const before=(await pool.query('SELECT before_payload FROM inventory_catalog_events WHERE change_id=$1',[body.changeId])).rows[0].before_payload;
+    expect(before).toMatchObject({id,name:'Original name',revision:1});
+    const warehouse=randomUUID();expect((await post('/inventory/locations',{id:warehouse,deviceId:chiefDevice,parentId:null,label:'Inactive material receiving',kind:'warehouse'})).statusCode).toBe(201);
+    const received=await post('/inventory/receipts',{deviceId:chiefDevice,operationId:randomUUID(),stockId:randomUUID(),materialId:id,locationId:warehouse,manufacturerLot:'CI inactive',quantity:1,expectedRevision:0,reason:'Must reject inactive material'});
+    expect(received.statusCode,received.body).toBe(404);
+  });
+
+  it('preserves occupied location ancestry and rejects invalid hierarchy/deactivation without changing stock',async()=>{
+    const root=randomUUID(),cabinet=randomUUID(),shelf=randomUUID(),area=randomUUID(),emptyRoot=randomUUID(),emptyCabinet=randomUUID();
+    for(const row of [{id:root,parentId:null,label:'Historical warehouse',kind:'warehouse'},{id:cabinet,parentId:root,label:'Historical cabinet',kind:'cabinet'},{id:shelf,parentId:cabinet,label:'Historical shelf',kind:'shelf'},{id:area,parentId:shelf,label:'Historical area',kind:'container_area'},{id:emptyRoot,parentId:null,label:'Empty warehouse',kind:'warehouse'},{id:emptyCabinet,parentId:emptyRoot,label:'Empty cabinet',kind:'cabinet'}])expect((await post('/inventory/locations',{deviceId:chiefDevice,...row})).statusCode).toBe(201);
+    const materialId=randomUUID();expect((await post('/inventory/materials',{id:materialId,deviceId:chiefDevice,code:'OCCUPIED-'+materialId,name:'Occupied fixture',category:'raw_material',baseUnit:'mg'})).statusCode).toBe(201);
+    const stockId=randomUUID();expect((await post('/inventory/receipts',{deviceId:chiefDevice,operationId:randomUUID(),stockId,materialId,locationId:area,manufacturerLot:'CI occupied',quantity:1000,expectedRevision:0,reason:'Genuine quarantined receipt for history protection'})).statusCode).toBe(201);
+    const edit=(id:string,parentId:string|null,label:string,active=true)=>({id,deviceId:chiefDevice,changeId:randomUUID(),expectedRevision:1,parentId,label,active,reason:'Physical catalogue correction'});
+    expect((await post('/inventory/locations/'+root+'/changes',edit(root,null,'Rewritten warehouse'))).statusCode).toBe(409);
+    expect((await post('/inventory/locations/'+area+'/changes',edit(area,shelf,'Rewritten area'))).statusCode).toBe(409);
+    expect((await post('/inventory/locations/'+emptyRoot+'/changes',edit(emptyRoot,null,'Empty warehouse',false))).statusCode).toBe(409);
+    expect((await post('/inventory/locations/'+emptyCabinet+'/changes',edit(emptyCabinet,emptyCabinet,'Cycle'))).statusCode).toBe(400);
+    const body=edit(emptyCabinet,root,'Relocated empty cabinet');const changed=await post('/inventory/locations/'+emptyCabinet+'/changes',body);
+    expect(changed.statusCode,changed.body).toBe(201);expect(changed.json()).toMatchObject({id:emptyCabinet,parentId:root,revision:2});
+    expect((await post('/inventory/locations/'+emptyCabinet+'/changes',body)).json()).toEqual(changed.json());
+    const stock=(await pool.query('SELECT location_id,on_hand::text,revision FROM inventory_stocks WHERE id=$1',[stockId])).rows[0];expect(stock).toEqual({location_id:area,on_hand:'1000',revision:1});
+  });
+
   it('revoking warehouse access immediately disables all discovery endpoints',async()=>{
     const revoked=await post('/inventory/access',{
       changeId:randomUUID(),deviceId:chiefDevice,userId:worker,

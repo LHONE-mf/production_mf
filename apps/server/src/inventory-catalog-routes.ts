@@ -49,7 +49,7 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     const result=await verifiedReader(request,reply,true);
     if(!result)return;
     const data=result.data as z.infer<typeof query>;
-    const rows=await pool.query(`SELECT id,material_code,display_name,category,base_unit
+    const rows=await pool.query(`SELECT id,material_code,display_name,category,base_unit,revision,active,supplier_reference
       FROM inventory_materials
       WHERE organization_id=$1 AND ($2::uuid IS NULL OR id>$2)
       ORDER BY id LIMIT $3`,
@@ -58,7 +58,7 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     const hasMore=rows.rows.length>data.limit;
     return {materials:items.map(r=>({
       id:r.id,code:r.material_code,name:r.display_name,
-      category:r.category,baseUnit:r.base_unit,
+      category:r.category,baseUnit:r.base_unit,revision:r.revision,active:r.active,supplierReference:r.supplier_reference,
     })),hasMore,nextAfter:hasMore?items[items.length-1].id:null};
   });
 
@@ -67,7 +67,7 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     if(!result)return;
     const data=result.data as z.infer<typeof query>;
     // Include inactive locations for traceability of historical stock references.
-    const rows=await pool.query(`SELECT id,parent_id,label,kind,active
+    const rows=await pool.query(`SELECT id,parent_id,label,kind,active,revision
       FROM inventory_locations
       WHERE organization_id=$1 AND ($2::uuid IS NULL OR id>$2)
       ORDER BY id LIMIT $3`,
@@ -75,7 +75,7 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
     const items=rows.rows.slice(0,data.limit);
     const hasMore=rows.rows.length>data.limit;
     return {locations:items.map(r=>({
-      id:r.id,parentId:r.parent_id,label:r.label,kind:r.kind,active:r.active,
+      id:r.id,parentId:r.parent_id,label:r.label,kind:r.kind,active:r.active,revision:r.revision,
     })),hasMore,nextAfter:hasMore?items[items.length-1].id:null};
   });
 

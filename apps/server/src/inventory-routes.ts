@@ -227,7 +227,7 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
           :{error:'operation_id_reused'});
       }
       const material=await client.query(`SELECT base_unit FROM inventory_materials
-        WHERE organization_id=$1 AND id=$2`,[actor.organization_id,data.materialId]);
+        WHERE organization_id=$1 AND id=$2 AND active`,[actor.organization_id,data.materialId]);
       const location=await client.query(`SELECT id FROM inventory_locations
         WHERE organization_id=$1 AND id=$2 AND active=true`,[actor.organization_id,data.locationId]);
       if(!material.rowCount||!location.rowCount){
