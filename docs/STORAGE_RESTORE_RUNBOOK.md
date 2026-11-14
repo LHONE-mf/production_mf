@@ -65,3 +65,7 @@ Unknown QA outcomes remain frozen under their original operation ID/revision/epo
 ## S5 additive recovery coverage
 
 The disposable drill now dumps/restores migration 027 issue outcomes and new-package return lineage, including normal return, issued scrap and separate witnessed warehouse scrap. It compares 40 public tables and reconstructs 11 stock events, three stock projections, one generic reservation, one received issue, five handoff events and two immutable outcomes. Original return and warehouse-scrap retries reproduce their original ACKs after restore without changing tables, even though the returned child has advanced. Old-history return posting remains denied. Actual consumption is zero until implemented; do not manufacture it during reconstruction. This is engineering evidence, not a production restore authorization or executed factory restore.
+
+## S6 implementation update
+
+S6 drill extends exact backup comparison to 41 public tables, 13 immutable stock events, four stocks and one immutable split, retaining all prior reservations/handoffs/outcomes. Paired split events reconstruct conserved parent/child quantities; exact split retry leaves restored tables unchanged. No fake genealogy backfill or reverse operation is inserted.

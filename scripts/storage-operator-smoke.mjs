@@ -9,6 +9,7 @@ import{writeFile,unlink,mkdir}from'node:fs/promises';import{createRequire}from'n
 import{createServer}from'vite';import{buildApp}from'../apps/server/dist/app.js';import{tokenHash}from'../apps/server/dist/auth.js';
 import{storageIssueSmoke}from'./lib/storage-issue-smoke.mjs';
 import{storageReturnSmoke}from'./lib/storage-return-smoke.mjs';
+import{storageSplitSmoke}from'./lib/storage-split-smoke.mjs';
 const require=createRequire(new URL('../apps/server/package.json',import.meta.url)),{Pool}=require('pg');
 const{chromium}=await import(process.env.STORAGE_PLAYWRIGHT_MODULE??'playwright');
 const url=new URL(process.env.POSTGRES_TEST_URL??'');assert(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname==='/production_mf_ci'&&url.username==='production_mf_ci','Disposable local test database/user required');
@@ -122,6 +123,7 @@ try{
  for(const [i,page]of pages.entries()){assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:artifact+'/operator-'+i+'.png',fullPage:true});}
  const issueResult=await storageIssueSmoke({pool,org,actors,pages,browser,connection,qualityStock,material,artifact});
  const issueScenarios=[...issueResult.scenarios,...await storageReturnSmoke({pool,org,pages,actors,connection,issueId:issueResult.issueId,qualityStock,locationId:locations[3],artifact})];
+ issueScenarios.push(...await storageSplitSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],artifact}));
  // A changed server history must halt queued work before any POST; evidence remains exportable.
  await p.getByRole('button',{name:'Другая упаковка',exact:true}).click();await p.getByRole('button',{name:'Да, другая физическая упаковка',exact:true}).click();await fill('Held for restore review');
  const pendingRestoreId=await p.evaluate(async()=>{const{inventoryOutbox:db}=await import('/src/core/sync/inventoryOutbox.ts');return(await db.operations.toArray())[0].operationId;});

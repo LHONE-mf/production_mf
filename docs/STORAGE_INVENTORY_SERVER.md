@@ -208,3 +208,7 @@ Chief decision preparation is deliberately online-only. Review freezes the exact
 ## Received-issue returns and scrap (migration 027)
 
 [STORAGE_RETURNS.md](STORAGE_RETURNS.md) defines the implemented warehouse return choices, immutable outcome/history routes, capped settlement and separate warehouse-stock scrap operation. Every new mutation uses fresh proof, current grants, original history and exact revisions. A return pairs one new-package stock event with one immutable issue outcome; issued scrap has no stock debit. Warehouse scrap requires current Chief/Manager and witness evidence, preserving reservations/metadata. Current source/ancestor QA and expiry remain authoritative for returned descendants. No actual consumption is recorded by S5.
+
+## S6 implementation update
+
+Migration 028 and `POST /inventory/stocks/:id/splits` add Chief/Manager-authorized conserved parent/child stock operations and immutable genealogy. `GET /inventory/stocks/:id/genealogy?deviceId&after&limit` is proofed, warehouse-only, tenant-scoped and bounded. See STORAGE_SPLITS.md. Existing stock feed adds split_out/split_in; old clients must update before reading these kinds.

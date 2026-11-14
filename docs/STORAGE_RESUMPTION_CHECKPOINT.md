@@ -1,6 +1,6 @@
 # Autonomous Storage resumption checkpoint — 2026-11-14
 
-**The complete S0–S10 roadmap is not finished. S0–S5 are implemented; S5 native verification and S6–S10 remain open.** Continue on `feat/storage-inventory-foundation`, draft PR #5, parent `feat/hybrid-server-foundation`. Never merge/main, touch production data, import observational journals as stock, or use the diverged ledger branch. Owner decisions D1–D8 remain approved; no routine confirmation is needed.
+**The complete S0–S10 roadmap is not finished. S0–S6 are implemented; S6 native verification and S7–S10 remain open.** Continue on `feat/storage-inventory-foundation`, draft PR #5, parent `feat/hybrid-server-foundation`. Never merge/main, touch production data, import observational journals as stock, or use the diverged ledger branch. Owner decisions D1–D8 remain approved; no routine confirmation is needed.
 
 ## Verified code and live state
 
@@ -53,3 +53,7 @@ Do not overlook this later event: 7d45e5f's web/server/browser/restore passed (6
 For artifact bytes use GitHub's download_workflow_artifact tool, which returns a reusable file-service download URL. The connector successfully fetched failed artifact 14115668448 despite direct CLI redirect HTTP 403. Read that returned URL with a properly quoted download command; download_file is for Sediment uploads, not these file-service IDs. Artifact is synthetic CI evidence; do not commit temporary signed URLs or credentials.
 
 S4 PWA/native repair 8463d96 passed all exact-head workflows: native 43601214813, push 43601214815, PR CI 43601221503 and Run Tests 43601221028. Connector artifact download works via its returned file URL; direct GitHub redirected ZIP returned 403. No owner credentials required.
+
+## S6 resumption state
+
+S5 is fully verified at 1b9fd42 (Route A 43623064716, push CI 43623064721, PR CI 43623069482, Run Tests 43623069447). S6 additive migration 028, paired split stock events/genealogy, client atomic two-stock/two-ACK acceptance, persistent explicit-confirmation UI and child QR/manual labels are implemented. See STORAGE_SPLITS.md. Local real PG/browser/restore pass; finish exact-head publication/native checks, then start S7 anytime count observations with separate Chief/Manager corrections. The complete roadmap is still unfinished. Do not mistake S5 native success for certification of changed S6 code.

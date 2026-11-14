@@ -104,7 +104,7 @@ public class StorageBackendWebViewTest {
                 assertNotNull("Missing frozen intent from the force-stopped process", saved);
                 result = run(instrumentation, view, "return await window.storageCi.finish(" + new JSONObject(saved) + ");");
                 assertTrue(result.getBoolean("passed"));
-                assertEquals(3, result.getInt("containers"));
+                assertEquals(4, result.getInt("containers"));
                 assertTrue(result.getBoolean("nativeProof"));
                 assertTrue(result.getBoolean("operatorDenied"));
                 assertTrue(result.getBoolean("lostAckRetried"));
@@ -121,6 +121,11 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("warehouseScrapApproved"));
                 assertTrue(result.getBoolean("warehouseScrapOperatorDenied"));
                 assertEquals(1000, result.getInt("warehouseScrappedQuantity"));
+                assertTrue(result.getBoolean("splitApproved"));
+                assertTrue(result.getBoolean("splitOperatorDenied"));
+                assertTrue(result.getBoolean("splitLostAckRetried"));
+                assertTrue(result.getBoolean("splitChildLabelResolved"));
+                assertEquals(125000, result.getInt("splitQuantity"));
                 Log.i("ProductionMfStorage", "RESULT " + result);
             }
             Bitmap screenshot = instrumentation.getUiAutomation().takeScreenshot();

@@ -47,6 +47,12 @@ beforeEach(async()=>{
     });
 });
 afterEach(()=>{vi.unstubAllGlobals();inventoryOutbox.close();});
+it('accepts conserved child births and parent debits in the feed, denying malformed child/reservation/witness metadata',async()=>{
+ const parent={...stock,onHand:2000000,available:2000000,revision:2},child={...stock,stockId:'77777777-7777-4777-8777-777777777777',onHand:500000,available:500000};
+ const event={sequence:1,operationId:crypto.randomUUID(),kind:'split_in',recordedAt:new Date().toISOString(),stock:child,quantity:500000,actorId:scope.actorId,deviceId:scope.deviceId,reason:'Actual authorized split',evidence:'Weight witness'};
+ for(const bad of [{...event,evidence:undefined},{...event,stock:{...child,revision:2}},{...event,stock:{...child,reserved:1,available:499999}},{...event,quantity:499999}]){stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{changes:[bad],nextCursor:1,hasMore:false})));await expect(pullInventoryChanges(session,scope)).rejects.toThrow();expect(await inventoryOutbox.stocks.count()).toBe(0);}
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{changes:[{...event,kind:'split_out',stock:parent}, {...event,sequence:2,operationId:crypto.randomUUID()}],nextCursor:2,hasMore:false})));await pullInventoryChanges(session,scope);expect((await confirmedInventoryForScope(scope)).map(s=>s.onHand).sort((a,b)=>a-b)).toEqual([500000,2000000]);
+});
 it('accepts only a new released, attributable return package in the authoritative feed',async()=>{
  const returned={...stock,quality:'released' as const,disposition:'release' as const,onHand:200,available:200};
  const change={sequence:1,operationId:'77777777-7777-4777-8777-777777777777',kind:'return',stock:returned,quantity:200,actorId:scope.actorId,deviceId:scope.deviceId,recordedAt:new Date().toISOString()};
