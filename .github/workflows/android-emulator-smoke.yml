@@ -50,19 +50,7 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
-          node --input-type=module <<'EOF'
-          import { Pool } from 'pg';
-          import { readFile } from 'node:fs/promises';
-          const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL });
-          try {
-            for (const name of ['001_foundation.sql', '002_sessions.sql', '003_sync_entities.sql', '004_device_challenges.sql', '005_workshops.sql', '006_m2_planning.sql', '007_m2_batch_lifecycle.sql', '008_m2_batch_genealogy.sql', '009_m2_stage_handoffs.sql', '010_m2_step_evidence.sql']) {
-              await pool.query(await readFile('migrations/' + name, 'utf8'));
-              console.log('Migrated isolated emulator CI DB:', name);
-            }
-          } finally {
-            await pool.end();
-          }
-          EOF
+          node ../../scripts/migrate-disposable-postgres.mjs
       - name: Build web and synchronize Android
         run: |
           npm run build
