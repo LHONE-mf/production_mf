@@ -87,6 +87,40 @@ jobs:
         run: npm test -- --reporter=default
       - name: Build
         run: npm run build
+      - name: Install locked frontend dependencies for the actual Storage browser
+        working-directory: .
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated pinned browser test tooling
+        working-directory: .
+        run: |
+          npm install --prefix "$RUNNER_TEMP/storage-browser" --no-package-lock --no-audit --no-fund playwright@1.65.0
+          "$RUNNER_TEMP/storage-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Storage two-profile operator and reviewed-recovery browser
+        working-directory: .
+        shell: bash
+        env:
+          STORAGE_ARTIFACT_DIR: /tmp/storage-artifacts
+        run: |
+          mkdir -p "$STORAGE_ARTIFACT_DIR"
+          export STORAGE_PLAYWRIGHT_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
+          node scripts/storage-operator-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/operator.log"
+      - name: Storage actual backup, restore and reconciliation drill
+        working-directory: .
+        shell: bash
+        env:
+          STORAGE_ARTIFACT_DIR: /tmp/storage-artifacts
+          STORAGE_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          mkdir -p "$STORAGE_ARTIFACT_DIR"
+          node scripts/storage-recovery-drill.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/restore.log"
+      - name: Upload Storage engineering evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-engineering-${{ github.sha }}
+          path: /tmp/storage-artifacts/
+          if-no-files-found: ignore
+          retention-days: 14
 
   m1-report:
     name: M1 automated test report
@@ -107,8 +141,9 @@ jobs:
             echo '| Check | Result |'
             echo '| --- | --- |'
             echo "| Frontend typecheck, offline sync tests, build | $WEB_RESULT |"
-            echo "| Server typecheck, isolated PostgreSQL integration, build | $SERVER_RESULT |"
+            echo "| Server, PostgreSQL, two-profile Storage browser, backup/restore | $SERVER_RESULT |"
             echo
+            echo 'Download storage-engineering artifacts from this run for screenshots, JSON results and logs.'
             echo 'The PostgreSQL service is disposable and separate from production.'
             echo 'Android emulator and real two-device acceptance are **not** covered by this workflow.'
             echo 'Automatic client synchronization remains disabled.'

@@ -3,13 +3,14 @@
  * Uses the existing local storage-postgres-test container; creates/drops only run-owned DBs.
  */
 import assert from'node:assert/strict';import{randomBytes,randomUUID}from'node:crypto';
-import{execFile,spawn}from'node:child_process';import{promisify}from'node:util';import{createRequire}from'node:module';import{readFile,readdir}from'node:fs/promises';
+import{execFile,spawn}from'node:child_process';import{promisify}from'node:util';import{createRequire}from'node:module';import{readFile,readdir,mkdir,writeFile}from'node:fs/promises';
 import{buildApp}from'../apps/server/dist/app.js';import{tokenHash}from'../apps/server/dist/auth.js';
 const require=createRequire(new URL('../apps/server/package.json',import.meta.url)),{Pool}=require('pg');
 const url=new URL(process.env.POSTGRES_TEST_URL??'');assert(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname==='/production_mf_ci'&&url.username==='production_mf_ci','Disposable localhost test database/user required');
 const admin=new Pool({connectionString:url.toString()}),owned=[],pools=[],apps=[],prefix='storage_recovery_'+randomUUID().replaceAll('-','');
 const environment={...process.env};for(const name of['DOCKER_HOST','DOCKER_CONTEXT','DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH'])delete environment[name];
-const docker=['--host=unix:///var/run/docker.sock'],container='storage-postgres-test',exec=promisify(execFile);
+const docker=['--host=unix:///var/run/docker.sock'],container=process.env.STORAGE_POSTGRES_CONTAINER??'storage-postgres-test',exec=promisify(execFile);
+assert(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/.test(container),'Invalid local test PostgreSQL container');
 const org=randomUUID(),actor=randomUUID(),device=randomUUID(),token=randomBytes(32).toString('base64url'),proof=randomBytes(32).toString('base64url');
 const identity={actor,device,token,proof};let summary;
 async function database(suffix){const name=prefix+'_'+suffix;assert(/^storage_recovery_[a-f0-9]{32}_(source|intact|rollback)$/.test(name));await admin.query('CREATE DATABASE '+name);owned.push(name);const connection=new URL(url);connection.pathname='/'+name;connection.search='';const pool=new Pool({connectionString:connection.toString()});pools.push(pool);const app=buildApp(pool);apps.push(app);return{name,pool,app};}
@@ -74,4 +75,6 @@ try{
  await assert.rejects(rollback.pool.query('DELETE FROM inventory_recovery_approvals WHERE id=$1',[approvalId]),/immutable/);assert.deepEqual(await reconstructed(rollback.pool),reconstruction);assert.equal((await state(rollback,fresh)).postingEnabled,false);
  summary={passed:true,publicTablesCompared:Object.keys(expected).length,archiveBytes:dump.stdout.length,...reconstruction,checks:['actual custom pg_dump and two fresh pg_restore databases','exact full-table backup comparison','same-lot separate receipt provenance','immutable ledger trigger restored','revoked enrolled device denied','exact idempotent replay unchanged','ledger reconstruction of stock and reservation projections','actual damaged projection repair while posting stopped','rollback invalidates sessions/proofs/challenges and rotates history','lost post-backup acknowledgement identified without automatic replay','old-epoch and suspended-new-epoch writes leave all restored tables unchanged','immutable Chief review while suspended neither posts stock nor reopens posting'],limitation:'Disposable engineering drill; production backups, signed Android and physical count/reconciliation remain release gates'};
 }finally{for(const app of apps)await app.close();for(const pool of pools)await pool.end();for(const name of owned.reverse())await admin.query('DROP DATABASE '+name);await admin.end();}
-console.log(JSON.stringify({...summary,temporaryDatabasesRemoved:true},null,2));
+const report={...summary,temporaryDatabasesRemoved:true};
+if(process.env.STORAGE_ARTIFACT_DIR){await mkdir(process.env.STORAGE_ARTIFACT_DIR,{recursive:true});await writeFile(process.env.STORAGE_ARTIFACT_DIR+'/restore-result.json',JSON.stringify(report,null,2));}
+console.log(JSON.stringify(report,null,2));
