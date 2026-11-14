@@ -1,3 +1,7 @@
+import {registerInventoryQualityRoutes} from './inventory-quality-routes.js';
+import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
+import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
+import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
 import Fastify from 'fastify';
 import type { Pool } from 'pg';
 import rateLimit from '@fastify/rate-limit';
@@ -14,6 +18,9 @@ import { registerInspectionObservationRoutes } from './inspection-observation-ro
 import { registerInspectionReviewRoutes } from './inspection-review-routes.js';
 import { registerInspectionCriteriaRoutes } from './inspection-criteria-routes.js';
 import { registerDeviceChallengeRoutes } from './device-challenge-routes.js';
+import { registerInventoryRoutes } from './inventory-routes.js';
+import { registerInventoryCatalogRoutes } from './inventory-catalog-routes.js';
+import { registerInventoryStockOperations } from './inventory-stock-operations.js';
 
 function allowedBrowserOrigins(): Set<string> {
   // Android Capacitor's local WebView uses https://localhost. Other frontend
@@ -44,7 +51,7 @@ export function buildApp(pool: Pool) {
   void app.register(cors, {
     origin: (origin, callback) => callback(null, Boolean(origin && origins.has(origin))),
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'x-device-proof'],
+    allowedHeaders: ['authorization', 'content-type', 'x-device-proof','x-inventory-epoch'],
     maxAge: 600,
     credentials: false,
   });
@@ -61,6 +68,13 @@ export function buildApp(pool: Pool) {
   registerInspectionObservationRoutes(app, pool);
   registerInspectionReviewRoutes(app, pool);
   registerInspectionCriteriaRoutes(app, pool);
+  registerInventoryRoutes(app, pool);
+  registerInventoryRecoveryRoutes(app,pool);
+  registerInventoryCatalogRoutes(app, pool);
+  registerInventoryAdministrationRoutes(app, pool);
+  registerInventoryCatalogChanges(app, pool);
+  registerInventoryQualityRoutes(app,pool);
+  registerInventoryStockOperations(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
     try {
