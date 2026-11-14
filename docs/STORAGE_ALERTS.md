@@ -21,7 +21,9 @@ Query parameters:
 - `materialId` (optional UUID), required for `lowAvailable > 0` to avoid
   comparing heterogeneous units.
 - `lowAvailable` (nonnegative safe integer, default 0), one-off threshold in
-  that material's **base units**: mg / ul / mm / pieces.
+  that material's **base units**: mg / ul / mm / pieces. The threshold
+  is evaluated per physical container, not against the warehouse-wide
+  sum for that material.
 - `view` = `alerts` (default) or `all`. An alerts-only page can be empty
   yet still have a next cursor because paging is over physical stock IDs.
 

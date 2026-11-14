@@ -44,7 +44,7 @@ export function InventoryAlertsPanel({scope,session,epoch,materials}:{
  }
  return <details className="rounded border border-slate-600 p-3" aria-label="Предупреждения склада">
    <summary className="min-h-11 cursor-pointer py-2">Предупреждения и отчёт по остаткам</summary>
-   <p className="my-2">Подтверждённый серверный снимок. Данные обновляются только по запросу. Порог задаётся разово в базовых единицах выбранного материала; это не сохранённое правило уведомлений. Учёт вне склада и будущий расход сюда не включаются.</p>
+   <p className="my-2">Подтверждённый серверный снимок. Данные обновляются только по запросу. Порог задаётся разово для каждого контейнера выбранного материала в его базовых единицах; это не сохранённое правило уведомлений. Учёт вне склада и будущий расход сюда не включаются.</p>
    <div className="grid gap-2 sm:grid-cols-2">
     <label>Материал для порога<select className={control} aria-label="Материал для предупреждений" value={materialId} onChange={e=>{setMaterialId(e.target.value);setQuantity('0');}}>
       <option value="">Все материалы (только нулевой порог)</option>
@@ -58,13 +58,13 @@ export function InventoryAlertsPanel({scope,session,epoch,materials}:{
    {error&&<p role="alert">{error}</p>}
    {page&&<section aria-label="Результат проверки остатков" className="space-y-2">
      <p>Снимок на {new Date(page.asOf).toLocaleString('ru-RU')} · Показано {page.items.length} позиций этой страницы. Пустая страница возможна, если предупреждения отфильтрованы.</p>
-     {page.items.map(item=><article key={item.stock.stockId} className="rounded border border-slate-600 p-2">
+     {page.items.map(item=><div role="group" aria-label={'Предупреждения контейнера '+item.stock.stockId} key={item.stock.stockId} className="rounded border border-slate-600 p-2">
       <p>{item.materialName} ({item.materialCode}) · {item.stock.manufacturerLot}</p>
       <p>Контейнер: {item.stock.stockId}</p>
       <p>Место: {item.locationLabel} · Доступно: {item.stock.available} {item.stock.unit} · Резерв: {item.stock.reserved} {item.stock.unit}</p>
       <p>{item.stock.expiresAt?'Годность до '+new Date(Date.parse(item.stock.expiresAt)-1).toLocaleDateString('ru-RU',{timeZone:'UTC'}):'Срок годности не указан'}</p>
       <p>{item.alerts.length?item.alerts.map(a=>descriptions[a]).join(' · '):'Предупреждений нет'}</p>
-     </article>)}
+     </div>)}
      <p>CSV содержит только текущую проверенную страницу ({page.items.length} строк), не полный склад и не локальные черновики.</p>
      <div className="flex flex-wrap gap-2">
        <button type="button" className="min-h-11 rounded bg-blue-700 px-3" onClick={download}>Скачать CSV страницы</button>
