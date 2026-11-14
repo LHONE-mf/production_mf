@@ -31,7 +31,7 @@ export async function freezeReceivingDraft(key:string,revision:number,session:Hy
 
 export async function freezeStockDraft(key:string,revision:number,session:HybridSession,scope:InventoryScope,request:import('./inventoryStockOutbox').InventoryStockChangeDraft){
  const {queueInventoryStockChange}=await import('./inventoryStockOutbox');
- return inventoryOutbox.transaction('rw',inventoryOutbox.receivingDrafts,inventoryOutbox.stockOperations,inventoryOutbox.stocks,async()=>{
+ return inventoryOutbox.transaction('rw',inventoryOutbox.receivingDrafts,inventoryOutbox.stockOperations,inventoryOutbox.stocks,inventoryOutbox.streams,async()=>{
   const prior=await inventoryOutbox.receivingDrafts.get(key);
   if(!prior||prior.revision!==revision||prior.operationId)throw Error('Предложение изменено или уже подтверждено');
   const operationId=await queueInventoryStockChange(session,scope,request);

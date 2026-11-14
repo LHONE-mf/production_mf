@@ -12,7 +12,7 @@ export type InventoryUnit = 'mg' | 'ul' | 'mm' | 'pieces';
 export type InventoryQuality = 'quarantine' | 'released' | 'blocked';
 export type InventoryOperationKind =
   | 'receive' | 'reserve' | 'release_reservation' | 'issue'
-  | 'return' | 'transfer' | 'adjust';
+  | 'return' | 'transfer' | 'adjust' | 'scrap';
 
 export interface InventoryStock {
   /** Internal receipt/container identity; never infer uniqueness from maker lot. */
@@ -38,6 +38,7 @@ export interface InventoryOperation {
   quantity: number;
   actorId: string;
   reason: string;
+  evidence?: string;
   /** Mandatory for consumption and reservation to production. */
   productionBatchId?: string;
   /** Target for a transfer. */
@@ -58,6 +59,7 @@ export type InventoryResult =
 
 const validText = (value: unknown): value is string =>
   typeof value === 'string' && value.trim().length > 0 && value.length <= 200;
+const explanation = (value:unknown):value is string => typeof value==='string'&&value.trim().length>0&&value.length<=2000;
 const positiveInt = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
 const nonnegativeInt = (n: unknown): n is number =>
@@ -77,15 +79,15 @@ const fail = (code: Extract<InventoryResult, {ok:false}>['code'], message: strin
 export function transitionInventory(
   current: InventoryStock | undefined,
   op: InventoryOperation,
-  options: { mayAdjust: boolean; mayIssue?: boolean; ownedReservation?: number; now?: number } = { mayAdjust: false },
+  options: { mayAdjust: boolean; mayIssue?: boolean; mayScrap?:boolean; ownedReservation?: number; now?: number } = { mayAdjust: false },
 ): InventoryResult {
   if (!validText(op.operationId) || !validText(op.stockId) ||
-      !validText(op.actorId) || !validText(op.reason) ||
+      !validText(op.actorId) || !explanation(op.reason) ||
       !nonnegativeInt(op.expectedRevision) || !positiveInt(op.quantity)) {
     return fail('invalid', 'Invalid operation identity, revision, reason or quantity');
   }
   const supported: InventoryOperationKind[] =
-    ['receive','reserve','release_reservation','issue','return','transfer','adjust'];
+    ['receive','reserve','release_reservation','issue','return','transfer','adjust','scrap'];
   if (!supported.includes(op.kind)) return fail('invalid', 'Unknown operation');
   if (op.kind === 'receive') {
     if (current || op.expectedRevision !== 0) return fail('revision_conflict', 'Receipt already exists');
@@ -113,6 +115,12 @@ export function transitionInventory(
   if (!Number.isSafeInteger(next.revision)) return fail('invalid', 'Revision overflow');
 
   switch (op.kind) {
+    case 'scrap':
+      if(!options.mayScrap)return fail('blocked','Warehouse scrap requires Chief or Warehouse Manager approval');
+      if(!explanation(op.evidence))return fail('invalid','Witnessed scrap evidence required');
+      if(op.quantity>available)return fail('insufficient_stock','Cannot scrap reserved or absent warehouse stock');
+      next.onHand-=op.quantity;
+      break;
     case 'reserve':
       if (!validText(op.productionBatchId)) return fail('invalid', 'Production batch required');
       if (current.quality !== 'released') return fail('blocked', 'Stock not released for production');

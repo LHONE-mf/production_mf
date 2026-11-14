@@ -52,7 +52,7 @@ export function registerInventoryIssueReads(app: FastifyInstance, pool: Pool) {
     try { return await issueTransaction(pool, request.headers.authorization, request.headers['x-device-proof'], data.deviceId, false, undefined, async (client, actor, level, epoch) => {
       if (level !== 'chief' && level !== 'manager') issueFail(403, 'issue_manager_required');
       const issue = await visibleIssue(client, actor, true, data.issueId);
-      const rows = (await client.query(`SELECT s.*,m.base_unit FROM inventory_stocks s JOIN inventory_materials m ON m.organization_id=s.organization_id AND m.id=s.material_id WHERE s.organization_id=$1 AND s.material_id=$2 AND s.id>$3 ORDER BY s.id LIMIT $4`, [actor.organization_id, issue.material_id, data.after ?? zero, data.limit + 1])).rows.map(r => { const s = inventoryStockFromRow(r); return { ...s, available: s.onHand - s.reserved }; }); return paged(rows, data.limit, epoch, r => r.stockId);
+      const rows = (await client.query(`SELECT s.*,m.base_unit,inventory_package_released(s.organization_id,s.id) AS eligible FROM inventory_stocks s JOIN inventory_materials m ON m.organization_id=s.organization_id AND m.id=s.material_id WHERE s.organization_id=$1 AND s.material_id=$2 AND s.id>$3 ORDER BY s.id LIMIT $4`, [actor.organization_id, issue.material_id, data.after ?? zero, data.limit + 1])).rows.map(r => { const s = inventoryStockFromRow(r); return { ...s, available: s.onHand - s.reserved,eligible:r.eligible }; }); return paged(rows, data.limit, epoch, r => r.stockId);
     }); } catch (error) { const e = issueHttpError(error); return reply.code(e.status).send(e.body); }
   });
   app.get('/inventory/issues/:issueId/history', async (request, reply) => {

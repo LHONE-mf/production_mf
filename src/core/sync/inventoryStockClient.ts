@@ -21,6 +21,9 @@ function expectedSnapshot(
 ):InventoryStockSnapshot{
   const next={...base,revision:base.revision+1};
   switch(request.kind){
+    case 'scrap':
+      next.onHand-=request.quantity;
+      break;
     case 'transfer':
       next.locationId=request.toLocationId;
       break;
@@ -58,7 +61,7 @@ async function acknowledgeStockChange(
       if(!current||current.scopeKey!==queued.scopeKey||
           current.state!=='pending'||current.stockId!==queued.stockId||
           JSON.stringify(current.request)!==JSON.stringify(queued.request)||
-          !sameStock(current.base,queued.base))
+          !sameStock(current.base,queued.base)||current.epoch!==queued.epoch)
         throw new Error('Provisional stock change altered before acknowledgement');
       const prior=await inventoryOutbox.stocks.get([queued.scopeKey,snapshot.stockId]);
       if(prior&&prior.revision===snapshot.revision&&!sameStock(prior,snapshot))
@@ -82,6 +85,7 @@ async function pushPendingInventoryStockChangesUnlocked(
   const pending=proposals.slice(0,limit);
   const epoch=await preflightInventoryStream(session,scope);
   if(proposals.some(row=>row.requiresStreamReview))throw Error('Намерение старой версии требует сверки администратора; исходная очередь сохранена.');
+  if(proposals.some(row=>row.epoch!==undefined&&row.epoch!==epoch||row.request.kind==='scrap'&&!row.epoch))throw Error('История исходного предложения не совпадает. Требуется сверка; ID и данные не перепривязаны.');
   let accepted=0,conflicts=0,rejected=0;
   for(const queued of pending){
     const response=await inventoryRequest(session,scope,
@@ -103,7 +107,7 @@ async function pushPendingInventoryStockChangesUnlocked(
         const current=await inventoryOutbox.stockOperations.get(queued.operationId);
         if(!current||current.scopeKey!==queued.scopeKey||
             current.state!=='pending'||current.stockId!==queued.stockId||
-            JSON.stringify(current.request)!==JSON.stringify(queued.request))
+            JSON.stringify(current.request)!==JSON.stringify(queued.request)||current.epoch!==queued.epoch)
           throw new Error('Provisional stock change altered during rejection');
         await inventoryOutbox.stockOperations.update(queued.operationId,{
           state:response.status===409?'conflict':'rejected',error:reason,

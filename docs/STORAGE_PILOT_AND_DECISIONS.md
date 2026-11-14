@@ -43,3 +43,5 @@ Cached-view engineering update: a complete authenticated refresh now provisions 
 ## Approved autonomous roadmap update — 2026-11-14
 
 The owner handoff approves D1–D8; historical “await decision” entries above are superseded by STORAGE_FEATURE_MATRIX.md. Implementation and physical acceptance remain separate. Route A native baseline passed on e51d2ab in run 43581559367 (artifact 14109265006), without a permanent server or production data. Current administration proposals are online-only privileged operations, retained across unknown replies and blocked by history changes. No signed release upgrade, factory QA, physical handling or deployed TLS acceptance is implied.
+
+S5 engineering implementation now follows approved D3: received-issue unused returns go directly AVAILABLE in a traceable distinct package; unsafe conditions and current ancestor holds/expiry fail closed. Chief/Manager issued scrap and warehouse scrap remain separate. See STORAGE_RETURNS.md. Browser and disposable recovery verification passed; consult exact-head Route A in PR #5. Factory condition inspection, isolation/disposition procedures and physical count are still pilot acceptance work.

@@ -47,6 +47,16 @@ beforeEach(async()=>{
     });
 });
 afterEach(()=>{vi.unstubAllGlobals();inventoryOutbox.close();});
+it('accepts only a new released, attributable return package in the authoritative feed',async()=>{
+ const returned={...stock,quality:'released' as const,disposition:'release' as const,onHand:200,available:200};
+ const change={sequence:1,operationId:'77777777-7777-4777-8777-777777777777',kind:'return',stock:returned,quantity:200,actorId:scope.actorId,deviceId:scope.deviceId,recordedAt:new Date().toISOString()};
+ for(const bad of [{...change,stock:{...returned,revision:2}},{...change,stock:{...returned,quality:'quarantine',disposition:undefined}},{...change,quantity:201},{...change,actorId:undefined},{...change,deviceId:undefined},{...change,stock:{...returned,reserved:1,available:199}}]){
+  stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{changes:[bad],nextCursor:1,hasMore:false})));await expect(pullInventoryChanges(session,scope)).rejects.toThrow('Invalid inventory');expect(await confirmedInventoryForScope(scope)).toEqual([]);
+ }
+ stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{changes:[change],nextCursor:1,hasMore:false})));
+ expect((await pullInventoryChanges(session,scope)).received).toBe(1);
+ expect(await confirmedInventoryForScope(scope)).toEqual([expect.objectContaining(returned)]);
+});
 
 describe('Storage provisional offline queue and confirmed synchronization',()=>{
   it('persists the original operation ID across restart without creating confirmed stock',async()=>{

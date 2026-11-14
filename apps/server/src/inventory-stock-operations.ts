@@ -29,7 +29,8 @@ const reserve=common.extend({
 const release=common.extend({
   kind:z.literal('release_reservation'),reservationId:uuid,productionBatchId:uuid,
 }).strict();
-const operation=z.discriminatedUnion('kind',[transfer,adjust,reserve,release]);
+const scrap=common.extend({kind:z.literal('scrap'),evidence:z.string().trim().min(1).max(2000)}).strict();
+const operation=z.discriminatedUnion('kind',[transfer,adjust,reserve,release,scrap]);
 const paramsSchema=z.object({stockId:uuid}).strict();
 
 function pgCode(error:unknown) {
@@ -49,7 +50,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
     const p=paramsSchema.safeParse(request.params),parsed=operation.safeParse(request.body);
     if(!p.success||!parsed.success)return reply.code(400).send({error:'invalid_inventory_operation'});
     const data=parsed.data,stockId=p.data.stockId;
-    const required=data.kind==='adjust'||data.kind==='reserve'||
+    const required=data.kind==='adjust'||data.kind==='scrap'||data.kind==='reserve'||
       data.kind==='release_reservation'?'manager':'operator';
     if(!(await inventoryPermission(pool,actor,required)))
       return reply.code(403).send({error:'forbidden'});
@@ -68,7 +69,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
       const fence=await inventoryWriteFence(client,actor.organization_id,request.headers['x-inventory-epoch']);
       if(fence){await client.query('ROLLBACK');return reply.code(fence==='inventory_epoch_required'?428:409).send({error:fence});}
       const requestPayload={...data,stockId};
-      if((await client.query('SELECT 1 FROM inventory_issue_events WHERE operation_id=$1',[data.operationId])).rowCount){
+      if((await client.query('SELECT 1 FROM inventory_issue_events WHERE operation_id=$1 UNION ALL SELECT 1 FROM inventory_issue_outcomes WHERE operation_id=$1',[data.operationId])).rowCount){
         await client.query('ROLLBACK');return reply.code(409).send({error:'operation_id_reused'});
       }
       const existing=await client.query(`SELECT organization_id,actor_id,device_id,stock_id,
@@ -112,6 +113,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
       }
       if(data.kind==='reserve'&&current.expiresAt&&Date.parse(current.expiresAt)<=Date.now()){await client.query('ROLLBACK');return reply.code(409).send({error:'expired'});}
       if(data.kind==='reserve'){
+        if(!(await client.query('SELECT inventory_package_released($1,$2) AS eligible',[actor.organization_id,stockId])).rows[0].eligible){await client.query('ROLLBACK');return reply.code(409).send({error:'source_quality_held'});}
         // Only active, released production orders may acquire new reservations.
         // Physical stock still must be separately QA-released; this route
         // cannot manufacture a release decision.
@@ -144,11 +146,12 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
         operationId:data.operationId,stockId,kind:data.kind,
         actorId:actor.id,expectedRevision:data.expectedRevision,
         quantity:data.quantity,reason:data.reason,
+        ...(data.kind==='scrap'?{evidence:data.evidence}:{}),
         ...(data.kind==='transfer'?{toLocationId:data.toLocationId}:{}),
         ...(data.kind==='adjust'?{adjustment:data.adjustment}:{}),
         ...(data.kind==='reserve'||data.kind==='release_reservation'?
           {productionBatchId:data.productionBatchId}:{}),
-      },{mayAdjust:required==='manager',ownedReservation});
+      },{mayAdjust:required==='manager',mayScrap:data.kind==='scrap'&&required==='manager',ownedReservation});
       if(!outcome.ok){
         await client.query('ROLLBACK');
         const status=outcome.code==='invalid'?400:409;
@@ -196,6 +199,7 @@ export function registerInventoryStockOperations(app:FastifyInstance,pool:Pool) 
         return reply.code(409).send({error:'inventory_identity_conflict'});
       if(pgCode(error)==='23503')
         return reply.code(409).send({error:'inventory_reference_changed'});
+      if(pgCode(error)==='P0001'&&['inventory_scrap_manager_required','inventory_scrap_ledger_mismatch'].includes((error as Error).message))return reply.code(409).send({error:'inventory_scrap_ineligible'});
       throw error;
     }finally{client.release();}
   });

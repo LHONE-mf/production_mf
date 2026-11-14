@@ -60,6 +60,22 @@ beforeEach(async()=>{
 afterEach(()=>{vi.unstubAllGlobals();inventoryOutbox.close();});
 
 describe('Storage offline stock operation outbox (development-only)',()=>{
+  it('preserves a witnessed warehouse-scrap proposal across reopen and lost ACK, reducing only warehouse quantity once',async()=>{
+    const scrap={stockId,kind:'scrap' as const,expectedRevision:1,quantity:250,reason:'Warehouse material physically disposed',evidence:'Signed warehouse waste certificate'};
+    await inventoryOutbox.streams.put({scopeKey:inventoryScopeKey(scope),epoch:inventoryTestEpoch});
+    await expect(queueInventoryStockChange(session,scope,{...scrap,evidence:''})).rejects.toThrow();
+    await expect(queueInventoryStockChange(session,scope,{...scrap,quantity:2001})).rejects.toThrow();
+    const id=await queueInventoryStockChange(session,scope,scrap),before=(await inventoryStockQueueForScope(scope))[0];inventoryOutbox.close();await inventoryOutbox.open();expect((await inventoryStockQueueForScope(scope))[0]).toEqual(before);expect((await confirmedInventoryForScope(scope))[0].onHand).toBe(2000);
+    stubInventoryFetch(vi.fn().mockRejectedValueOnce(Error('Lost warehouse-scrap ACK')));await expect(pushPendingInventoryStockChanges(session,scope)).rejects.toThrow();expect((await inventoryStockQueueForScope(scope))[0].operationId).toBe(id);
+    stubInventoryFetch(vi.fn().mockResolvedValue(response(200,{status:'duplicate',operationId:id,stock:snapshot({onHand:1750,available:1750})})));
+    expect((await pushPendingInventoryStockChanges(session,scope)).accepted).toBe(1);expect((await confirmedInventoryForScope(scope))[0]).toMatchObject({onHand:1750,quality:'quarantine',reserved:0,revision:2});expect((await inventoryOutbox.acknowledgements.get(id))?.request).toMatchObject({kind:'scrap',evidence:scrap.evidence});
+  });
+  it('never rebinds a frozen warehouse scrap after the local stream cache has adopted a new restored history',async()=>{
+    const scopeKey=inventoryScopeKey(scope);await inventoryOutbox.streams.put({scopeKey,epoch:inventoryTestEpoch});
+    const id=await queueInventoryStockChange(session,scope,{stockId,kind:'scrap',expectedRevision:1,quantity:250,reason:'Original warehouse disposal',evidence:'Witness certificate'}),replacement='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    await inventoryOutbox.streams.put({scopeKey,epoch:replacement});const posts=vi.fn();vi.stubGlobal('fetch',vi.fn(async(url:URL,init?:RequestInit)=>{if(url.pathname==='/inventory/stream')return response(200,{...scope,epoch:replacement,postingEnabled:true,sequence:0});posts(init?.body);return response(500,{});}));
+    await expect(pushPendingInventoryStockChanges(session,scope)).rejects.toThrow('не перепривязаны');expect(posts).not.toHaveBeenCalled();expect((await inventoryStockQueueForScope(scope))[0]).toMatchObject({operationId:id,epoch:inventoryTestEpoch,state:'pending'});
+  });
   it('upgrades the receipt outbox without losing receipts and persists frozen stock changes across restart',async()=>{
     const receiptId=await queueInventoryReceipt(session,scope,{
       stockId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',materialId:material,

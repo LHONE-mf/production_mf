@@ -138,12 +138,15 @@ async function pullInventoryChangesUnlocked(
   for(const item of changes){
     if(!item||!Number.isSafeInteger(item.sequence)||item.sequence<=previous||
         !validId.test(item.operationId)||
-        !['receive','transfer','adjust','reserve','release_reservation','quality_change','issue'].includes(item.kind)||
+        !['receive','transfer','adjust','reserve','release_reservation','quality_change','issue','return','scrap'].includes(item.kind)||
         typeof item.recordedAt!=='string'||!Number.isFinite(Date.parse(item.recordedAt)))
       throw new Error('Invalid inventory change order or identity');
     if(item.actorId!==undefined&&!validId.test(item.actorId)||item.deviceId!==undefined&&item.deviceId!==null&&!validId.test(item.deviceId)||item.reason!==undefined&&(typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>2000)||item.quantity!==undefined&&(!Number.isSafeInteger(item.quantity)||item.quantity<(item.kind==='quality_change'?0:1)||item.kind==='quality_change'&&item.quantity!==0))throw new Error('Invalid inventory history attribution');
+    if(item.evidence!==undefined&&(typeof item.evidence!=='string'||!item.evidence.trim()||item.evidence.length>2000)||item.kind==='scrap'&&(!item.evidence||!validId.test(item.actorId??'')||!validId.test(item.deviceId??'')))throw Error('Invalid inventory scrap evidence');
     validateInventoryStock(item.stock);
-    if(item.kind==='receive'?
+    if(item.kind==='return'?
+        item.stock.revision!==1||item.stock.quality!=='released'||item.stock.disposition!=='release'||item.stock.reserved!==0||item.quantity!==item.stock.onHand||!validId.test(item.actorId??'')||!validId.test(item.deviceId??''):
+      item.kind==='receive'?
         item.stock.revision!==1||item.stock.quality!=='quarantine':
         item.stock.revision<=1)
       throw new Error('Invalid inventory change revision');

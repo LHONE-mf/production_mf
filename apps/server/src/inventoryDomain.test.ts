@@ -16,6 +16,14 @@ const action = (kind: InventoryOperation['kind'], patch:Partial<InventoryOperati
   ({...receipt,kind,expectedRevision:1,quantity:500_000,...patch});
 
 describe('authoritative inventory transition contract',()=>{
+  it('scraps only privileged unreserved warehouse quantity, including held or expired material, without changing QA',()=>{
+    const current={...released,reserved:1_900_000,quality:'blocked' as const,expiresAt:'2000-01-01T00:00:00.000Z'};
+    const op=action('scrap',{quantity:50_000,reason:'Witnessed warehouse disposal',evidence:'Signed waste certificate'});
+    expect(transitionInventory(current,op)).toMatchObject({ok:false,code:'blocked'});
+    expect(transitionInventory(current,{...op,quantity:100_001},{mayAdjust:false,mayScrap:true})).toMatchObject({ok:false,code:'insufficient_stock'});
+    expect(transitionInventory(current,{...op,evidence:''},{mayAdjust:false,mayScrap:true})).toMatchObject({ok:false,code:'invalid'});
+    expect(transitionInventory(current,op,{mayAdjust:false,mayScrap:true})).toMatchObject({ok:true,stock:{onHand:1_950_000,reserved:1_900_000,quality:'blocked',expiresAt:current.expiresAt,revision:2},available:50_000});
+  });
   it('creates only an explicit receipt identity, quarantined by default when declared',()=>{
     const result=transitionInventory(undefined,receipt);
     expect(result).toEqual({ok:true,stock:{...released,quality:'quarantine'},available:2_000_000});

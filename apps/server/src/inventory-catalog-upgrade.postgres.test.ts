@@ -42,6 +42,10 @@ integration('Storage populated 001–023 catalogue upgrade (isolated schema)', (
       expect((await client.query('SELECT row_to_json(e) AS row FROM inventory_operations e')).rows[0].row).toEqual(oldEvent);
       expect((await client.query('SELECT row_to_json(r) AS row FROM inventory_reservations r')).rows[0].row).toEqual({...oldReservation,issue_id:null});
       expect((await client.query('SELECT count(*)::int AS n FROM inventory_issues')).rows[0].n).toBe(0);
+      await client.query(await readFile('migrations/027_inventory_issue_outcomes.sql','utf8'));
+      expect((await client.query('SELECT row_to_json(e) AS row FROM inventory_operations e')).rows[0].row).toEqual(oldEvent);
+      expect((await client.query('SELECT row_to_json(r) AS row FROM inventory_reservations r')).rows[0].row).toEqual({...oldReservation,issue_id:null});
+      expect((await client.query('SELECT count(*)::int AS n FROM inventory_issue_outcomes')).rows[0].n).toBe(0);
       await expect(client.query('DELETE FROM inventory_operations WHERE operation_id=$1', [operation])).rejects.toThrow('immutable');
     } finally {
       await client.query('ROLLBACK'); await client.query('RESET search_path');

@@ -75,6 +75,7 @@ export function registerInventoryIssueRoutes(app: FastifyInstance, pool: Pool) {
           if (data.kind === 'cancel' && data.expectedStockRevision !== current.revision) issueFail(409, 'revision_conflict');
           if (current.materialId !== row.material_id || current.unit !== row.unit) issueFail(409, 'issue_material_mismatch');
           if (data.kind !== 'cancel' && (current.revision !== data.expectedStockRevision || current.quality !== 'released' || !stockRow.unexpired)) issueFail(409, current.revision !== data.expectedStockRevision ? 'revision_conflict' : !stockRow.unexpired ? 'expired' : 'blocked');
+          if(data.kind!=='cancel'&&!(await client.query('SELECT inventory_package_released($1,$2) AS eligible',[actor.organization_id,stockId])).rows[0].eligible)issueFail(409,'source_quality_held');
           const reservation = data.kind === 'reserve' ? null : (await client.query('SELECT quantity FROM inventory_reservations WHERE organization_id=$1 AND id=$2 AND issue_id=$2 AND stock_id=$3 AND production_batch_id=$4 FOR UPDATE', [actor.organization_id, issueId, stockId, row.production_batch_id])).rows[0];
           if (data.kind !== 'reserve' && (!reservation || Number(reservation.quantity) !== Number(row.quantity))) issueFail(409, 'issue_reservation_missing');
           if (data.kind === 'dispatch') {

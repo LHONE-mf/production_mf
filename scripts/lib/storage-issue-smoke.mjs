@@ -46,5 +46,5 @@ export async function storageIssueSmoke({ pool, org, actors, pages, browser, con
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1 AND stock_id=$2 AND kind='issue'", [org, qualityStock])).rows[0].n, 1);
   assert.equal((await pool.query('SELECT state FROM inventory_issues WHERE id=$1', [issueId])).rows[0].state, 'received');
   await chief.screenshot({ path: artifact + '/issue-chief-mobile.png', fullPage: true });
-  return ['offline issue request cold-reload preserves exact intent', 'actual Chief reservation/approval/dispatch screens', 'dispatch lost ACK exact retry deducts once', 'assigned recipient with no warehouse grant acknowledges without another debit', 'issue receipt is not consumption'];
+  return {issueId,scenarios:['offline issue request cold-reload preserves exact intent', 'actual Chief reservation/approval/dispatch screens', 'dispatch lost ACK exact retry deducts once', 'assigned recipient with no warehouse grant acknowledges without another debit', 'issue receipt is not consumption']};
 }

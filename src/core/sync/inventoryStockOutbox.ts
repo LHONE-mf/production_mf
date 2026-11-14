@@ -15,6 +15,7 @@ interface Common {
 export type InventoryStockChangeDraft =
   | (Common & {kind:'transfer';toLocationId:string})
   | (Common & {kind:'adjust';adjustment:'increase'|'decrease'})
+  | (Common & {kind:'scrap';evidence:string})
   | (Common & {kind:'reserve'|'release_reservation';
       reservationId:string;productionBatchId:string});
 type Wire<T> = T extends unknown
@@ -27,6 +28,7 @@ export interface QueuedInventoryStockChange {
   /** Frozen confirmed snapshot used for exact server-ack verification. */
   base:InventoryStockSnapshot;
   queuedAt:number;
+  epoch?:string;
   state:'pending'|'conflict'|'rejected'|'review';
   recoveryApprovalId?:string;
   error?:string;
@@ -54,6 +56,9 @@ export function validateInventoryStockChangeDraft(draft:InventoryStockChangeDraf
       if(!['increase','decrease'].includes(draft.adjustment))
         throw new Error('Invalid correction direction');
       extra=['adjustment'];break;
+    case 'scrap':
+      if(!text(draft.evidence,2000))throw Error('Witnessed warehouse scrap evidence required');
+      extra=['evidence'];break;
     case 'reserve':
     case 'release_reservation':
       if(!uuid.test(draft.reservationId)||!uuid.test(draft.productionBatchId))
@@ -72,6 +77,9 @@ export function validateChangeAgainstConfirmed(
     throw new Error('Stock changed since the last confirmed version');
   const available=base.onHand-base.reserved;
   switch(draft.kind){
+    case 'scrap':
+      if(draft.quantity>available)throw Error('Scrap cannot consume reserved or absent warehouse stock');
+      break;
     case 'transfer':
       if(draft.toLocationId===base.locationId||draft.quantity!==base.onHand||
           base.reserved!==0)
@@ -108,10 +116,12 @@ export async function queueInventoryStockChange(
   const {stockId,...fields}=draft;
   const operationId=crypto.randomUUID();
   const request={...fields,operationId,deviceId:scope.deviceId} as InventoryStockChangeRequest;
-  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.stockOperations,async()=>{
+  await inventoryOutbox.transaction('rw',inventoryOutbox.stocks,inventoryOutbox.stockOperations,inventoryOutbox.streams,async()=>{
     const base=await inventoryOutbox.stocks.get([scopeKey,stockId]);
     if(!base)throw new Error('Confirmed stock must be loaded before an offline change');
     validateChangeAgainstConfirmed(base,draft);
+    const stream=await inventoryOutbox.streams.get(scopeKey);
+    if(draft.kind==='scrap'&&!stream?.epoch)throw Error('Перед складским списанием подтвердите историю склада; исходный черновик сохранён');
     // A second local proposal based on the same confirmed row would have
     // ambiguous physical ordering. Require resolution/sync before queuing it.
     const other=await inventoryOutbox.stockOperations
@@ -119,7 +129,7 @@ export async function queueInventoryStockChange(
     if(other.some(row=>!row.reviewedAt))throw new Error('Resolve the existing provisional stock operation first');
     await inventoryOutbox.stockOperations.add({
       operationId,scopeKey,stockId,request,base:{...base},queuedAt:Date.now(),
-      state:'pending',
+      state:'pending',...(stream?{epoch:stream.epoch}:{}),
     });
   });
   return operationId;

@@ -36,6 +36,7 @@ export function registerInventoryQualityRoutes(app: FastifyInstance, pool: Pool)
       const current = inventoryStockFromRow(found.rows[0]);
       if (current.revision !== data.expectedRevision) { await client.query('ROLLBACK'); return reply.code(409).send({ error: 'revision_conflict', currentRevision: current.revision }); }
       if (data.disposition === 'release' && !found.rows[0].unexpired) { await client.query('ROLLBACK'); return reply.code(409).send({ error: 'expired' }); }
+      if(data.disposition==='release'&&(await client.query('SELECT 1 FROM inventory_issue_outcomes WHERE organization_id=$1 AND return_stock_id=$2 AND NOT inventory_package_released($1,source_stock_id)',[actor.organization_id,data.stockId])).rowCount){await client.query('ROLLBACK');return reply.code(409).send({error:'source_quality_held'});}
       if ((await client.query("SELECT 1 FROM inventory_quality_dispositions WHERE organization_id=$1 AND stock_id=$2 AND disposition='reject' LIMIT 1", [actor.organization_id, data.stockId])).rowCount) { await client.query('ROLLBACK'); return reply.code(409).send({ error: 'quality_rejected' }); }
       const stock = { ...current, quality: data.disposition === 'release' ? 'released' : 'blocked', disposition: data.disposition, revision: current.revision + 1, available: current.onHand - current.reserved };
       await client.query('UPDATE inventory_stocks SET quality=$3,disposition=$4,revision=$5 WHERE organization_id=$1 AND id=$2', [actor.organization_id, data.stockId, stock.quality, data.disposition, stock.revision]);

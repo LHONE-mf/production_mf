@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { ConfirmedStorage } from '../../src/stages/storage/ConfirmedStorage';
 import { InventoryIssues } from '../../src/stages/storage/InventoryIssues';
 import { inventoryIssueProposals } from '../../src/core/sync/inventoryIssues';
+import { inventoryOutcomeProposals } from '../../src/core/sync/inventoryOutcomes';
+import { inventoryStockQueueForScope } from '../../src/core/sync/inventoryStockOutbox';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
@@ -19,7 +21,7 @@ import '../../src/index.css';
 type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number };
 const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
-let offline = false, loseAck = false, loseIssueAck = false, connection: ServerConnection, fixture: Fixture;
+let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, connection: ServerConnection, fixture: Fixture;
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
@@ -32,6 +34,7 @@ window.fetch = async (input, init) => {
       throw new TypeError('CI acknowledgement lost after commit');
     }
     if(loseIssueAck && /^\/inventory\/issues\/[^/]+\/operations$/.test(url.pathname) && response.ok){loseIssueAck=false;await response.arrayBuffer();throw new TypeError('CI issue acknowledgement lost after commit');}
+    if(loseReturnAck&&url.pathname.endsWith('/outcomes')&&init?.method==='POST'&&response.ok){loseReturnAck=false;await response.arrayBuffer();throw new TypeError('CI return acknowledgement lost after commit');}
     return response;
   }
   return originalFetch(input, init);
@@ -199,10 +202,12 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   await refresh(); const released = (await confirmedInventoryForScope(scope())).find(row => row.stockId === stock.stockId);
   assert(released?.quality === 'released' && released.onHand === 2_125_000 && released.disposition === 'release', 'Native QA release altered quantity or missed genuine source');
   const issueId=await finishIssue(stock.stockId,expected.issueOperationId);
+  const returned=await finishReturn(issueId,stock.stockId);
+  const warehouseWaste=await finishWarehouseScrap(returned.returnStockId);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
-  assert((await inventoryOutbox.acknowledgements.count()) === 5, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 2, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true };
+  assert((await inventoryOutbox.acknowledgements.count()) === 7, 'Logout destroyed retained evidence');
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 3, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste };
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();
@@ -239,5 +244,39 @@ async function finishIssue(stockId:string,requestId:string){
   await until(async()=> (await inventoryOutbox.receivingDrafts.get(receipt.key))?.fields.state==='accepted','native assigned receipt accepted');
   await refresh();assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===1625000,'Recipient deducted twice or inferred consumption');
   assert(document.documentElement.scrollWidth<=innerWidth,'Native issues overflow');return issueId;
+}
+async function finishReturn(issueId:string,sourceStockId:string){
+  await refresh();await click('Загрузить источники возврата');
+  const panel=document.querySelector<HTMLElement>('[aria-label="Возвраты и списание выданного"]');assert(panel,'Native return screen missing');
+  await fill('Полученная выдача для возврата',issueId,false,panel!);await fill('Количество возврата / списания','200000',false,panel!);await fill('Место возврата',fixture.locationId,false,panel!);await fill('Состояние возврата','untouched_unused',false,panel!);
+  await fill('Основание возврата / списания','Native untouched issued material physically returned',false,panel!);await fill('Свидетельство состояния / списания','NATIVE-RETURN-CONDITION-42',false,panel!);
+  assert(![...panel!.querySelectorAll('option')].some(o=>o.value==='scrap'),'Operator exposed Manager scrap');
+  offline=true;await click('Сохранить возврат / списание без проведения',panel!);await until(async()=> (await inventoryOutcomeProposals(scope(),fixture.operator)).length===1,'native frozen return');
+  const row=(await inventoryOutcomeProposals(scope(),fixture.operator))[0],request=JSON.parse(row.fields.request);
+  assert((await confirmedInventoryForScope(scope())).length===2,'Offline return invented warehouse stock');
+  offline=false;loseReturnAck=true;await click('Подтвердить сохранённый возврат / списание '+row.operationId!.slice(0,8),panel!);
+  await until(()=>panel!.querySelector('[role="alert"]'),'native lost return ACK');assert((await inventoryOutbox.receivingDrafts.get(row.key))?.fields.request===row.fields.request,'Native unknown return outcome changed intent');
+  assert((await confirmedInventoryForScope(scope())).length===2,'Lost return ACK optimistically changed stock');
+  await click('Подтвердить сохранённый возврат / списание '+row.operationId!.slice(0,8),panel!);await until(async()=> (await inventoryOutbox.receivingDrafts.get(row.key))?.fields.state==='accepted','native exact return retry');
+  await refresh();const stocks=await confirmedInventoryForScope(scope());
+  assert(stocks.length===3&&stocks.find(s=>s.stockId===sourceStockId)?.onHand===1625000,'Return merged into source or debited source again');
+  const child=stocks.find(s=>s.stockId===request.stockId);assert(child?.onHand===200000&&child.quality==='released'&&child.disposition==='release','Normal return did not become directly AVAILABLE');
+  const headers={authorization:'Bearer '+connection.session.accessToken,'content-type':'application/json','x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':row.fields.epoch};
+  const denied=await originalFetch(fixture.serverUrl+'/inventory/issues/'+issueId+'/outcomes',{method:'POST',headers,body:JSON.stringify({...request,operationId:crypto.randomUUID(),stockId:crypto.randomUUID(),expectedSettlementRevision:2,quantity:1,condition:'damaged'})});assert(denied.status===409,'Native damaged return became available');
+  const scrap=await originalFetch(fixture.serverUrl+'/inventory/issues/'+issueId+'/outcomes',{method:'POST',headers,body:JSON.stringify({operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,issueId,productionBatchId:fixture.batchId,sourceStockId,expectedSettlementRevision:2,kind:'scrap',quantity:1,reason:'Forbidden operator scrap',evidence:'Must be denied'})});assert(scrap.status===403,'Native operator gained Manager scrap authority');
+  assert(document.documentElement.scrollWidth<=innerWidth,'Native return overflow');
+  return {returnStockId:request.stockId,returnOperationId:row.operationId,returnedQuantity:200000,directReturnAvailable:true,returnLostAckRetried:true,invalidReturnDenied:true,operatorScrapDenied:true};
+}
+async function finishWarehouseScrap(stockId:string){
+  const epoch=(await inventoryOutbox.streams.get((await import('../../src/core/sync/inventoryOutbox')).inventoryScopeKey(scope())))!.epoch;
+  const denied=await originalFetch(fixture.serverUrl+'/inventory/stocks/'+stockId+'/operations',{method:'POST',headers:{authorization:'Bearer '+connection.session.accessToken,'content-type':'application/json','x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':epoch},body:JSON.stringify({operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,kind:'scrap',expectedRevision:1,quantity:1000,reason:'Forbidden operator warehouse disposal',evidence:'Must fail'})});assert(denied.status===403,'Operator self-authorized warehouse scrap');
+  await select('chief');await refresh();
+  const article=[...document.querySelectorAll('article')].find(row=>[...row.querySelectorAll('p')].some(p=>p.textContent==='Контейнер: '+stockId));assert(article,'Native warehouse return package missing');
+  const summary=[...article!.querySelectorAll('summary')].find(s=>s.textContent==='Перемещение / коррекция / списание контейнера');assert(summary,'Native warehouse operations unavailable');summary!.click();
+  await fill('Действие склада','scrap',true,article!);await fill('Количество складского списания','1000',true,article!);await fill('Основание изменения','Native actual warehouse disposal of damaged portion',true,article!);await fill('Свидетельство складского списания','NATIVE-WAREHOUSE-WASTE-42',true,article!);
+  await click('Проверить изменение',article!);await click('Сохранить изменение в очередь',article!);await until(async()=> (await inventoryStockQueueForScope(scope())).some(r=>r.request.kind==='scrap'),'native frozen warehouse scrap');
+  await send();await until(async()=> !(await inventoryStockQueueForScope(scope())).some(r=>r.request.kind==='scrap'),'native warehouse scrap accepted');
+  await select('operator');await refresh();assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===199000,'Native warehouse scrap did not converge across roles');
+  return {warehouseScrapApproved:true,warehouseScrapOperatorDenied:true,warehouseScrappedQuantity:1000};
 }
 (window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish };

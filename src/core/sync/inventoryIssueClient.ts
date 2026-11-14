@@ -40,8 +40,8 @@ export async function loadInventoryIssues(session: HybridSession, scope: Invento
 }
 export async function loadIssueSources(session: HybridSession, scope: InventoryScope, context: InventoryIssueContext, issue: InventoryIssue, after?: string) {
   validateIssue(issue); if (after !== undefined && !issueIdValid(after)) throw Error('Invalid source cursor'); const raw = await page(session, scope, context, '/inventory/issue-sources', { issueId: issue.id, ...(after ? { after } : {}) }); let previous = after ?? '';
-  for (const value of raw.items) { validateInventoryStock(value); if (value.materialId !== issue.materialId || value.unit !== issue.unit || value.stockId <= previous) throw Error('Invalid issue source'); previous = value.stockId; }
-  if (raw.hasMore && raw.nextAfter !== previous) throw Error('Invalid source continuation'); return { items: raw.items as InventoryStockSnapshot[], nextAfter: raw.hasMore ? previous : null };
+  for (const value of raw.items) { validateInventoryStock(value); if (value.materialId !== issue.materialId || value.unit !== issue.unit || value.stockId <= previous || ('eligible' in value && typeof value.eligible !== 'boolean')) throw Error('Invalid issue source'); previous = value.stockId; }
+  if (raw.hasMore && raw.nextAfter !== previous) throw Error('Invalid source continuation'); return { items: raw.items as (InventoryStockSnapshot & {eligible?:boolean})[], nextAfter: raw.hasMore ? previous : null };
 }
 export async function loadIssueHistory(session: HybridSession, scope: InventoryScope, context: InventoryIssueContext, issueId: string, after = 0) {
   if (!issueIdValid(issueId) || !Number.isSafeInteger(after) || after < 0) throw Error('Invalid history cursor'); const raw = await page(session, scope, context, '/inventory/issues/' + issueId + '/history', { after: String(after) }); let previous = after;
