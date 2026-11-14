@@ -44,7 +44,9 @@ jobs:
           script: |
             cd android
             chmod +x gradlew
-            ./gradlew connectedDebugAndroidTest --stacktrace
+            # Backend suite requires disposable Route A setup and runs in
+            # android-emulator-smoke.yml, where both phases are mandatory.
+            ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=ru.liion.production.StorageBackendWebViewTest --stacktrace
       - name: Upload instrumentation reports on failure
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4

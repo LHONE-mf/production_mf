@@ -84,7 +84,10 @@ async function click(text: string) {
   await new Promise(resolve => setTimeout(resolve, 0));
 }
 async function fill(label: string, value: string) {
-  await until(() => document.querySelector(`[aria-label="${label}"]`), label);
+  await until(() => {
+    const control = document.querySelector(`[aria-label="${label}"]`);
+    return control && !control.matches(':disabled');
+  }, label);
   const element = document.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
   const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
@@ -93,7 +96,7 @@ async function fill(label: string, value: string) {
     const drafts = await inventoryOutbox.receivingDrafts.toArray();
     return drafts.some(draft => Object.values(draft.fields).includes(value)) &&
       !document.querySelector('[aria-label="Серверная приёмка"]')?.textContent?.includes('Сохранение…');
-  }, 'draft persisted');
+  }, 'draft persisted: ' + label);
 }
 async function refresh() {
   await click('Обновить подтверждённые данные');

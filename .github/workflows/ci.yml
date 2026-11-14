@@ -30,6 +30,10 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: TypeScript
         run: npm run typecheck
+      - name: Disposable database guards and Android harness types
+        run: |
+          node --test scripts/disposable-migrations.test.mjs
+          npx tsc --noEmit -p tests/android-storage/tsconfig.json
       - name: Unit tests
         run: npm test -- --reporter=default
       - name: Production build

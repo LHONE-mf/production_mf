@@ -55,6 +55,7 @@ jobs:
         run: |
           npm run build
           npx cap sync android
+          npx tsc --noEmit -p tests/android-storage/tsconfig.json
           node scripts/build-android-storage-harness.mjs
       - name: Generate launcher icons
         run: |
