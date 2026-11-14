@@ -2,6 +2,7 @@ import type {InventoryRecoveryBundle,InventoryRecoveryApproval} from './inventor
 import type {InventoryIssueIntent} from './inventoryIssueTypes';
 import type {InventoryOutcomeRequest} from './inventoryOutcomeTypes';
 import type {InventorySplitRequest} from './inventorySplits';
+import type {InventoryCountRequest} from './inventoryCounts';
 import Dexie, {type Table} from 'dexie';
 import type {InventoryOfflineView} from './inventoryOfflineView';
 import type {HybridSession} from './hybridClient';
@@ -51,7 +52,7 @@ interface InventorySyncMetadata {key:string;value:number;}
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;evidence?:string;quantity?:number}
 export interface InventoryStreamState {scopeKey:string;epoch:string}
-export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest|InventoryQualityRequest|InventoryIssueIntent|InventoryOutcomeRequest|InventorySplitRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
+export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest|InventoryQualityRequest|InventoryIssueIntent|InventoryOutcomeRequest|InventorySplitRequest|InventoryCountRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
 export class InventoryOutboxDatabase extends Dexie {
   recoveryArchives!:Table<{approvalId:string;scopeKey:string;epoch:string|null;evidence:InventoryRecoveryBundle;approval:InventoryRecoveryApproval;archivedAt:number},string>;
   streams!:Table<InventoryStreamState,string>;

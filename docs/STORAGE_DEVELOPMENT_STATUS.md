@@ -188,3 +188,7 @@ Local final checks: **625 frontend / 240 actual PostgreSQL tests**, frontend/ser
 ## S6 implementation update
 
 S6 now implements authorized one-child split/repack/partial movement with exact conservation, retained parent reservations, inherited QA/date/source restrictions, immutable paired ledger/genealogy, persistent form/manual-send and child QR/manual labels. See STORAGE_SPLITS.md. Local real PG/browser/restore and builds pass; extended exact-head native verification pending. S7–S10 remain unfinished.
+
+## S7 implementation update
+
+S7 implements any-time warehouse count sessions, zero/count/recount observations, immutable discrepancy/history, separately approved Chief/Manager correction and closure. Count alone never changes stock; stale observations remain evidence and require new reconciliation before correction. Migration 029, original v7 durable intents and exact atomic correction ACK are verified locally by 633 frontend / 253 actual PostgreSQL tests, builds/typechecks, real browser and 42-table/two-restore drill. Extended S7 native verification is pending exact-head checks. See STORAGE_COUNTS.md. S8–S10 remain unfinished.

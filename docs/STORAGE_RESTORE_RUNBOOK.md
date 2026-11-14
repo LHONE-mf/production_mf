@@ -69,3 +69,7 @@ The disposable drill now dumps/restores migration 027 issue outcomes and new-pac
 ## S6 implementation update
 
 S6 drill extends exact backup comparison to 41 public tables, 13 immutable stock events, four stocks and one immutable split, retaining all prior reservations/handoffs/outcomes. Paired split events reconstruct conserved parent/child quantities; exact split retry leaves restored tables unchanged. No fake genealogy backfill or reverse operation is inserted.
+
+## S7 implementation update
+
+S7 actual dump/two restores compare 42 public tables and reconstruct 14 stock events/four stocks plus four immutable count events. Count evidence is independent of balance; only paired approved correction reconstructs a stock change. The drill explicitly closes a session before correcting its still-current observation, retries its original correction unchanged after restore and verifies immutable evidence. No correction is inferred during reconstruction.

@@ -138,11 +138,11 @@ async function pullInventoryChangesUnlocked(
   for(const item of changes){
     if(!item||!Number.isSafeInteger(item.sequence)||item.sequence<=previous||
         !validId.test(item.operationId)||
-        !['receive','transfer','adjust','reserve','release_reservation','quality_change','issue','return','scrap','split_out','split_in'].includes(item.kind)||
+        !['receive','transfer','adjust','reserve','release_reservation','quality_change','issue','return','scrap','split_out','split_in','count_adjustment'].includes(item.kind)||
         typeof item.recordedAt!=='string'||!Number.isFinite(Date.parse(item.recordedAt)))
       throw new Error('Invalid inventory change order or identity');
     if(item.actorId!==undefined&&!validId.test(item.actorId)||item.deviceId!==undefined&&item.deviceId!==null&&!validId.test(item.deviceId)||item.reason!==undefined&&(typeof item.reason!=='string'||!item.reason.trim()||item.reason.length>2000)||item.quantity!==undefined&&(!Number.isSafeInteger(item.quantity)||item.quantity<(item.kind==='quality_change'?0:1)||item.kind==='quality_change'&&item.quantity!==0))throw new Error('Invalid inventory history attribution');
-    if(item.evidence!==undefined&&(typeof item.evidence!=='string'||!item.evidence.trim()||item.evidence.length>2000)||['scrap','split_in','split_out'].includes(item.kind)&&(!item.evidence||!validId.test(item.actorId??'')||!validId.test(item.deviceId??'')))throw Error('Invalid inventory operation evidence');
+    if(item.evidence!==undefined&&(typeof item.evidence!=='string'||!item.evidence.trim()||item.evidence.length>2000)||['scrap','split_in','split_out','count_adjustment'].includes(item.kind)&&(!item.evidence||!validId.test(item.actorId??'')||!validId.test(item.deviceId??'')))throw Error('Invalid inventory operation evidence');
     validateInventoryStock(item.stock);
     if(item.kind==='split_in'?
         item.stock.revision!==1||item.stock.reserved!==0||item.quantity!==item.stock.onHand||!item.evidence||!validId.test(item.actorId??'')||!validId.test(item.deviceId??''):

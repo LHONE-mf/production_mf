@@ -1,4 +1,5 @@
 import {InventorySplitPanel} from './InventorySplitPanel';
+import {InventoryCounts} from './InventoryCounts';
 import {InventoryPackageLabel} from './InventoryPackageLabel';
 import {InventoryQualityPanel} from './InventoryQualityPanel';
 import {InventoryReturns} from './InventoryReturns';
@@ -108,6 +109,7 @@ export function ConfirmedStorage(){
     </article>)}
     {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
     {scope&&connection&&user&&<InventoryReturns key={'returns:'+key} scope={scope} session={connection.session} localActorId={user.id} locations={visible.places} onChanged={()=>void refresh()}/>}
+    {scope&&connection&&user&&<InventoryCounts scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} stocks={visible.stocks} names={visible.names} canApprove={visible.access.level==='chief'||visible.access.level==='manager'} onChanged={()=>void refresh()}/>}
     {scope&&connection&&user&&visible.access.canManageCatalog&&<StorageAdministration key={'administration:'+key} scope={scope} session={connection.session} localActorId={user.id} access={visible.access} materials={visible.materials} locations={visible.places} onChanged={()=>void refresh()}/>}
     <h4>Операции / Синхронизация ({visible.queue.length})</h4>
     <p>Предложения не меняют подтверждённые остатки. Решения QA и администрация подтверждаются отдельно в соответствующих разделах.</p>

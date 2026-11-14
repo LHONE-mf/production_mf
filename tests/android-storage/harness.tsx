@@ -8,6 +8,7 @@ import { inventoryOutcomeProposals } from '../../src/core/sync/inventoryOutcomes
 import { inventoryStockQueueForScope } from '../../src/core/sync/inventoryStockOutbox';
 import { inventorySplitProposals } from '../../src/core/sync/inventorySplits';
 import { parseInventoryLabel } from '../../src/core/sync/inventoryIdentification';
+import { inventoryCountProposals } from '../../src/core/sync/inventoryCounts';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
@@ -23,7 +24,7 @@ import '../../src/index.css';
 type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number };
 const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
-let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, loseSplitAck=false, connection: ServerConnection, fixture: Fixture;
+let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, loseSplitAck=false, loseCountAck=false, connection: ServerConnection, fixture: Fixture;
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
@@ -38,6 +39,7 @@ window.fetch = async (input, init) => {
     if(loseIssueAck && /^\/inventory\/issues\/[^/]+\/operations$/.test(url.pathname) && response.ok){loseIssueAck=false;await response.arrayBuffer();throw new TypeError('CI issue acknowledgement lost after commit');}
     if(loseReturnAck&&url.pathname.endsWith('/outcomes')&&init?.method==='POST'&&response.ok){loseReturnAck=false;await response.arrayBuffer();throw new TypeError('CI return acknowledgement lost after commit');}
     if(loseSplitAck&&url.pathname.endsWith('/splits')&&init?.method==='POST'&&response.ok){loseSplitAck=false;await response.arrayBuffer();throw new TypeError('CI split acknowledgement lost after commit');}
+    if(loseCountAck&&url.pathname==='/inventory/counts/operations'&&init?.method==='POST'&&response.ok){loseCountAck=false;await response.arrayBuffer();throw new TypeError('CI count acknowledgement lost after commit');}
     return response;
   }
   return originalFetch(input, init);
@@ -208,10 +210,11 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const returned=await finishReturn(issueId,stock.stockId);
   const warehouseWaste=await finishWarehouseScrap(returned.returnStockId);
   const split=await finishSplit(stock.stockId);
+  const count=await finishCount(split.splitChildId);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
-  assert((await inventoryOutbox.acknowledgements.count()) === 9, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste,...split };
+  assert((await inventoryOutbox.acknowledgements.count()) === 10, 'Logout destroyed retained evidence');
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste,...split,...count };
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();
@@ -300,5 +303,18 @@ async function finishSplit(stockId:string){
   const card=[...document.querySelectorAll('article')].find(row=>[...row.querySelectorAll('p')].some(p=>p.textContent==='Контейнер: '+request.childStockId));assert(card,'Native split child invisible');const label=card!.querySelector<HTMLElement>('[data-inventory-label]')?.dataset.inventoryLabel;assert(label,'Native split child QR/manual code missing');const parsed=parseInventoryLabel(label!,fixture.organizationId);assert(parsed.kind==='container'&&parsed.id===request.childStockId,'Native child label identity mismatch');
   const genealogy=card!.querySelector<HTMLDetailsElement>('[aria-label="Разделение контейнера '+request.childStockId+'"]');assert(genealogy,'Native child genealogy absent');genealogy!.open=true;await click('Загрузить генеалогию разделения',genealogy!);await until(()=>genealogy!.textContent?.includes('NATIVE-CHILD-WEIGHT-42'),'native original split genealogy');assert(document.documentElement.scrollWidth<=innerWidth,'Native split overflow');
   return{splitApproved:true,splitOperatorDenied:true,splitLostAckRetried:true,splitChildLabelResolved:true,splitQuantity:125000,splitOperationId:row.operationId,splitChildId:request.childStockId};
+}
+async function finishCount(stockId:string){
+  const panel=()=>document.querySelector<HTMLElement>('[aria-label="Физические пересчёты"]')!;assert(panel(),'Native count panel missing');await click('Загрузить пересчёты',panel());await fill('Основание пересчёта / коррекции','Native anytime operator physical count',true,panel());await fill('Свидетельство пересчёта / коррекции','NATIVE-PHYSICAL-COUNT-42',true,panel());
+  await click('Начать пересчёт — сохранить предложение',panel());await until(async()=>(await inventoryCountProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='open'),'native frozen count opening');const opening=(await inventoryCountProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='open')!,countId=JSON.parse(opening.fields.request).countId;
+  async function send(row: {key:string;operationId?:string}){await click('Подтвердить пересчёт '+row.operationId!.slice(0,8),panel());await until(async()=>(await inventoryOutbox.receivingDrafts.get(row.key))?.fields.state==='accepted','native count accepted');await until(()=>button('Загрузить пересчёты',panel()),'native count refresh completed');}
+  await send(opening);await fill('Сессия пересчёта',countId,true,panel());await fill('Контейнер пересчёта',stockId,false,panel());await fill('Фактически посчитано','124000',true,panel());offline=true;await click('Сохранить наблюдение без изменения остатка',panel());await until(async()=>(await inventoryCountProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='observe'),'native offline observation');const observation=(await inventoryCountProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='observe')!;
+  assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===125000,'Native count observation changed stock');offline=false;loseCountAck=true;await click('Подтвердить пересчёт '+observation.operationId!.slice(0,8),panel());await until(()=>panel().querySelector('[role="alert"]'),'native lost observation ACK');await send(observation);await refresh();assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===125000,'Accepted observation adjusted stock');
+  assert(![...panel().querySelectorAll('button')].some(b=>b.textContent?.startsWith('Проверить коррекцию по наблюдению')),'Operator exposed count correction');
+  const forbidden={operationId:crypto.randomUUID(),countId,deviceId:connection.selectedDeviceId,kind:'correct',observationId:observation.operationId,expectedRevision:1,reason:'Native forbidden operator correction',evidence:'Must fail'},epoch=await preflightInventoryStream(connection.session,scope());const denied=await originalFetch(fixture.serverUrl+'/inventory/counts/operations',{method:'POST',headers:{authorization:'Bearer '+connection.session.accessToken,'content-type':'application/json','x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':epoch},body:JSON.stringify(forbidden)});assert(denied.status===403,'Operator self-approved count correction');
+  await select('chief');await refresh();await click('Загрузить пересчёты',panel());await fill('Сессия пересчёта',countId,true,panel());await fill('Основание пересчёта / коррекции','Native Chief reviewed counted discrepancy',true,panel());await fill('Свидетельство пересчёта / коррекции','NATIVE-PHYSICAL-COUNT-42',true,panel());await click('Наблюдения и решения пересчёта',panel());await click('Проверить коррекцию по наблюдению '+observation.operationId!.slice(0,8),panel());await until(async()=>(await inventoryCountProposals(scope(),fixture.chief)).some(r=>r.fields.kind==='correct'),'native frozen correction approval');const correction=(await inventoryCountProposals(scope(),fixture.chief)).find(r=>r.fields.kind==='correct')!;
+  loseCountAck=true;await click('Подтвердить пересчёт '+correction.operationId!.slice(0,8),panel());await until(()=>panel().querySelector('[role="alert"]'),'native lost correction ACK');await send(correction);await select('operator');await refresh();assert((await confirmedInventoryForScope(scope())).find(s=>s.stockId===stockId)?.onHand===124000,'Native approved count correction did not converge');
+  await click('Загрузить пересчёты',panel());await fill('Сессия пересчёта',countId,true,panel());await click('Завершить пересчёт — сохранить предложение',panel());await until(async()=>(await inventoryCountProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='close'),'native frozen count closure');await send((await inventoryCountProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='close')!);assert(document.documentElement.scrollWidth<=innerWidth,'Native count screen overflow');
+  return{countObservedWithoutStock:true,countOperatorCorrectionDenied:true,countChiefCorrection:true,countLostAckRetried:true,countId,countObservationOperationId:observation.operationId,countCorrectionOperationId:correction.operationId,countedQuantity:124000,countCorrectionQuantity:1000};
 }
 (window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish };

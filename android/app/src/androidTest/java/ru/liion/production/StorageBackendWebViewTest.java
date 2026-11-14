@@ -126,6 +126,11 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("splitLostAckRetried"));
                 assertTrue(result.getBoolean("splitChildLabelResolved"));
                 assertEquals(125000, result.getInt("splitQuantity"));
+                assertTrue(result.getBoolean("countObservedWithoutStock"));
+                assertTrue(result.getBoolean("countOperatorCorrectionDenied"));
+                assertTrue(result.getBoolean("countChiefCorrection"));
+                assertTrue(result.getBoolean("countLostAckRetried"));
+                assertEquals(124000, result.getInt("countedQuantity"));
                 Log.i("ProductionMfStorage", "RESULT " + result);
             }
             Bitmap screenshot = instrumentation.getUiAutomation().takeScreenshot();
