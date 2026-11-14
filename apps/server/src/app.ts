@@ -1,3 +1,4 @@
+import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
 import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
 import Fastify from 'fastify';
 import type { Pool } from 'pg';
@@ -68,6 +69,7 @@ export function buildApp(pool: Pool) {
   registerInventoryRoutes(app, pool);
   registerInventoryRecoveryRoutes(app,pool);
   registerInventoryCatalogRoutes(app, pool);
+  registerInventoryAdministrationRoutes(app, pool);
   registerInventoryStockOperations(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {

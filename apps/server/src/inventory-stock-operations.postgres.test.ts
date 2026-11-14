@@ -62,8 +62,9 @@ integration('Storage controlled stock operations (disposable PostgreSQL)',()=>{
     }
     ({deviceId:chiefDevice,proof:chiefProof}=await enroll(chief,chiefToken));
     ({deviceId:workerDevice,proof:workerProof}=await enroll(warehouseUser,warehouseToken));
-    await post('/inventory/access',{deviceId:chiefDevice,changeId:randomUUID(),
-      userId:warehouseUser,level:'operator',action:'grant'});
+    await pool.query('INSERT INTO inventory_streams(organization_id,epoch) VALUES($1,$2) ON CONFLICT(organization_id) DO UPDATE SET epoch=EXCLUDED.epoch',[org,epoch]);
+    expect((await post('/inventory/access',{deviceId:chiefDevice,changeId:randomUUID(),
+      userId:warehouseUser,level:'operator',action:'grant'})).statusCode).toBe(201);
     expect((await post('/inventory/materials',{
       id:materialId,deviceId:chiefDevice,code:'MAT-'+materialId,
       name:'Receiving test powder',category:'raw_material',baseUnit:'mg',
@@ -76,7 +77,6 @@ integration('Storage controlled stock operations (disposable PostgreSQL)',()=>{
       const added=await post('/inventory/locations',{deviceId:chiefDevice,...l});
       expect(added.statusCode,added.body).toBe(201);
     }
-    await pool.query('INSERT INTO inventory_streams(organization_id,epoch) VALUES($1,$2) ON CONFLICT(organization_id) DO UPDATE SET epoch=EXCLUDED.epoch',[org,epoch]);
   });
   afterAll(async()=>{await app.close();await pool.end();});
 

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { ConfirmedStorage } from '../../src/stages/storage/ConfirmedStorage';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
+import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
 import { loadWarehouseAccess } from '../../src/core/sync/inventoryCatalogClient';
 import { inventoryOutbox, inventoryQueueForScope, confirmedInventoryForScope, type InventoryScope } from '../../src/core/sync/inventoryOutbox';
 import { useAuthStore } from '../../src/core/store/authStore';
@@ -61,7 +62,8 @@ async function connect(input: Fixture) {
       selectedDeviceId: deviceId, enrolledDeviceId: deviceId, myDevices: [deviceId], session };
   }
   const chief = connections.chief!;
-  const granted = await originalFetch(fixture.serverUrl + '/inventory/access', { method: 'POST', headers: { authorization: 'Bearer ' + chief.session.accessToken, 'x-device-proof': chief.session.deviceProofToken!, 'content-type': 'application/json' },
+  const epoch = await preflightInventoryStream(chief.session, { serverUrl: chief.serverUrl, organizationId: chief.organizationId, actorId: chief.serverActorId, deviceId: chief.selectedDeviceId });
+  const granted = await originalFetch(fixture.serverUrl + '/inventory/access', { method: 'POST', headers: { authorization: 'Bearer ' + chief.session.accessToken, 'x-device-proof': chief.session.deviceProofToken!, 'x-inventory-epoch': epoch, 'content-type': 'application/json' },
     body: JSON.stringify({ changeId: crypto.randomUUID(), deviceId: chief.selectedDeviceId, userId: fixture.operator, level: 'operator', action: 'grant' }) });
   assert(granted.ok, 'Chief must grant explicit warehouse operator access');
   await select('operator');

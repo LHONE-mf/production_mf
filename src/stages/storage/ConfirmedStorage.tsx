@@ -1,3 +1,4 @@
+import {StorageAdministration} from './StorageAdministration';
 import {InventoryRecoveryPanel} from './InventoryRecoveryPanel';
 import {OfflineStorage} from './OfflineStorage';
 import {beginInventoryOfflineView,cacheInventoryOfflineView} from '../../core/sync/inventoryOfflineView';
@@ -6,7 +7,7 @@ import {StockChangeForm} from './StockChangeForm';
 import {ReceivingForm} from './ReceivingForm';
 import {pushInventoryReceipts} from '../../core/sync/inventoryClient';
 import {pushPendingInventoryStockChanges} from '../../core/sync/inventoryStockClient';
-import type {InventoryMaterial,InventoryLocation} from '../../core/sync/inventoryCatalogClient';
+import type {WarehouseAccess,InventoryMaterial,InventoryLocation} from '../../core/sync/inventoryCatalogClient';
 import {useServerConnection} from '../../core/sync/serverConnection';
 import {requireFreshDeviceProof} from '../../core/sync/deviceProofClient';
 import {useAuthStore} from '../../core/store/authStore';
@@ -19,7 +20,7 @@ const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перем
 export function ConfirmedStorage(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');
- const [view,setView]=useState<{key:string;at:number;history:InventoryHistory[];canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;quantity:number;unit:string;stockId:string;revision:number;destination?:string;reviewedAt?:number;reviewReason?:string;error?:string}[]}|null>(null);
+ const [view,setView]=useState<{key:string;at:number;history:InventoryHistory[];access:WarehouseAccess;canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;quantity:number;unit:string;stockId:string;revision:number;destination?:string;reviewedAt?:number;reviewReason?:string;error?:string}[]}|null>(null);
  const generation=useRef(0),sending=useRef(false);
  const [confirmSend,setConfirmSend]=useState(false),[message,setMessage]=useState(''),[reviewId,setReviewId]=useState(''),[reviewReason,setReviewReason]=useState('');
  const scope=connection?{serverUrl:connection.serverUrl,organizationId:connection.organizationId,actorId:connection.serverActorId,deviceId:connection.selectedDeviceId}:null;
@@ -57,7 +58,7 @@ export function ConfirmedStorage(){
    const syncedAt=Date.now();
    if(user&&localSession?.userId===user.id)await cacheInventoryOfflineView({scope,access,materials,locations:places,localActorId:user.id,localSessionIssuedAt:localSession.issuedAt,localSessionExpiresAt:localSession.expiresAt.getTime(),syncedAt,generation:offlineGeneration});
    if(run!==generation.current)return;
-   setView({key,at:syncedAt,history,canCorrect:access.canCorrectStock,materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.request.stockId,revision:r.request.expectedRevision,unit:materials.find(m=>m.id===r.request.materialId)?.baseUnit??'базовых единиц'})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.stockId,revision:r.request.expectedRevision,unit:r.base.unit,destination:r.request.kind==='transfer'?r.request.toLocationId:undefined,reviewedAt:r.reviewedAt,reviewReason:r.reviewReason}))]});
+   setView({key,at:syncedAt,history,access,canCorrect:access.canCorrectStock,materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.request.stockId,revision:r.request.expectedRevision,unit:materials.find(m=>m.id===r.request.materialId)?.baseUnit??'базовых единиц'})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.stockId,revision:r.request.expectedRevision,unit:r.base.unit,destination:r.request.kind==='transfer'?r.request.toLocationId:undefined,reviewedAt:r.reviewedAt,reviewReason:r.reviewReason}))]});
   }catch(e){if(run===generation.current){setView(null);setError('Обновление недоступно. Проверьте подключение, сеанс и полномочия в разделе Синхронизация. '+(e instanceof Error?e.message:''));}}
   finally{if(run===generation.current)setBusy(false);}
  }
@@ -98,6 +99,7 @@ export function ConfirmedStorage(){
      <details><summary className="min-h-11 py-2 cursor-pointer">Полученная серверная история контейнера</summary><p>Из последних 200 изменений, полученных устройством. Полный журнал хранится на сервере; при обновлении старой версии история до сохранённого курсора может отсутствовать.</p>{visible.history.filter(h=>h.stockId===s.stockId).map(h=><p key={h.sequence}>{actionLabel(h.kind)} · {new Date(h.recordedAt).toLocaleString('ru-RU')} · Операция {h.operationId} · Версия {h.stock.revision} · {h.quantity??'—'} {h.stock.unit} · Автор {h.actorId??'не передан старым сервером'} · Устройство {h.deviceId??'не указано'} · {h.reason??'основание не передано старым сервером'} · Место после операции: {visible.locations[h.stock.locationId]??h.stock.locationId}</p>)}</details>
     </article>)}
     {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
+    {scope&&connection&&user&&visible.access.canManageCatalog&&<StorageAdministration key={'administration:'+key} scope={scope} session={connection.session} localActorId={user.id} access={visible.access} materials={visible.materials} locations={visible.places} onChanged={()=>void refresh()}/>}
     <h4>Операции / Синхронизация ({visible.queue.length})</h4>
     <p>Предложения не меняют подтверждённые остатки.</p>
     {visible.queue.some(q=>q.state==='pending')&&<button type="button" className="min-h-11 bg-blue-700 px-3" disabled={busy} onClick={()=>setConfirmSend(true)}>Проверить отправку / повтор</button>}

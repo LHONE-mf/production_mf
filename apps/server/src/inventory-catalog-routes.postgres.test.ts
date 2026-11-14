@@ -1,14 +1,17 @@
 import {generateKeyPairSync,randomBytes,randomUUID,sign} from 'node:crypto';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {Pool} from 'pg';
+import {readFile} from 'node:fs/promises';
 import {buildApp} from './app.js';
 import {tokenHash} from './auth.js';
 
 const integration=process.env.POSTGRES_TEST_URL?describe:describe.skip;
 
 integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
-  const pool=new Pool({connectionString:process.env.POSTGRES_TEST_URL});
+  const applicationName='inventory-admin-'+randomUUID();
+  const pool=new Pool({connectionString:process.env.POSTGRES_TEST_URL,application_name:applicationName});
   const app=buildApp(pool);
+  const epoch=randomUUID();
   const org=randomUUID(),otherOrg=randomUUID(),chief=randomUUID(),worker=randomUUID();
   const chiefToken=randomBytes(32).toString('base64url');
   const workerToken=randomBytes(32).toString('base64url');
@@ -16,7 +19,7 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
   let chiefDevice='',workerDevice='',chiefProof='',workerProof='';
 
   const headers=(token:string,proof='')=>({
-    authorization:'Bearer '+token,...(proof?{'x-device-proof':proof}:{}),
+    authorization:'Bearer '+token,'x-inventory-epoch':epoch,...(proof?{'x-device-proof':proof}:{}),
   });
   const post=(url:string,payload:object,token=chiefToken,proof=chiefProof)=>
     app.inject({method:'POST',url,headers:headers(token,proof),payload});
@@ -57,6 +60,7 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
         VALUES($1,$2,$3,$4,now()+interval '30 minutes')`,
         [randomUUID(),org,id,tokenHash(token)]);
     }
+    await pool.query('INSERT INTO inventory_streams(organization_id,epoch) VALUES($1,$2)',[org,epoch]);
     ({deviceId:chiefDevice,proof:chiefProof}=await enroll(chief,chiefToken));
     ({deviceId:workerDevice,proof:workerProof}=await enroll(worker,workerToken));
   });
@@ -141,6 +145,94 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
     expect(leaf).toMatchObject({id:shelf,parentId:cabinet,active:true});
     expect((await get('/inventory/locations?deviceId='+workerDevice+
       '&after=wrong',workerToken,workerProof)).statusCode).toBe(400);
+  });
+
+  it('replays exact catalogue creation after a lost acknowledgement and retains immutable actor/device audit',async()=>{
+    const body={deviceId:chiefDevice,id:randomUUID(),code:'IDEMP-'+randomUUID(),name:'Repeated exact creation',category:'component',baseUnit:'pieces'};
+    const first=await post('/inventory/materials',body);
+    expect(first.statusCode,first.body).toBe(201);
+    const retry=await post('/inventory/materials',body);
+    expect(retry.statusCode,retry.body).toBe(200);
+    expect(retry.json()).toEqual(first.json());
+    expect((await post('/inventory/materials',{...body,name:'Changed intent'})).statusCode).toBe(409);
+    expect((await post('/inventory/materials',{...body,id:randomUUID()},workerToken,workerProof)).statusCode).toBe(403);
+    const audit=await pool.query('SELECT actor_id,device_id,request_payload,result_payload FROM inventory_catalog_events WHERE change_id=$1',[body.id]);
+    expect(audit.rows).toHaveLength(1);
+    expect(audit.rows[0]).toMatchObject({actor_id:chief,device_id:chiefDevice,request_payload:body,result_payload:first.json()});
+    await expect(pool.query('DELETE FROM inventory_catalog_events WHERE change_id=$1',[body.id])).rejects.toThrow('immutable');
+    const root={deviceId:chiefDevice,id:randomUUID(),parentId:null,label:'Retry warehouse',kind:'warehouse'};
+    const created=await post('/inventory/locations',root);
+    expect(created.statusCode,created.body).toBe(201);
+    expect((await post('/inventory/locations',root)).statusCode).toBe(200);
+    expect((await post('/inventory/locations',{...root,label:'Changed label'})).statusCode).toBe(409);
+  });
+
+  it('allows Chief alone to discover scoped effective warehouse grants with bounded pagination',async()=>{
+    const route='/inventory/access/users?deviceId=';
+    expect((await get(route+workerDevice,workerToken,workerProof)).statusCode).toBe(403);
+    expect((await get(route+chiefDevice,chiefToken,'')).statusCode).toBe(403);
+    expect((await get(route+chiefDevice+'&limit=101')).statusCode).toBe(400);
+    const first=await get(route+chiefDevice+'&limit=1');
+    expect(first.statusCode,first.body).toBe(200);
+    expect(first.json().hasMore).toBe(true);
+    const next=await get(route+chiefDevice+'&limit=1&after='+first.json().nextAfter);
+    const rows=[...first.json().users,...next.json().users];
+    expect(rows.map((row:{id:string})=>row.id).sort()).toEqual([chief,worker].sort());
+    expect(rows.find((row:{id:string})=>row.id===worker)).toMatchObject({warehouseLevel:'operator',role:'worker',active:true});
+    expect(rows.find((row:{id:string})=>row.id===chief)).toMatchObject({warehouseLevel:'chief'});
+  });
+
+  it('suspending inventory posting also prevents catalogue creation without side effects',async()=>{
+    await get('/inventory/stream?deviceId='+chiefDevice);
+    try {
+      await pool.query('UPDATE inventory_streams SET posting_enabled=false WHERE organization_id=$1',[org]);
+      const created=await post('/inventory/materials',{deviceId:chiefDevice,id:randomUUID(),code:'SUSPENDED',name:'Must not exist',category:'component',baseUnit:'pieces'});
+      expect(created.statusCode,created.body).toBe(409);
+      expect(created.json()).toEqual({error:'inventory_posting_suspended'});
+      expect((await pool.query("SELECT count(*)::int AS n FROM inventory_materials WHERE organization_id=$1 AND material_code='SUSPENDED'",[org])).rows[0].n).toBe(0);
+    } finally {await pool.query('UPDATE inventory_streams SET posting_enabled=true WHERE organization_id=$1',[org]);}
+  });
+
+  it('rechecks catalogue and grant authority after waiting for the real organization lock',async()=>{
+    for(const path of ['/inventory/materials','/inventory/access']) {
+      const blocker=await pool.connect();let pending:Promise<Awaited<ReturnType<typeof post>>>|undefined;
+      const id=randomUUID();
+      const body=path.endsWith('materials')?{deviceId:chiefDevice,id,code:'RACE-'+id,name:'Rejected after revocation',category:'component',baseUnit:'pieces'}:
+        {deviceId:chiefDevice,changeId:id,userId:worker,level:'manager',action:'grant'};
+      try{
+        await blocker.query('BEGIN');await blocker.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',[org+':inventory-sequence']);
+        await blocker.query('UPDATE sessions SET revoked_at=clock_timestamp() WHERE token_hash=$1',[tokenHash(chiefToken)]);
+        pending=Promise.resolve(post(path,body));const deadline=Date.now()+4000;
+        while(!(await pool.query("SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND query LIKE '%pg_advisory_xact_lock(hashtextextended%' AND wait_event_type='Lock'",[applicationName])).rowCount){if(Date.now()>deadline)throw Error('Admin transaction did not reach authorization barrier');await new Promise(resolve=>setTimeout(resolve,10));}
+        await blocker.query('COMMIT');expect((await pending).statusCode).toBe(403);
+        expect((await pool.query('SELECT count(*)::int AS n FROM inventory_catalog_events WHERE change_id=$1',[id])).rows[0].n).toBe(0);
+        expect((await pool.query('SELECT count(*)::int AS n FROM inventory_access_events WHERE id=$1',[id])).rows[0].n).toBe(0);
+      }finally{await blocker.query('ROLLBACK');blocker.release();if(pending)await pending;await pool.query('UPDATE sessions SET revoked_at=NULL WHERE token_hash=$1',[tokenHash(chiefToken)]);}
+    }
+  },10000);
+
+  it('requires an explicit manager grant, never grants manager powers to a production Master by role',async()=>{
+    const body={deviceId:workerDevice,id:randomUUID(),code:'MANAGER-'+randomUUID(),name:'Manager-created',category:'component',baseUnit:'pieces'};
+    try{
+      await pool.query("UPDATE users SET role='master' WHERE id=$1",[worker]);
+      expect((await post('/inventory/materials',body,workerToken,workerProof)).statusCode).toBe(403);
+      expect((await post('/inventory/access',{deviceId:chiefDevice,changeId:randomUUID(),userId:worker,level:'manager',action:'grant'})).statusCode).toBe(201);
+      expect((await post('/inventory/materials',body,workerToken,workerProof)).statusCode).toBe(201);
+      expect((await get('/inventory/access/users?deviceId='+workerDevice,workerToken,workerProof)).statusCode).toBe(403);
+      expect((await post('/inventory/access',{deviceId:workerDevice,changeId:randomUUID(),userId:chief,level:'manager',action:'grant'},workerToken,workerProof)).statusCode).toBe(403);
+    }finally{
+      await pool.query("UPDATE users SET role='worker' WHERE id=$1",[worker]);
+      await post('/inventory/access',{deviceId:chiefDevice,changeId:randomUUID(),userId:worker,level:'operator',action:'grant'});
+    }
+  });
+
+  it('reapplies additive catalogue audit migration without changing populated records or accepted history',async()=>{
+    const tables=['inventory_materials','inventory_locations','inventory_stocks','inventory_operations','inventory_access','inventory_access_events','inventory_catalog_events'];
+    async function snapshot(){const result:Record<string,string[]>={};for(const table of tables)result[table]=(await pool.query('SELECT row_to_json(t) AS row FROM '+table+' t WHERE organization_id=$1',[org])).rows.map(row=>JSON.stringify(row.row)).sort();return result;}
+    const before=await snapshot(),migration=await readFile('migrations/023_inventory_catalog_audit.sql','utf8');
+    await pool.query(migration);await pool.query(migration);
+    expect(await snapshot()).toEqual(before);
+    expect((await pool.query('SELECT device_id,epoch FROM inventory_access_events WHERE organization_id=$1 ORDER BY recorded_at DESC LIMIT 1',[org])).rows[0].device_id).toBe(chiefDevice);
   });
 
   it('revoking warehouse access immediately disables all discovery endpoints',async()=>{

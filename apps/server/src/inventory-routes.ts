@@ -16,16 +16,6 @@ const changesQuery = device.extend({
   cursor: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 }).strict();
-const materialSchema = device.extend({
-  id: uuid, code: z.string().trim().min(1).max(100),
-  name: z.string().trim().min(1).max(200),
-  category: z.enum(['raw_material', 'component', 'electrode', 'cell']),
-  baseUnit: z.enum(['mg', 'ul', 'mm', 'pieces']),
-}).strict();
-const locationSchema = device.extend({
-  id: uuid, parentId: uuid.nullable(), label: z.string().trim().min(1).max(200),
-  kind: z.enum(['warehouse', 'cabinet', 'rack', 'shelf', 'container_area']),
-}).strict();
 const receiptSchema = device.extend({
   operationId: uuid, stockId: uuid, materialId: uuid, locationId: uuid,
   manufacturerLot: z.string().trim().min(1).max(200),
@@ -87,15 +77,21 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [actor.organization_id+':inventory-sequence']);
+      const current=await currentInventoryWriter(client,actor.organization_id,actor.id,data.deviceId,request.headers.authorization!,request.headers['x-device-proof'],'manager');
+      if(current?.role!=='chief'){await client.query('ROLLBACK');return reply.code(403).send({error:'forbidden'});}
+      const fence=await inventoryWriteFence(client,actor.organization_id,request.headers['x-inventory-epoch']);
+      if(fence){await client.query('ROLLBACK');return reply.code(fence==='inventory_epoch_required'?428:409).send({error:fence});}
+      const stream=await inventoryStream(client,actor.organization_id);
       await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
         [actor.organization_id+':inventory-access']);
       const prior = await client.query(
-        'SELECT organization_id,user_id,actor_id,level,action FROM inventory_access_events WHERE id=$1',
+        'SELECT organization_id,user_id,actor_id,level,action,device_id FROM inventory_access_events WHERE id=$1',
         [data.changeId]);
       if (prior.rowCount) {
         const row=prior.rows[0];
         const same = row.organization_id === actor.organization_id && row.user_id === data.userId &&
-          row.actor_id === actor.id && row.level === data.level && row.action === data.action;
+          (row.device_id===null||row.device_id===data.deviceId) && row.actor_id === actor.id && row.level === data.level && row.action === data.action;
         await client.query('ROLLBACK');
         return reply.code(same?200:409).send(same?{status:'duplicate',changeId:data.changeId}:{error:'change_id_reused'});
       }
@@ -114,64 +110,14 @@ export function registerInventoryRoutes(app: FastifyInstance, pool: Pool) {
         if (!updated.rowCount) {await client.query('ROLLBACK');return reply.code(409).send({error:'access_not_active'});}
       }
       await client.query(`INSERT INTO inventory_access_events
-        (id,organization_id,user_id,actor_id,level,action) VALUES($1,$2,$3,$4,$5,$6)`,
-        [data.changeId,actor.organization_id,data.userId,actor.id,data.level,data.action]);
+        (id,organization_id,user_id,actor_id,level,action,device_id,epoch) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [data.changeId,actor.organization_id,data.userId,actor.id,data.level,data.action,data.deviceId,stream.epoch]);
       await client.query('COMMIT');
       return reply.code(201).send({status:'confirmed',changeId:data.changeId});
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
     } finally {client.release();}
-  });
-
-  app.post('/inventory/materials', async (request, reply) => {
-    const actor = await authenticate(pool,request.headers.authorization);
-    if (!actor) return reply.code(401).send({error:'unauthorized'});
-    const body=materialSchema.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({error:'invalid_request'});
-    if (!(await inventoryPermission(pool,actor,'manager'))) return reply.code(403).send({error:'forbidden'});
-    const proof=await proofError(pool,actor,request.headers.authorization,body.data.deviceId,request.headers['x-device-proof']);
-    if (proof) return reply.code(403).send({error:proof});
-    const {id,code,name,category,baseUnit}=body.data;
-    try {
-      await pool.query(`INSERT INTO inventory_materials
-        (id,organization_id,material_code,display_name,category,base_unit)
-        VALUES($1,$2,$3,$4,$5,$6)`,[id,actor.organization_id,code,name,category,baseUnit]);
-      return reply.code(201).send({id,code,name,category,baseUnit});
-    } catch(error) {
-      if(dbErrorCode(error)==='23505') return reply.code(409).send({error:'material_identity_conflict'});
-      throw error;
-    }
-  });
-
-  app.post('/inventory/locations', async (request, reply) => {
-    const actor = await authenticate(pool,request.headers.authorization);
-    if (!actor) return reply.code(401).send({error:'unauthorized'});
-    const body=locationSchema.safeParse(request.body);
-    if (!body.success) return reply.code(400).send({error:'invalid_request'});
-    if (!(await inventoryPermission(pool,actor,'manager'))) return reply.code(403).send({error:'forbidden'});
-    const proof=await proofError(pool,actor,request.headers.authorization,body.data.deviceId,request.headers['x-device-proof']);
-    if (proof) return reply.code(403).send({error:proof});
-    const {id,parentId,label,kind}=body.data;
-    if ((kind === 'warehouse') !== (parentId === null))
-      return reply.code(400).send({error:'invalid_location_hierarchy'});
-    if (parentId) {
-      const parent=await pool.query('SELECT kind FROM inventory_locations WHERE id=$1 AND organization_id=$2 AND active=true',
-        [parentId,actor.organization_id]);
-      const kinds:Record<string,readonly string[]>={cabinet:['warehouse'],rack:['warehouse'],shelf:['cabinet','rack'],container_area:['shelf']};
-      if (!parent.rowCount || !kinds[kind]?.includes(parent.rows[0].kind))
-        return reply.code(400).send({error:'invalid_location_hierarchy'});
-    }
-    try {
-      await pool.query(`INSERT INTO inventory_locations
-        (id,organization_id,parent_id,label,kind) VALUES($1,$2,$3,$4,$5)`,
-        [id,actor.organization_id,parentId,label,kind]);
-      return reply.code(201).send({id,parentId,label,kind});
-    } catch(error) {
-      if(dbErrorCode(error)==='23505') return reply.code(409).send({error:'location_identity_conflict'});
-      if(dbErrorCode(error)==='23503') return reply.code(409).send({error:'location_parent_changed'});
-      throw error;
-    }
   });
 
   app.get('/inventory/stocks', async(request,reply)=>{
