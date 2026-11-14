@@ -69,7 +69,7 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
     expect((await get('/inventory/locations?deviceId='+chiefDevice,chiefToken,'')).statusCode).toBe(403);
     expect((await get('/inventory/access/me?deviceId='+chiefDevice)).json()).toMatchObject({
       level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,
-      correctionRoleEligible:true,
+      correctionRoleEligible:true,offlineView:{organizationId:org,actorId:chief,deviceId:chiefDevice,issuedAt:expect.any(String),expiresAt:expect.any(String)},
     });
     const access=await post('/inventory/access',{changeId:randomUUID(),
       deviceId:chiefDevice,userId:worker,level:'operator',action:'grant'});
@@ -80,6 +80,20 @@ integration('Storage material/location discovery (disposable PostgreSQL)',()=>{
         correctionRoleEligible:false});
     expect((await get('/inventory/materials?deviceId='+chiefDevice,workerToken,workerProof)).statusCode).toBe(403);
     expect((await get('/inventory/materials?deviceId=invalid',workerToken,workerProof)).statusCode).toBe(400);
+  });
+
+  it('bounds cached view access by the original session and returns no authentication secret',async()=>{
+    const prior=(await pool.query('SELECT expires_at FROM sessions WHERE token_hash=$1',[tokenHash(chiefToken)])).rows[0].expires_at;
+    try{
+      const expiry=(await pool.query("UPDATE sessions SET expires_at=clock_timestamp()+interval '1 minute' WHERE token_hash=$1 RETURNING expires_at",[tokenHash(chiefToken)])).rows[0].expires_at;
+      const response=await get('/inventory/access/me?deviceId='+chiefDevice);
+      expect(response.statusCode,response.body).toBe(200);
+      const grant=response.json().offlineView;
+      expect(grant).toMatchObject({organizationId:org,actorId:chief,deviceId:chiefDevice});
+      expect(Date.parse(grant.expiresAt)).toBe(expiry.getTime());
+      expect(Date.parse(grant.expiresAt)-Date.parse(grant.issuedAt)).toBeLessThanOrEqual(60000);
+      expect(response.body).not.toContain(chiefToken);expect(response.body).not.toContain(chiefProof);
+    }finally{await pool.query('UPDATE sessions SET expires_at=$2 WHERE token_hash=$1',[tokenHash(chiefToken),prior]);}
   });
 
   it('lists exact authorized material and location catalogues with stable cursor pages',async()=>{

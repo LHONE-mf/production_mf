@@ -17,7 +17,9 @@ export interface InventoryLocation {
 export interface InventoryPage<T> {
   items:T[];hasMore:boolean;nextAfter:string|null;
 }
+export interface InventoryOfflineGrant {organizationId:string;actorId:string;deviceId:string;issuedAt:string;expiresAt:string}
 export interface WarehouseAccess {
+  offlineView?:InventoryOfflineGrant;
   level:'chief'|'manager'|'operator';
   canRecordReceipts:boolean;
   canManageCatalog:boolean;
@@ -29,14 +31,14 @@ const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 const nonempty=(s:unknown,max:number):s is string=>
   typeof s==='string'&&!!s.trim()&&s.length<=max;
 const isRecord=(x:unknown):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x);
-function material(x:unknown):x is InventoryMaterial{
+export function material(x:unknown):x is InventoryMaterial{
   if(!isRecord(x))return false;
   return typeof x.id==='string'&&uuid.test(x.id)&&nonempty(x.code,100)&&
     nonempty(x.name,200)&&
     ['raw_material','component','electrode','cell'].includes(String(x.category))&&
     ['mg','ul','mm','pieces'].includes(String(x.baseUnit));
 }
-function location(x:unknown):x is InventoryLocation{
+export function location(x:unknown):x is InventoryLocation{
   if(!isRecord(x))return false;
   return typeof x.id==='string'&&uuid.test(x.id)&&
     (x.parentId===null||(typeof x.parentId==='string'&&uuid.test(x.parentId)))&&
@@ -108,6 +110,7 @@ export async function loadWarehouseAccess(
       raw.canManageCatalog!==(raw.level==='chief'||raw.level==='manager')||
       raw.correctionRoleEligible!==(raw.level==='chief'||raw.level==='manager'))
     throw new Error('Invalid warehouse access response');
+  if(raw.offlineView!==undefined){const grant=raw.offlineView;if(!isRecord(grant)||grant.organizationId!==scope.organizationId||grant.actorId!==scope.actorId||grant.deviceId!==scope.deviceId||typeof grant.issuedAt!=='string'||typeof grant.expiresAt!=='string'||!Number.isFinite(Date.parse(grant.issuedAt))||!Number.isFinite(Date.parse(grant.expiresAt)))throw Error('Invalid offline warehouse grant');}
   return raw as unknown as WarehouseAccess;
 }
 

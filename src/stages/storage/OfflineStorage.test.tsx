@@ -1,0 +1,15 @@
+import React,{act}from'react';import{createRoot}from'react-dom/client';import{it,expect,vi}from'vitest';
+import{OfflineStorage}from'./OfflineStorage';import{useAuthStore}from'../../core/store/authStore';import{UserRole}from'../../core/types';
+import{inventoryOutbox,inventoryScopeKey}from'../../core/sync/inventoryOutbox';import{beginInventoryOfflineView,cacheInventoryOfflineView,invalidateInventoryOfflineViews}from'../../core/sync/inventoryOfflineView';
+it('reopens last-known stock without network credentials and hides it on expiry or account switch',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);const fetch=vi.fn();vi.stubGlobal('fetch',fetch);await inventoryOutbox.open();
+ const user={id:'offline-local',login:'operator',fullName:'Operator',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date()};useAuthStore.getState().login(user);
+ const login=useAuthStore.getState().session!,now=Date.now(),scope={serverUrl:'https://inventory.example',organizationId:'11111111-1111-4111-8111-111111111111',actorId:'22222222-2222-4222-8222-222222222222',deviceId:'33333333-3333-4333-8333-333333333333'},materialId='55555555-5555-4555-8555-555555555555',locationId='66666666-6666-4666-8666-666666666666';
+ await cacheInventoryOfflineView({scope,localActorId:user.id,localSessionIssuedAt:login.issuedAt,localSessionExpiresAt:login.expiresAt.getTime(),syncedAt:now,generation:beginInventoryOfflineView(),materials:[{id:materialId,name:'PVDF',code:'P',category:'raw_material',baseUnit:'mg'}],locations:[{id:locationId,parentId:null,label:'Warehouse',kind:'warehouse',active:true}],access:{level:'operator',canRecordReceipts:true,canCorrectStock:false,canManageCatalog:false,correctionRoleEligible:false,offlineView:{organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId,issuedAt:new Date(now).toISOString(),expiresAt:new Date(now+60000).toISOString()}}});
+ await inventoryOutbox.stocks.put({scopeKey:inventoryScopeKey(scope),stockId:'44444444-4444-4444-8444-444444444444',materialId,locationId,manufacturerLot:'A',unit:'mg',quality:'quarantine',onHand:2125000,reserved:0,available:2125000,revision:1});
+ const node=document.createElement('div'),root=createRoot(node);
+ try{await act(async()=>root.render(<OfflineStorage now={now}/>));expect(node.textContent).not.toContain('PVDF');await act(async()=>node.querySelector('button')!.click());await vi.waitFor(()=>expect(node.textContent).toContain('Последний известный остаток: 2125000 mg'));expect(fetch).not.toHaveBeenCalled();expect(node.textContent).not.toContain('Подтвердить отправку');
+ await act(async()=>root.render(<OfflineStorage now={now+60001}/>));expect(node.textContent).not.toContain('PVDF');expect(node.textContent).toContain('истёк');
+ await act(async()=>useAuthStore.getState().login({...user,id:'another-profile'}));expect(node.textContent).not.toContain('PVDF');expect(await inventoryOutbox.stocks.count()).toBe(1);
+ }finally{await act(async()=>root.unmount());useAuthStore.getState().logout();await invalidateInventoryOfflineViews();inventoryOutbox.close();await inventoryOutbox.delete();vi.unstubAllGlobals();}
+});

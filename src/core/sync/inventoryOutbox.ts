@@ -1,4 +1,5 @@
 import Dexie, {type Table} from 'dexie';
+import type {InventoryOfflineView} from './inventoryOfflineView';
 import type {HybridSession} from './hybridClient';
 import type {QueuedInventoryStockChange} from './inventoryStockOutbox';
 
@@ -44,6 +45,7 @@ interface InventorySyncMetadata {key:string;value:number;}
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;quantity?:number}
 export class InventoryOutboxDatabase extends Dexie {
+  offlineViews!:Table<InventoryOfflineView,string>;
   history!:Table<InventoryHistory,[string,number]>;
   receivingDrafts!:Table<ReceivingDraft,string>;
   operations!: Table<QueuedInventoryReceipt,string>;
@@ -63,6 +65,7 @@ export class InventoryOutboxDatabase extends Dexie {
     });
     this.version(3).stores({receivingDrafts:'key'});
     this.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});
+    this.version(5).stores({offlineViews:'localActorId,scopeKey'});
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();
@@ -130,4 +133,14 @@ export async function inventoryQueueForScope(scope:InventoryScope){
 export async function confirmedInventoryForScope(scope:InventoryScope){
   const scopeKey=inventoryScopeKey(scope);
   return inventoryOutbox.stocks.where('scopeKey').equals(scopeKey).toArray();
+}
+
+export const inventoryOfflineGenerationKey='inventory-offline-view-generation';
+export function beginInventoryOfflineView():string|null{
+ try{let generation=localStorage.getItem(inventoryOfflineGenerationKey);if(!generation||!uuid.test(generation)){generation=crypto.randomUUID();localStorage.setItem(inventoryOfflineGenerationKey,generation);}return generation;}catch{return null;}
+}
+/** Synchronous durable generation revocation also covers a failed IndexedDB clear. */
+export function invalidateInventoryOfflineViews(){
+ try{localStorage.removeItem(inventoryOfflineGenerationKey);}catch{/* Blocked localStorage also prevents restoring a view. */}
+ return inventoryOutbox.offlineViews.clear().catch(()=>{});
 }

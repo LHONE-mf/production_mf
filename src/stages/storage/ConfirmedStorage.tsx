@@ -1,3 +1,5 @@
+import {OfflineStorage} from './OfflineStorage';
+import {beginInventoryOfflineView,cacheInventoryOfflineView} from '../../core/sync/inventoryOfflineView';
 import React,{useEffect,useRef,useState} from 'react';
 import {StockChangeForm} from './StockChangeForm';
 import {ReceivingForm} from './ReceivingForm';
@@ -14,7 +16,7 @@ import {inventoryStockQueueForScope,reviewInventoryConflict} from '../../core/sy
 
 const actionLabel=(kind:string)=>({receive:'Приёмка',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва'} as Record<string,string>)[kind]??kind;
 export function ConfirmedStorage(){
- const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser);
+ const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');
  const [view,setView]=useState<{key:string;at:number;history:InventoryHistory[];canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;quantity:number;unit:string;stockId:string;revision:number;destination?:string;reviewedAt?:number;reviewReason?:string;error?:string}[]}|null>(null);
  const generation=useRef(0),sending=useRef(false);
@@ -28,7 +30,7 @@ export function ConfirmedStorage(){
  const visible=fresh&&view?.key===key?view:null;
  async function refresh(){
   if(!scope||!connection||!fresh||busy)return;
-  const run=++generation.current;setBusy(true);setError('');
+  const run=++generation.current,offlineGeneration=beginInventoryOfflineView();setBusy(true);setError('');
   try{
    const access=await loadWarehouseAccess(connection.session,scope);
    const names:Record<string,string>={},locations:Record<string,string>={},materials:InventoryMaterial[]=[],places:InventoryLocation[]=[];
@@ -51,7 +53,10 @@ export function ConfirmedStorage(){
    }
    const [stocks,receipts,operations,history]=await Promise.all([confirmedInventoryForScope(scope),inventoryQueueForScope(scope),inventoryStockQueueForScope(scope),inventoryOutbox.history.where('scopeKey').equals(inventoryScopeKey(scope)).reverse().limit(200).toArray()]);
    if(run!==generation.current)return;
-   setView({key,at:Date.now(),history,canCorrect:access.canCorrectStock,materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.request.stockId,revision:r.request.expectedRevision,unit:materials.find(m=>m.id===r.request.materialId)?.baseUnit??'базовых единиц'})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.stockId,revision:r.request.expectedRevision,unit:r.base.unit,destination:r.request.kind==='transfer'?r.request.toLocationId:undefined,reviewedAt:r.reviewedAt,reviewReason:r.reviewReason}))]});
+   const syncedAt=Date.now();
+   if(user&&localSession?.userId===user.id)await cacheInventoryOfflineView({scope,access,materials,locations:places,localActorId:user.id,localSessionIssuedAt:localSession.issuedAt,localSessionExpiresAt:localSession.expiresAt.getTime(),syncedAt,generation:offlineGeneration});
+   if(run!==generation.current)return;
+   setView({key,at:syncedAt,history,canCorrect:access.canCorrectStock,materials,places,stocks,names,locations,queue:[...receipts.map(r=>({id:r.operationId,state:r.state,kind:'Приёмка',error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.request.stockId,revision:r.request.expectedRevision,unit:materials.find(m=>m.id===r.request.materialId)?.baseUnit??'базовых единиц'})),...operations.map(r=>({id:r.operationId,state:r.state,kind:r.request.kind,error:r.error,reason:r.request.reason,at:r.queuedAt,quantity:r.request.quantity,stockId:r.stockId,revision:r.request.expectedRevision,unit:r.base.unit,destination:r.request.kind==='transfer'?r.request.toLocationId:undefined,reviewedAt:r.reviewedAt,reviewReason:r.reviewReason}))]});
   }catch(e){if(run===generation.current){setView(null);setError('Обновление недоступно. Проверьте подключение, сеанс и полномочия в разделе Синхронизация. '+(e instanceof Error?e.message:''));}}
   finally{if(run===generation.current)setBusy(false);}
  }
@@ -76,7 +81,7 @@ export function ConfirmedStorage(){
  }
  return <section aria-label="Подтверждённый склад" className="min-w-0 space-y-3 rounded-lg bg-slate-800 p-3 break-words">
   <h3 className="font-semibold">Подтверждённый склад</h3>
-  {!connection?<p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p>:!fresh?<p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p>:<>
+  {!connection?<><p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p><OfflineStorage now={now}/></>:!fresh?<><p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p><OfflineStorage now={now} liveScope={scope??undefined}/></>:<>
    <p>Обновление читает серверные данные. Операции отправляются только после отдельного подтверждения.</p>
    <button type="button" className="min-h-11 rounded bg-blue-700 px-3" disabled={busy} onClick={()=>void refresh()}>{busy?'Загрузка…':'Обновить подтверждённые данные'}</button>
    {!visible&&!busy&&!error&&<p>Данные ещё не загружены. Нажмите обновление.</p>}
@@ -102,5 +107,6 @@ export function ConfirmedStorage(){
   {reviewId&&fresh&&<div role="alertdialog" aria-label="Сверка конфликта"><p>Операция {reviewId} останется с исходным запросом и отказом. Сверка не подтверждает движение. После обновления остатков можно явно создать новое предложение с новым ID.</p><label>Результат сверки<input aria-label="Результат сверки" className="min-h-11 w-full bg-slate-900 p-2" maxLength={2000} value={reviewReason} onChange={e=>setReviewReason(e.target.value)}/></label><button className="min-h-11 px-3" disabled={!reviewReason.trim()} onClick={()=>{if(scope)void reviewInventoryConflict(scope,reviewId,reviewReason).then(()=>{setReviewId('');return queued();}).catch(e=>setError(String(e)));}}>Сохранить сверку без перепроведения</button><button className="min-h-11 px-3" onClick={()=>setReviewId('')}>Отмена сверки</button></div>}
   {message&&<p role="status">{message}</p>}
   {error&&<p role="alert">{error}</p>}
+  {error&&fresh&&!visible&&<OfflineStorage now={now} liveScope={scope??undefined}/>}
  </section>;
 }

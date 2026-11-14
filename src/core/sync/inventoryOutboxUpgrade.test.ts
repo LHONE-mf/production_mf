@@ -91,3 +91,10 @@ it('upgrades v3 with frozen receiving evidence to v4 without resetting its check
  await old.table('receivingDrafts').put(draft);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();
  await inventoryOutbox.open();expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(draft);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.history.count()).toBe(0);
 });
+it('adds v5 offline views without resetting v4 history, frozen forms or cursor',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});old.version(3).stores({receivingDrafts:'key'});old.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});await old.open();
+ const event={scopeKey,sequence:12,stockId,operationId:'77777777-7777-4777-8777-777777777777',reason:'Existing audit'};const form={key:scopeKey,revision:8,operationId:event.operationId,fields:{reason:'Frozen evidence'}};
+ await old.table('history').put(event);await old.table('receivingDrafts').put(form);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();
+ expect(await inventoryOutbox.history.get([scopeKey,12])).toEqual(event);expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(form);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.offlineViews.count()).toBe(0);
+});

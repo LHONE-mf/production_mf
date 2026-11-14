@@ -1,3 +1,4 @@
+import {invalidateInventoryOfflineViews} from './inventoryOutbox';
 import {withInventorySync} from './inventorySyncLock';
 import type {HybridSession} from './hybridClient';
 import {requireFreshDeviceProof} from './deviceProofClient';
@@ -18,12 +19,14 @@ export async function inventoryRequest(
   const proof=requireFreshDeviceProof(session);
   if(proof.deviceId!==scope.deviceId)
     throw new Error('Inventory device proof mismatch');
-  return fetch(new URL(path,new URL(scope.serverUrl).origin),{
+  const response=await fetch(new URL(path,new URL(scope.serverUrl).origin),{
     ...init,headers:{
       Authorization:'Bearer '+session.accessToken,
       'Content-Type':'application/json','x-device-proof':proof.token,...init?.headers,
     },
   });
+  if(response.status===401||response.status===403)await invalidateInventoryOfflineViews();
+  return response;
 }
 
 function sameStock(a:InventoryStockSnapshot,b:InventoryStockSnapshot){

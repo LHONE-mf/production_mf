@@ -91,3 +91,7 @@ it('shows full location ancestry and rejects a cyclic local hierarchy',async()=>
  expect(inventoryLocationPath([a,b],'b')).toBe('Cabinet / Shelf');
  expect(()=>inventoryLocationPath([{...a,parentId:'b'},b],'b')).toThrow('hierarchy');
 });
+it('rejects a cached-view grant for another device before it can be persisted',async()=>{
+ vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response({level:'operator',canRecordReceipts:true,canManageCatalog:false,canCorrectStock:false,correctionRoleEligible:false,offlineView:{organizationId:scope.organizationId,actorId:scope.actorId,deviceId:first,issuedAt:new Date().toISOString(),expiresAt:new Date(Date.now()+60000).toISOString()}})));
+ await expect(loadWarehouseAccess(session,scope)).rejects.toThrow('offline warehouse grant');
+});

@@ -1,7 +1,7 @@
 import type {FastifyInstance} from 'fastify';
 import type {Pool} from 'pg';
 import {z} from 'zod';
-import {authenticate} from './auth.js';
+import {authenticate,tokenHash} from './auth.js';
 import {deviceProofError} from './sync-routes.js';
 import {inventoryPermission} from './inventory-routes.js';
 
@@ -82,18 +82,23 @@ export function registerInventoryCatalogRoutes(app:FastifyInstance,pool:Pool){
   app.get('/inventory/access/me',async(request,reply)=>{
     const result=await verifiedReader(request,reply,false);
     if(!result)return;
-    if(result.actor.role==='chief'){
-      return {level:'chief',canRecordReceipts:true,canManageCatalog:true,
-        canCorrectStock:true,correctionRoleEligible:true};
-    }
-    const found=await pool.query(`SELECT level FROM inventory_access
-      WHERE organization_id=$1 AND user_id=$2 AND active=true`,
-      [result.actor.organization_id,result.actor.id]);
-    // Recheck the grant. Do not infer warehouse permission from generic Master.
-    const level=found.rows[0]?.level;
-    if(level!=='operator'&&level!=='manager')
-      return reply.code(403).send({error:'forbidden'});
-    return {level,canRecordReceipts:true,canManageCatalog:level==='manager',
-      canCorrectStock:level==='manager',correctionRoleEligible:level==='manager'};
+    // Recheck current user, device, session and warehouse access in one snapshot.
+    const found=await pool.query(`SELECT u.role,a.level,clock_timestamp() AS issued_at,
+      LEAST(s.expires_at,g.created_at+interval '8 hours') AS expires_at
+      FROM device_proof_grants g
+      JOIN sessions s ON s.token_hash=g.session_token_hash AND s.organization_id=g.organization_id AND s.user_id=g.user_id
+      JOIN users u ON u.id=g.user_id AND u.organization_id=g.organization_id
+      JOIN devices d ON d.id=g.device_id AND d.organization_id=g.organization_id AND d.user_id=g.user_id
+      LEFT JOIN inventory_access a ON a.organization_id=u.organization_id AND a.user_id=u.id AND a.active
+      WHERE g.token_hash=$1 AND g.organization_id=$2 AND g.user_id=$3 AND g.device_id=$4
+        AND g.session_token_hash=$5 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
+        AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp() AND d.revoked_at IS NULL AND u.active`,
+      [tokenHash(request.headers['x-device-proof'] as string),result.actor.organization_id,result.actor.id,result.data.deviceId,tokenHash(request.headers.authorization!.slice(7))]);
+    const row=found.rows[0],level=row?.role==='chief'?'chief':row?.level;
+    if(!row||!['chief','manager','operator'].includes(level))return reply.code(403).send({error:'forbidden'});
+    return {level,canRecordReceipts:true,canManageCatalog:level!=='operator',
+      canCorrectStock:level!=='operator',correctionRoleEligible:level!=='operator',
+      offlineView:{organizationId:result.actor.organization_id,actorId:result.actor.id,deviceId:result.data.deviceId,
+        issuedAt:row.issued_at.toISOString(),expiresAt:row.expires_at.toISOString()}};
   });
 }
