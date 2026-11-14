@@ -25,7 +25,7 @@ describe('inventory movement CSV',()=>{
 
 describe('bounded immutable movement export',()=>{
  const empty=(epoch:string,until:number,after:number,rows:number[],more:boolean):MovementPage=>({
-  epoch,throughSequence:until,hasMore:more,nextAfter:rows.at(-1)??after,
+  epoch,throughSequence:until,hasMore:more,nextAfter:rows.length?rows[rows.length-1]:after,
   items:rows.map(sequence=>({sequence,operationId:id,stockId:id,kind:'receive',
    quantity:1,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'CI',productionBatchId:null,
