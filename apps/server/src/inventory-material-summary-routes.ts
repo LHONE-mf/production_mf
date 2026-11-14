@@ -37,12 +37,19 @@ export function registerInventoryMaterialSummaryRoutes(app:FastifyInstance,pool:
        COUNT(s.id)::text AS package_count,
        COUNT(DISTINCT s.manufacturer_lot)::text AS manufacturer_lots,
        COUNT(s.id) FILTER (WHERE s.expires_at>now()
-         AND s.expires_at<=now()+$3::integer*INTERVAL '1 day')::text AS expiring_packages
+         AND s.expires_at<=now()+$3::integer*INTERVAL '1 day')::text AS expiring_packages,
+       p.low_available AS policy_low_available,p.expiry_days AS policy_expiry_days,
+       p.active AS policy_active,p.revision AS policy_revision,
+       COUNT(s.id) FILTER (WHERE p.active AND s.expires_at>now()
+         AND s.expires_at<=now()+p.expiry_days*INTERVAL '1 day')::text AS policy_expiring_packages
       FROM inventory_materials m
       LEFT JOIN inventory_stocks s ON s.organization_id=m.organization_id
         AND s.material_id=m.id
+      LEFT JOIN inventory_alert_policies p ON p.organization_id=m.organization_id
+        AND p.material_id=m.id
       WHERE m.organization_id=$1 AND ($2::uuid IS NULL OR m.id>$2)
-      GROUP BY m.id,m.material_code,m.display_name,m.base_unit,m.category,m.active
+      GROUP BY m.id,m.material_code,m.display_name,m.base_unit,m.category,m.active,
+        p.low_available,p.expiry_days,p.active,p.revision
       ORDER BY m.id LIMIT $4`,
       [actor.organization_id,q.after??null,q.expiryDays,q.limit+1]);
      const rows=result.rows.slice(0,q.limit);
@@ -55,6 +62,12 @@ export function registerInventoryMaterialSummaryRoutes(app:FastifyInstance,pool:
        quarantined:row.quarantined,blocked:row.blocked,expired:row.expired,
        packageCount:row.package_count,manufacturerLots:row.manufacturer_lots,
        expiringPackages:row.expiring_packages,
+       policy:row.policy_revision===null?null:{
+        lowAvailable:Number(row.policy_low_available),expiryDays:row.policy_expiry_days,
+        active:row.policy_active,revision:row.policy_revision,
+        lowStock:row.policy_active&&BigInt(row.eligible_available)<=BigInt(row.policy_low_available),
+        expiringPackages:row.policy_expiring_packages,
+       },
       })),hasMore:result.rows.length>q.limit,
       nextAfter:result.rows.length>q.limit?rows[rows.length-1].id:null};
     });
