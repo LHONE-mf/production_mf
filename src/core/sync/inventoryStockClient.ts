@@ -74,12 +74,18 @@ async function acknowledgeStockChange(
 }
 
 /** A 409 is a visible manual conflict; it never silently rebases to a newer revision. */
+const activeStockPushes=new Set<string>();
+
 export async function pushPendingInventoryStockChanges(
   session:HybridSession,scope:InventoryScope,limit=20,
 ):Promise<{accepted:number;conflicts:number;rejected:number}>{
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)
     throw new Error('Invalid inventory stock change push limit');
-  inventoryScopeKey(scope);
+  const scopeKey=inventoryScopeKey(scope);
+  if(activeStockPushes.has(scopeKey))
+    throw new Error('Inventory stock synchronization already in progress for this device');
+  activeStockPushes.add(scopeKey);
+  try {
   const pending=(await inventoryStockQueueForScope(scope))
     .filter(row=>row.state==='pending').slice(0,limit);
   let accepted=0,conflicts=0,rejected=0;
@@ -117,4 +123,7 @@ export async function pushPendingInventoryStockChanges(
     throw new Error('Stock change submission failed: HTTP '+response.status);
   }
   return {accepted,conflicts,rejected};
+  } finally {
+    activeStockPushes.delete(scopeKey);
+  }
 }
