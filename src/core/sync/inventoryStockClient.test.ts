@@ -126,6 +126,35 @@ describe('Storage offline stock operation outbox (development-only)',()=>{
     expect(sent).not.toHaveProperty('stockId');
   });
 
+  it('prevents simultaneous pushes from the same device and unlocks after a network error',async()=>{
+    const id=await queueInventoryStockChange(session,scope,transfer);
+    let unblock:(response:Response)=>void=()=>{};
+    const waiting=new Promise<Response>(resolve=>{unblock=resolve;});
+    const fetchMock=vi.fn().mockReturnValueOnce(waiting);
+    vi.stubGlobal('fetch',fetchMock);
+    const first=pushPendingInventoryStockChanges(session,scope);
+    await expect(pushPendingInventoryStockChanges(session,scope))
+      .rejects.toThrow('already in progress');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    unblock(response(201,{
+      status:'confirmed',operationId:id,stock:snapshot({locationId:destination}),
+    }));
+    expect((await first).accepted).toBe(1);
+    expect(await pushPendingInventoryStockChanges(session,scope))
+      .toEqual({accepted:0,conflicts:0,rejected:0});
+
+    await queueInventoryStockChange(session,scope,{
+      ...transfer,expectedRevision:2,toLocationId:source,
+    });
+    vi.stubGlobal('fetch',vi.fn().mockRejectedValueOnce(new Error('Offline again')));
+    await expect(pushPendingInventoryStockChanges(session,scope))
+      .rejects.toThrow('Offline again');
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(409,{
+      error:'revision_conflict',currentRevision:3,
+    })));
+    expect((await pushPendingInventoryStockChanges(session,scope)).conflicts).toBe(1);
+  });
+
   it('does not acknowledge a forged server snapshot, then accepts valid duplicate response',async()=>{
     const id=await queueInventoryStockChange(session,scope,adjust);
     vi.stubGlobal('fetch',vi.fn().mockResolvedValue(response(201,{
