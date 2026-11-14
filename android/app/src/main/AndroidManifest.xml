@@ -35,6 +35,9 @@
         </provider>
     </application>
 
+    <!-- Required for authenticated HTTPS backend access; cleartext policy is separate. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Permissions -->
 
 

@@ -6,7 +6,13 @@ mkdir -p artifacts/android-smoke
 STATE="$RUNNER_TEMP/android-storage-fixture.json"
 node scripts/android-storage-server.mjs "$STATE" > artifacts/android-smoke/storage-server.log 2>&1 &
 STORAGE_SERVER_PID=$!
-trap 'kill "$STORAGE_SERVER_PID" 2>/dev/null || true; wait "$STORAGE_SERVER_PID" 2>/dev/null || true; rm -f "$STATE"' EXIT
+cleanup() {
+  adb logcat -d -v brief -s chromium:E AndroidRuntime:E ProductionMfStorage:I '*:S' > artifacts/android-smoke/storage-native-diagnostics.log || true
+  kill "$STORAGE_SERVER_PID" 2>/dev/null || true
+  wait "$STORAGE_SERVER_PID" 2>/dev/null || true
+  rm -f "$STATE"
+}
+trap cleanup EXIT
 for attempt in $(seq 1 100); do
   if [ -f "$STATE" ] && curl --fail --silent http://127.0.0.1:3002/health/ready > /dev/null; then break; fi
   kill -0 "$STORAGE_SERVER_PID"

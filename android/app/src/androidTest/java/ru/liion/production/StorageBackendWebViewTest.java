@@ -56,6 +56,9 @@ public class StorageBackendWebViewTest {
     @Test
     public void storageBackendRoundTrip() throws Exception {
         Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        assertEquals("App must declare network permission for the actual backend",
+            android.content.pm.PackageManager.PERMISSION_GRANTED,
+            instrumentation.getTargetContext().checkSelfPermission(android.Manifest.permission.INTERNET));
         String phase = InstrumentationRegistry.getArguments().getString("storagePhase", "");
         String encoded = InstrumentationRegistry.getArguments().getString("storageFixture", "");
         assertTrue("Run with disposable fixture and prepare/finish phase", !encoded.isEmpty()
