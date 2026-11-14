@@ -60,3 +60,9 @@ a frozen upper ledger cursor. Material display names are current catalogue
 labels, not claims about historical names. The PostgreSQL integration
 regression performs real receiving, Chief QA and transfer APIs and verifies
 both the frozen and expanded reports.
+
+The report and CSV also expose immutable `from_location_id` and
+`to_location_id` for transfers (null when not applicable), alongside the
+post-event location from `result_stock`. These fields are read-only and do
+not affect physical inventory. The UI explicitly labels the location as
+"after the event" to avoid confusing it with the current shelf.

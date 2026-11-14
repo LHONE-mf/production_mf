@@ -7,7 +7,7 @@ describe('inventory movement CSV',()=>{
    sequence:3,operationId:id,stockId:id,kind:'receive',quantity:100,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'=RUN(1)\nquoted "note"',productionBatchId:null,
    materialId:id,materialCode:'-INPUT',materialName:' @SUM(1,2)',manufacturerLot:'"LOT,7"',
-   locationId:id,unit:'mg',
+   locationId:id,fromLocationId:null,toLocationId:null,unit:'mg',
   }]};
   const csv=inventoryMovementsCsv(p);
   expect(csv).toContain('"\'-INPUT"');
@@ -15,6 +15,8 @@ describe('inventory movement CSV',()=>{
   expect(csv).toContain('"\'=RUN(1)\nquoted ""note"""');
   expect(csv).toContain('"""LOT,7"""');
   expect(csv).toContain('"100","mg"');
+  expect(csv).toContain('"Source location ID"');
+  expect(csv).toContain('"Destination location ID"');
   expect(csv).not.toContain('undefined');
  });
  it('has safe headers for zero results',()=>{
@@ -30,7 +32,7 @@ describe('bounded immutable movement export',()=>{
    quantity:1,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'CI',productionBatchId:null,
    materialId:null,materialCode:null,materialName:null,manufacturerLot:null,
-   locationId:null,unit:null})),
+   locationId:null,fromLocationId:null,toLocationId:null,unit:null})),
  });
  it('retrieves all pages within one immutable upper cursor',async()=>{
   const calls:number[]=[];

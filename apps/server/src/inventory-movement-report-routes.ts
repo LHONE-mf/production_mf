@@ -39,6 +39,7 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
      // and maker lot come from its accepted result_stock, not today's stock row.
      const result=await client.query(`SELECT o.sequence,o.operation_id,o.stock_id,o.kind,
        o.quantity,o.recorded_at,o.actor_id,o.device_id,o.reason,o.production_batch_id,
+       o.from_location_id,o.to_location_id,
        s.material_id,o.result_stock->>'manufacturerLot' AS manufacturer_lot,
        o.result_stock->>'locationId' AS location_id,
        m.material_code,m.display_name,m.base_unit
@@ -65,7 +66,9 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
        reason:String(row.reason),productionBatchId:row.production_batch_id??null,
        materialId:row.material_id??null,materialCode:row.material_code??null,
        materialName:row.display_name??null,manufacturerLot:row.manufacturer_lot??null,
-       locationId:row.location_id??null,unit:row.base_unit??null,
+       locationId:row.location_id??null,
+       fromLocationId:row.from_location_id??null,toLocationId:row.to_location_id??null,
+       unit:row.base_unit??null,
      }));
      return{epoch,throughSequence:upper,items,hasMore:result.rows.length>q.limit,
        nextAfter:items.length?items[items.length-1].sequence:q.after};

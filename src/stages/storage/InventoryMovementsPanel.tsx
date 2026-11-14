@@ -98,6 +98,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
     <p>№ {item.sequence} · {new Date(item.recordedAt).toLocaleString('ru-RU')} · {item.kind}</p>
     <p>{item.materialName??'Материал не указан'} · {item.materialCode??''} · {item.manufacturerLot??''}</p>
     <p>Контейнер {item.stockId} · {item.quantity} {item.unit??'ед.'} · партия производства {item.productionBatchId??'не указана'}</p>
+    <p>Место после операции: {item.locationId??'не записано'}{item.kind==='transfer'&&<> · Исходное место: {item.fromLocationId??'не записано'} · Назначение: {item.toLocationId??'не записано'}</>}</p>
     <p>Основание: {item.reason} · Автор: {item.actorId}</p>
    </div>)}
    {!page.items.length&&<p>Записей в выбранной области нет.</p>}

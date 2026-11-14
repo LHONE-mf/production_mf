@@ -7,7 +7,7 @@ export interface MovementRow {
  quantity:number;recordedAt:string;actorId:string;deviceId:string;
  reason:string;productionBatchId:string|null;materialId:string|null;
  materialCode:string|null;materialName:string|null;manufacturerLot:string|null;
- locationId:string|null;unit:string|null;
+ locationId:string|null;fromLocationId:string|null;toLocationId:string|null;unit:string|null;
 }
 export interface MovementPage {
  epoch:string;throughSequence:number;items:MovementRow[];hasMore:boolean;nextAfter:number;
@@ -42,7 +42,8 @@ function validateMovementPage(value:unknown,epoch:string,after:number,until:numb
      !uuid.test(String(raw.actorId))||!uuid.test(String(raw.deviceId))||
      typeof raw.reason!=='string'||raw.reason.length>2000||
      !optionalId(raw.productionBatchId)||!optionalId(raw.materialId)||
-     !optionalId(raw.locationId)||!optionalText(raw.materialCode)||
+     !optionalId(raw.locationId)||!optionalId(raw.fromLocationId)||
+     !optionalId(raw.toLocationId)||!optionalText(raw.materialCode)||
      !optionalText(raw.materialName)||!optionalText(raw.manufacturerLot)||
      (raw.unit!==null&&!['mg','ul','mm','pieces'].includes(String(raw.unit))))
     throw Error('Invalid movement report row');
@@ -113,12 +114,13 @@ export function inventoryMovementsCsv(page:MovementPage):string{
  };
  const lines=[
   ['Sequence','Recorded UTC','Operation ID','Kind','Container ID','Material code',
-   'Material name','Manufacturer lot','Quantity','Unit','Location ID','Batch ID',
+   'Material name','Manufacturer lot','Quantity','Unit','Location after event',
+   'Source location ID','Destination location ID','Batch ID',
    'Actor ID','Device ID','Reason'],
   ...page.items.map(r=>[
    r.sequence,r.recordedAt,r.operationId,r.kind,r.stockId,r.materialCode,
    r.materialName,r.manufacturerLot,r.quantity,r.unit,r.locationId,
-   r.productionBatchId,r.actorId,r.deviceId,r.reason,
+   r.fromLocationId,r.toLocationId,r.productionBatchId,r.actorId,r.deviceId,r.reason,
   ]),
  ];
  return '\uFEFF'+lines.map(row=>row.map(cell).join(',')).join('\r\n')+'\r\n';
