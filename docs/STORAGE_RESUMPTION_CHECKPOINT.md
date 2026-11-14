@@ -1,18 +1,43 @@
-# Current session — S8 received-material reconciliation (2026-11-14)
+# Verified continuation — 2026-11-14
 
-Branch `feat/storage-inventory-foundation`; draft PR https://github.com/LHONE-mf/production_mf/pull/5 against `feat/hybrid-server-foundation`. Starting SHA `d1acf0ba85e08175a3c31030cc68e5698a47f52d`; no newer work was present. New code adds the real received-issue reconciliation API, strict client and usable filtered/CSV screen. Exact published SHA and hosted checks are recorded below after push; current code is locally verified, not yet CI/native certified.
+Branch `feat/storage-inventory-foundation`; draft PR https://github.com/LHONE-mf/production_mf/pull/5 against `feat/hybrid-server-foundation`. Starting SHA `d1acf0ba85e08175a3c31030cc68e5698a47f52d`; no newer work/review threads were present. Latest **code** SHA: **ae63127dd0deb6c251470efd6c9b23bc7955927c**. A subsequent documentation-only commit records this result without changing the verified application/native code.
 
-- API: `apps/server/src/inventory-reconciliation-routes.ts`; immutable received snapshots and capped return/scrap outcomes, two independently frozen sequence bounds, no stock mutation or inferred consumption.
-- UI/client: `src/stages/storage/InventoryReconciliationPanel.tsx`, `src/core/sync/inventoryReconciliation.ts`; explicit refresh, batch/recipient/material/source filters, page/full bounded CSV, current-history validation, no obsolete-response download.
-- Engineering: 657 frontend tests; 277 server tests including 6 actual new PostgreSQL tests; typechecks/builds; actual two-profile Chromium and PWA worker test; pg_dump/two restores compare 44 tables. Native harness now checks the real report after received issue/return; hosted result pending. No production data/merge/deployment, new dependency or schema/Dexie migration.
-- Review: TDD RED/GREEN; mutation removing the null-consumption guard makes the regression fail; guard restored. Ponytail FULL, auxiliary simplification/complexity review and all six vendored engineering skills applied. GitHub live PR/check/review inspection used; Graphify graph checked and found stale at `0505307`, so current source controls findings. No applicable engineering connector was missing; unrelated Sites/Pets/visualization tools were not invoked. No agents spawned.
-- Dependency audit: server 0 advisories; frontend 2 low / 6 moderate, 0 high/critical. No dependency versions changed. These existing lower-severity advisories need S10 reachability review; do not force-upgrade.
+## Exact code-SHA checks — all PASSED
 
-Next: finish remaining S8 count/QA/genealogy report detail; implement S9A real completed-output submit plus separate Storage quarantine acceptance; then S9B received-issue measured Slurry use. See [report contract](STORAGE_RECONCILIATION_REPORT.md). Physical OnePlus/ColorOS handling, signed installed upgrade, factory QA/count, printer/camera, deployed TLS and production restore remain PENDING acceptance gates.
+- [Tests 43646282933](https://github.com/LHONE-mf/production_mf/actions/runs/43646282933).
+- [Push CI 43646277713](https://github.com/LHONE-mf/production_mf/actions/runs/43646277713): frontend/server, actual PostgreSQL, real two-profile browser/downloads, backup/two restores.
+- [PR CI 43646282972](https://github.com/LHONE-mf/production_mf/actions/runs/43646282972).
+- [Android Route A 43646277695](https://github.com/LHONE-mf/production_mf/actions/runs/43646277695): actual WebView/native proof, reconciliation and historical-location controls, retained process-death/lost-ACK/QA/issue/return/split/count/identification/print checks and independent PostgreSQL verifier. The actual job log contains “native WebView Storage and disposable PostgreSQL ledger agree.”
 
-Location follow-up: `locationId` now filters immutable post-event movement locations through server/client/UI and both CSV paths. Actual PostgreSQL receive/QA/transfer and real browser filter/export checks passed; native harness includes matching/empty location views. Reconciliation source `feaaedde9e1e917dca3c3e4760144d71ffae28a0` passed [push CI 43645860642](https://github.com/LHONE-mf/production_mf/actions/runs/43645860642), [PR CI 43645865248](https://github.com/LHONE-mf/production_mf/actions/runs/43645865248), [Tests 43645865177](https://github.com/LHONE-mf/production_mf/actions/runs/43645865177). Route A 43645860635 remains pending; changed location code requires its own exact-SHA checks.
+Native artifact **14134402693**, SHA-256 `96f7f054beee0000190ea463dc5b5ae4c9b3aad1907a0ef770a852a97fec54fc`, expires 2026-11-21. Earlier reconciliation source `feaaedde9e1e917dca3c3e4760144d71ffae28a0` also passed all four workflows, including [Route A 43645860635](https://github.com/LHONE-mf/production_mf/actions/runs/43645860635).
 
-Historical checkpoint follows; its missing-feature statements may be superseded above.
+## Delivered and locally verified
+
+- `36e47f2`: actual received-issue reconciliation API from immutable issue/outcome snapshots, independent frozen cursor bounds, batch/recipient/material/source filters and no stock mutation or invented consumption.
+- `feaaedd`: operator screen, strict client/history/conservation validation, formula-safe page/full exports capped at 10,000 issues, obsolete-response/identity protection and browser/native verification. See [report contract](STORAGE_RECONCILIATION_REPORT.md).
+- `ae63127`: movement filtering by exact immutable **post-event** location, preserving receiving/QA history after a later transfer and preserving filters through frozen exports. See [movement contract](STORAGE_MOVEMENT_REPORT.md).
+- **657 frontend / 277 actual PostgreSQL server tests**, all frontend/server/native-harness typechecks/builds, real two-profile Chromium (390x844/desktop and retained 412x915 camera checks), active-PWA/harness navigation, and actual custom pg_dump/two restores passed. The restore compares **44 tables**, reconstructing 14 stock events/four stocks, one reservation/issue, five handoff events/two outcomes, one split/four count events.
+- No new application dependency, server/Dexie migration, production mutation, merge or deployment. Migration level **030**, InventoryOutbox **v7**, all original journals/queues/ACKs preserved. The verified session-owned synthetic PostgreSQL container was removed; local evidence remains in `/tmp/production-mf-evidence` and `/tmp/production-mf-location-evidence`.
+
+## Skills/tools and review
+
+All six vendored skills applied: incremental slices; TDD RED/GREEN; root-cause diagnosis of an initial test type error/stale compiled browser server; current authorization/tenant/proof/export checks; additive read contracts; correctness/security/performance review. Upstream Definition of Done/security checklists were consulted because the selective vendored copy omits them. Ponytail FULL and its auxiliary code-simplification/complexity review found no necessary broad refactor or dependency. A deliberate removal of the null-consumption guard failed its regression; the guard was restored and tests passed.
+
+GitHub plugin supplied live PR/review threads, branch/checks, job logs/artifact metadata and PR metadata updates. Graphify graph statistics showed stale main `0505307`; actual branch source was used as authority. Git/CLI, Vitest, PostgreSQL16, Playwright/Chromium, Android Actions and pg_dump/pg_restore supplied real execution evidence. No agents were spawned. Unrelated site/pet/document/visualization tools were not invoked; no applicable engineering connector was unavailable.
+
+[Dependency review](STORAGE_DEPENDENCY_REVIEW_2026-11-14.md): server 0 advisories; frontend 2 low / 6 moderate, 0 high/critical. Current v4 UUID use avoids the reported v3/v5/v6 buffer path; build-tool findings are reviewed separately. Review by 2026-11-21/before release; no force-upgrade or lockfile change.
+
+## Next three coding tasks
+
+1. **Finish S8 count/QA/genealogy report detail and large-data acceptance.** Extend `apps/server/src/inventory-movement-report-routes.ts`, `src/core/sync/inventoryMovements.ts` and `src/stages/storage/InventoryMovementsPanel.tsx` with authoritative immutable detail, including observation/approved discrepancy, QA disposition and parent/child/source identity. Preserve bounds/tenant/grants/exact quantities and explicit absent consumption. Do not treat count observations as stock movements.
+2. **S9A actual finished-output submission and separate Storage acceptance into quarantine.** Trace `apps/server/src/step-evidence-routes.ts`, `batch-routes.ts`, `stage-handoff-routes.ts`, and `src/core/manufacturing/sortingWorkflow.ts`, `assemblyCellOutput.ts`, `formationResults.ts`. Existing completion evidence declares output; it does not receive goods. Preserve real grade, serial/source evidence and completed step/batch identity. Server-backed measured-source linkage, duplicate output/serial checks, durable production submit, separate authorized warehouse ACCEPT and Chief QA remain NOT IMPLEMENTED. Never infer output from planned target or journal text, or invent cathode/anode pairing rules.
+3. **S9B actual Slurry use from received issue, then S10 hardening.** Use `src/stages/slurry/*`, `src/core/manufacturing/slurryBatch.ts`, existing issue/outcome clients/routes. Preserve calculators/recipes/local journal. Link a real received issue/batch/step, require deliberately recorded real measured quantity and evidence, settle ownership without a second warehouse debit, retain exact IDs/offline intent, and test races/revocation/restore in PostgreSQL/browser/native.
+
+S8 remains PARTIAL. S9 finished goods/actual Slurry integration remain NOT IMPLEMENTED; S10 remains PARTIAL. Physical OnePlus/ColorOS handling, factory QA/count, signed installed-version upgrade, physical camera/printer, deployed TLS and production backup/reconciliation remain **PHYSICAL/DEPLOYMENT PILOT PENDING**. No unattended work after this session is claimed.
+
+---
+
+Historical checkpoint follows; its statuses/environment/next-work statements are superseded by the verified continuation above.
 
 # Autonomous Storage checkpoint — 2026-11-14
 

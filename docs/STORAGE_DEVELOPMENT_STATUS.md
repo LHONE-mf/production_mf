@@ -1,6 +1,6 @@
 # Current status — 2026-11-14 continuation
 
-S8 now includes a real received-material reconciliation report with batch, recipient, material and source-package filters, immutable issue/outcome history cursors, confirmed returns/issued scrap, explicit NOT RECORDED consumption, and formula-safe page/full exports capped at 10,000 issues. LOCAL TESTED in PostgreSQL and the real two-profile browser; current published SHA/CI/native evidence belongs in [STORAGE_RESUMPTION_CHECKPOINT.md](STORAGE_RESUMPTION_CHECKPOINT.md). S8 remains PARTIAL; S9 finished-goods and Slurry integration are NOT IMPLEMENTED; S10/factory release remain open. No production data or existing journals/queues changed.
+S8 now includes a real received-material reconciliation report with batch, recipient, material and source-package filters, immutable issue/outcome history cursors, confirmed returns/issued scrap, explicit NOT RECORDED consumption, and formula-safe page/full exports capped at 10,000 issues. IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED at code SHA `ae63127dd0deb6c251470efd6c9b23bc7955927c`, including historical location-filtered movements; exact hosted evidence is in [STORAGE_RESUMPTION_CHECKPOINT.md](STORAGE_RESUMPTION_CHECKPOINT.md). S8 remains PARTIAL; S9 finished-goods and Slurry integration are NOT IMPLEMENTED; S10/factory release remain open. No production data or existing journals/queues changed.
 
 Historical development log follows; current scope is in [STORAGE_FEATURE_MATRIX.md](STORAGE_FEATURE_MATRIX.md).
 
