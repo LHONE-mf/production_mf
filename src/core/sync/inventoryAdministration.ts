@@ -9,12 +9,25 @@ export type InventoryAdminDraft =
   | ({ resource: 'location' } & Pick<InventoryLocation, 'label' | 'kind' | 'parentId'>)
   | { resource: 'material_change'; id: string; expectedRevision: number; name: string; supplierReference: string | null; active: boolean; reason: string }
   | { resource: 'location_change'; id: string; expectedRevision: number; label: string; parentId: string | null; active: boolean; reason: string }
-  | { resource: 'access'; userId: string; level: 'operator' | 'manager'; action: 'grant' | 'revoke' };
+  | { resource: 'access'; userId: string; level: 'operator' | 'manager'; action: 'grant' | 'revoke' }
+  | { resource: 'alert_policy'; materialId: string; expectedRevision: number; lowAvailable: number; expiryDays: number; active: boolean; reason: string };
+export interface WarehouseAlertPolicy { materialId:string; lowAvailable:number; expiryDays:number; active:boolean; revision:number; updatedBy:string; updatedAt:string }
 export interface WarehouseUser { id: string; login: string; role: string; active: boolean; warehouseLevel: 'chief' | 'manager' | 'operator' | null }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 function validatedBody(kind: string, body: unknown, scope: InventoryScope): asserts body is Record<string, unknown> {
   if (!record(body) || body.deviceId !== scope.deviceId || typeof (kind === 'material' || kind === 'location' ? body.id : body.changeId) !== 'string' || !uuid.test(String(kind === 'material' || kind === 'location' ? body.id : body.changeId))) throw Error('Invalid administration identity');
+  if (kind === 'alert_policy') {
+    if (!uuid.test(String(body.materialId)) || !Number.isSafeInteger(body.expectedRevision) ||
+      Number(body.expectedRevision)<0 || Number(body.expectedRevision)>2147483645 ||
+      !Number.isSafeInteger(body.lowAvailable) || Number(body.lowAvailable)<0 ||
+      !Number.isInteger(body.expiryDays) || Number(body.expiryDays)<0 ||
+      Number(body.expiryDays)>365 || typeof body.active!=='boolean' ||
+      typeof body.reason!=='string' || !body.reason.trim() || body.reason.length>2000 ||
+      Object.keys(body).some(key=>!['changeId','deviceId','materialId','expectedRevision','lowAvailable','expiryDays','active','reason'].includes(key)))
+      throw Error('Invalid durable alert policy');
+    return;
+  }
   if (kind === 'material_change' || kind === 'location_change') {
     const text = (value: unknown, max: number) => typeof value === 'string' && !!value.trim() && value.length <= max;
     if (!uuid.test(String(body.id)) || !Number.isSafeInteger(body.expectedRevision) || Number(body.expectedRevision) < 1 || Number(body.expectedRevision) > 2147483646 || !text(body.reason, 2000) || typeof body.active !== 'boolean' ||
@@ -58,11 +71,16 @@ export function sendInventoryAdministration(session: HybridSession, scope: Inven
     const access = await loadWarehouseAccess(session, scope);
     if (!access.canManageCatalog || (row.fields.kind === 'access' && access.level !== 'chief')) throw Error('Недостаточно полномочий для администрирования');
     if (await preflightInventoryStream(session, scope) !== row.fields.epoch) throw Error('История изменена; исходный запрос сохранён для сверки');
-    const path = row.fields.kind.endsWith('_change') ? '/inventory/' + (row.fields.kind === 'material_change' ? 'materials' : 'locations') + '/' + body.id + '/changes' : row.fields.kind === 'access' ? '/inventory/access' : row.fields.kind === 'material' ? '/inventory/materials' : '/inventory/locations';
+    const path = row.fields.kind.endsWith('_change') ? '/inventory/' + (row.fields.kind === 'material_change' ? 'materials' : 'locations') + '/' + body.id + '/changes' : row.fields.kind === 'access' ? '/inventory/access' : row.fields.kind === 'alert_policy' ? '/inventory/alert-policies' : row.fields.kind === 'material' ? '/inventory/materials' : '/inventory/locations';
     const response = await inventoryRequest(session, scope, path, { method: 'POST', headers: { 'x-inventory-epoch': row.fields.epoch }, body: row.fields.request });
     if (!response.ok) throw Error('Запрос сохранён; отправка не подтверждена: HTTP ' + response.status);
     const result: unknown = await response.json();
-    const correct = record(result) && (row.fields.kind === 'access' ? result.changeId === body.changeId && ['confirmed', 'duplicate'].includes(String(result.status)) :
+    const correct = record(result) && (row.fields.kind === 'alert_policy' ?
+      result.changeId === body.changeId && ['confirmed','duplicate'].includes(String(result.status)) &&
+      record(result.policy) && result.policy.materialId === body.materialId &&
+      result.policy.lowAvailable === body.lowAvailable && result.policy.expiryDays === body.expiryDays &&
+      result.policy.active === body.active && result.policy.revision === Number(body.expectedRevision)+1 :
+      row.fields.kind === 'access' ? result.changeId === body.changeId && ['confirmed', 'duplicate'].includes(String(result.status)) :
       row.fields.kind.endsWith('_change') ? (row.fields.kind === 'material_change' ? material(result) && ['name', 'supplierReference', 'active'].every(key => result[key] === body[key]) : location(result) && ['label', 'parentId', 'active'].every(key => result[key] === body[key])) && result.id === body.id && result.revision === Number(body.expectedRevision) + 1 :
       row.fields.kind === 'material' ? material(result) && ['id', 'code', 'name', 'category', 'baseUnit'].every(key => result[key] === body[key]) :
         ['id', 'parentId', 'label', 'kind'].every(key => result[key] === body[key]));
@@ -89,4 +107,40 @@ export async function loadWarehouseUsers(session: HybridSession, scope: Inventor
   }
   if (raw.hasMore ? rows.length !== limit || raw.nextAfter !== previous : raw.nextAfter !== null) throw Error('Invalid warehouse grant continuation');
   return { items: rows, hasMore: raw.hasMore, nextAfter: raw.nextAfter as string | null };
+}
+
+/** Explicit read of current policies. The report is never inferred from local proposals. */
+export async function loadWarehouseAlertPolicies(session:HybridSession,scope:InventoryScope,
+  after?:string,limit=50):Promise<InventoryPage<WarehouseAlertPolicy>>{
+  if(!Number.isInteger(limit)||limit<1||limit>100||(after!==undefined&&!uuid.test(after)))
+    throw Error('Invalid alert policy page');
+  const epoch=await preflightInventoryStream(session,scope);
+  const query=new URLSearchParams({deviceId:scope.deviceId,limit:String(limit)});
+  if(after)query.set('after',after);
+  const response=await inventoryRequest(session,scope,'/inventory/alert-policies?'+query);
+  if(!response.ok)throw Error('Не удалось получить текущие правила: HTTP '+response.status);
+  const raw:unknown=await response.json();
+  if(!record(raw)||raw.epoch!==epoch||!Array.isArray(raw.policies)||
+    typeof raw.hasMore!=='boolean'||raw.policies.length>limit||
+    (raw.hasMore?typeof raw.nextAfter!=='string'||!uuid.test(raw.nextAfter):raw.nextAfter!==null))
+    throw Error('Invalid alert policy response');
+  const policies:WarehouseAlertPolicy[]=[];
+  let previous=after??'';
+  for(const unknown of raw.policies){
+    if(!record(unknown)||!uuid.test(String(unknown.materialId))||
+      String(unknown.materialId)<=previous||!Number.isSafeInteger(unknown.lowAvailable)||
+      Number(unknown.lowAvailable)<0||!Number.isInteger(unknown.expiryDays)||
+      Number(unknown.expiryDays)<0||Number(unknown.expiryDays)>365||
+      typeof unknown.active!=='boolean'||!Number.isInteger(unknown.revision)||
+      Number(unknown.revision)<1||Number(unknown.revision)>2147483646||
+      !uuid.test(String(unknown.updatedBy))||typeof unknown.updatedAt!=='string'||
+      !Number.isFinite(Date.parse(unknown.updatedAt))||
+      new Date(unknown.updatedAt).toISOString()!==unknown.updatedAt)
+      throw Error('Invalid alert policy row');
+    previous=unknown.materialId as string;
+    policies.push(unknown as unknown as WarehouseAlertPolicy);
+  }
+  if(raw.hasMore&&(!policies.length||raw.nextAfter!==previous))
+    throw Error('Invalid alert policy cursor');
+  return {items:policies,hasMore:raw.hasMore,nextAfter:raw.nextAfter as string|null};
 }

@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import type { InventoryScope, ReceivingDraft } from '../../core/sync/inventoryOutbox';
 import { inventoryLocationPath, type InventoryMaterial, type InventoryLocation, type WarehouseAccess } from '../../core/sync/inventoryCatalogClient';
-import { freezeInventoryAdministration, listInventoryAdministration, sendInventoryAdministration, loadWarehouseUsers, type InventoryAdminDraft, type WarehouseUser } from '../../core/sync/inventoryAdministration';
+import { freezeInventoryAdministration, listInventoryAdministration, sendInventoryAdministration, loadWarehouseUsers, loadWarehouseAlertPolicies, type InventoryAdminDraft, type WarehouseUser, type WarehouseAlertPolicy } from '../../core/sync/inventoryAdministration';
 
 const control = 'block min-h-11 w-full rounded bg-slate-900 p-2';
 const button = 'min-h-11 rounded bg-blue-700 px-3 disabled:opacity-50';
@@ -12,6 +12,7 @@ const parents: Record<InventoryLocation['kind'], InventoryLocation['kind'][]> = 
 function summary(row: ReceivingDraft) {
   try {
     const request = JSON.parse(row.fields.request);
+    if(row.fields.kind==='alert_policy')return `Порог материала ${request.materialId}: ${request.lowAvailable} базовых единиц · срок ${request.expiryDays} дней · ${request.active?'Активен':'Выключен'} · версия ${request.expectedRevision} · ${request.reason}`;
     if(row.fields.kind==='material_change')return `Изменение материала ${request.id}: ${request.name} · артикул ${request.supplierReference??'не указан'} · ${request.active?'Активен':'Неактивен'} · версия ${request.expectedRevision} · ${request.reason}`;
     if(row.fields.kind==='location_change')return `Изменение места ${request.id}: ${request.label} · ${request.active?'Активно':'Неактивно'} · версия ${request.expectedRevision} · ${request.reason}`;
     return row.fields.kind === 'material' ? `Материал: ${request.code} · ${request.name} · ${request.baseUnit}` : row.fields.kind === 'location' ? `Место: ${request.label}` : `Доступ сотрудника ${request.userId}: ${request.level === 'manager' ? 'Менеджер склада' : 'Оператор склада'} · ${request.action === 'grant' ? 'Выдать' : 'Отозвать'}`;
@@ -26,6 +27,9 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
   const [users, setUsers] = useState<WarehouseUser[]>([]), [after, setAfter] = useState<string | null>(null);
   const [target, setTarget] = useState(''), [level, setLevel] = useState<'manager' | 'operator'>('operator'), [action, setAction] = useState<'grant' | 'revoke'>('grant');
   const [intents, setIntents] = useState<ReceivingDraft[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false), [search, setSearch] = useState('');
+  const [policies,setPolicies]=useState<WarehouseAlertPolicy[]>([]),[policiesLoaded,setPoliciesLoaded]=useState(false);
+  const [policyMaterial,setPolicyMaterial]=useState(''),[threshold,setThreshold]=useState('0'),
+    [policyDays,setPolicyDays]=useState('30'),[policyEnabled,setPolicyEnabled]=useState(true),[policyReason,setPolicyReason]=useState('');
   const running = useRef(false), generation = useRef(0);
   useEffect(() => { const run = ++generation.current; void listInventoryAdministration(scope, localActorId).then(rows => { if (run === generation.current) setIntents(rows); }).catch(() => { if (run === generation.current) setError('Не удалось прочитать сохранённые предложения'); }); return () => { generation.current++; }; }, [scope.serverUrl, scope.organizationId, scope.actorId, scope.deviceId, localActorId]);
   if (!access.canManageCatalog) return null;
@@ -37,6 +41,24 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
   }
   const prepare = (draft: InventoryAdminDraft) => work(async () => { await freezeInventoryAdministration(session, scope, localActorId, draft); });
   const selected = users.find(user => user.id === target);
+  const selectedPolicy=policies.find(value=>value.materialId===policyMaterial);
+  function choosePolicy(materialId:string){
+    const known=policies.find(value=>value.materialId===materialId);
+    setPolicyMaterial(materialId);setThreshold(String(known?.lowAvailable??0));
+    setPolicyDays(String(known?.expiryDays??30));setPolicyEnabled(known?.active??true);
+  }
+  async function refreshPolicies(){
+    await work(async()=>{
+      const all:WarehouseAlertPolicy[]=[];let cursor:string|undefined;
+      for(let pageIndex=0;pageIndex<100;pageIndex++){
+        const page=await loadWarehouseAlertPolicies(session,scope,cursor,100);
+        all.push(...page.items);
+        if(!page.hasMore){setPolicies(all);setPoliciesLoaded(true);return;}
+        cursor=page.nextAfter!;
+      }
+      throw Error('Слишком много правил для мобильного просмотра. Требуется фильтрация.');
+    });
+  }
   return <details className="space-y-3 rounded border border-slate-600 p-3">
     <summary className="min-h-11 cursor-pointer py-2">Администрирование склада · {levels[access.level]}</summary>
     <p>Создание справочников и изменение доступа доступны онлайн после проверки устройства. Проверка сохраняет отдельное предложение; отправка требует отдельного подтверждения. Неизвестный ответ повторяется с тем же ID.</p>
@@ -62,6 +84,30 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
       </fieldset>
     </form>
     <StorageCatalogEditor materials={materials} locations={locations} busy={busy} onPrepare={draft=>void prepare(draft)}/>
+    <details className="space-y-2 rounded border border-slate-600 p-2" aria-label="Пороговые правила материалов">
+      <summary className="min-h-11 cursor-pointer py-2">Пороговые правила материалов и сроки</summary>
+      <p>Chief/Manager назначает правило конкретному материалу. Порог сравнивается с суммарным пригодным остатком в базовой единице материала; незавершённые операции не учитываются. Подготовка сохраняет исходный запрос; отправка требует отдельного подтверждения ниже.</p>
+      <button type="button" className={button} disabled={busy} onClick={()=>void refreshPolicies()}>Загрузить подтверждённые правила</button>
+      {policiesLoaded&&<><p>Подтверждённых правил: {policies.length}</p>
+        {policies.map(p=><p key={p.materialId}>{materials.find(m=>m.id===p.materialId)?.name??p.materialId} · {p.lowAvailable} {materials.find(m=>m.id===p.materialId)?.baseUnit??'ед.'} · предупреждать за {p.expiryDays} дней · {p.active?'Включено':'Выключено'} · версия {p.revision}</p>)}
+        <form aria-label="Правило склада" className="space-y-2" onSubmit={event=>{
+          event.preventDefault();const low=Number(threshold),days=Number(policyDays);
+          if(!Number.isSafeInteger(low)||low<0||!Number.isInteger(days)||days<0||days>365){setError('Укажите целый безопасный порог и период 0–365 дней');return;}
+          void prepare({resource:'alert_policy',materialId:policyMaterial,expectedRevision:selectedPolicy?.revision??0,
+            lowAvailable:low,expiryDays:days,active:policyEnabled,reason:policyReason.trim()});
+        }}>
+          <fieldset disabled={busy} className="space-y-2">
+            <label>Материал для порога<select required value={policyMaterial} onChange={e=>choosePolicy(e.target.value)} className={control} aria-label="Материал для постоянного порога"><option value="">Выберите материал</option>{materials.map(m=><option key={m.id} value={m.id}>{m.code} · {m.name} · {m.baseUnit}</option>)}</select></label>
+            <label>Минимальный пригодный остаток (в базовых единицах)<input required type="number" min="0" step="1" className={control} aria-label="Постоянный порог остатка" value={threshold} onChange={e=>setThreshold(e.target.value)}/></label>
+            <label>Предупреждать об окончании срока за (дней)<input required type="number" min="0" max="365" step="1" className={control} aria-label="Постоянный период срока" value={policyDays} onChange={e=>setPolicyDays(e.target.value)}/></label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={policyEnabled} onChange={e=>setPolicyEnabled(e.target.checked)}/>Правило активно</label>
+            <label>Основание изменения<input required maxLength={2000} className={control} aria-label="Основание порога" value={policyReason} onChange={e=>setPolicyReason(e.target.value)}/></label>
+            <p>Ожидаемая версия: {selectedPolicy?.revision??0}. Если другой руководитель изменил правило, сервер отклонит устаревший запрос — обновите правила и подготовьте новый запрос.</p>
+            <button className={button} disabled={!policyMaterial||!policyReason.trim()}>Сохранить предложение порога</button>
+          </fieldset>
+        </form>
+      </>}
+    </details>
     {access.level === 'chief' && <section aria-label="Доступ к складу" className="space-y-2">
       <h4>Доступ к складу — Chief</h4><p>Роль Master в производстве сама по себе не даёт полномочий менеджера склада.</p>
       <button type="button" className={button} disabled={busy} onClick={() => void work(async () => { const page = await loadWarehouseUsers(session, scope); setUsers(page.items); setAfter(page.nextAfter); })}>Загрузить сотрудников</button>
@@ -75,7 +121,7 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
     <section aria-label="Сохранённые административные предложения" className="space-y-2">
       <h4>Сохранённые административные предложения</h4>
       {!intents.length && <p>Предложений нет.</p>}
-      {intents.map(row => <article key={row.key} className="rounded border border-slate-600 p-2"><p>{summary(row)}</p><p>ID: {row.operationId} · {row.fields.state === 'accepted' ? 'Сервер подтвердил' : 'Не подтверждено; исходный запрос сохранён'}</p>{row.fields.state === 'pending' && <button type="button" className={button} disabled={busy} onClick={() => void work(async () => { await sendInventoryAdministration(session, scope, localActorId, row.key); onChanged(); })}>Подтвердить отправку предложения {row.operationId?.slice(0, 8)}</button>}</article>)}
+      {intents.map(row => <article key={row.key} className="rounded border border-slate-600 p-2"><p>{summary(row)}</p><p>ID: {row.operationId} · {row.fields.state === 'accepted' ? 'Сервер подтвердил' : 'Не подтверждено; исходный запрос сохранён'}</p>{row.fields.state === 'pending' && <button type="button" className={button} disabled={busy} onClick={() => void work(async () => { await sendInventoryAdministration(session, scope, localActorId, row.key); if(row.fields.kind==='alert_policy')setPoliciesLoaded(false); onChanged(); })}>Подтвердить отправку предложения {row.operationId?.slice(0, 8)}</button>}</article>)}
     </section>
     {error && <p role="alert">{error}</p>}
   </details>;

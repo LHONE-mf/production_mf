@@ -11,6 +11,7 @@ it('shows catalogue creation to an explicit manager but keeps employee grants Ch
  try{
   await act(async()=>root.render(<StorageAdministration {...props} access={{level:'manager',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,correctionRoleEligible:true}}/>));
   expect(node.textContent).toContain('Новый материал');expect(node.textContent).toContain('Новое место');
+  expect(node.textContent).toContain('Загрузить подтверждённые правила');
   expect(node.textContent).not.toContain('Загрузить сотрудников');expect(fetch).not.toHaveBeenCalled();
   await act(async()=>root.render(<StorageAdministration {...props} access={{level:'chief',canRecordReceipts:true,canManageCatalog:true,canCorrectStock:true,correctionRoleEligible:true}}/>));
   expect(node.textContent).toContain('Загрузить сотрудников');expect(fetch).not.toHaveBeenCalled();
