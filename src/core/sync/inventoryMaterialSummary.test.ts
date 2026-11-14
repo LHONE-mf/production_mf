@@ -8,7 +8,7 @@ describe('material balance export safety',()=>{
     materialId:id,code:'=CODE()',name:'@FORMULA',unit:'mg',category:'raw_material',active:true,
     onHand:'9007199254740993000',reserved:'2',physicallyUnreserved:'9007199254740992998',
     eligibleAvailable:'9007199254740992998',quarantined:'0',blocked:'0',expired:'0',
-    packageCount:'2',manufacturerLots:'1',expiringPackages:'0',
+    packageCount:'2',manufacturerLots:'1',expiringPackages:'0',policy:null,
    }]};
   const csv=materialBalancesCsv(page);
   expect(csv).toContain('"\'=CODE()"');expect(csv).toContain('"\'@FORMULA"');

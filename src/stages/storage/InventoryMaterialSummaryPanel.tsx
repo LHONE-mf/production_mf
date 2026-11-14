@@ -46,6 +46,8 @@ export function InventoryMaterialSummaryPanel({scope,session,epoch}:{
     <p>Физически: {row.onHand} · Резерв: {row.reserved} · Без резерва: {row.physicallyUnreserved}</p>
     <p>Пригодно для производства: {row.eligibleAvailable} · Карантин: {row.quarantined} · Заблокировано: {row.blocked} · Просрочено: {row.expired}</p>
     <p>Упаковок: {row.packageCount} · Партий производителя: {row.manufacturerLots} · Истекающих упаковок: {row.expiringPackages}</p>
+    <p>{row.policy?<>Постоянный порог: {row.policy.lowAvailable} {row.unit} · Предупреждение за {row.policy.expiryDays} дней · {row.policy.active?'Правило активно':'Правило отключено'} · Версия {row.policy.revision}</>:'Постоянное правило ещё не настроено'}</p>
+    {row.policy?.active&&<p role="status">{row.policy.lowStock?'Недостаток пригодного остатка относительно постоянного порога. ':''}{row.policy.expiringPackages!=='0'?'Истекает срок годности упаковок: '+row.policy.expiringPackages+'. ':''}{!row.policy.lowStock&&row.policy.expiringPackages==='0'?'Постоянные пороги не нарушены.':''}</p>}
    </div>)}
    <div className="flex flex-wrap gap-2">
     <button type="button" className="min-h-11 rounded bg-blue-700 px-3" onClick={download}>Скачать CSV страницы сводки</button>

@@ -2,12 +2,17 @@ import type {HybridSession} from './hybridClient';
 import type {InventoryScope} from './inventoryOutbox';
 import {inventoryRequest} from './inventoryClient';
 
+export interface MaterialAlertStatus{
+ lowAvailable:number;expiryDays:number;active:boolean;revision:number;
+ lowStock:boolean;expiringPackages:string;
+}
 export interface MaterialBalanceRow{
  materialId:string;code:string;name:string;unit:'mg'|'ul'|'mm'|'pieces';
  category:'raw_material'|'component'|'electrode'|'cell';active:boolean;
  onHand:string;reserved:string;physicallyUnreserved:string;eligibleAvailable:string;
  quarantined:string;blocked:string;expired:string;
  packageCount:string;manufacturerLots:string;expiringPackages:string;
+ policy:MaterialAlertStatus|null;
 }
 export interface MaterialBalancePage{
  epoch:string;asOf:string;expiryDays:number;
@@ -39,7 +44,20 @@ export async function loadMaterialBalances(
  for(const item of raw.items as unknown[]){
   if(!item||typeof item!=='object'||Array.isArray(item))throw Error('Invalid material balance');
   const row=item as Record<string,unknown>;
-  if(typeof row.materialId!=='string'||!uuid.test(row.materialId)||row.materialId<=prior||
+  const p=row.policy;
+  const policyValid=p===null||(p!==null&&typeof p==='object'&&!Array.isArray(p)&&
+    Number.isSafeInteger((p as Record<string,unknown>).lowAvailable)&&
+    Number((p as Record<string,unknown>).lowAvailable)>=0&&
+    Number.isInteger((p as Record<string,unknown>).expiryDays)&&
+    Number((p as Record<string,unknown>).expiryDays)>=0&&
+    Number((p as Record<string,unknown>).expiryDays)<=365&&
+    typeof (p as Record<string,unknown>).active==='boolean'&&
+    Number.isInteger((p as Record<string,unknown>).revision)&&
+    Number((p as Record<string,unknown>).revision)>0&&
+    typeof (p as Record<string,unknown>).lowStock==='boolean'&&
+    typeof (p as Record<string,unknown>).expiringPackages==='string'&&
+    integer.test((p as Record<string,unknown>).expiringPackages as string));
+  if(!policyValid||typeof row.materialId!=='string'||!uuid.test(row.materialId)||row.materialId<=prior||
     typeof row.code!=='string'||typeof row.name!=='string'||
     !['mg','ul','mm','pieces'].includes(String(row.unit))||
     !['raw_material','component','electrode','cell'].includes(String(row.category))||
@@ -64,10 +82,13 @@ export function materialBalancesCsv(page:MaterialBalancePage):string{
  const lines=[
   ['Material code','Material name','Unit','Category','Active','On hand','Reserved',
     'Physically unreserved','Eligible available','Quarantined','Blocked','Expired',
-    'Packages','Manufacturer lots','Expiring packages'],
+    'Packages','Manufacturer lots','Expiring packages','Policy enabled',
+    'Policy minimum eligible stock','Policy expiry days','Policy low-stock alarm','Policy expiring packages'],
   ...page.items.map(r=>[r.code,r.name,r.unit,r.category,r.active,
    r.onHand,r.reserved,r.physicallyUnreserved,r.eligibleAvailable,
-   r.quarantined,r.blocked,r.expired,r.packageCount,r.manufacturerLots,r.expiringPackages]),
+   r.quarantined,r.blocked,r.expired,r.packageCount,r.manufacturerLots,r.expiringPackages,
+   r.policy?.active??'',r.policy?.lowAvailable??'',r.policy?.expiryDays??'',
+   r.policy?.lowStock??'',r.policy?.expiringPackages??'']),
  ];
  return '\uFEFF'+lines.map(r=>r.map(cell).join(',')).join('\r\n')+'\r\n';
 }

@@ -58,3 +58,16 @@ Do not label these pending features as completed. Extend Route A native/browser
 automation for this panel, then implement the remaining reports as separately
 tested slices. The existing S0–S7 workflows, outbox v7 and QA/issue rules are
 unchanged; no new migration was required.
+
+## Aggregate warnings from saved manager-approved rules
+
+The versioned, audited inventory_alert_policies table (migration 030) is now
+evaluated by the confirmed material balance report. Each material includes
+its saved threshold, expiry interval, active state, revision, low-stock alarm,
+and count of packages expiring in the material's configured interval. The
+low-stock threshold applies to aggregate QA-eligible unreserved stock, not
+an individual package, and also detects zero-stock materials. PostgreSQL
+NUMERIC totals are compared with BigInt without losing precision. Disabled
+rules do not produce alarms. CSV includes these statuses as reported.
+Checking a policy never posts stock or changes an inventory ledger event.
+These are explicit refreshed views, not a background notification service.
