@@ -35,6 +35,9 @@ for phase in prepare finish; do
   adb pull "/sdcard/Android/data/ru.liion.production/files/storage-backend-$phase.png" artifacts/android-smoke/
   adb shell uiautomator dump /sdcard/storage-backend-ui.xml
   adb pull /sdcard/storage-backend-ui.xml "artifacts/android-smoke/storage-$phase-ui.xml"
+  if [ "$phase" = finish ]; then
+    adb pull /sdcard/Android/data/ru.liion.production/files/storage-label-print-dialog.png artifacts/android-smoke/
+  fi
   # The runner and app process really die between phases; no data reset/uninstall.
   adb shell am force-stop ru.liion.production
   if [ "$phase" = prepare ]; then

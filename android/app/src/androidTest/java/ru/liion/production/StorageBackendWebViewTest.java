@@ -100,6 +100,8 @@ public class StorageBackendWebViewTest {
                 assertEquals(2125000, result.getJSONObject("request").getInt("quantity"));
                 assertTrue("Could not persist test checkpoint", checkpoint.edit().putString("intent", result.toString()).commit());
             } else {
+                instrumentation.getUiAutomation().grantRuntimePermission(
+                    instrumentation.getTargetContext().getPackageName(), android.Manifest.permission.CAMERA);
                 String saved = checkpoint.getString("intent", null);
                 assertNotNull("Missing frozen intent from the force-stopped process", saved);
                 result = run(instrumentation, view, "return await window.storageCi.finish(" + new JSONObject(saved) + ");");
@@ -131,6 +133,40 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("countChiefCorrection"));
                 assertTrue(result.getBoolean("countLostAckRetried"));
                 assertEquals(124000, result.getInt("countedQuantity"));
+                assertTrue(result.getBoolean("nativeIdentityLookups"));
+                assertTrue(result.getBoolean("nativeOfflineIdentity"));
+                assertTrue(result.getBoolean("nativeCameraStreamStopped"));
+                assertTrue(result.getBoolean("nativeWrongTenantLabelDenied"));
+                // Open the actual Android print spooler using the real UI/plugin.
+                // Poll it independently: the WebView may pause while the system
+                // print activity owns the foreground, then resume after Back.
+                eval(instrumentation, view, "window.__labelPrintResult=null; window.storageCi.printLabel("
+                    + JSONObject.quote(result.getString("splitChildId"))
+                    + ").then(r=>window.__labelPrintResult=JSON.stringify(r))"
+                    + ".catch(e=>window.__labelPrintResult=JSON.stringify({error:String(e)}));");
+                boolean printDialog = false;
+                for (int i = 0; i < 120; i++) {
+                    android.view.accessibility.AccessibilityNodeInfo node = instrumentation.getUiAutomation().getRootInActiveWindow();
+                    if (node != null && node.getPackageName() != null
+                            && node.getPackageName().toString().contains("printspooler")) { printDialog = true; break; }
+                    Thread.sleep(250);
+                }
+                assertTrue("Actual Android print dialog did not open", printDialog);
+                Bitmap labelDialog = instrumentation.getUiAutomation().takeScreenshot();
+                assertNotNull(labelDialog);
+                try (FileOutputStream output = new FileOutputStream(new File(activity.getExternalFilesDir(null), "storage-label-print-dialog.png"))) {
+                    assertTrue(labelDialog.compress(Bitmap.CompressFormat.PNG, 100, output));
+                }
+                assertTrue(instrumentation.getUiAutomation().performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK));
+                boolean printReturned = false;
+                for (int i = 0; i < 120; i++) {
+                    if ("true".equals(eval(instrumentation, view,
+                            "Boolean(window.__labelPrintResult && document.body.textContent.includes('Диалог печати открыт'))"))) { printReturned = true; break; }
+                    Thread.sleep(250);
+                }
+                assertTrue("Native label printing did not return to the app", printReturned);
+                assertTrue(run(instrumentation, view, "return await window.storageCi.conceal();").getBoolean("concealed"));
+                result.put("nativePrintDialogOpened", true);
                 Log.i("ProductionMfStorage", "RESULT " + result);
             }
             Bitmap screenshot = instrumentation.getUiAutomation().takeScreenshot();

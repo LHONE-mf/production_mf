@@ -216,3 +216,7 @@ Migration 028 and `POST /inventory/stocks/:id/splits` add Chief/Manager-authoriz
 ## S7 implementation update
 
 Migration 029 adds immutable inventory_count_events, not another balance. POST /inventory/counts/operations implements open/observe/correct/close; only Chief/Manager correct produces paired count_adjustment in the original stock ledger. Historical exact stock snapshots verify observations, current versions/reservations guard corrections. Session/event reads are tenant-scoped, proofed, warehouse-only and paginated. See STORAGE_COUNTS.md. Update clients for the new stock kind before enabling it.
+
+## S8 identification first increment
+
+GET /inventory/identification requires fresh proof and original organization/type/UUID. Current warehouse access is required for package/location lookup; production users may identify only their current workshop batches and receive no stock balances. Lookup is read-only and returns the existing inventory epoch. See STORAGE_IDENTIFICATION.md.

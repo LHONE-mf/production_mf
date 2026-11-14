@@ -192,3 +192,7 @@ S6 now implements authorized one-child split/repack/partial movement with exact 
 ## S7 implementation update
 
 S7 implements any-time warehouse count sessions, zero/count/recount observations, immutable discrepancy/history, separately approved Chief/Manager correction and closure. Count alone never changes stock; stale observations remain evidence and require new reconciliation before correction. Migration 029, original v7 durable intents and exact atomic correction ACK are verified locally by 633 frontend / 253 actual PostgreSQL tests, builds/typechecks, real browser and 42-table/two-restore drill. Extended S7 native verification is pending exact-head checks. See STORAGE_COUNTS.md. S8–S10 remain unfinished.
+
+## S8 identification first increment
+
+S7 is fully verified at 4b31065 (Route A 43625766702 and all web/server/browser/restore CI). S8 identification first increment now implements actual typed/manual/camera lookup, original-lease offline lookup and inert package/location/batch HTML/native printing. Real QR video decoding and 390x844/412x915 browser verification pass; native extension pending. See STORAGE_IDENTIFICATION.md. Alerts/reports/exports and S9–S10 remain unfinished.

@@ -49,3 +49,7 @@ S5 engineering implementation now follows approved D3: received-issue unused ret
 ## S7 implementation update
 
 S7 implements approved D5: count anytime, including zero/recount, without automatic stock mutation; Chief/Manager separately reconciles/corrects the original current observation. Physical counting method, witness accountability and safe interrupted-count procedures remain factory acceptance. See STORAGE_COUNTS.md.
+
+## S8 identification first increment
+
+S8 identification implements D6 read-only typed/manual/camera lookup and printable package/location/batch labels. Deterministic Chromium video verifies real QR decoding/track cleanup, while physical ColorOS camera/label/printer checks remain acceptance gates. Native Android camera/print-spooler engineering verification is pending current SHA. Reports/alerts and subsequent roadmap remain unfinished.

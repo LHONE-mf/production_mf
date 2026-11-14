@@ -16,6 +16,7 @@ on:
       - 'apps/server/migrations/*inventory*.sql'
       - 'src/core/sync/inventory*'
       - 'src/stages/storage/**'
+      - 'src/transfer/QrScanner*'
       - 'scripts/lib/disposable-issue-batch.mjs'
       - 'vite.config.js'
       - '.github/workflows/android-emulator-smoke.yml'
@@ -112,7 +113,7 @@ jobs:
           target: default
           arch: x86_64
           profile: pixel_6
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back emulated -camera-front none
           script: |
             bash scripts/android-emulator-smoke.sh
             (cd android && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=ru.liion.production.StorageBackendWebViewTest --no-daemon)

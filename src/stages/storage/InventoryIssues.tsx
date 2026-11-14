@@ -6,6 +6,7 @@ import type { HybridSession } from '../../core/sync/hybridClient';
 import { inventoryScopeKey, type InventoryScope, type ReceivingDraft } from '../../core/sync/inventoryOutbox';
 import { freezeInventoryIssue, sendInventoryIssue, inventoryIssueProposals, loadInventoryIssueContext, loadInventoryIssues, loadIssueBatches, loadIssueOptions, issueActions, issueManager, type InventoryIssue, type InventoryIssueContext, type InventoryIssueIntent, type IssueBatch, type IssueOption, type IssueLabels } from '../../core/sync/inventoryIssues';
 import { InventoryIssueCard, issueButton, issueControl } from './InventoryIssueCard';
+import { InventoryIdentificationPanel } from './InventoryIdentificationPanel';
 function visibleProposal(row: ReceivingDraft, context: InventoryIssueContext) { if (issueManager(context)) return true; try { return !['reserve', 'approve', 'dispatch'].includes(row.fields.kind) && !(row.fields.kind === 'cancel' && JSON.parse(row.fields.bases ?? '{}').issue?.stockId); } catch { return false; } }
 export function InventoryIssues() {
   const connection = useServerConnection(), user = useAuthStore(s => s.currentUser), [now, setNow] = useState(Date.now());
@@ -40,6 +41,7 @@ export function InventoryIssuesPanel({ session, scope, localActorId }: { session
     <p>Запрос → резерв → одобрение Chief / Manager → физическая выдача → получение назначенным сотрудником. Выдача и получение не означают расход в производстве.</p>
     <button type="button" className={issueButton} disabled={busy} onClick={() => void work(refresh)}>Обновить запросы и доступные партии</button>
     {context && <>
+      {!context.warehouseLevel&&<InventoryIdentificationPanel scope={scope} session={session} localActorId={localActorId} epoch={context.epoch} batchOnly/>}
       <p>Данные прочитаны: {at && new Date(at).toLocaleString('ru-RU')}. Для новых состояний обновите вручную. Доступ: {context.warehouseLevel ?? 'Только свои передачи в цехе'}. {context.postingEnabled ? 'Подтверждение выполняется сервером.' : 'Проведение приостановлено.'}</p>
       <form aria-label="Запрос материала в производство" className="space-y-2" onSubmit={e => { e.preventDefault(); void work(async () => {
         if (!batch || !material?.unit || !recipients.some(r => r.id === recipientId) || !/^[1-9]\d*$/.test(quantity) || !Number.isSafeInteger(Number(quantity))) throw Error('Выберите материал, партию, назначенного получателя и целое количество');

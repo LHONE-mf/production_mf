@@ -9,6 +9,7 @@ import { inventoryStockQueueForScope } from '../../src/core/sync/inventoryStockO
 import { inventorySplitProposals } from '../../src/core/sync/inventorySplits';
 import { parseInventoryLabel } from '../../src/core/sync/inventoryIdentification';
 import { inventoryCountProposals } from '../../src/core/sync/inventoryCounts';
+import {inventoryLabel} from '../../src/core/sync/inventoryIdentification';
 import { setServerConnection, type ServerConnection } from '../../src/core/sync/serverConnection';
 import { obtainDeviceProof } from '../../src/core/sync/deviceProofClient';
 import { preflightInventoryStream } from '../../src/core/sync/inventoryClient';
@@ -211,10 +212,11 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const warehouseWaste=await finishWarehouseScrap(returned.returnStockId);
   const split=await finishSplit(stock.stockId);
   const count=await finishCount(split.splitChildId);
+  const identification=await finishIdentification(split.splitChildId);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 10, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste,...split,...count };
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,...returned,...warehouseWaste,...split,...count,...identification };
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();
@@ -317,4 +319,17 @@ async function finishCount(stockId:string){
   await click('Загрузить пересчёты',panel());await fill('Сессия пересчёта',countId,true,panel());await click('Завершить пересчёт — сохранить предложение',panel());await until(async()=>(await inventoryCountProposals(scope(),fixture.operator)).some(r=>r.fields.kind==='close'),'native frozen count closure');await send((await inventoryCountProposals(scope(),fixture.operator)).find(r=>r.fields.kind==='close')!);assert(document.documentElement.scrollWidth<=innerWidth,'Native count screen overflow');
   return{countObservedWithoutStock:true,countOperatorCorrectionDenied:true,countChiefCorrection:true,countLostAckRetried:true,countId,countObservationOperationId:observation.operationId,countCorrectionOperationId:correction.operationId,countedQuantity:124000,countCorrectionQuantity:1000};
 }
-(window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish };
+async function finishIdentification(stockId:string){
+  const panel=document.querySelector<HTMLElement>('[aria-label="Идентификация склада"]');assert(panel,'Native identity panel missing');
+  async function find(kind:'container'|'location'|'batch',id:string,cached=false){await fill('Тип ручного кода',kind,true,panel!);await fill('Код QR / штрихкода или UUID',id,true,panel!);await click(cached?'Найти в сохранённой области':'Найти на сервере',panel!);await until(()=>panel!.querySelector('[aria-label="Найденный складской объект"]')?.textContent?.includes(id),'native exact identity lookup');}
+  for(const[kind,id]of[['container',stockId],['location',fixture.locationId],['batch',fixture.batchId]]as const)await find(kind,id);
+  offline=true;for(const[kind,id]of[['container',stockId],['location',fixture.locationId],['batch',fixture.batchId]]as const)await find(kind,id,true);offline=false;
+  const wrong=inventoryLabel(crypto.randomUUID(),'container',stockId);await fill('Код QR / штрихкода или UUID',wrong,false,panel!);await click('Найти на сервере',panel!);await until(()=>panel!.querySelector('[role="alert"]'),'native wrong-tenant scan denial');
+  let media:MediaStream|undefined;try{media=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:'environment'}});assert(media.getVideoTracks().length===1&&media.getVideoTracks()[0].readyState==='live','Native camera did not open a real video track');}finally{media?.getTracks().forEach(t=>t.stop());}assert(media?.getTracks().every(t=>t.readyState==='ended'),'Native camera track not released');assert(document.documentElement.scrollWidth<=innerWidth,'Native identification overflow');
+  return{nativeIdentityLookups:true,nativeOfflineIdentity:true,nativeWrongTenantLabelDenied:true,nativeCameraStreamStopped:true};
+}
+async function printLabel(stockId:string){
+  await select('operator');await refresh();const card=document.getElementById('inventory-container-'+stockId);assert(card,'Native label source unavailable');const summary=[...card!.querySelectorAll('summary')].find(s=>s.textContent==='QR / ручной код контейнера');assert(summary,'Native label controls unavailable');(summary!.parentElement as HTMLDetailsElement).open=true;await click('Открыть печать этикетки',summary!.parentElement!);return{requested:true};
+}
+async function conceal(){await useAuthStore.getState().logout();await until(()=>!document.body.textContent?.includes('На руках:'),'native print return logout');return{concealed:true};}
+(window as unknown as { storageCi: unknown }).storageCi = { connect, prepare, finish, printLabel, conceal };

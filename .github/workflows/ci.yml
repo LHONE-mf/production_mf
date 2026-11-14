@@ -87,6 +87,10 @@ jobs:
         run: |
           npm install --prefix "$RUNNER_TEMP/storage-browser" --no-package-lock --no-audit --no-fund playwright@1.65.0
           "$RUNNER_TEMP/storage-browser/node_modules/.bin/playwright" install --with-deps chromium
+          if ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash

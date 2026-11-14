@@ -6,6 +6,7 @@ import{inventoryStockQueueForScope}from'../../core/sync/inventoryStockOutbox';
 import{inventoryLocationPath}from'../../core/sync/inventoryCatalogClient';
 import{ReceivingForm}from'./ReceivingForm';
 import{StockChangeForm}from'./StockChangeForm';
+import{InventoryIdentificationPanel}from'./InventoryIdentificationPanel';
 export function OfflineStorage({now,liveScope}:{now:number;liveScope?:InventoryScope}){
  const user=useAuthStore(s=>s.currentUser),login=useAuthStore(s=>s.session);
  const [view,setView]=useState<InventoryOfflineView|null>(null),[stocks,setStocks]=useState<ConfirmedInventoryStock[]>([]),[pending,setPending]=useState<{id:string;state:string;reason:string;error?:string}[]>([]),[error,setError]=useState('');
@@ -28,6 +29,7 @@ export function OfflineStorage({now,liveScope}:{now:number;liveScope?:InventoryS
  return <section aria-label="Сохранённый офлайн-склад" className="space-y-3 border border-slate-600 rounded p-3">
  <button className="min-h-11 bg-slate-700 px-3" onClick={()=>void open()}>Открыть сохранённый склад</button>
  {visible&&<><p>Офлайн: последние известные данные от {new Date(visible.syncedAt).toLocaleString('ru-RU')}. Сервер {visible.scope.serverUrl}; организация {visible.scope.organizationId}; устройство {visible.scope.deviceId}. Доступ до {new Date(visible.expiresAt).toLocaleString('ru-RU')}.</p><p>Офлайн-предложения не подтверждают физическое движение и не меняют общие остатки. Для отправки войдите на исходный сервер и заново подтвердите устройство.</p>
+ <InventoryIdentificationPanel scope={visible.scope} localActorId={user!.id} epoch={visible.serverEpoch} offline/>
  {!stocks.length&&<p>Последний подтверждённый снимок был пустым.</p>}
  {stocks.map(stock=><article key={stock.stockId} className="border rounded p-2 break-words"><p>{visible.materials.find(m=>m.id===stock.materialId)?.name??stock.materialId} · Партия {stock.manufacturerLot} · Контейнер {stock.stockId}</p><p>{inventoryLocationPath(visible.locations,stock.locationId)} · {stock.quality==='quarantine'?'Карантин':stock.quality==='released'?'Разрешено':'Заблокировано'} · Версия {stock.revision}</p><p>Последний известный остаток: {stock.onHand} {stock.unit}; резерв: {stock.reserved} {stock.unit}; свободно по количеству: {stock.available} {stock.unit}</p><StockChangeForm scope={visible.scope} session={{serverUrl:visible.scope.serverUrl,accessToken:'',deviceProofDeviceId:visible.scope.deviceId,offlineEditExpiresAt:visible.expiresAt}} localActorId={user!.id} stock={stock} locations={visible.locations} canCorrect={visible.access.canCorrectStock} materialName={visible.materials.find(m=>m.id===stock.materialId)?.name} sourceLocationName={inventoryLocationPath(visible.locations,stock.locationId)} onQueued={()=>void open()}/></article>)}
  <button className="min-h-11 px-3" onClick={()=>{void invalidateInventoryOfflineViews();setView(null);setError('Офлайн-доступ закрыт на этом устройстве. Очередь и черновики сохранены.');}}>Закрыть сохранённый доступ</button>

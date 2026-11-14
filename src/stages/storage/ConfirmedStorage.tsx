@@ -1,5 +1,6 @@
 import {InventorySplitPanel} from './InventorySplitPanel';
 import {InventoryCounts} from './InventoryCounts';
+import {InventoryIdentificationPanel} from './InventoryIdentificationPanel';
 import {InventoryPackageLabel} from './InventoryPackageLabel';
 import {InventoryQualityPanel} from './InventoryQualityPanel';
 import {InventoryReturns} from './InventoryReturns';
@@ -24,7 +25,7 @@ import {inventoryStockQueueForScope,reviewInventoryConflict} from '../../core/sy
 const actionLabel=(kind:string)=>({receive:'Приёмка',split_out:'Разделение — исходный контейнер',split_in:'Разделение — новая дочерняя упаковка',scrap:'Списание складского остатка (не расход)',return:'Возврат неиспользованного из подтверждённой выдачи',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва',issue:'Выдача в производство (не расход)',quality_change:'Решение о качестве (без движения количества)'} as Record<string,string>)[kind]??kind;
 export function ConfirmedStorage(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
- const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState('');
+ const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[locationFilter,setLocationFilter]=useState('');
  const [view,setView]=useState<{key:string;at:number;epoch:string;history:InventoryHistory[];access:WarehouseAccess;canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;quantity:number;unit:string;stockId:string;revision:number;destination?:string;reviewedAt?:number;reviewReason?:string;error?:string}[]}|null>(null);
  const generation=useRef(0),sending=useRef(false);
  const [confirmSend,setConfirmSend]=useState(false),[message,setMessage]=useState(''),[reviewId,setReviewId]=useState(''),[reviewReason,setReviewReason]=useState('');
@@ -32,7 +33,7 @@ export function ConfirmedStorage(){
  let key='',proven=false;
  try{if(scope&&connection){key=inventoryScopeKey(scope)+'::'+(user?.id??'');proven=requireFreshDeviceProof(connection.session).deviceId===scope.deviceId;}}catch{/* Connect through the existing Sync screen. */}
  useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
- useEffect(()=>{generation.current++;setView(null);setError('');setBusy(false);setConfirmSend(false);setMessage('');setReviewId('');setReviewReason('');return()=>{generation.current++;};},[key,connection]);
+ useEffect(()=>{generation.current++;setView(null);setError('');setBusy(false);setConfirmSend(false);setMessage('');setReviewId('');setReviewReason('');setSearch('');setLocationFilter('');return()=>{generation.current++;};},[key,connection]);
  const fresh=proven&&!!connection&&now<(connection.session.deviceProofExpiresAt??0)-5000;
  const visible=fresh&&view?.key===key?view:null;
  async function refresh(){
@@ -94,9 +95,11 @@ export function ConfirmedStorage(){
    {!visible&&!busy&&!error&&<p>Данные ещё не загружены. Нажмите обновление.</p>}
    {visible&&<>
     <p>Последняя успешная синхронизация: {new Date(visible.at).toLocaleString('ru-RU')}. Последние известные остатки; изменения на других устройствах требуют обновления.</p>
+    {scope&&connection&&user&&<InventoryIdentificationPanel scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} onSelected={(kind,id)=>{setLocationFilter(kind==='location'?id:'');setSearch(kind==='container'?id:'');requestAnimationFrame(()=>document.getElementById('inventory-container-'+id)?.scrollIntoView({block:'start'}));}}/>}
+    {locationFilter&&<p>Место / потомки: {visible.locations[locationFilter]??locationFilter} <button type="button" className="min-h-11 px-3" onClick={()=>setLocationFilter('')}>Снять фильтр места</button></p>}
     <label className="block">Поиск материала, партии, места<input className="block min-h-11 w-full rounded bg-slate-900 p-2" value={search} onChange={e=>setSearch(e.target.value)}/></label>
     {!visible.stocks.length&&<p>Подтверждённых остатков пока нет.</p>}
-    {visible.stocks.filter(s=>[s.manufacturerLot,s.stockId,visible.names[s.materialId],visible.locations[s.locationId],s.quality].join(' ').toLowerCase().includes(search.toLowerCase())).map(s=><article className="rounded border border-slate-600 p-3" key={s.stockId}>
+    {visible.stocks.filter(s=>{let place:string|null=s.locationId,inside=!locationFilter;const seen=new Set<string>();while(place&&!inside&&seen.size<100&&!seen.has(place)){if(place===locationFilter)inside=true;seen.add(place);place=visible.places.find(l=>l.id===place)?.parentId??null;}return inside&&[s.manufacturerLot,s.stockId,visible.names[s.materialId],visible.locations[s.locationId],s.quality].join(' ').toLowerCase().includes(search.toLowerCase());}).map(s=><article id={'inventory-container-'+s.stockId} className="rounded border border-slate-600 p-3" key={s.stockId}>
      <p>{visible.names[s.materialId]??s.materialId} · Партия производителя: {s.manufacturerLot}</p><p>Контейнер: {s.stockId}</p><p>Место: {visible.locations[s.locationId]??s.locationId}</p>
      <p>Качество: {s.quality==='quarantine'?'Карантин':s.quality==='released'?'Разрешено':'Заблокировано'} · Версия {s.revision}</p>
      <p>На руках: {s.onHand} {s.unit} · Резерв: {s.reserved} {s.unit} · Свободно по количеству: {s.available} {s.unit}</p><p>Карантин, блокировка, срок годности и ограничения исходной цепочки запрещают использование даже при свободном количестве.</p>
