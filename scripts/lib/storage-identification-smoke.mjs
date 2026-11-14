@@ -15,7 +15,9 @@ export async function storageIdentificationSmoke({pool,org,pages,actors,connecti
  const found=panel.locator('[aria-label="Найденный складской объект"]');await found.getByText('QR / ручной код контейнера',{exact:true}).click();await found.getByRole('button',{name:'Подготовить этикетку для сохранения',exact:true}).click();
  const download=page.waitForEvent('download');await found.getByRole('link',{name:'Сохранить этикетку HTML',exact:true}).click();const htmlPath=artifact+'/container-label.html';await(await download).saveAs(htmlPath);const html=await readFile(htmlPath,'utf8');assert(html.includes(label('container',qualityStock)));assert(!html.includes('<script'));assert(!html.includes(actors[0].token));
  const render=await page.context().newPage();await render.setContent(html);await render.locator('svg').screenshot({path:artifact+'/container-label-qr.png'});await render.pdf({path:artifact+'/container-label.pdf',preferCSSPageSize:true,printBackground:true});await render.close();
- await exec('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/container-label-qr.png','-vf','scale=360:360:flags=neighbor,pad=640:480:(ow-iw)/2:(oh-ih)/2:color=white,fps=5,format=yuv420p','-t','12','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
+ // The scanner uses a centered 240x240 QR crop. Keep the full QR and a white
+ // quiet zone *inside* that crop; 360px video QR clips the corners and is flaky.
+ await exec('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/container-label-qr.png','-vf','scale=180:180:flags=neighbor,pad=640:480:(ow-iw)/2:(oh-ih)/2:color=white,fps=5,format=yuv420p','-t','18','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
  // The real html5-qrcode decoder reads real frames from Chromium's deterministic
  // virtual camera; no decoder/result is mocked and the API lookup remains real.
  const{chromium}=await import(process.env.STORAGE_PLAYWRIGHT_MODULE??'playwright');let cameraBrowser;
