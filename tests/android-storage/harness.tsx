@@ -272,7 +272,10 @@ async function finishWarehouseScrap(stockId:string){
   const denied=await originalFetch(fixture.serverUrl+'/inventory/stocks/'+stockId+'/operations',{method:'POST',headers:{authorization:'Bearer '+connection.session.accessToken,'content-type':'application/json','x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':epoch},body:JSON.stringify({operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,kind:'scrap',expectedRevision:1,quantity:1000,reason:'Forbidden operator warehouse disposal',evidence:'Must fail'})});assert(denied.status===403,'Operator self-authorized warehouse scrap');
   await select('chief');await refresh();
   const article=[...document.querySelectorAll('article')].find(row=>[...row.querySelectorAll('p')].some(p=>p.textContent==='Контейнер: '+stockId));assert(article,'Native warehouse return package missing');
-  const summary=[...article!.querySelectorAll('summary')].find(s=>s.textContent==='Перемещение / коррекция / списание контейнера');assert(summary,'Native warehouse operations unavailable');summary!.click();
+  // StockChangeForm restores its durable draft asynchronously after stock sync.
+  // Wait for the actual control, as browser locators do, before opening it.
+  const summary=()=>[...article!.querySelectorAll('summary')].find(s=>s.textContent==='Перемещение / коррекция / списание контейнера');
+  await until(summary,'warehouse draft restored and operations available');summary()!.click();
   await fill('Действие склада','scrap',true,article!);await fill('Количество складского списания','1000',true,article!);await fill('Основание изменения','Native actual warehouse disposal of damaged portion',true,article!);await fill('Свидетельство складского списания','NATIVE-WAREHOUSE-WASTE-42',true,article!);
   await click('Проверить изменение',article!);await click('Сохранить изменение в очередь',article!);await until(async()=> (await inventoryStockQueueForScope(scope())).some(r=>r.request.kind==='scrap'),'native frozen warehouse scrap');
   await send();await until(async()=> !(await inventoryStockQueueForScope(scope())).some(r=>r.request.kind==='scrap'),'native warehouse scrap accepted');
