@@ -47,7 +47,7 @@ export async function storageReturnSmoke({ pool, org, pages, actors, connection,
   await until(async()=> (await pool.query('SELECT on_hand::int FROM inventory_stocks WHERE id=$1',[returned.stockId])).rows[0].on_hand===199000);await refreshConfirmed(chief);
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM inventory_operations WHERE stock_id=$1 AND kind='scrap' AND request_payload->>'evidence'='CI-WAREHOUSE-WASTE-42'",[returned.stockId])).rows[0].n,1);
   await warehouseChild.getByText('Полученная серверная история контейнера',{exact:true}).click();await warehouseChild.getByText(/CI-WAREHOUSE-WASTE-42/).first().waitFor();
-  await chief.getByRole('button', { name: 'История возвратов и списаний', exact: true }).click(); await chief.getByText(/CI accountable condition\/disposal report/).first().waitFor();
+  await chief.getByRole('button', { name: 'История возвратов и списаний', exact: true }).click(); await chief.getByText(/^(Принятый возврат|Списание выданного) · .*CI accountable condition\/disposal report/).first().waitFor();
   assert(await chief.evaluate(() => document.documentElement.scrollWidth <= innerWidth)); await chief.screenshot({ path: artifact + '/return-chief-mobile.png', fullPage: true });
   return ['unsafe damaged return rejected by real UI/API without stock', 'offline return cold reload retains original ID/provenance', 'lost committed return ACK exact retry creates one distinct AVAILABLE package without new QA', 'two profiles cannot return more than outstanding issue', 'Chief issued-material scrap reduces ownership without another warehouse debit','separate Chief warehouse-scrap UI debits unreserved stock once and exposes witness evidence'];
 }
