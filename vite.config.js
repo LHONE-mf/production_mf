@@ -19,6 +19,8 @@ export default defineConfig({
         // офлайн-стратегия: кешируем всё собранное приложение
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2,json}"],
         navigateFallback: "index.html",
+        // Debug APK assets are real documents, not production SPA routes.
+        navigateFallbackDenylist: [/^\/tests\/android-storage\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
       devOptions: {

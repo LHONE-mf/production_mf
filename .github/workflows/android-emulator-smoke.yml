@@ -19,6 +19,7 @@ on:
       - 'src/core/sync/inventoryIssue*'
       - 'src/stages/storage/InventoryIssue*'
       - 'scripts/lib/disposable-issue-batch.mjs'
+      - 'vite.config.js'
       - '.github/workflows/android-emulator-smoke.yml'
 
 permissions:

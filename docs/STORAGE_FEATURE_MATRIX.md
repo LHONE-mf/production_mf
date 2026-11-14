@@ -68,3 +68,7 @@ Next is **S4**, with detailed resumption steps in [STORAGE_RESUMPTION_CHECKPOINT
 ## S4 implementation increment
 
 See [controlled handoff contract](STORAGE_ISSUES.md). Local browser report includes actual offline/cold-reload request, Chief physical dispatch lost-ACK retry, and an assigned production-only recipient denied broad warehouse reads. The actual dump/two restores compare 39 public tables and reconstruct 9 stock events, 1 generic remaining reservation, 1 received issue and 5 immutable handoff events. Native harness passed a frozen request across force-stop, separate Chief approval/dispatch, lost issue ACK and assigned receipt in Route A 43598436254 at 13eb559. No dependency, Dexie version/reset, production mutation or merge.
+
+### Retained Route A regression
+
+Review commit 7d45e5f passed web/server/browser/restore (619/229) but [native 43599817877](https://github.com/LHONE-mf/production_mf/actions/runs/43599817877) failed at debug-harness startup, before Storage API traffic. The failure is retained, not relabeled. A real packaged-PWA browser reproduction showed the active service worker serving the production SPA at the harness URL. The narrow debug-path navigation exclusion and initial Capacitor-document barrier now pass the browser regression without clearing worker/cache/IndexedDB or losing offline production-shell support. Latest repair-head native verification is tracked in PR #5; old 13eb559 native success remains attributed only to that immutable runtime checkpoint.

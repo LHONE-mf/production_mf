@@ -70,6 +70,17 @@ public class StorageBackendWebViewTest {
         MainActivity activity = (MainActivity) instrumentation.startActivitySync(intent);
         try {
             WebView view = activity.getBridge().getWebView();
+            // Let Capacitor's initial document finish before navigating. Its
+            // queued startup load must not replace the instrumentation page.
+            boolean initialReady = false;
+            for (int i = 0; i < 160; i++) {
+                if ("true".equals(eval(instrumentation, view,
+                        "Boolean(window.Capacitor && document.readyState==='complete' && location.origin==='https://localhost')"))) {
+                    initialReady = true; break;
+                }
+                Thread.sleep(250);
+            }
+            assertTrue("Initial Capacitor document unavailable", initialReady);
             instrumentation.runOnMainSync(() -> view.loadUrl("https://localhost/tests/android-storage/index.html"));
             boolean ready = false;
             for (int i = 0; i < 160; i++) {
@@ -78,6 +89,8 @@ public class StorageBackendWebViewTest {
                 }
                 Thread.sleep(250);
             }
+            if (!ready) Log.e("ProductionMfStorage", "Harness startup: " + eval(instrumentation, view,
+                "JSON.stringify({path:location.pathname,title:document.title,controlled:Boolean(navigator.serviceWorker && navigator.serviceWorker.controller)})"));
             assertTrue("Debug Storage harness unavailable", ready);
             assertTrue(run(instrumentation, view, "return await window.storageCi.connect(" + fixture + ");").getBoolean("connected"));
             SharedPreferences checkpoint = instrumentation.getTargetContext().getSharedPreferences("storage-ci-checkpoint", 0);

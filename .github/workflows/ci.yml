@@ -95,6 +95,9 @@ jobs:
         run: |
           mkdir -p "$STORAGE_ARTIFACT_DIR"
           export STORAGE_PLAYWRIGHT_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
+          npm run build
+          node scripts/build-android-storage-harness.mjs
+          node scripts/android-storage-harness-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/packaged-harness.log"
           node scripts/storage-operator-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/operator.log"
       - name: Storage actual backup, restore and reconciliation drill
         working-directory: .
