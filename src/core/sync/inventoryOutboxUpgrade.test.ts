@@ -71,3 +71,14 @@ describe('Storage inventory outbox upgrade',()=>{
     expect((await inventoryStockQueueForScope(scope))[0].operationId).toBe(pendingId);
   });
 });
+it('preserves populated v2 stock proposals when adding v3 receiving drafts',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();
+ const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});
+ old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});
+ await old.open();
+ const row={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,stockId,state:'conflict',queuedAt:123,error:'revision_conflict',base:{revision:1},request:{kind:'transfer',expectedRevision:1}};
+ await old.table('stockOperations').put(row);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();
+ await inventoryOutbox.open();expect(await inventoryOutbox.stockOperations.get(row.operationId)).toEqual(row);
+ expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.receivingDrafts.count()).toBe(0);
+});

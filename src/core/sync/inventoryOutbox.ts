@@ -41,7 +41,9 @@ export interface ConfirmedInventoryStock extends InventoryStockSnapshot {
 }
 interface InventorySyncMetadata {key:string;value:number;}
 
+export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export class InventoryOutboxDatabase extends Dexie {
+  receivingDrafts!:Table<ReceivingDraft,string>;
   operations!: Table<QueuedInventoryReceipt,string>;
   stocks!: Table<ConfirmedInventoryStock,[string,string]>;
   metadata!: Table<InventorySyncMetadata,string>;
@@ -57,6 +59,7 @@ export class InventoryOutboxDatabase extends Dexie {
     this.version(2).stores({
       stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',
     });
+    this.version(3).stores({receivingDrafts:'key'});
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();
