@@ -11,7 +11,7 @@ describe('inventory alert CSV safety',()=>{
   const csv=inventoryAlertsCsv(report);
   expect(csv).toContain('"\'@HYPERLINK"');
   expect(csv).toContain('"\' +SUM(1,2)"');
-  expect(csv).toContain('"\'=cmd|\n""""""');
+  expect(csv).toContain('"\'=cmd|\n"""""');
   expect(csv).toContain('"""A"",\r\nB"');
   expect(csv).toContain('"2","3","1","mg"');
   expect(csv.match(/@HYPERLINK/g)).toHaveLength(1);

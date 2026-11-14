@@ -20,7 +20,7 @@ const kinds=['quarantine','blocked','expired','expiring','restricted','low'] as 
 function record(value:unknown):value is Record<string,unknown>{
   return value!==null&&typeof value==='object'&&!Array.isArray(value);
 }
-function parsePage(raw:unknown,scope:InventoryScope,epoch:string,opts:InventoryAlertOptions):InventoryAlertsPage{
+function parsePage(raw:unknown,epoch:string,opts:InventoryAlertOptions):InventoryAlertsPage{
   if(!record(raw)||raw.epoch!==epoch||typeof raw.asOf!=='string'||!Number.isFinite(Date.parse(raw.asOf))||
       new Date(raw.asOf).toISOString()!==raw.asOf||
       raw.expiryDays!==opts.expiryDays||raw.lowAvailable!==opts.lowAvailable||
@@ -34,7 +34,7 @@ function parsePage(raw:unknown,scope:InventoryScope,epoch:string,opts:InventoryA
   for(const item of raw.items as unknown[]){
     if(!record(item))throw Error('Invalid inventory alert item');
     const stock=item.stock;validateInventoryStock(stock);
-    if(stock.stockId<=previous||!['string'].includes(typeof item.materialCode)||
+    if(stock.stockId<=previous||typeof item.materialCode!=='string'||
       typeof item.materialName!=='string'||typeof item.locationLabel!=='string'||
       typeof item.eligible!=='boolean'||!Array.isArray(item.alerts)||
       item.alerts.some(x=>!kinds.includes(x as InventoryAlertKind))||
@@ -66,7 +66,7 @@ export async function loadInventoryAlerts(
   if(opts.materialId)params.set('materialId',opts.materialId);
   const response=await inventoryRequest(session,scope,'/inventory/reports/alerts?'+params);
   if(!response.ok)throw Error('Warehouse alert report unavailable: HTTP '+response.status);
-  return parsePage(await response.json() as unknown,scope,epoch,opts);
+  return parsePage(await response.json() as unknown,epoch,opts);
 }
 
 /** Export only what was visibly fetched; every untrusted field is CSV-formula safe. */

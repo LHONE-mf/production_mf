@@ -90,3 +90,8 @@ S7 local final verification passed 633 frontend / 253 actual PostgreSQL tests, a
 S7 **4b310659307b60666cbbfbe84d5b2c7f8d749700** passed native [43625766702](https://github.com/LHONE-mf/production_mf/actions/runs/43625766702), push CI 43625766710, PR CI 43625771989 and Run Tests 43625771969. Native artifact 14126770238, digest `b7ef01b35575a037753435bbc00018715cec0895f996212be25272b325051550` (Nov 21); engineering 14126445235, digest `4738f2f04d70efe32b3c288942adb66ccaf4557f975d134d098b375cfb02a4ab` (Nov 28). Actual Operator count, no observation balance effect, Chief correction/both lost ACKs and independent DB verification passed.
 
 S8 identification adds no stock schema or product dependency. It reuses the camera decoder, fixes pending-start cleanup and adds explicit optional Android camera access plus an inert native label printer. Actual QR-video decoding/track cleanup, package/location/batch API/manual/offline lookup and HTML/PDF label artifacts pass locally. Expanded native tests still need current-SHA hosted verification. S8 alerts/reports/exports remain next.
+
+
+## S8 stock health first increment — 2026-11-14
+
+A read-only proof-bound PostgreSQL stock report and an explicitly refreshed mobile alert page with scoped CSV page export have been implemented. See [STORAGE_ALERTS.md](STORAGE_ALERTS.md). This covers ad hoc expiry and per-material available-quantity warnings only. Persistent thresholds, automated alerts, full ledger/audit reporting, all-pages export and S9/S10 remain pending. Verify exact-head CI before claiming acceptance.
