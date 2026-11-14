@@ -13,8 +13,8 @@ integration('Accountable production material handoffs (real PostgreSQL)', () => 
   const get = (url: string, i = 0) => app.inject({ method: 'GET', url, headers: headers(i) });
   const operation = (kind: string, revision: number, i = 1, extras: object = {}) => ({ operationId: randomUUID(), deviceId: actors[i].device, kind, expectedIssueRevision: revision, reason: 'Accountable synthetic physical handoff', evidence: 'CI signed handoff record', ...extras });
   const act = (id: string, body: object, i = 1) => post('/inventory/issues/' + id + '/operations', body, i);
-  async function request(quantity = 500, i = 2) {
-    const body = { operationId: randomUUID(), issueId: randomUUID(), deviceId: actors[i].device, materialId: material, productionBatchId: batch, stepNumber: 1, recipientId: actors[4].id, quantity, reason: 'Synthetic production request', evidence: 'Batch material requirement' };
+  async function request(quantity = 500, i = 2, productionBatchId = batch) {
+    const body = { operationId: randomUUID(), issueId: randomUUID(), deviceId: actors[i].device, materialId: material, productionBatchId, stepNumber: 1, recipientId: actors[4].id, quantity, reason: 'Synthetic production request', evidence: 'Batch material requirement' };
     const response = await post('/inventory/issues', body, i); expect(response.statusCode, response.body).toBe(201); return { body, issue: response.json().issue };
   }
   async function stock() {
@@ -123,6 +123,19 @@ integration('Accountable production material handoffs (real PostgreSQL)', () => 
     const results = await Promise.all([act(winner.issue.id, dispatch), act(winner.issue.id, dispatch), act(winner.issue.id, { ...dispatch, operationId: randomUUID() })]);
     expect(results.map(r => r.statusCode).sort()).toEqual([200, 201, 409]);
     expect((await pool.query('SELECT on_hand::int,reserved::int FROM inventory_stocks WHERE id=$1', [source])).rows[0]).toEqual({ on_hand: 300, reserved: 0 });
+  });
+  it('issues one package to two batches while preserving the other reservation and requiring current reapproval',async()=>{
+    const otherBatch=randomUUID();
+    await pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) SELECT organization_id,$2,order_id,$3,material_line,'created',created_by FROM production_batches WHERE organization_id=$1 AND id=$4",[org,otherBatch,'Second-'+otherBatch,batch]);
+    const source=await stock(),a=await request(400),b=await request(300,2,otherBatch);
+    expect((await act(a.issue.id,operation('reserve',1,1,{stockId:source,expectedStockRevision:2}))).statusCode).toBe(201);
+    expect((await act(b.issue.id,operation('reserve',1,1,{stockId:source,expectedStockRevision:3}))).statusCode).toBe(201);
+    for(const req of [a,b])expect((await act(req.issue.id,operation('approve',2,1,{expectedStockRevision:4}))).statusCode).toBe(201);
+    const first=await act(a.issue.id,operation('dispatch',3,1,{expectedStockRevision:4}));expect(first.statusCode,first.body).toBe(201);expect(first.json().stock).toMatchObject({onHand:600,reserved:300,available:300});
+    expect((await act(b.issue.id,operation('dispatch',3,1,{expectedStockRevision:4}))).json().error).toBe('revision_conflict');
+    expect((await act(b.issue.id,operation('approve',3,1,{expectedStockRevision:5}))).statusCode).toBe(201);
+    const second=await act(b.issue.id,operation('dispatch',4,1,{expectedStockRevision:5}));expect(second.statusCode,second.body).toBe(201);expect(second.json().stock).toMatchObject({onHand:300,reserved:0,available:300});
+    expect((await pool.query("SELECT production_batch_id,quantity::int FROM inventory_operations WHERE stock_id=$1 AND kind='issue' ORDER BY sequence",[source])).rows).toEqual([{production_batch_id:batch,quantity:400},{production_batch_id:otherBatch,quantity:300}]);
   });
   it('rejects cross-endpoint ID reuse in both directions, wrong tenant, malformed intent and stale history', async () => {
     const { id, issue } = await reserved(), req = await request();

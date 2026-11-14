@@ -23,7 +23,7 @@ export async function issueBatchStep(client: PoolClient, actor: IssueActor, batc
   if (active && (!['created', 'in_progress'].includes(row.status) || !['released', 'in_progress'].includes(row.order_status))) issueFail(409, 'production_batch_unavailable');
   return row;
 }
-export function issueSnapshot(row: Record<string, any>) {
+export function issueSnapshot(row: Record<string, unknown>) {
   return { id: row.id as string, materialId: row.material_id as string, productionBatchId: row.production_batch_id as string, stepNumber: row.step_number as number, workshopId: row.workshop_id as string, recipientId: row.recipient_id as string, requestedBy: row.requested_by as string, quantity: Number(row.quantity), unit: row.unit as string, state: row.state as string, revision: row.revision as number,
     stockId: row.stock_id as string | null, source: row.source_snapshot as object | null,
     approvalOperationId: row.approved_operation_id as string | null, approvedStockRevision: row.approved_stock_revision as number | null, approvedBy: row.approved_by as string | null, approvedDeviceId: row.approved_device_id as string | null,
