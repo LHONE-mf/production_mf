@@ -6,3 +6,5 @@ build/
 keystore.properties
 *.jks
 *.keystore
+# Generated exclusively for the debug Android integration test source set.
+android/app/src/debug/assets/

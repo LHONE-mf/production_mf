@@ -55,6 +55,7 @@ jobs:
         run: |
           npm run build
           npx cap sync android
+          node scripts/build-android-storage-harness.mjs
       - name: Generate launcher icons
         run: |
           python3 -m pip install --quiet cairosvg Pillow
@@ -97,7 +98,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           script: |
             bash scripts/android-emulator-smoke.sh
-            (cd android && ./gradlew :app:connectedDebugAndroidTest --no-daemon)
+            (cd android && ./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.notClass=ru.liion.production.StorageBackendWebViewTest --no-daemon)
             # Ensure the archive persistence instrumentation actually ran;
             # a green Gradle exit without this test is not sufficient evidence.
             python3 -c "from pathlib import Path; import xml.etree.ElementTree as ET; results=Path('android/app/build/outputs/androidTest-results/connected'); xmls=list(results.rglob('*.xml')); matches=[(p, c) for p in xmls for c in ET.parse(p).getroot().iter('testcase') if 'HybridConflictArchiveWebViewTest' in c.attrib.get('classname', '') and c.attrib.get('name') == 'conflictArchiveSurvivesActivityRestart' and not any(child.tag in ('failure', 'error', 'skipped') for child in c)]; assert matches, 'Missing passing HybridConflictArchiveWebViewTest instrumentation report'; print('Verified WebView conflict archive test report:', matches[0][0])"
@@ -136,6 +137,21 @@ jobs:
             grep -q 'OK (1 test)' artifacts/android-smoke/capacitor-challenge-instrumentation.txt
             adb logcat -d -v brief -s ProductionMfCapacitor:I '*:S' > artifacts/android-smoke/capacitor-challenge-vector.log
             node apps/server/scripts/verify-fresh-emulator-device-proof.mjs finish artifacts/android-smoke/capacitor-challenge-vector.log "$RUNNER_TEMP/production-mf-capacitor-proof.json"
+            bash scripts/android-storage-emulator.sh
+      - name: Storage phone-readable result
+        if: always()
+        run: |
+          {
+            echo "## Android Storage Route A — $GITHUB_SHA"
+            echo 'Disposable PostgreSQL + Fastify + real Capacitor WebView/native device key.'
+            if test -f artifacts/android-smoke/storage-result.json; then
+              cat artifacts/android-smoke/storage-result.json
+            else
+              echo 'Storage native test did not finish successfully. Inspect instrumentation/server logs.'
+            fi
+            echo 'Download android-emulator-screenshot-and-logs for screenshots, hierarchy, XML and sanitized diagnostics.'
+            echo 'Physical devices, production TLS and factory acceptance remain separate gates.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Verify emulator screenshots are not blank
         run: python3 scripts/check_android_screenshots.py
       - name: Upload screenshot and diagnostics (even if failed)
