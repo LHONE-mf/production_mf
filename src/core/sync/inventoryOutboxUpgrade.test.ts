@@ -104,3 +104,10 @@ it('keeps v5 pending intent unchanged and marks its unknown pre-epoch outcome fo
  const row={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,state:'pending',queuedAt:123,request:{reason:'Original physical evidence',quantity:2125000}};
  await old.table('operations').put(row);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();expect(await inventoryOutbox.operations.get(row.operationId)).toEqual({...row,requiresStreamReview:true});expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.acknowledgements.count()).toBe(0);
 });
+it('adds v7 recovery archives without marking already bound v6 pending work for review',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(6).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key',stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',receivingDrafts:'key',history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]',offlineViews:'localActorId,scopeKey',streams:'scopeKey',acknowledgements:'operationId,scopeKey,epoch'});await old.open();
+ const epoch='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',row={operationId:stockId,scopeKey,state:'pending',queuedAt:123,request:{reason:'Bound original intent',quantity:2125000}},ack={operationId:materialId,scopeKey,epoch,request:{reason:'Accepted evidence'}};
+ await old.table('operations').put(row);await old.table('streams').put({scopeKey,epoch});await old.table('acknowledgements').put(ack);old.close();await inventoryOutbox.open();
+ expect(await inventoryOutbox.operations.get(stockId)).toEqual(row);expect(await inventoryOutbox.acknowledgements.get(materialId)).toEqual(ack);expect((await inventoryOutbox.streams.get(scopeKey))?.epoch).toBe(epoch);expect(await inventoryOutbox.recoveryArchives.count()).toBe(0);
+});

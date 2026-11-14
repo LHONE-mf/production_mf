@@ -27,7 +27,8 @@ export interface QueuedInventoryStockChange {
   /** Frozen confirmed snapshot used for exact server-ack verification. */
   base:InventoryStockSnapshot;
   queuedAt:number;
-  state:'pending'|'conflict'|'rejected';
+  state:'pending'|'conflict'|'rejected'|'review';
+  recoveryApprovalId?:string;
   error?:string;
   requiresStreamReview?:boolean;
   reviewedAt?:number;
@@ -135,7 +136,7 @@ export async function reviewInventoryConflict(scope:InventoryScope,operationId:s
  const scopeKey=inventoryScopeKey(scope);
  await inventoryOutbox.transaction('rw',inventoryOutbox.stockOperations,async()=>{
   const row=await inventoryOutbox.stockOperations.get(operationId);
-  if(!row||row.scopeKey!==scopeKey||!['conflict','rejected'].includes(row.state)||row.reviewedAt)throw Error('Операция не доступна для сверки');
+  if(!row||row.scopeKey!==scopeKey||!(['conflict','rejected'].includes(row.state)||row.state==='review'&&row.recoveryApprovalId)||row.reviewedAt)throw Error('Операция не доступна для сверки');
   await inventoryOutbox.stockOperations.update(operationId,{reviewedAt:Date.now(),reviewReason:reason.trim()});
  });
 }

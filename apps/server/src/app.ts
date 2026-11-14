@@ -1,3 +1,4 @@
+import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
 import Fastify from 'fastify';
 import type { Pool } from 'pg';
 import rateLimit from '@fastify/rate-limit';
@@ -65,6 +66,7 @@ export function buildApp(pool: Pool) {
   registerInspectionReviewRoutes(app, pool);
   registerInspectionCriteriaRoutes(app, pool);
   registerInventoryRoutes(app, pool);
+  registerInventoryRecoveryRoutes(app,pool);
   registerInventoryCatalogRoutes(app, pool);
   registerInventoryStockOperations(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));

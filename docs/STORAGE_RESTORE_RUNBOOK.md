@@ -4,13 +4,22 @@ Engineering runbook for feat/storage-inventory-foundation. No production databas
 
 ## Compatibility and deployment
 
-Apply additive `021_inventory_restore_fence.sql` after 001–020 using the established migration runner and deployment credentials. Historical migrations are not all repeatable; never blindly rerun them on an existing database. Migration 021 is transactional and reapplicable without changing the current epoch, stock or ledger.
+Apply additive `021_inventory_restore_fence.sql` and `022_inventory_recovery_approvals.sql` after 001–020 using the established migration runner and deployment credentials. Historical migrations are not all repeatable; never blindly rerun them on an existing database. Migrations 021–022 are transactional and reapplicable without changing the current epoch, stock or ledger.
 
 Deploy the server before the compatible client. Receipt/stock writes now require `x-inventory-epoch`; clients lacking it receive HTTP 428 and must retain pending operations. `/inventory/stream` and feed pages return the organization history UUID and posting status. Every client upload checks that proofed state first. The server checks the UUID under the same organization lock as stock posting, before even idempotent replay. Changed history or suspended posting cannot become a business conflict or a new stock mutation.
 
 InventoryOutbox v6 preserves existing forms/queues/history/cursor. Pending operations created before history binding are marked `requiresStreamReview`; their original ID, payload, state and evidence remain intact. They are held for administrator review, not silently assigned to a possibly restored stream. Previous cached-view grants without history binding require a fresh authenticated refresh. New accepted acknowledgements and their exact frozen requests remain in a separate local store after the pending row is removed.
 
-There is no automatic epoch-reset/replay button. The initial guard milestone deliberately holds unresolved pre-upgrade work; a guided, audited recovery approval is the next implementation slice. Until that process is available and verified, keep affected posting paused rather than clearing flags or deleting browser data.
+InventoryOutbox v7 adds recovery archives without rewriting v6 queues or bindings. The guided review preserves the complete original stock cache, feed history/cursor, acknowledgements, drafts and queued requests before adopting a reviewed server history. Approval never enables server posting or confirms an uncertain operation.
+
+## Guided Chief review
+
+1. On the original authenticated device, open “Данные для сверки после восстановления” and prepare/download the package. Its SHA-256 digest binds all original evidence except the export timestamp. Any local change requires a new package and review.
+2. Chief may review that package on the same device or open its JSON (up to 2 MiB) on a separate proven Chief device in the same organization/server. Compare exact intent, accepted acknowledgements, restored ledger and physical records. Enter the review result and document reference, then explicitly confirm the history review. The server records an immutable approval for the exact digest, original actor/device and current history UUID; retries retain the approval ID. Manager/operator cannot approve.
+3. On the original device, apply the confirmed review. The server must still return a matching approval for the current history. The device archives its complete previous state atomically, retains original request IDs/payloads, marks uncertain pending requests “Требуется сверка истории”, and resets only that scope's stock/history read cache and cursor. Changes during the approval lookup abort the reset. Other scopes are untouched.
+4. Refresh after the administrator has separately reopened posting under the operational reconciliation procedure. Held receipts never replay automatically, and remain visible for investigation. Held stock proposals may receive a documented local review before a separately confirmed new intent; that local review is not evidence of a movement. Preserve the server approval and downloaded device evidence. “Открыть последний архив сверки” downloads the retained original package again after rebuilding the cache.
+
+A further server restore invalidates old approvals. If the server rotates between approval lookup and local adoption, the next normal read/write fence holds work again. Keep posting paused until all physical and operational checks finish; do not clear flags or delete browser data.
 
 ## Backup preparation
 
@@ -21,7 +30,7 @@ Freeze physical receiving, movement and counting for the affected scope and name
 ## Restore before reopening service
 
 1. Restore into an isolated database first. Stop inventory writers and keep clients disconnected from the restored service.
-2. Apply only missing migrations. If restoring a pre-021 backup, install 021 while the service remains closed; do not serve its initial default history as if continuity had been verified.
+2. Apply only missing migrations. If restoring a pre-021 backup, install 021–022 while the service remains closed; do not serve its initial default history as if continuity had been verified.
 3. In an administrator transaction, acquire the organization `inventory-sequence` advisory locks in a consistent order, rotate every affected `inventory_streams.epoch` to a fresh UUID and set `posting_enabled=false`. Never restore the previous UUID to silence a client mismatch.
 4. Revoke restored sessions/proof grants and consume outstanding device challenges before serving authentication again. Preserve device enrollment identities and existing revocations; never copy private keys or bearer credentials between devices.
 5. Verify row counts, immutable ledger triggers, exact quantities, separate receipt/container provenance, scoped permissions and restored revocations. Reconstruct latest stock projections from accepted `result_stock` records in sequence and reservations from reserve/release intents. Unknown kinds, missing provenance or unexplained records require investigation; do not delete them to make totals agree.
@@ -34,6 +43,6 @@ A generic cache wipe, last-write-wins merge, queue deletion or silent new operat
 
 After building apps/server, `scripts/storage-recovery-drill.mjs` runs with POSTGRES_TEST_URL selecting localhost production_mf_ci and the existing local storage-postgres-test Docker container. It creates three fresh UUID-named databases and removes only those databases on completion/failure.
 
-Actual results: custom pg_dump archive restored into two fresh databases; all 34 public tables compared exactly; six accepted events reconstructed into two stock containers and one remaining reservation; same-lot receipt documents remained distinct; immutable history and revoked device behavior survived restore. Deliberately damaged stock/reservation quantities were actually repaired from ledger projections under stopped posting/locks and compared with the original backup. A committed-after-backup receipt was absent after rollback; old credentials, old-epoch retries and suspended new-epoch posting were denied without changing restored data. Temporary databases were removed.
+Actual results: custom pg_dump archive restored into two fresh databases; all 35 public tables compared exactly; six accepted events reconstructed into two stock containers and one remaining reservation; same-lot receipt documents remained distinct; immutable history and revoked device behavior survived restore. Deliberately damaged stock/reservation quantities were actually repaired from ledger projections under stopped posting/locks and compared with the original backup. A committed-after-backup receipt was absent after rollback; old credentials, old-epoch retries and suspended new-epoch posting were denied without changing restored data. Chief approval was recorded and read while posting remained suspended, its immutable trigger held, and stock/reservation projections stayed unchanged. Temporary databases were removed.
 
 This drill uses test-only sessions/device grants and an explicitly labelled approved-QA fixture to exercise reservation arithmetic. It does not implement or approve a production QA-release workflow, general production repair CLI, signed Android upgrade or physical warehouse count.

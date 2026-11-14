@@ -1,3 +1,4 @@
+import type {InventoryRecoveryBundle,InventoryRecoveryApproval} from './inventoryRecovery';
 import Dexie, {type Table} from 'dexie';
 import type {InventoryOfflineView} from './inventoryOfflineView';
 import type {HybridSession} from './hybridClient';
@@ -35,7 +36,7 @@ export interface InventoryStockSnapshot {
 }
 export interface QueuedInventoryReceipt {
   operationId: string;scopeKey: string;request: InventoryReceiptRequest;
-  queuedAt: number;state: 'pending'|'conflict'|'rejected';error?: string;requiresStreamReview?:boolean;
+  queuedAt: number;state: 'pending'|'conflict'|'rejected'|'review';recoveryApprovalId?:string;error?: string;requiresStreamReview?:boolean;
 }
 export interface ConfirmedInventoryStock extends InventoryStockSnapshot {
   scopeKey: string;
@@ -47,6 +48,7 @@ export interface InventoryHistory {scopeKey:string;stockId:string;sequence:numbe
 export interface InventoryStreamState {scopeKey:string;epoch:string}
 export interface InventoryAcknowledgement {operationId:string;scopeKey:string;epoch:string;kind:string;stockId:string;request:InventoryReceiptRequest|InventoryStockChangeRequest;stock:InventoryStockSnapshot;base?:InventoryStockSnapshot;receivedAt:number}
 export class InventoryOutboxDatabase extends Dexie {
+  recoveryArchives!:Table<{approvalId:string;scopeKey:string;epoch:string|null;evidence:InventoryRecoveryBundle;approval:InventoryRecoveryApproval;archivedAt:number},string>;
   streams!:Table<InventoryStreamState,string>;
   acknowledgements!:Table<InventoryAcknowledgement,string>;
   offlineViews!:Table<InventoryOfflineView,string>;
@@ -73,6 +75,7 @@ export class InventoryOutboxDatabase extends Dexie {
     this.version(6).stores({streams:'scopeKey',acknowledgements:'operationId,scopeKey,epoch'}).upgrade(async tx=>{
       for(const name of ['operations','stockOperations'])await tx.table(name).where('state').equals('pending').modify({requiresStreamReview:true});
     });
+    this.version(7).stores({recoveryArchives:'approvalId,scopeKey,epoch'});
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();

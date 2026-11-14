@@ -167,3 +167,10 @@ Until those steps and real two-device tests pass, this is a
 **development-only server foundation**, not an accepted manufacturing stock
 system. Do not enable it against live production data without deployment,
 backup/restore, QA, and warehouse acceptance.
+
+
+### Reviewed recovery (migrations 021–022)
+
+`POST /inventory/recovery-approvals` requires current Chief authority, original proven approver device, and `{approvalId, deviceId, targetActorId, targetDeviceId, epoch, evidenceDigest, reason, evidence}`. The digest is lowercase SHA-256 hex of the canonical device package excluding top-level generatedAt/evidenceDigest. Approval binds the current organization history and exact target; posting may remain suspended. Exact same-ID retries return 200 (new approval 201); altered reuse conflicts. Rows are immutable. No stock ledger mutation or posting-enable operation occurs.
+
+`GET /inventory/recovery-approvals?deviceId=UUID&evidenceDigest=HEX` requires the target's current session, proof and warehouse access. It returns `{organizationId, actorId, deviceId, epoch, postingEnabled, approval}`; approval is null unless target, digest and current epoch all match. Approvals grant cache/history reconciliation only. The full source evidence stays on the original device/export; the server stores its digest, approver/target identities, review reason and document reference.
