@@ -153,3 +153,29 @@ S8 remains partial: independent unapproved count-observation report/export,
 consumption/finished-acceptance activity remain separate work. Unapproved count
 history remains readable in the existing Counts screen. Physical pilot gates
 are unchanged.
+
+## Full export-bound acceptance (2026-11-15)
+
+`scripts/storage-report-scale-smoke.mjs` creates an independently labelled
+SYNTHETIC organization in the guarded disposable `production_mf_ci` database,
+enrolls/signs a real device challenge and posts 10,000 distinct quarantine receipts
+through the actual authenticated Fastify API. Real Chromium at 390x844 drives the
+actual movement panel and full-snapshot CSV download: all 10,000 IDs, exact
+quantities/post-event balances and history/bound metadata must match. Adding a
+10,001st actual receipt and explicitly refreshing the report must abort the next
+full export with **zero partial files**. The driver neither rewrites ledger rows
+nor modifies production data, and refuses to overwrite a pre-existing harness.
+
+The existing CI server job now runs this acceptance after the two-profile smoke
+and uploads `report-scale-result.json`, exact-bound CSV and the over-limit mobile
+screenshot alongside its other engineering evidence. A failure fails CI. Local
+first execution accepted 10,001 events, exported 10,000 rows / 4,668,878 bytes,
+created no over-limit file and measured 53.9 seconds for synthetic API setup and
+1.7 seconds for the export. Timings are observations, not a performance guarantee
+or physical Android memory certification. Check exact-SHA hosted results in the
+resumption checkpoint.
+
+The former 10,000-row browser/export acceptance gap is covered. Physical
+OnePlus/ColorOS memory/lifecycle, broader factory acceptance and deployment remain
+S10/pilot gates; future actual-consumption/finished-acceptance reports depend on
+S9's real operations.

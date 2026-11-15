@@ -1,3 +1,9 @@
+# Current acceptance — real 10,000-row export boundary (2026-11-15)
+
+The actual API/browser scale driver now verifies exactly 10,000 accepted events export completely, while 10,001 aborts without a partial file; the existing CI server job runs it and retains artifacts. See [movement contract](STORAGE_MOVEMENT_REPORT.md). This closes the browser/export-bound gap; physical Android memory/lifecycle and factory/deployment acceptance remain pending. S8's implemented reporting is not a production-release certificate. S9 finished-output acceptance and measured Slurry use remain NOT IMPLEMENTED.
+
+Latest application/native code `657b2da2a20b6f6cc5071ea7c94f82ffc4bf82b7` passed [Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43685672631), [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43685668761), [PR CI](https://github.com/LHONE-mf/production_mf/actions/runs/43685672645), [Route A](https://github.com/LHONE-mf/production_mf/actions/runs/43685668770). Local current totals are 664 frontend / 281 real PostgreSQL tests, real browser/native harness and 44-table/two-restore checks. The new scale-test commit needs its own hosted verification, recorded in the checkpoint after push. No product/schema/outbox/dependency change from this acceptance driver.
+
 # Current follow-up — complete count-session exports (2026-11-15)
 
 The Counts screen now exports the complete frozen selected session, including observations awaiting approval, separate corrections and closure. Count history pages and the closed flag share one immutable upper sequence; another device's later approval cannot alter the displayed/exported snapshot. Explicit refresh selects newer evidence. Actual PostgreSQL, two-profile CSV comparison and dump/two-restores cover this behavior. See [count contract](STORAGE_COUNTS.md).
