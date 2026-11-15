@@ -1,3 +1,7 @@
+import {AssemblyOperationSource} from './AssemblyOperationSource';
+import {useAssemblyOperationSave} from './useAssemblyOperationSave';
+import {AssemblyOperationUnits,ASSEMBLY_UNIT_LABELS} from './AssemblyOperationUnits';
+import {parseAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
 // B-с4: Зиговка канта корпуса + точечная сварка токоотвода + ультразвуковая завальцовка
 // крышки ЦИЛИНДРИЧЕСКИХ ячеек. Отдельный файл — переписывается независимо.
 // Три технологические операции одной станции: зиговка (crimp), точка (spot), УЗ (ultrasonic).
@@ -19,11 +23,13 @@ const PHASES: { id: CrimpPhase; name: string; hint: string }[] = [
 interface Props {
   run: AssemblyRun;
   workerId: string;
-  onAddOp: (op: AssemblyOp) => void;
+  onAddOp: (op: AssemblyOp) => Promise<void>;
 }
 
 export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
   const [phase, setPhase] = useState<CrimpPhase>('crimp');
+  const operation=useAssemblyOperationSave(onAddOp,run);
+  const [countError,setCountError]=useState(false);
   const [qtyIn, setQtyIn] = useState('');
   const [qtyOut, setQtyOut] = useState('');
   const [qtyScrap, setQtyScrap] = useState('0');
@@ -45,9 +51,10 @@ export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
     us: ['Амплитуда УЗ, мкм', 'Давление УЗ, Н'],
   };
 
-  const save = () => {
-    const inN = parseInt(qtyIn, 10), outN = parseInt(qtyOut, 10);
-    if (!inN || isNaN(outN)) return;
+  const save = async () => {
+    const counts=parseAssemblyCounts(qtyIn,qtyOut,qtyScrap);
+    setCountError(!counts);
+    if(!counts)return;
     const [k1, k2] = paramKeys[phase];
     const params: Record<string, number | string> = { Операция: PHASES.find((p) => p.id === phase)!.name };
     if (p1) params[k1] = parseFloat(p1);
@@ -55,16 +62,16 @@ export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
     const op: AssemblyOp = {
       substation: 'crimp-cyl',
       workerId,
+      units:operation.units,
       finishedAt: new Date().toISOString(),
-      qtyIn: inN,
-      qtyOut: outN,
-      qtyScrap: parseInt(qtyScrap, 10) || 0,
+      ...counts,
       params,
       defects: defects.split(',').map((s) => s.trim()).filter(Boolean),
       note: note.trim() || undefined,
     };
-    onAddOp(op);
+    await operation.commit(op,()=>{
     setQtyIn(''); setQtyOut(''); setQtyScrap('0'); setP1(''); setP2(''); setDefects(''); setNote('');
+    });
   };
 
   const [l1, l2] = paramLabels[phase];
@@ -78,7 +85,7 @@ export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
 
       <div className="flex flex-wrap gap-2">
         {PHASES.map((p) => (
-          <button key={p.id} onClick={() => setPhase(p.id)}
+          <button disabled={operation.busy} key={p.id} onClick={() => setPhase(p.id)}
             title={p.hint}
             className={`px-3 py-1.5 rounded text-xs font-medium border ${
               phase === p.id
@@ -93,25 +100,30 @@ export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div><label className={labelCls}>Ячеек подано, шт</label>
-          <input className={inputCls} type="number" value={qtyIn} onChange={(e) => setQtyIn(e.target.value)} placeholder="0" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyIn} onChange={(e) => setQtyIn(e.target.value)} placeholder="0" /></div>
         <div><label className={labelCls}>Годных после операции, шт</label>
-          <input className={inputCls} type="number" value={qtyOut} onChange={(e) => setQtyOut(e.target.value)} placeholder="0" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyOut} onChange={(e) => setQtyOut(e.target.value)} placeholder="0" /></div>
         <div><label className={labelCls}>Брак, шт</label>
-          <input className={inputCls} type="number" value={qtyScrap} onChange={(e) => setQtyScrap(e.target.value)} /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyScrap} onChange={(e) => setQtyScrap(e.target.value)} /></div>
         <div><label className={labelCls}>{l1}</label>
-          <input className={inputCls} type="number" step="0.01" value={p1} onChange={(e) => setP1(e.target.value)} /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" step="0.01" value={p1} onChange={(e) => setP1(e.target.value)} /></div>
         <div><label className={labelCls}>{l2}</label>
-          <input className={inputCls} type="number" step="0.01" value={p2} onChange={(e) => setP2(e.target.value)} /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" step="0.01" value={p2} onChange={(e) => setP2(e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div><label className={labelCls}>Дефекты (через запятую)</label>
-          <input className={inputCls} value={defects} onChange={(e) => setDefects(e.target.value)}
+          <input disabled={operation.busy} className={inputCls} value={defects} onChange={(e) => setDefects(e.target.value)}
             placeholder="непропай точки, негерметичность зига, разрыв мембраны" /></div>
         <div><label className={labelCls}>Примечание</label>
-          <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
+          <input disabled={operation.busy} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
       </div>
-      <button onClick={save}
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white">
+      <AssemblyOperationSource run={run} form={operation}/>
+      <AssemblyOperationUnits disabled={operation.busy} value={operation.units} onChange={operation.setUnits}/>
+      {operation.error&&<p role="alert" className="text-red-300 text-sm">{operation.error}</p>}
+      {operation.error&&<button disabled={operation.busy} onClick={operation.resetAttempt} className="min-h-11 px-3 bg-slate-800 rounded text-sm">Новая операция</button>}
+      {countError&&<p role="alert" className="text-red-300 text-sm">{ASSEMBLY_COUNT_ERROR}</p>}
+      <button disabled={operation.busy} onClick={()=>void save()}
+        className="min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white">
         ➕ Зафиксировать операцию
       </button>
 
@@ -126,6 +138,8 @@ export function CrimpCylStation({ run, workerId, onAddOp }: Props) {
               {Object.entries(o.params).filter(([k]) => k !== 'Операция').length > 0 &&
                 <> · {Object.entries(o.params).filter(([k]) => k !== 'Операция').map(([k, v]) => `${k}: ${v}`).join(' · ')}</>}
               {o.defects.length > 0 && <><br /><span className="text-red-400">⚠ Дефекты: {o.defects.join(', ')}</span></>}
+              {o.source&&<p className="break-all">Источник: {o.source.kind==='operation'?o.source.operationId:o.source.kind==='intake'?o.source.sortRunId:o.source.reference}{o.conversionNote&&<> · основание: {o.conversionNote}</>}</p>}
+              {o.id&&o.units&&<p className="break-all">ID: {o.id} · {o.workerId} · единицы: {o.units.input&&ASSEMBLY_UNIT_LABELS[o.units.input]} → {o.units.output&&ASSEMBLY_UNIT_LABELS[o.units.output]} · брак: {o.units.scrap&&ASSEMBLY_UNIT_LABELS[o.units.scrap]}</p>}
               {o.note && <><br /><span className="text-slate-500">📝 {o.note}</span></>}
               <br /><span className="text-slate-600">{o.finishedAt ? new Date(o.finishedAt).toLocaleString() : ''}</span>
             </div>

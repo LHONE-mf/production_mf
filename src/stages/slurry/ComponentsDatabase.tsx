@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
+import {validateSlurryComponent} from '../../core/manufacturing/slurryMath';
 import { db } from '../../core/db';
 import { MixComponent, StageId, SyncPacket, UserRole } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
@@ -31,24 +32,33 @@ export function ComponentsDatabase() {
 
   const components = useLiveQuery(() => db.mixComponents.orderBy('name').toArray(), []);
   const [draft, setDraft] = useState<(Omit<MixComponent, 'id' | 'updatedAt'> & { id?: string }) | null>(null);
+  const [error,setError]=useState(''),[fractionText,setFractionText]=useState('');
+  const [original,setOriginal]=useState<MixComponent|null>(null);
   const [outPacket, setOutPacket] = useState<SyncPacket | null>(null);
 
   const num = (v: string) => (v.trim() === '' ? undefined : Number(v.replace(',', '.')));
 
   const save = async () => {
-    if (!draft || !draft.name.trim()) return;
-    const now = Date.now();
+    if (!draft || !currentUser) return;setError('');
+    try{
+    const now = Math.max(Date.now(),(original?.updatedAt??0)+1);
     const rec: MixComponent = {
       id: draft.id ?? uuidv4(),
       name: draft.name.trim(),
-      kind: draft.kind,
+      kind: draft.kind,solidsMassFraction:draft.solidsMassFraction,
       densitySettled: draft.densitySettled, densityTrue: draft.densityTrue,
       capacity: draft.capacity, ssa: draft.ssa, d50: draft.d50,
       viscosity: draft.viscosity,
       updatedAt: now,
     };
-    await db.mixComponents.put(rec);
+    validateSlurryComponent(rec);
+    await db.transaction('rw',db.mixComponents,db.users,async()=>{
+      const actor=await db.users.get(currentUser.id);if(!actor?.isActive||![UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF].includes(actor.role))throw new Error('Нужен активный локальный технолог, мастер или начальник');
+      const old=await db.mixComponents.get(rec.id);if(JSON.stringify(old)!==JSON.stringify(original??undefined))throw new Error('Версия материала изменена. Исходные данные не заменены; откройте запись заново.');
+      await db.mixComponents.put(rec);
+    });
     setDraft(null);
+    }catch(cause){setError(cause instanceof Error?cause.message:'Материал не сохранён');}
   };
 
   const remove = async (c: MixComponent) => {
@@ -57,7 +67,7 @@ export function ComponentsDatabase() {
   };
 
   const share = (c: MixComponent) => {
-    setOutPacket({ v: 1, type: 'mix-component', stage: StageId.SLURRY, payload: c, from: currentUser!.id, ts: Date.now() });
+    setOutPacket({ v: 1, type: 'mix-component', stage: StageId.SLURRY, payload: c, from: currentUser!.id, role:currentUser!.role, ts: Date.now() });
   };
 
   const field = (label: string, key: 'densitySettled' | 'densityTrue' | 'capacity' | 'ssa' | 'd50' | 'viscosity', hint: string) => (
@@ -65,7 +75,7 @@ export function ComponentsDatabase() {
       <span>{label} <span className="text-slate-600">({hint})</span></span>
       <input
         type="number" step="any"
-        className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+        className="min-h-11 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
         value={(draft as any)?.[key] ?? ''}
         onChange={(e) => setDraft((d) => (d ? { ...d, [key]: num(e.target.value) } : d))}
       />
@@ -78,8 +88,8 @@ export function ComponentsDatabase() {
         <h3 className="text-white font-semibold">🧱 База компонентов замеса</h3>
         {canEdit && (
           <button
-            onClick={() => setDraft(emptyDraft())}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white font-medium"
+            onClick={() => {setOriginal(null);setError('');setFractionText('');setDraft(emptyDraft());}}
+            className="min-h-11 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white font-medium"
           >
             + Новый компонент
           </button>
@@ -87,6 +97,7 @@ export function ComponentsDatabase() {
       </div>
       {!canEdit && <p className="text-xs text-slate-500">Просмотр справочника. Редактирование — технолог и выше.</p>}
 
+      {error&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
       {/* Форма редактирования */}
       {draft && (
         <div className="bg-slate-800 border border-blue-500/40 rounded-lg p-3 space-y-3">
@@ -94,7 +105,7 @@ export function ComponentsDatabase() {
             <label className="text-xs text-slate-400 space-y-1">
               <span>Название компонента</span>
               <input
-                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                className="min-h-11 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
                 value={draft.name}
                 onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 placeholder="например, LFP (LiFePO4)"
@@ -103,7 +114,8 @@ export function ComponentsDatabase() {
             <label className="text-xs text-slate-400 space-y-1">
               <span>Тип</span>
               <select
-                className="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                aria-label="Тип материала"
+                className="min-h-11 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm text-white"
                 value={draft.kind}
                 onChange={(e) => setDraft({ ...draft, kind: e.target.value as MixComponent['kind'] })}
               >
@@ -113,6 +125,10 @@ export function ComponentsDatabase() {
               </select>
             </label>
           </div>
+          <label className="block text-xs text-slate-300">Заявленное содержание СВ, % масс. (0 — без СВ; 100 — сухой материал)
+            <input aria-label="СВ материала, % масс." inputMode="decimal" className="min-h-11 w-full rounded border border-slate-700 bg-slate-900 p-2 text-white" value={fractionText} onChange={e=>{setFractionText(e.target.value);setDraft({...draft,solidsMassFraction:e.target.value.trim()?Number(e.target.value.replace(',','.'))/100:undefined});}}/>
+          </label>
+          <p className="text-xs text-slate-400">Пустой состав неизвестен. Тип материала не подставляет СВ. Основание состава/измерения фиксируется с навесками замеса.</p>
           <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
             {field('Плотн. утряски', 'densitySettled', 'г/см³')}
             {field('Истинная плотн.', 'densityTrue', 'г/см³')}
@@ -122,10 +138,10 @@ export function ComponentsDatabase() {
             {field('Вязкость', 'viscosity', 'мПа·с, для р-телей')}
           </div>
           <div className="flex gap-2">
-            <button onClick={save} disabled={!draft.name.trim()} className="px-4 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded text-sm text-white font-medium">
+            <button onClick={save} disabled={!draft.name.trim()} className="min-h-11 px-4 py-1.5 bg-green-600 hover:bg-green-500 disabled:opacity-50 rounded text-sm text-white font-medium">
               Сохранить
             </button>
-            <button onClick={() => setDraft(null)} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">
+            <button onClick={() => setDraft(null)} className="min-h-11 px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-200">
               Отмена
             </button>
           </div>
@@ -139,7 +155,7 @@ export function ComponentsDatabase() {
             <tr className="text-left text-slate-400 border-b border-slate-700 text-xs">
               <th className="py-2 pr-2">Компонент</th>
               <th className="py-2 pr-2">Тип</th>
-              <th className="py-2 pr-2">ρ утр.</th>
+              <th className="py-2 pr-2">СВ, масс.%</th><th className="py-2 pr-2">ρ утр.</th>
               <th className="py-2 pr-2">ρ ист.</th>
               <th className="py-2 pr-2">C, мАч/г</th>
               <th className="py-2 pr-2">SSA</th>
@@ -153,21 +169,21 @@ export function ComponentsDatabase() {
               <tr key={c.id} className="border-b border-slate-800 text-slate-200">
                 <td className="py-2 pr-2">{c.name}</td>
                 <td className="py-2 pr-2 text-xs text-slate-400">{KIND_LABELS[c.kind]}</td>
-                <td className="py-2 pr-2 text-xs">{c.densitySettled ?? '—'}</td>
+                <td className="py-2 pr-2 text-xs">{c.solidsMassFraction===undefined?'неизвестно':c.solidsMassFraction*100}</td><td className="py-2 pr-2 text-xs">{c.densitySettled ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.densityTrue ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.capacity ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.ssa ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.d50 ?? '—'}</td>
                 <td className="py-2 pr-2 text-xs">{c.viscosity ?? '—'}</td>
                 <td className="py-2 whitespace-nowrap">
-                  <button onClick={() => share(c)} title="Отправить QR/текстом" className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded mr-1">📡</button>
+                  <button onClick={() => share(c)} title="Отправить QR/текстом" className="min-h-11 text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded mr-1">📡</button>
                   {canEdit && (
                     <>
                       <button
-                        onClick={() => setDraft({ ...c })}
-                        className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded mr-1"
+                        aria-label={`Изменить материал ${c.name}`} onClick={() => {setOriginal(c);setError('');setFractionText(c.solidsMassFraction===undefined?'':String(c.solidsMassFraction*100));setDraft({...c});}}
+                        className="min-h-11 text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded mr-1"
                       >✏️</button>
-                      <button onClick={() => remove(c)} className="text-xs px-2 py-1 bg-red-900/50 hover:bg-red-800/60 rounded">🗑</button>
+                      <button onClick={() => remove(c)} className="min-h-11 text-xs px-2 py-1 bg-red-900/50 hover:bg-red-800/60 rounded">🗑</button>
                     </>
                   )}
                 </td>

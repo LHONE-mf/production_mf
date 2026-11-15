@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '../../core/db';
+import type { Task as StoredTask } from '../../core/types';
 import { useAuthStore } from '../../core/store/authStore';
 import { UserRole, TaskStatus, TaskPriority } from '../../core/types';
-import { ROLE_LABELS } from '../../core/permissions';
+import { createServerManagedTask, editServerManagedTask } from '../../core/sync/atomicTasks';
+import { requireOfflineTaskEditLease } from '../../core/sync/offlineTaskLease';
+import { listVisibleTasks } from '../../core/sync/visibleTasks';
 import { 
-  Plus, Filter, Search, Clock, CheckCircle, AlertTriangle, 
-  Circle, Play, XCircle, ChevronDown, MoreVertical, QrCode,
-  Share2, Bluetooth
+  Plus, Search, Clock, CheckCircle, 
+  Circle, Play, XCircle
 } from 'lucide-react';
 
 interface Task {
@@ -22,33 +26,6 @@ interface Task {
   dueDate?: Date;
   progress: number;
 }
-
-const DEMO_TASKS: Task[] = [
-  {
-    id: '1', title: 'Сборка блока ячеек 48V', description: 'Собрать блок из 13 последовательных ячеек',
-    status: TaskStatus.IN_PROGRESS, priority: TaskPriority.HIGH, assignedTo: 'worker-001',
-    assignedToName: 'Козлов Д.С.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 3600000), dueDate: new Date(Date.now() + 7200000), progress: 60,
-  },
-  {
-    id: '2', title: 'Сварка никелевых контактов', description: 'Провести точечную сварку 48 контактов',
-    status: TaskStatus.ASSIGNED, priority: TaskPriority.MEDIUM, assignedTo: 'worker-002',
-    assignedToName: 'Новиков А.М.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 1800000), dueDate: new Date(Date.now() + 14400000), progress: 0,
-  },
-  {
-    id: '3', title: 'Тестирование BMS платы', description: 'Проверить все каналы балансировки',
-    status: TaskStatus.CREATED, priority: TaskPriority.LOW, assignedTo: 'worker-003',
-    assignedToName: 'Морозов С.Н.', createdBy: 'master-001', createdByName: 'Петров П.П.',
-    createdAt: new Date(Date.now() - 900000), progress: 0,
-  },
-  {
-    id: '4', title: 'Калибровка датчиков температуры', description: 'Калибровка 8 термопар на линии 2',
-    status: TaskStatus.COMPLETED, priority: TaskPriority.MEDIUM, assignedTo: 'worker-001',
-    assignedToName: 'Козлов Д.С.', createdBy: 'tech-001', createdByName: 'Сидоров А.В.',
-    createdAt: new Date(Date.now() - 86400000), progress: 100,
-  },
-];
 
 const STATUS_CONFIG = {
   [TaskStatus.CREATED]: { label: 'Создано', icon: Circle, color: 'text-slate-400', bg: 'bg-slate-500/20' },
@@ -68,18 +45,51 @@ const PRIORITY_CONFIG = {
 
 export function TasksModule() {
   const { currentUser } = useAuthStore();
-  const [tasks] = useState<Task[]>(DEMO_TASKS);
+  const storedTasks = useLiveQuery(() => listVisibleTasks(), []);
+  const users = useLiveQuery(() => db.users.toArray(), []);
+  const editLease = useLiveQuery(() => db.hybridTaskEditLeases.get('active'), []);
+  const sharedTaskVisibility = useLiveQuery(async () => {
+    const revisions = await db.hybridTaskRevisions.toArray();
+    const queued = await db.hybridTaskOutbox.toArray();
+    return {
+      ids: new Set([...revisions.map(row => row.entityId), ...queued.map(row => row.entityId)]),
+      locallyCreated: new Set(queued.filter(op => op.expectedRevision === 0)
+        .map(op => op.entityId)),
+    };
+  }, []);
+  const sharedTaskIds = sharedTaskVisibility?.ids;
+  const authorizedIds = new Set(editLease?.authorizedTaskIds ?? []);
+  const hasEditLease = Boolean(editLease && editLease.expiresAt > Date.now());
+  const tasks: Task[] = (storedTasks ?? []).map(task => ({
+    ...task,
+    assignedToName: users?.find(user => user.id === task.assignedTo)?.fullName ?? (task.assignedTo || 'Не назначен'),
+    createdByName: users?.find(user => user.id === task.createdBy)?.fullName ?? task.createdBy,
+    progress: task.status === TaskStatus.COMPLETED ? 100 : 0,
+  }));
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<TaskStatus | 'all'>('all');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<StoredTask | null>(null);
 
   if (!currentUser) return null;
 
-  const canCreate = currentUser.role === UserRole.MASTER || currentUser.role === UserRole.CHIEF;
+  const localSupervisor = currentUser.role === UserRole.MASTER || currentUser.role === UserRole.CHIEF;
+  const verifiedSupervisor = hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master');
+  const canCreate = localSupervisor || verifiedSupervisor;
   const canViewAll = currentUser.role !== UserRole.WORKER;
 
   const filteredTasks = tasks.filter((task) => {
-    if (!canViewAll && task.assignedTo !== currentUser.id) return false;
+    // Local demo accounts must not reveal previously synced server records.
+    // Access to shared tasks requires a still-valid offline permission from
+    // the verified server identity, independently of the local demo role.
+    if (sharedTaskIds?.has(task.id) ?? true) {
+      if (!hasEditLease) return false;
+      if (!authorizedIds.has(task.id) &&
+          !(sharedTaskVisibility?.locallyCreated.has(task.id) && task.createdBy === editLease?.actorId)) return false;
+      if (editLease?.role === 'worker' && task.assignedTo !== editLease.actorId) return false;
+    } else if (!canViewAll && task.assignedTo !== currentUser.id) {
+      return false;
+    }
     if (statusFilter !== 'all' && task.status !== statusFilter) return false;
     if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
@@ -141,10 +151,22 @@ export function TasksModule() {
         </div>
       </div>
 
+      {!hasEditLease && (sharedTaskIds?.size ?? 0) > 0 && <p className="text-amber-300 text-sm">
+        Серверные задания скрыты. Подтвердите Android-устройство в разделе синхронизации для доступа к сохранённым заданиям.
+      </p>}
+      {storedTasks === undefined && <p className="text-slate-400 text-sm">Загрузка заданий...</p>}
       {/* Task list */}
       <div className="space-y-3">
         {filteredTasks.map((task) => (
-          <TaskCard key={task.id} task={task} canManage={canCreate} />
+          <TaskCard key={task.id} task={task}
+            canManage={sharedTaskIds?.has(task.id) ? verifiedSupervisor : localSupervisor}
+            canEditSharedFields={hasEditLease && (editLease?.role === 'chief' || editLease?.role === 'master')}
+            canEditSharedStatus={hasEditLease && (
+              editLease?.role === 'chief' || editLease?.role === 'master' ||
+              (editLease?.role === 'worker' && task.assignedTo === editLease.actorId)
+            )}
+            canEditLocalStatus={currentUser.role === UserRole.WORKER && task.assignedTo === currentUser.id}
+            onEdit={() => setEditingTask(storedTasks?.find(item => item.id === task.id) ?? null)} />
         ))}
         {filteredTasks.length === 0 && (
           <div className="text-center py-12">
@@ -155,12 +177,42 @@ export function TasksModule() {
       </div>
 
       {/* Create task modal */}
-      {showCreateModal && <CreateTaskModal onClose={() => setShowCreateModal(false)} />}
+      {showCreateModal && <CreateTaskModal creatorId={currentUser.id} users={users ?? []} canCreateShared={verifiedSupervisor} onClose={() => setShowCreateModal(false)} />}
+      {editingTask && <CreateTaskModal key={editingTask.id} initialTask={editingTask} creatorId={currentUser.id} users={users ?? []} onClose={() => setEditingTask(null)} />}
     </div>
   );
 }
 
-function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
+function TaskCard({ task, canManage, canEditSharedFields, canEditSharedStatus, canEditLocalStatus, onEdit }: {
+  task: Task; canManage: boolean; canEditSharedFields: boolean; canEditSharedStatus: boolean;
+  canEditLocalStatus: boolean; onEdit: () => void;
+}) {
+  const [statusError, setStatusError] = useState('');
+  const [updating, setUpdating] = useState(false);
+  const managedRevision = useLiveQuery(async () => Boolean(await db.hybridTaskRevisions.get(task.id)), [task.id]);
+  const queuedEdits = useLiveQuery(() => db.hybridTaskOutbox.where('entityId').equals(task.id).count(), [task.id]);
+  // Undefined means the ownership query is still loading, not local-only.
+  const ownershipKnown = managedRevision !== undefined && queuedEdits !== undefined;
+  const serverManaged = Boolean(managedRevision) || Boolean(queuedEdits);
+  async function changeStatus(status: TaskStatus) {
+    setUpdating(true); setStatusError('');
+    try {
+      if (serverManaged) {
+        await editServerManagedTask(task.id, { status });
+      } else {
+        await db.transaction('rw', [db.tasks, db.hybridTaskRevisions, db.hybridTaskOutbox], async () => {
+          // Ownership may have changed after React rendered the card. Never
+          // change a server task without the transactional sync outbox.
+          const revision = await db.hybridTaskRevisions.get(task.id);
+          const queued = await db.hybridTaskOutbox.where('entityId').equals(task.id).count();
+          if (revision || queued) throw new Error('Задание стало серверным. Повторите действие после обновления экрана.');
+          await db.tasks.update(task.id, { status, updatedAt: new Date() });
+        });
+      }
+    }
+    catch (error) { setStatusError(error instanceof Error ? error.message : 'Не удалось обновить статус'); }
+    finally { setUpdating(false); }
+  }
   const statusConfig = STATUS_CONFIG[task.status];
   const priorityConfig = PRIORITY_CONFIG[task.priority];
   const StatusIcon = statusConfig.icon;
@@ -181,19 +233,7 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
               <span className={`px-2 py-0.5 rounded text-xs font-medium ${priorityConfig.color}`}>
                 {priorityConfig.label}
               </span>
-              {canManage && (
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Отправить по QR">
-                    <QrCode className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Отправить по Bluetooth">
-                    <Bluetooth className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                  <button className="p-1 hover:bg-slate-700 rounded" title="Поделиться">
-                    <Share2 className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                </div>
-              )}
+
             </div>
           </div>
 
@@ -211,6 +251,15 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
             )}
           </div>
 
+          {(canManage || canEditLocalStatus || (serverManaged && canEditSharedStatus)) && <div className="flex flex-wrap gap-2 mt-3 items-center">
+            {canManage && <button type="button" disabled={serverManaged && !canEditSharedFields} title={serverManaged && !canEditSharedFields ? 'Сначала подтвердите устройство начальника или мастера' : 'Edit task'} onClick={onEdit} className="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-xs hover:bg-slate-600">Редактировать</button>}
+            <label className="text-slate-400 text-xs" htmlFor={`status-${task.id}`}>Статус</label>
+            <select id={`status-${task.id}`} aria-label="Статус задания" disabled={updating || !ownershipKnown || (serverManaged && !canEditSharedStatus)} value={task.status} onChange={event => void changeStatus(event.target.value as TaskStatus)} className="bg-slate-700 border border-slate-600 text-white rounded-lg px-2 py-1.5 text-xs">
+              {Object.entries(STATUS_CONFIG).map(([status, config]) => <option key={status} value={status}>{config.label}</option>)}
+            </select>
+          </div>}
+          {serverManaged && <p className="text-amber-300 text-xs mt-2">{canEditSharedStatus ? 'Серверное задание: изменения сохраняются офлайн и будут отправлены при ручной синхронизации.' : 'Серверное задание: для редактирования подтвердите Android-устройство в разделе синхронизации.'}</p>}
+          {statusError && <p role="alert" className="text-red-300 text-xs mt-2">{statusError}</p>}
           {task.status === TaskStatus.IN_PROGRESS && (
             <div className="mt-3">
               <div className="flex justify-between text-xs mb-1">
@@ -228,18 +277,63 @@ function TaskCard({ task, canManage }: { task: Task; canManage: boolean }) {
   );
 }
 
-function CreateTaskModal({ onClose }: { onClose: () => void }) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>(TaskPriority.MEDIUM);
-  const [assignee, setAssignee] = useState('');
+function CreateTaskModal({ onClose, creatorId, users, initialTask, canCreateShared = false }: { onClose: () => void; creatorId: string; users: Array<{id:string;fullName:string;isActive:boolean}>; initialTask?: StoredTask; canCreateShared?: boolean }) {
+  const [title, setTitle] = useState(initialTask?.title ?? '');
+  const [description, setDescription] = useState(initialTask?.description ?? '');
+  const [priority, setPriority] = useState<TaskPriority>(initialTask?.priority ?? TaskPriority.MEDIUM);
+  const [assignee, setAssignee] = useState(initialTask?.assignedTo ?? '');
+  const [createShared, setCreateShared] = useState(false);
+  const [sharedAssigneeId, setSharedAssigneeId] = useState('');
+  const [sharedWorkshopId, setSharedWorkshopId] = useState('');
+  const managedRevision = useLiveQuery(async () => initialTask ? db.hybridTaskRevisions.get(initialTask.id) : undefined, [initialTask?.id]);
+  const managedQueued = useLiveQuery(async () => initialTask ? db.hybridTaskOutbox.where('entityId').equals(initialTask.id).count() : 0, [initialTask?.id]);
+  const serverManaged = Boolean(managedRevision || managedQueued);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  async function createTask() {
+    if (!title.trim()) { setError('Введите название задания'); return; }
+    setSaving(true); setError('');
+    try {
+      const now = new Date();
+      const task: StoredTask = {
+        ...initialTask,
+        id: initialTask?.id ?? crypto.randomUUID(), title: title.trim(), description: description.trim(),
+        priority, status: initialTask?.status ?? (assignee ? TaskStatus.ASSIGNED : TaskStatus.CREATED),
+        assignedTo: assignee, createdBy: initialTask?.createdBy ?? creatorId, createdAt: initialTask?.createdAt ?? now, updatedAt: now,
+        comments: initialTask?.comments ?? [], attachments: initialTask?.attachments ?? [],
+      };
+      if (!initialTask && createShared) {
+        await createServerManagedTask({
+          title: title.trim(), description: description.trim(), priority,
+          assignedTo: sharedAssigneeId.trim(), workshopId: sharedWorkshopId.trim(),
+        });
+      } else if (initialTask && serverManaged) {
+        // Never send locally seeded demo assignee IDs to the shared server:
+        // editing a shared assignment needs a separate server-user picker.
+        const lease = await requireOfflineTaskEditLease();
+        if (lease.role === 'worker') throw new Error('Работник может менять только статус назначенного задания');
+        await editServerManagedTask(initialTask.id, {
+          title: title.trim(), description: description.trim(), priority,
+        });
+      } else if (initialTask) {
+        await db.transaction('rw', db.tasks, db.hybridTaskRevisions, db.hybridTaskOutbox, async () => {
+          const revision = await db.hybridTaskRevisions.get(initialTask.id);
+          const queued = await db.hybridTaskOutbox.where('entityId').equals(initialTask.id).count();
+          if (revision || queued) throw new Error('Server-managed tasks require device verification');
+          await db.tasks.put(task);
+        });
+      } else await db.tasks.add(task);
+      onClose();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Не удалось сохранить задание'); }
+    finally { setSaving(false); }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Новое задание</h2>
+          <h2 className="text-xl font-bold text-white">{initialTask ? 'Редактировать задание' : 'Новое задание'}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-white">
             <XCircle className="w-6 h-6" />
           </button>
@@ -281,19 +375,39 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-sm text-slate-300 mb-1">Исполнитель</label>
-              <select
-                value={assignee}
-                onChange={(e) => setAssignee(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
-              >
-                <option value="">Выберите...</option>
-                <option value="worker-001">Козлов Д.С.</option>
-                <option value="worker-002">Новиков А.М.</option>
-                <option value="worker-003">Морозов С.Н.</option>
-              </select>
+              {serverManaged ? (
+                <p className="text-slate-400 text-xs break-all rounded-lg p-2 bg-slate-700/50">
+                  {initialTask?.assignedTo || 'Не назначен'} (изменение назначения пока недоступно)
+                </p>
+              ) : createShared ? (
+                <input value={sharedAssigneeId} onChange={event => setSharedAssigneeId(event.target.value)}
+                  placeholder="UUID пользователя сервера (необязательно)"
+                  className="w-full rounded-lg bg-slate-700 text-white p-2 text-xs" />
+              ) : (
+                <select
+                  value={assignee}
+                  onChange={(e) => setAssignee(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-700/50 border border-slate-600/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                >
+                  <option value="">Выберите...</option>
+                  {users.filter(user => user.isActive).map(user => <option key={user.id} value={user.id}>{user.fullName}</option>)}
+                </select>
+              )}
             </div>
           </div>
 
+          {!initialTask && canCreateShared && <label className="flex items-center gap-2 text-slate-200 text-sm">
+            <input type="checkbox" checked={createShared} onChange={event => setCreateShared(event.target.checked)} />
+            Создать серверное задание (отправка при ручной синхронизации)
+          </label>}
+          {!initialTask && createShared && <label className="block text-slate-300 text-sm">
+            Участок (код из сервера)
+            <input value={sharedWorkshopId} maxLength={120} onChange={event => setSharedWorkshopId(event.target.value)}
+              placeholder="assembly" className="mt-1 w-full rounded-lg bg-slate-700 p-2 text-white" />
+            <span className="text-xs text-slate-400">Для мастера и заданий с исполнителем участок обязателен. Исполнитель указывается UUID пользователя сервера.</span>
+          </label>}
+          {error && <p role="alert" className="text-red-300 text-sm">{error}</p>}
+          <p className="text-slate-400 text-xs">{serverManaged || createShared ? 'Задание сохраняется в локальной очереди и отправляется при ручной синхронизации.' : 'Локальное задание сохраняется только на этом устройстве.'}</p>
           <div className="flex gap-3 pt-2">
             <button
               onClick={onClose}
@@ -302,10 +416,11 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
               Отмена
             </button>
             <button
-              onClick={onClose}
+              onClick={createTask}
+              disabled={saving}
               className="flex-1 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition shadow-lg shadow-blue-500/20"
             >
-              Создать
+              {saving ? 'Сохранение...' : initialTask ? 'Сохранить' : 'Создать'}
             </button>
           </div>
         </div>

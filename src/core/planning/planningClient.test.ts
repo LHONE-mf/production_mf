@@ -1,0 +1,382 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { planningApi, planningRequest, type PlanningSession } from './planningClient';
+
+const session: PlanningSession = {
+  session: { serverUrl: 'https://mes.example.org', accessToken: 'server-session-only' },
+};
+afterEach(() => vi.unstubAllGlobals());
+
+describe('authenticated M2 planning client', () => {
+  it('preserves replacement intent and refuses mismatched replacement acknowledgements',async()=>{
+    const input={linkId:'new-link',sourceEntryId:'new-source',sourceStage:'coating',sourceCreatedAt:'2026-11-11T03:00:00Z',
+      summary:'Saved correction',replacesLinkId:'old-link',replacementReason:'Wrong run'};
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({id:'wrong',alreadyLinked:true})}));
+    await expect(planningApi.attachLocalJournal(session,'batch-1',1,input)).rejects.toThrow('подтверждение замены');
+  });
+  it('validates withdrawal acknowledgements and keeps the same client identity on retries',async()=>{
+    const input={withdrawalId:'withdraw-1',reason:'Incorrect local run'};
+    const fetchMock=vi.fn().mockResolvedValue({ok:true,json:async()=>({
+      id:'withdraw-1',batchId:'batch-1',linkId:'link-1',alreadyRecorded:false,
+    })});
+    vi.stubGlobal('fetch',fetchMock);
+    await planningApi.withdrawLocalSource(session,'batch-1','link-1',input);
+    await planningApi.withdrawLocalSource(session,'batch-1','link-1',input);
+    expect(fetchMock.mock.calls[0][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(fetchMock.mock.calls[0][0]).toBe('https://mes.example.org/planning/batches/batch-1/journal-links/link-1/withdraw');
+    fetchMock.mockResolvedValue({ok:true,json:async()=>({id:'other',alreadyRecorded:true})});
+    await expect(planningApi.withdrawLocalSource(session,'batch-1','link-1',input)).rejects.toThrow('подтверждение отзыва');
+  });
+  it('explains a rejected fractional count without rounding the submitted value',async()=>{
+    const fetchMock=vi.fn().mockResolvedValue({ok:false,status:400,
+      json:async()=>({error:'quantity_requires_whole_count'})});
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(planningApi.createBatch(session,'order-1',{
+      batchCode:'CELL',materialLine:'cell',plannedQuantity:'1.5',quantityUnit:'cells',
+    })).rejects.toThrow('Количество ячеек и отдельных штук должно быть целым');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).plannedQuantity).toBe('1.5');
+  });
+  it('uses authenticated scoped reference criteria APIs without silently approving quality',async()=>{
+    const calls:Array<{url:string; options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({criteria:[],frozen:false})};
+    }));
+    await planningApi.routeInspectionCriteria(session,'route-1',1);
+    await planningApi.addInspectionCriterion(session,'route-1',1,2,{
+      criterionId:'criterion-1',characteristic:'Thickness',unit:'um',
+      lowerLimit:'75.000000',upperLimit:'150.000000',
+    });
+    await planningApi.batchInspectionCriteria(session,'batch-1');
+    expect(calls.map(x=>x.url)).toEqual([
+      'https://mes.example.org/planning/routes/route-1/versions/1/inspection-criteria',
+      'https://mes.example.org/planning/routes/route-1/versions/1/steps/2/inspection-criteria',
+      'https://mes.example.org/planning/batches/batch-1/inspection-criteria',
+    ]);
+    expect(calls.map(x=>x.options.method)).toEqual(['GET','POST','GET']);
+    expect(calls.every(x=>x.options.cache==='no-store' && x.options.redirect==='error' &&
+      x.options.credentials==='omit' &&
+      (x.options.headers as Record<string,string>).Authorization==='Bearer server-session-only'))
+      .toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toMatchObject({
+      characteristic:'Thickness',unit:'um',lowerLimit:'75.000000',
+      upperLimit:'150.000000',
+    });
+  });
+
+  it('uses the verified bearer session for a stable, explicitly requested inspection record',async()=>{
+    const calls:Array<{url:string;options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({batchId:'batch-1',observations:[],alreadyRecorded:false})};
+    }));
+    expect((await planningApi.inspections(session,'batch-1')).observations).toEqual([]);
+    const observation={
+      observationId:'4bc9355d-bfc1-40ca-84f8-34696c45e3c8',
+      kind:'measurement' as const,characteristic:'Separator thickness',
+      observedValue:'14.500000',observedUnit:'um' as const,
+      attentionRequired:false,note:'Calibrated device',
+    };
+    await planningApi.recordInspection(session,'batch-1',2,observation);
+    await planningApi.recordInspection(session,'batch-1',2,observation);
+    expect(calls.map(c=>c.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/inspections',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/inspections',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/inspections',
+    ]);
+    expect(calls.map(c=>c.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(c=>(c.options.headers as Record<string,string>).Authorization===
+      'Bearer server-session-only' && c.options.credentials==='omit' &&
+      c.options.redirect==='error' && c.options.cache==='no-store')).toBe(true);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(observation);
+  });
+
+  it('uses the same exact request body and verified token for inspection review retries',async()=>{
+    const calls:Array<{url:string;options:RequestInit}>=[];
+    vi.stubGlobal('fetch',vi.fn(async(url:string,options:RequestInit)=>{
+      calls.push({url,options});
+      return {ok:true,json:async()=>({reviewNumber:1,alreadyRecorded:false})};
+    }));
+    const payload={
+      reviewId:'d0c0af28-1085-43cb-a8b7-c4a6d0cdf427',
+      outcome:'follow_up_required' as const,
+      reason:'Awaiting documented measurement repeat',
+    };
+    await planningApi.reviewInspection(session,'batch-1','obs-1',payload);
+    await planningApi.reviewInspection(session,'batch-1','obs-1',payload);
+    expect(calls.map(x=>x.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/inspections/obs-1/reviews',
+      'https://mes.example.org/planning/batches/batch-1/inspections/obs-1/reviews',
+    ]);
+    expect(calls.every(x=>x.options.method==='POST'&&
+      (x.options.headers as Record<string,string>).Authorization==='Bearer server-session-only'
+      &&x.options.redirect==='error'&&x.options.credentials==='omit')).toBe(true);
+    expect(calls[0].options.body).toBe(calls[1].options.body);
+    expect(JSON.parse(String(calls[0].options.body))).toEqual(payload);
+  });
+
+  it('reads workshop and route data using the verified memory-only server token', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({ workshops: [{ id: 'coating', name: 'Coating' }] }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await planningApi.workshops(session)).workshops[0].id).toBe('coating');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/workshops',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Authorization: 'Bearer server-session-only' }),
+        cache: 'no-store',
+        redirect: 'error',
+        credentials: 'omit',
+      }),
+    );
+  });
+
+  it('refuses insecure, embedded-path and credential-bearing origins before exposing bearer credentials', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    for (const serverUrl of [
+      'http://mes.example.org', 'https://mes.example.org/api',
+      'https://admin:secret@mes.example.org', 'https://mes.example.org/?next=elsewhere',
+      'https://mes.example.org/#fragment',
+    ]) {
+      await expect(planningApi.orders({ session: { ...session.session, serverUrl } }))
+        .rejects.toThrow();
+    }
+    await expect(planningRequest(session, '//evil.example.org/steal')).rejects.toThrow();
+    await expect(planningRequest(session, '/auth/me')).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves server rejection details without treating rejected writes as successful', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 409,
+      json: async () => ({ error: 'batch_status_changed' }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(planningApi.changeBatchStatus(session, 'abc', {
+      expectedStatus: 'created', status: 'in_progress',
+    })).rejects.toThrow('HTTP 409: batch_status_changed');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/abc/status',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedStatus: 'created', status: 'in_progress' }),
+      }),
+    );
+  });
+
+  it('uses the server bearer token for send, receive and scoped handover inbox', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ handoffs: [] }) };
+    }));
+    await planningApi.handoffInbox(session);
+    await planningApi.batchHandoffs(session, 'batch-1');
+    await planningApi.sendHandoff(session, 'batch-1', {
+      handoffId: 'handoff-1', fromStep: 1, toStep: 2,
+      quantity: '12.500000', quantityUnit: 'kg', note: 'Coating handover',
+    });
+    await planningApi.receiveHandoff(session, 'handoff-1', 'Count checked');
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/handoffs/inbox',
+      'https://mes.example.org/planning/batches/batch-1/handoffs',
+      'https://mes.example.org/planning/batches/batch-1/handoffs',
+      'https://mes.example.org/planning/handoffs/handoff-1/receive',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET','GET','POST','POST']);
+    expect(calls.every(call => (call.options.headers as Record<string, string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[2].options.body))).toMatchObject({
+      handoffId: 'handoff-1', fromStep: 1, toStep: 2, quantity: '12.500000',
+    });
+    expect(JSON.parse(String(calls[3].options.body))).toEqual({ note: 'Count checked' });
+  });
+
+  it('reads genealogy and records a source-to-target declaration with exact quantities', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ batchId:'cell-batch',links:[],hasMore:false,nextAfter:null }) };
+    }));
+    expect((await planningApi.batchGenealogy(session, 'cell-batch')).links).toEqual([]);
+    await planningApi.declareGenealogy(session, 'cell-batch', {
+      sourceBatchId: 'cathode-batch', kind: 'assembly',
+      sourceQuantity: '12.500000', sourceUnit: 'kg',
+      targetQuantity: '100.000000', targetUnit: 'cells',
+      note: 'Pilot genealogy',
+    });
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/batches/cell-batch/links',
+      'https://mes.example.org/planning/batches/cell-batch/links',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET', 'POST']);
+    expect(calls.every(call => (call.options.headers as Record<string, string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual({
+      sourceBatchId: 'cathode-batch', kind: 'assembly',
+      sourceQuantity: '12.500000', sourceUnit: 'kg',
+      targetQuantity: '100.000000', targetUnit: 'cells',
+      note: 'Pilot genealogy',
+    });
+  });
+
+  it('keeps a caller-supplied genealogy UUID unchanged when retrying after a lost reply', async () => {
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, options: RequestInit) => {
+      sent.push(String(options.body));
+      return { ok: true, json: async () => ({ id: 'operation-1' }) };
+    }));
+    const declaration = {
+      declarationId: '0b152b11-2437-4c31-a005-42bc20f38676',
+      sourceBatchId: 'cathode-1', kind: 'assembly' as const,
+      sourceQuantity: '2.500000', sourceUnit: 'kg' as const,
+      targetQuantity: '100', targetUnit: 'cells' as const,
+    };
+    await planningApi.declareGenealogy(session, 'cell-1', declaration);
+    await planningApi.declareGenealogy(session, 'cell-1', declaration);
+    expect(sent).toHaveLength(2);
+    expect(sent[0]).toBe(sent[1]);
+    expect(JSON.parse(sent[0]).declarationId).toBe(declaration.declarationId);
+  });
+
+  it('requests the next genealogy page with an encoded cursor and cancellation signal', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ok:true,json:async () => ({
+      batchId:'cell-batch',links:[],hasMore:false,nextAfter:null,
+    })});
+    vi.stubGlobal('fetch',fetchMock);
+    const controller = new AbortController();
+    await planningApi.batchGenealogy(session,'cell-batch',controller.signal,'cursor/1');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/cell-batch/links?after=cursor%2F1',
+      expect.objectContaining({signal:controller.signal,cache:'no-store',redirect:'error'}));
+  });
+
+  it('rejects mismatched, truncated legacy, or inconsistent genealogy responses', async () => {
+    for (const body of [null,{links:[]},
+      {batchId:'other-batch',links:[],hasMore:false,nextAfter:null},
+      {batchId:'cell-batch',links:[],hasMore:true,nextAfter:'cursor'},
+      {batchId:'cell-batch',links:[],hasMore:false,nextAfter:'cursor'},
+      {batchId:'cell-batch',links:[{id:'broken'}],hasMore:false,nextAfter:null}]) {
+      vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async () => body}));
+      await expect(planningApi.batchGenealogy(session,'cell-batch')).rejects.toThrow(
+        'Сервер вернул неверную историю партий');
+    }
+  });
+
+  it('transmits route-step evidence as exact authenticated and non-redirecting requests', async () => {
+    const calls: Array<{ url: string; options: RequestInit }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, options });
+      return { ok: true, json: async () => ({ steps: [] }) };
+    }));
+    expect((await planningApi.stepEvidence(session, 'batch-1')).steps).toEqual([]);
+    const evidence = {
+      eventId: '80af22b0-5d66-40e1-8eea-2c5d9b62e2dd',
+      kind: 'completed' as const, quantity: '48.500000',
+      quantityUnit: 'kg' as const, equipmentCode: 'CUT-LINE',
+      note: 'Operation recorded',
+    };
+    await planningApi.recordStepEvidence(session, 'batch-1', 2, evidence);
+    await planningApi.recordStepEvidence(session, 'batch-1', 2, evidence);
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/steps',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/evidence',
+      'https://mes.example.org/planning/batches/batch-1/steps/2/evidence',
+    ]);
+    expect(calls.map(call => call.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(call => (call.options.headers as Record<string,string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(call => call.options.redirect === 'error')).toBe(true);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(evidence);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+  });
+
+  it('uses a read-only authenticated request for quantity reconciliation', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok:true,json:async () => ({batchId:'lot-1',steps:[]}),
+    });
+    vi.stubGlobal('fetch',fetchMock);
+    expect((await planningApi.quantityFlow(session,'lot-1')).steps).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://mes.example.org/planning/batches/lot-1/quantity-flow',
+      expect.objectContaining({
+        method:'GET',redirect:'error',credentials:'omit',
+        headers:expect.objectContaining({Authorization:'Bearer server-session-only'}),
+      }),
+    );
+  });
+
+  it('rejects source comparisons with inconsistent states, quantities or batch identities',async () => {
+    const step={number:1,name:'Cutting',workshopId:'cut',nextStep:null,
+      output:{quantity:'100.000000',unit:'pieces'},handoff:null,difference:null};
+    for(const body of [
+      {batchId:'other-batch',steps:[]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'compared',sourceCount:0,source:null,difference:'0'}}]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'multiple_sources',sourceCount:2,source:null,difference:'0'}}]},
+      {batchId:'lot-1',steps:[{...step,sourceComparison:{status:'no_source',sourceCount:0,source:null,difference:NaN}}]},
+    ]) {
+      vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async () => body}));
+      await expect(planningApi.quantityFlow(session,'lot-1')).rejects.toThrow('неверную сверку');
+    }
+  });
+
+  it('uses verified session and stable UUID for an explicit local journal reference', async () => {
+    const calls: Array<{ url:string; options:RequestInit }> = [];
+    vi.stubGlobal('fetch',vi.fn(async (url:string, options:RequestInit) => {
+      calls.push({url,options});
+      return {ok:true,json:async () => ({links:[],alreadyLinked:false})};
+    }));
+    await planningApi.journalLinks(session,'batch-1');
+    const data = {
+      linkId:'a3d83e98-4028-484e-91cf-b3ce87fd3dcb',
+      sourceEntryId:'9273b35b-e517-4361-8a51-7ac8112e42a5',
+      sourceStage:'coating',sourceCreatedAt:'2026-11-10T10:15:00.000Z',
+      summary:'Coated test roll',defects:'Pinholes',
+    };
+    await planningApi.attachLocalJournal(session,'batch-1',1,data);
+    await planningApi.attachLocalJournal(session,'batch-1',1,data);
+    expect(calls.map(c=>c.url)).toEqual([
+      'https://mes.example.org/planning/batches/batch-1/journal-links',
+      'https://mes.example.org/planning/batches/batch-1/steps/1/journal-links',
+      'https://mes.example.org/planning/batches/batch-1/steps/1/journal-links',
+    ]);
+    expect(calls.map(c=>c.options.method)).toEqual(['GET','POST','POST']);
+    expect(calls.every(c=>(c.options.headers as Record<string,string>).Authorization ===
+      'Bearer server-session-only')).toBe(true);
+    expect(calls.every(c=>c.options.redirect==='error')).toBe(true);
+    expect(calls[1].options.body).toBe(calls[2].options.body);
+    expect(JSON.parse(String(calls[1].options.body))).toEqual(data);
+  });
+
+  it('uses exact typed JSON for order creation, batch creation and hold reasons', async () => {
+    const calls: Array<{ url: string; body: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options: RequestInit) => {
+      calls.push({ url, body: String(options.body) });
+      return { ok: true, json: async () => ({ id: 'created' }) };
+    }));
+    await planningApi.createOrder(session, {
+      orderCode: 'PO-2026-1', productCode: '18650-NMC', routeId: 'route-id',
+      routeVersion: 2, plannedQuantity: '12.500000', quantityUnit: 'cells',
+    });
+    await planningApi.createBatch(session, 'order-id', {
+      batchCode: 'A-001', materialLine: 'anode',
+      plannedQuantity: '8.200000', quantityUnit: 'kg',
+    });
+    await planningApi.changeBatchStatus(session, 'batch-id', {
+      expectedStatus: 'in_progress', status: 'hold', reason: 'Measured deviation',
+    });
+    expect(calls.map(call => call.url)).toEqual([
+      'https://mes.example.org/planning/orders',
+      'https://mes.example.org/planning/orders/order-id/batches',
+      'https://mes.example.org/planning/batches/batch-id/status',
+    ]);
+    expect(JSON.parse(calls[0].body)).toMatchObject({ plannedQuantity: '12.500000', routeVersion: 2 });
+    expect(JSON.parse(calls[1].body)).toMatchObject({ plannedQuantity: '8.200000', materialLine: 'anode' });
+    expect(JSON.parse(calls[2].body)).toMatchObject({ reason: 'Measured deviation' });
+  });
+});

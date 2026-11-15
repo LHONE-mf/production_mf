@@ -1,0 +1,67 @@
+name: Android emulator instrumentation
+
+# Emulator boot is expensive. Run it automatically only for native system-
+# window changes (such as an Android 15+ status-bar regression); manual runs
+# remain available for the other instrumentation suites.
+on:
+  push:
+    branches: [feat/hybrid-server-foundation]
+    paths:
+      - 'android/app/src/main/java/ru/liion/production/MainActivity.java'
+      - 'android/app/src/androidTest/java/ru/liion/production/ProductionMfLaunchTest.java'
+      - '.github/workflows/android-instrumentation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-emulator-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  emulator:
+    name: Android instrumentation (API 35)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build web assets and synchronize Capacitor
+        run: |
+          npm run build
+          npx cap sync android
+      - name: Cache Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run instrumentation on hosted Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 600
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          # This run verifies the launch and status-bar insets. The larger
+          # native security/sync suite lives in the manual Android smoke job.
+          script: cd android && ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=ru.liion.production.ProductionMfLaunchTest
+      - name: Upload Android test results even if tests fail
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-instrumentation-results
+          path: |
+            android/app/build/reports/androidTests/connected/
+            android/app/build/outputs/androidTest-results/connected/
+          if-no-files-found: ignore
+          retention-days: 7

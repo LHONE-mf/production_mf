@@ -1,3 +1,5 @@
+> **HISTORICAL / SUPERSEDED:** This document describes the earlier fully-offline concept. The approved direction is hybrid offline-first + Fastify/PostgreSQL. See [PRODUCT_SPECIFICATION.md](PRODUCT_SPECIFICATION.md) for current requirements. Do not use obsolete no-server, master/slave forced-write, or mesh assumptions as implementation instructions.
+
 # Архитектура и принципы приложения «Управление цехом Li-Ion»
 
 ## 0. ГЛАВНЫЙ ПРИНЦИП: ПОЛНЫЙ ОФЛАЙН

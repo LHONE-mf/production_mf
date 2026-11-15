@@ -2,10 +2,10 @@
 // Порядок: Bluetooth — преимущественный способ (Android APK), затем QR, затем текст.
 // Никакого онлайна!
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo,useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../core/types';
-import { encodePacket } from '../../transfer/packet';
+import { encodePacket,toQrChunks } from '../../transfer/packet';
 import { hasWorkshopKey } from '../../core/security';
 import { useBluetooth } from '../../transfer/useBluetooth';
 
@@ -148,9 +148,7 @@ export function PacketOutModal({ packet, onClose }: Props) {
             <p className="text-xs text-slate-400">
               Покажите QR на принимающем устройстве («Принять пакет» в Синхронизации или вкладке «Связь»).
             </p>
-            <div className="bg-white rounded-lg p-3 flex justify-center">
-              <QRCodeSVG value={encoded} size={220} />
-            </div>
+            <PacketQrView text={encoded}/>
           </div>
         )}
 
@@ -181,9 +179,20 @@ export function PacketOutModal({ packet, onClose }: Props) {
 // Небольшой помощник: только QR-картинка из закодированного текста пакета.
 // Используется в чате (ChatModule), чтобы не дублировать модалку целиком.
 export function PacketQrView({ text }: { text: string }) {
+  const frames=useMemo(()=>toQrChunks(text),[text]);
+  const [index,setIndex]=useState(0);
+  useEffect(()=>setIndex(0),[text]);
+  const frame=Math.min(index,frames.length-1);
   return (
-    <div className="bg-white rounded-lg p-3 flex justify-center">
-      <QRCodeSVG value={text} size={220} />
+    <div className="space-y-2">
+      <div className="bg-white rounded-lg p-3 flex justify-center"><QRCodeSVG value={frames[frame]} size={220}/></div>
+      {frames.length>1&&<>
+        <p className="text-xs text-slate-300">Кадр {frame+1} из {frames.length}. Отсканируйте все кадры; пакет применяется после полной сборки.</p>
+        <div className="flex flex-wrap gap-2">
+          <button disabled={frame===0} onClick={()=>setIndex(frame-1)} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white disabled:opacity-40">Предыдущий кадр</button>
+          <button disabled={frame===frames.length-1} onClick={()=>setIndex(frame+1)} className="min-h-11 rounded bg-cyan-700 px-3 text-sm text-white disabled:opacity-40">Следующий кадр</button>
+        </div>
+      </>}
     </div>
   );
 }

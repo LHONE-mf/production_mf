@@ -1,3 +1,7 @@
+import {AssemblyOperationSource} from './AssemblyOperationSource';
+import {useAssemblyOperationSave} from './useAssemblyOperationSave';
+import {AssemblyOperationUnits,ASSEMBLY_UNIT_LABELS} from './AssemblyOperationUnits';
+import {parseAssemblyCounts,ASSEMBLY_COUNT_ERROR} from '../../core/manufacturing/assemblyCounts';
 // B-с5: Ультразвуковая сварка крышки призматических ячеек.
 // Отдельный файл — можно переписать целиком, не трогая остальные подсекции сборки.
 // Оператор фиксирует: сколько призматических блоков подали, сколько годных ячеек с приваренной
@@ -14,10 +18,12 @@ const labelCls = 'block text-xs text-slate-400 mb-1';
 interface Props {
   run: AssemblyRun;
   workerId: string;
-  onAddOp: (op: AssemblyOp) => void;
+  onAddOp: (op: AssemblyOp) => Promise<void>;
 }
 
 export function UsPrismaticStation({ run, workerId, onAddOp }: Props) {
+  const operation=useAssemblyOperationSave(onAddOp,run);
+  const [countError,setCountError]=useState(false);
   const [qtyIn, setQtyIn] = useState('');
   const [qtyOut, setQtyOut] = useState('');
   const [qtyScrap, setQtyScrap] = useState('0');
@@ -30,9 +36,10 @@ export function UsPrismaticStation({ run, workerId, onAddOp }: Props) {
 
   const ops = run.ops.filter((o) => o.substation === 'us-prismatic');
 
-  const save = () => {
-    const inN = parseInt(qtyIn, 10), outN = parseInt(qtyOut, 10);
-    if (!inN || isNaN(outN)) return;
+  const save = async () => {
+    const counts=parseAssemblyCounts(qtyIn,qtyOut,qtyScrap);
+    setCountError(!counts);
+    if(!counts)return;
     const params: Record<string, number | string> = {};
     if (power) params['Мощность УЗ, Вт'] = parseFloat(power);
     if (amplitude) params['Амплитуда, мкм'] = parseFloat(amplitude);
@@ -41,17 +48,17 @@ export function UsPrismaticStation({ run, workerId, onAddOp }: Props) {
     const op: AssemblyOp = {
       substation: 'us-prismatic',
       workerId,
+      units:operation.units,
       finishedAt: new Date().toISOString(),
-      qtyIn: inN,
-      qtyOut: outN,
-      qtyScrap: parseInt(qtyScrap, 10) || 0,
+      ...counts,
       params,
       defects: defects.split(',').map((s) => s.trim()).filter(Boolean),
       note: note.trim() || undefined,
     };
-    onAddOp(op);
+    await operation.commit(op,()=>{
     setQtyIn(''); setQtyOut(''); setQtyScrap('0'); setPower(''); setAmplitude('');
     setWeldTime(''); setForce(''); setDefects(''); setNote('');
+    });
   };
 
   return (
@@ -64,27 +71,32 @@ export function UsPrismaticStation({ run, workerId, onAddOp }: Props) {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div><label className={labelCls}>Подано блоков, шт *</label>
-          <input className={inputCls} type="number" value={qtyIn} onChange={(e) => setQtyIn(e.target.value)} placeholder="напр. 120" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyIn} onChange={(e) => setQtyIn(e.target.value)} placeholder="напр. 120" /></div>
         <div><label className={labelCls}>Годных ячеек, шт *</label>
-          <input className={inputCls} type="number" value={qtyOut} onChange={(e) => setQtyOut(e.target.value)} placeholder="напр. 118" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyOut} onChange={(e) => setQtyOut(e.target.value)} placeholder="напр. 118" /></div>
         <div><label className={labelCls}>Брак, шт</label>
-          <input className={inputCls} type="number" value={qtyScrap} onChange={(e) => setQtyScrap(e.target.value)} /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={qtyScrap} onChange={(e) => setQtyScrap(e.target.value)} /></div>
         <div><label className={labelCls}>Мощность УЗ, Вт</label>
-          <input className={inputCls} type="number" value={power} onChange={(e) => setPower(e.target.value)} placeholder="напр. 1500" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={power} onChange={(e) => setPower(e.target.value)} placeholder="напр. 1500" /></div>
         <div><label className={labelCls}>Амплитуда, мкм</label>
-          <input className={inputCls} type="number" value={amplitude} onChange={(e) => setAmplitude(e.target.value)} placeholder="напр. 40" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={amplitude} onChange={(e) => setAmplitude(e.target.value)} placeholder="напр. 40" /></div>
         <div><label className={labelCls}>Время сварки, мс</label>
-          <input className={inputCls} type="number" value={weldTime} onChange={(e) => setWeldTime(e.target.value)} placeholder="напр. 300" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={weldTime} onChange={(e) => setWeldTime(e.target.value)} placeholder="напр. 300" /></div>
         <div><label className={labelCls}>Усилие прижима, Н</label>
-          <input className={inputCls} type="number" value={force} onChange={(e) => setForce(e.target.value)} placeholder="напр. 800" /></div>
+          <input disabled={operation.busy} className={inputCls} type="number" value={force} onChange={(e) => setForce(e.target.value)} placeholder="напр. 800" /></div>
         <div><label className={labelCls}>Дефекты (через запятую)</label>
-          <input className={inputCls} value={defects} onChange={(e) => setDefects(e.target.value)} placeholder="непровар, отрыв токоотвода, вмятина крышки" /></div>
+          <input disabled={operation.busy} className={inputCls} value={defects} onChange={(e) => setDefects(e.target.value)} placeholder="непровар, отрыв токоотвода, вмятина крышки" /></div>
         <div><label className={labelCls}>Примечание</label>
-          <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
+          <input disabled={operation.busy} className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="замечания оператора" /></div>
       </div>
 
-      <button onClick={save}
-        className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white">
+      <AssemblyOperationSource run={run} form={operation}/>
+      <AssemblyOperationUnits disabled={operation.busy} value={operation.units} onChange={operation.setUnits}/>
+      {operation.error&&<p role="alert" className="text-red-300 text-sm">{operation.error}</p>}
+      {operation.error&&<button disabled={operation.busy} onClick={operation.resetAttempt} className="min-h-11 px-3 bg-slate-800 rounded text-sm">Новая операция</button>}
+      {countError&&<p role="alert" className="text-red-300 text-sm">{ASSEMBLY_COUNT_ERROR}</p>}
+      <button disabled={operation.busy} onClick={()=>void save()}
+        className="min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm font-medium text-white">
         ➕ Зафиксировать операцию
       </button>
 
@@ -97,6 +109,8 @@ export function UsPrismaticStation({ run, workerId, onAddOp }: Props) {
               <span className="text-white font-medium">Вход {o.qtyIn} → годных {o.qtyOut}</span>, брак {o.qtyScrap}
               {Object.entries(o.params).length > 0 && <> · {Object.entries(o.params).map(([k, v]) => `${k}: ${v}`).join(' · ')}</>}
               {o.defects.length > 0 && <><br /><span className="text-red-400">⚠ Дефекты: {o.defects.join(', ')}</span></>}
+              {o.source&&<p className="break-all">Источник: {o.source.kind==='operation'?o.source.operationId:o.source.kind==='intake'?o.source.sortRunId:o.source.reference}{o.conversionNote&&<> · основание: {o.conversionNote}</>}</p>}
+              {o.id&&o.units&&<p className="break-all">ID: {o.id} · {o.workerId} · единицы: {o.units.input&&ASSEMBLY_UNIT_LABELS[o.units.input]} → {o.units.output&&ASSEMBLY_UNIT_LABELS[o.units.output]} · брак: {o.units.scrap&&ASSEMBLY_UNIT_LABELS[o.units.scrap]}</p>}
               {o.note && <><br /><span className="text-slate-500">📝 {o.note}</span></>}
               <br /><span className="text-slate-600">{o.finishedAt ? new Date(o.finishedAt).toLocaleString() : ''}</span>
             </div>

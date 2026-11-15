@@ -1,7 +1,7 @@
 // Журнал работ комнаты этапа. Единая таблица для всех комнат,
 // специфичные параметры — в JournalEntry.params.
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../../core/db';
 import { StageId, JournalEntry } from '../../core/types';
@@ -21,52 +21,67 @@ export function StageJournal({ stage, canAdd, onAdd }: Props) {
   const [summary, setSummary] = useState('');
   const [paramsText, setParamsText] = useState(''); // "ключ=значение, ключ=значение"
   const [defects, setDefects] = useState('');
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [success,setSuccess]=useState('');
+  const saving=useRef(false);
 
-  const parseParams = (text: string): Record<string, number | string> | undefined => {
+  // Supplemental notes only. Never parse decimal-comma notes into
+  // authoritative measurements; those belong in validated room forms.
+  const parseParams = (text: string): Record<string, string> | undefined => {
     if (!text.trim()) return undefined;
-    const out: Record<string, number | string> = {};
-    text.split(/[,;\n]/).forEach((pair) => {
-      const [k, v] = pair.split('=').map((s) => s?.trim());
-      if (k && v) {
-        const num = Number(v.replace(',', '.'));
-        out[k] = Number.isFinite(num) && v !== '' ? num : v;
-      }
+    const out: Record<string, string> = {};
+    text.split(/[;\n]/).forEach(pair => {
+      const separator=pair.indexOf('=');
+      if(separator<0)return;
+      const key=pair.slice(0,separator).trim();
+      const value=pair.slice(separator+1).trim();
+      if(key&&value)out[key]=value;
     });
     return Object.keys(out).length ? out : undefined;
   };
 
   const submit = async () => {
-    if (!summary.trim()) return;
-    await onAdd({ summary: summary.trim(), params: parseParams(paramsText), defects: defects.trim() });
-    setSummary(''); setParamsText(''); setDefects('');
+    if (!summary.trim() || saving.current) return;
+    saving.current=true;setBusy(true);setError('');setSuccess('');
+    try{
+      await onAdd({ summary: summary.trim(), params: parseParams(paramsText), defects: defects.trim() });
+      setSummary('');setParamsText('');setDefects('');
+      setSuccess('Сохранено локально в журнале заметок. Это не измерение и не QA-допуск.');
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:'Запись не сохранена. Проверьте хранилище и повторите.');
+    }finally{saving.current=false;setBusy(false);}
   };
 
   return (
     <div className="space-y-3">
       {canAdd && (
         <div className="bg-slate-800 border border-slate-700 rounded-lg p-3 space-y-2">
-          <p className="text-sm font-semibold text-slate-200">Новая запись журнала</p>
+          <p className="text-sm font-semibold text-slate-200">Дополнительная запись журнала</p>
+          <p className="text-xs text-slate-300">Здесь свободные заметки; измерения и результаты производства сохраняйте в специализированной форме участка. Параметры — текст, через ; или с новой строки.</p>
           <input
             className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500"
             placeholder="Что сделано (например: замес шлама партия 13, 240 кг)"
-            value={summary} onChange={(e) => setSummary(e.target.value)}
+            value={summary} disabled={busy} onChange={(e) => {setSuccess('');setSummary(e.target.value);}}
           />
           <input
             className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500"
-            placeholder="Параметры через запятую: Масса=240, Вязкость=3100"
-            value={paramsText} onChange={(e) => setParamsText(e.target.value)}
+            placeholder="Заметки: Код=TEST-01; Значение=1,25"
+            value={paramsText} disabled={busy} onChange={(e) => {setSuccess('');setParamsText(e.target.value);}}
           />
           <input
             className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm text-white placeholder-slate-500"
             placeholder="Дефекты / брак (если есть)"
-            value={defects} onChange={(e) => setDefects(e.target.value)}
+            value={defects} disabled={busy} onChange={(e) => {setSuccess('');setDefects(e.target.value);}}
           />
+          {error&&<p role="alert" className="text-sm text-red-200">{error}</p>}
+          {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
           <button
-            onClick={submit}
-            disabled={!summary.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm text-white font-medium"
+            type="button" onClick={()=>void submit()}
+            disabled={busy||!summary.trim()}
+            className="min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm text-white font-medium"
           >
-            Записать в журнал
+            {busy?'Сохранение…':'Записать заметку локально'}
           </button>
         </div>
       )}

@@ -49,6 +49,7 @@ export type SyncPacketType =
   | 'task'          // новое задание / изменение задания
   | 'result'        // результат выполнения (закрытие задания)
   | 'journal'       // запись журнала комнаты
+  | 'storage-history' // сохранённое поступление и последовательная история мест
   | 'comment'       // комментарий
   | 'user'          // пользователь (создаётся только chief)
   | 'mix-batch'     // журнал замеса (результат, отправляется slave → master)
@@ -62,6 +63,7 @@ export type SyncPacketType =
   | 'cut-run'         // запись журнала нарезки → сортировка / master
   | 'sort-spec'       // спецификация сортировки от технолога (параметры из КД) → сортировка
   | 'sort-run'        // результат сортировки партии → мастер/технолог (master)
+  | 'sort-handoff'    // сохранённый префикс станций Visual → Thickness → Mass (без изменения КД)
   | 'defect-entry'    // запись реестра дефектов электродов (критичные/не критичные)
   | 'assembly-run'    // партия сборки элементов (сортировка → сборка → формовка/master)
   | 'electrolyte-in'  // входящая партия ячеек со сборки в бокс заливки
@@ -98,8 +100,8 @@ export interface SyncPacket {
   payload: unknown;         // Task | JournalEntry | StageComment | User ...
   from: string;             // id отправителя (User.id)
   ts: number;               // timestamp миллисекунды
-  forced?: boolean;         // пакет от master, применяется безусловно
-  role?: UserRole;          // роль отправителя (для проверки forced)
+  forced?: boolean;         // legacy flag; unsafe forced writes are rejected
+  role?: UserRole;          // unverified sender attribution, never an entitlement
   sig?: string;             // подпись пакета (HMAC-SHA256, base64url), см. security.ts
 }
 
@@ -251,9 +253,8 @@ export interface MeshMessage {
 // Сессия авторизации
 export interface AuthSession {
   userId: string;
-  login: string;
   role: UserRole;
-  token: string;
+  issuedAt: number;
   expiresAt: Date;
 }
 

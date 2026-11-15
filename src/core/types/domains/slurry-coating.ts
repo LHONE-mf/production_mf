@@ -34,6 +34,8 @@ export interface JournalEntry {
 
 // Компонент замеса из справочной базы (редактируется технологом/мастером)
 export interface MixComponent {
+  /** Explicit declared dry-solids mass fraction; absent is unknown, never inferred from kind. */
+  solidsMassFraction?: number;
   id: string;
   name: string;                  // название (например «LFP», «PVDF», «вода деионизованная»)
   kind: 'active' | 'binder' | 'conductive' | 'solvent' | 'additive'; // тип компонента
@@ -66,6 +68,7 @@ export interface MixModeStage {
 
 // Стандартный замес (рецепт + режим) — редактируемая база
 export interface MixRecipe {
+  basis?: 'dry-solids-share-and-liquid-per-dry';
   id: string;
   name: string;                  // например «Катод LFP R-07»
   dryMassKg: number;             // базовая масса сухих веществ, кг
@@ -85,11 +88,21 @@ export interface MixBatchWeighing {
 
 // Журнал замеса — результат выполнения (slave → master пакетами)
 export interface MixBatch {
+  measurementVersion?: 1;
+  batchCode?: string;
+  recipeSnapshot?: MixRecipe;
+  componentSnapshots?: MixComponent[];
+  recipePlan?: {basis:'dry-solids-share-and-liquid-per-dry';lines:MixRecipeLine[]};
+  massBalance?: {knownMassG:number;missingCount:number;totalActualG?:number;solidsActualG?:number;liquidActualG?:number;solidsPctMass?:number};
+  measurementUnits?: {mass:'g';targetDry:'kg';solids:'mass-fraction';density:'g/cm3';viscosity:'mPa.s';fineness:'um'};
+  measuredDensity?: number;
+  measurementNote?: string;
+  recordedRole?: import('../index').UserRole;
   id: string;
   recipeId?: string;             // по какому стандартному замесу делали (если по базе)
   recipeName: string;            // снимок названия на момент замеса
   taskId?: string;               // задание, в рамках которого выполнен замес
-  batchKg: number;               // масса замеса (СВ), кг
+  batchKg: number;               // planned dry-solids target, kg; measured masses are retained separately
   weighings: MixBatchWeighing[]; // фактические навески
   modeActual?: MixModeStage[];   // факт режима (если отличался)
   viscosity?: number;            // вязкость (сП или мПа·с — как принято на участке)
@@ -115,6 +128,12 @@ export interface MixBatch {
 // Снимок данных замеса, передаваемых на участок нанесения (офлайн-пакетом).
 // Нужны для расчёта зазора фильера–фольга и скорости шнекового насоса.
 export interface CoatingMixSnapshot {
+  handoverVersion?: 1;
+  sourceBatch?: MixBatch;
+  preparedBy?: string;
+  preparedRole?: import('../index').UserRole;
+  solidsBasis?: 'weighed-masses-and-declared-composition';
+  densityBasis?: 'measured'|'unknown';
   mixBatchId: string;            // запись журнала замеса
   recipeName: string;            // название замеса (снимок)
   viscosity?: number;            // вязкость пасты, мПа·с (сП)
@@ -122,7 +141,7 @@ export interface CoatingMixSnapshot {
   solidsPctMass?: number;        // содержание СВ по массе, %
   solidsPctVol?: number;         // содержание СВ по объёму (φ), %
   pasteDensity?: number;         // плотность пасты, г/см³
-  batchKg?: number;              // масса замеса, кг
+  batchKg?: number;              // protected handover: dry kg derived from actual masses/composition; legacy basis may be unknown
   createdAt: number;             // когда сформирован снимок
 }
 
@@ -131,6 +150,8 @@ export type CoatMode = 'continuous' | 'intermittent';
 
 // Запись журнала нанесения покрытия
 export interface CoatRun {
+  recordingVersion?: 1;
+  recordedRole?: import('../index').UserRole;
   id: string;
   taskId?: string;                 // задание (если работа по заданию)
   mixBatchId?: string;             // замес, из которого взята паста
@@ -138,6 +159,9 @@ export interface CoatRun {
   foilType: string;                // фольга (Al / Cu) + толщина, напр. «Al 12 мкм»
   targetDryMgm2?: number;          // целевая поверхностная плотность сухого покрытия, мг/см²
   // Подстроечные параметры линии
+  coatingWidthCm?: number;         // entered coated width, cm
+  pumpDeliveryCm3Rev?: number;     // entered verified calibration, cm3/revolution
+  estimatedFlowLpm?: number;       // calculated estimate, L/min
   screwRpm?: number;               // скорость шнекового насоса, об/мин
   webSpeedMpm?: number;            // скорость движения фольги, м/мин
   ovenTempsC: number[];            // температуры в шести печах, °C (индексы 0..5)
@@ -149,8 +173,9 @@ export interface CoatRun {
   segLengthsM: number[];           // длина участков нанесения, м (можно добавлять/удалять)
   sideALengthM?: number;           // общая длина нанесённого покрытия, сторона A (м) — считается из segLengthsM
   sideBLengthM?: number;           // общая длина, сторона B (м) — второй проход (двусторонняя намазка)
-  wetThicknessUm?: number;         // мокрая толщина (зазор фильеры), мкм
-  headGapUm?: number;              // расчётный/фактический зазор фильера–фольга, мкм
+  measuredDryThicknessUm?: number; // entered dry electrode total thickness, including foil and all coated faces
+  wetThicknessUm?: number;         // расчётная мокрая толщина (не зазор фильеры), мкм
+  headGapUm?: number;              // заданный пользователем механический зазор фильера–фольга, мкм
   defects?: string;                // дефекты / замечания
   notes?: string;
   workerId: string;

@@ -1,5 +1,5 @@
 // ============================================================
-import { StageId, SerialRange } from '../index';
+import { StageId, SerialRange, UserRole } from '../index';
 // ЭТАПЫ ПРОИЗВОДСТВА («комнаты» цеха). Каждый этап — отдельный
 // модуль в src/stages/<id>. Полный офлайн: данные хранятся
 // локально, передача только через Bluetooth / QR / текст.
@@ -36,8 +36,18 @@ export const ASSEMBLY_SUBSTATIONS: { id: AssemblySubstation; name: string; icon:
   { id: 'laser-prismatic', name: 'Лазерная сварка (призм.)',      icon: '🔦' },
 ];
 
+export type AssemblyQuantityUnit = 'parts' | 'electrodes' | 'sets' | 'blocks' | 'cells';
+export type AssemblyOperationUnits = Partial<Record<'input'|'output'|'scrap',AssemblyQuantityUnit>>;
+
 // Одна операция на подсекции сборки (партия деталей проходит через подсекции по очереди)
+export type AssemblyOperationSource = {kind:'intake';sortRunId:string}|{kind:'operation';operationId:string}|{kind:'declared';reference:string};
+
 export interface AssemblyOp {
+  source?: AssemblyOperationSource;
+  conversionNote?: string;
+  id?: string;
+  recordedAt?: string;
+  units?: AssemblyOperationUnits;
   substation: AssemblySubstation;
   workerId: string;
   startedAt?: string;        // ISO — время начала (факультативно)
@@ -51,12 +61,21 @@ export interface AssemblyOp {
 }
 
 // Партия сборки: пришла с сортировки (название партии), идёт по подсекциям, результат уходит на формовку
+export interface AssemblyCellOutput {
+  id:string; operationId:string; count:number; cellType:CellType; serialRange:SerialRange;
+  recordedBy:string; recordedRole:UserRole; recordedAt:string; note:string;
+}
 export interface AssemblyRun {
+  cellOutput?:AssemblyCellOutput;
+  sourceLedger?: 1;
+  operationLedger?: 1; // New observations do not recalculate historical cell totals.
+  sourceSort?:import('./cutting-sorting-calender').SortRun;
+  intake?:{sortRunId:string;electrodeCount:number;recordedBy:string;recordedAt:string};
   id: string;
   batchName: string;                 // название партии с сортировки (приходит из sort-run)
   serialRange?: SerialRange;         // номера аккумуляторов партии — мигрируют далее:
                                      // сборка → заливка → вальцовка → формирование
-  cellType: CellType;                // тип ячейки (задаёт технолог)
+  cellType: CellType | 'unassigned';                // тип ячейки (задаёт технолог)
   electrodeType?: string;            // перенос из задания технолога (полосы / призматические)
   coatingType?: string;              // тип электродного покрытия
   electrodesPerCell?: number;        // сколько электродов в одной ячейке (для расчёта выхода ячеек)
