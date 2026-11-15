@@ -51,14 +51,15 @@ export async function prepareInventoryCameraFixture(render,html,artifact){
  // Physical mm layout rasterizes fractionally, then the 344px video surface
  // shrinks 640px frames again. 180px QR produced ~2.6px/modules and failed for
  // a valid mask. Rasterize the unchanged vector once at integer module pitch;
- // 37*8px becomes ~4.3px/modules inside the real 240px scan crop/quiet zone.
+ // The real 344px surface must also scale by an integer ratio: 688px video
+ // halves 8px modules to exactly 4px. 640px video still aliases some masks.
  const geometry=await render.locator('svg').evaluate(node=>{
   const modules=node.viewBox.baseVal.width,pixelsPerModule=8,size=modules*pixelsPerModule;
   if(!Number.isInteger(modules)||modules<=0||modules!==node.viewBox.baseVal.height||size>300)throw Error('Camera fixture QR geometry requires review');
   node.style.cssText=`display:block;position:absolute;top:0;left:0;width:${size}px;height:${size}px;margin:0`;
-  return{modules,pixelsPerModule,qrPixels:size,frameWidth:640,frameHeight:480};
+  return{modules,pixelsPerModule,qrPixels:size,frameWidth:688,frameHeight:516,renderedWidth:344,renderedHeight:258,renderedPixelsPerModule:4};
  });
  await render.locator('svg').screenshot({path:artifact+'/camera-label-qr.png'});await writeFile(artifact+'/camera-raster.json',JSON.stringify(geometry,null,2));
- await promisify(execFile)('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/camera-label-qr.png','-vf','pad=640:480:(ow-iw)/2:(oh-ih)/2:color=white,fps=5,format=yuv420p','-t','18','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
+ await promisify(execFile)('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/camera-label-qr.png','-vf',`pad=${geometry.frameWidth}:${geometry.frameHeight}:(ow-iw)/2:(oh-ih)/2:color=white,fps=5,format=yuv420p`,'-t','18','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
  return artifact+'/lookup-camera.y4m';
 }

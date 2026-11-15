@@ -1,6 +1,6 @@
 # Camera regression fixture correction — 2026-11-15
 
-A later documentation-only PR CI exposed an undersized synthetic QR video despite passing push CI and verified cell API/native source. The exact failing payload reproduces with the real decoder; integer-aligned camera raster at 8px/module fixes it. A fixed-payload real-camera regression and the full two-profile operator/API workflow pass locally; the new regression runs in CI. Production labels/decoder, runtime/native/API code, permissions and original data are unchanged. Exact failed and current checks are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+A later documentation-only PR CI exposed an undersized synthetic QR video despite passing push CI and verified cell API/native source. The exact failing payload reproduces with the real decoder; integer-aligned camera raster at 8px/module fixes that mask. A second push-CI mask exposed fractional scaling at the actual 344px surface; the fixture now uses 688×516 frames for exactly 4 rendered pixels/module. Both exact failed payloads pass a real-decoder/media-release regression. The fixed-payload real-camera regression and the full two-profile operator/API workflow pass locally; the new regression runs in CI. Production labels/decoder, runtime/native/API code, permissions and original data are unchanged. Exact failed and current checks are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
 
 # Cell submission API verified — 2026-11-15
 
