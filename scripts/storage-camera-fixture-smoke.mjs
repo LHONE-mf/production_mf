@@ -8,6 +8,7 @@ const artifact=process.env.STORAGE_ARTIFACT_DIR??'/tmp/storage-camera-fixture',p
 const cases=[
  'production-mf:v1:25d5c152-65c8-4db7-96e5-102a941add31:container:2575ef80-2013-421b-a28e-f37a7e88a0df',
  'production-mf:v1:f5e7036a-c806-4ad1-9c52-64b42a5a4f1a:container:97ee02a2-37f8-489f-a26f-101af20b6e54',
+ 'production-mf:v1:89b4da85-9fb4-4878-820d-7e298e002ee6:container:350a1f7b-e7a6-4b00-955d-b9ee9e9be0d5',
 ];
 let vite,browser,cameraBrowser,created=false;
 try{

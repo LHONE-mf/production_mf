@@ -48,18 +48,17 @@ export async function storageIdentificationSmoke({pool,org,pages,actors,connecti
  * failing-payload decoder regression. No decoder/result is mocked. */
 export async function prepareInventoryCameraFixture(render,html,artifact){
  await render.setContent(html);await render.locator('svg').screenshot({path:artifact+'/container-label-qr.png'});await render.pdf({path:artifact+'/container-label.pdf',preferCSSPageSize:true,printBackground:true});
- // Physical mm layout rasterizes fractionally, then the 344px video surface
- // shrinks 640px frames again. 180px QR produced ~2.6px/modules and failed for
- // a valid mask. Rasterize the unchanged vector once at integer module pitch;
- // The real 344px surface must also scale by an integer ratio: 688px video
- // halves 8px modules to exactly 4px. 640px video still aliases some masks.
+ // Preserve integer raster/display pitch and simulate slight camera aiming.
+ // A third valid mask still failed on a perfectly stationary 3/4/5px grid,
+ // but its unchanged image decoded on the first frame at four degrees. The
+ // real decoder reads moving frames; no decode/result, label or timeout changes.
  const geometry=await render.locator('svg').evaluate(node=>{
   const modules=node.viewBox.baseVal.width,pixelsPerModule=8,size=modules*pixelsPerModule;
   if(!Number.isInteger(modules)||modules<=0||modules!==node.viewBox.baseVal.height||size>300)throw Error('Camera fixture QR geometry requires review');
   node.style.cssText=`display:block;position:absolute;top:0;left:0;width:${size}px;height:${size}px;margin:0`;
-  return{modules,pixelsPerModule,qrPixels:size,frameWidth:688,frameHeight:516,renderedWidth:344,renderedHeight:258,renderedPixelsPerModule:4};
+  return{modules,pixelsPerModule,qrPixels:size,frameWidth:688,frameHeight:516,renderedWidth:344,renderedHeight:258,renderedPixelsPerModule:4,maxRotationDegrees:4,rotationPeriodSeconds:2};
  });
  await render.locator('svg').screenshot({path:artifact+'/camera-label-qr.png'});await writeFile(artifact+'/camera-raster.json',JSON.stringify(geometry,null,2));
- await promisify(execFile)('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/camera-label-qr.png','-vf',`pad=${geometry.frameWidth}:${geometry.frameHeight}:(ow-iw)/2:(oh-ih)/2:color=white,fps=5,format=yuv420p`,'-t','18','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
+ await promisify(execFile)('ffmpeg',['-y','-loglevel','error','-loop','1','-i',artifact+'/camera-label-qr.png','-vf',`pad=${geometry.frameWidth}:${geometry.frameHeight}:(ow-iw)/2:(oh-ih)/2:color=white,rotate=4*PI/180*sin(PI*t):ow=iw:oh=ih:c=white,fps=5,format=yuv420p`,'-t','18','-pix_fmt','yuv420p',artifact+'/lookup-camera.y4m']);
  return artifact+'/lookup-camera.y4m';
 }
