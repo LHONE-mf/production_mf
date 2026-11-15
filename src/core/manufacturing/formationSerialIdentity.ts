@@ -52,7 +52,7 @@ export function createFormationSerialIdentity(source:FormationRun,ranges:Process
 }
 export function declareFormationSerialIdentity(row:FormationSerialIdentity,actorId:string){
  const original=structuredClone(row);
- return db.transaction('rw',[...assemblyOutputTables(),db.formationSerialIdentities],async()=>{
+ return db.transaction('rw',assemblyOutputTables(),async()=>{
   const actor=await db.users.get(actorId);
   if(!actor?.isActive||actorId!==original.recordedBy||actor.role!==original.recordedRole||!mayDeclare(original.source,actorId,actor.role))throw Error('Нужен исходный активный автор заявления с неизменной ролью');
   return insert(original);
@@ -61,7 +61,7 @@ export function declareFormationSerialIdentity(row:FormationSerialIdentity,actor
 /** Group-key packets preserve declared attribution, not authenticated account,
  * server entitlement, final QC or warehouse acceptance. */
 export function receiveFormationSerialIdentity(value:unknown,role?:UserRole,senderId?:string){
- return db.transaction('rw',[...assemblyOutputTables(),db.formationSerialIdentities],async()=>{
+ return db.transaction('rw',assemblyOutputTables(),async()=>{
   validateFormationSerialIdentity(value);
   if(role!==value.recordedRole||senderId!==value.recordedBy)throw Error('Атрибуция пакета не совпадает с исходным заявлением номеров');
   return insert(structuredClone(value));

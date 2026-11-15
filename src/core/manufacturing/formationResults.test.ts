@@ -130,3 +130,18 @@ it('archives and restores the immutable serial declaration together with origina
  expect(await db.formationSerialIdentities.get(run.id)).toEqual(row);expect(await db.formationRuns.get(run.id)).toEqual(run);expect(await db.fillRuns.get(fill.id)).toEqual(fill);expect(await db.journal.get(row.id)).toBeDefined();
  expect(await receiveFormationSerialIdentity(row,row.recordedRole,row.recordedBy)).toEqual(row);
 });
+it('cannot declare the same Assembly cell output again through a pre-existing ambiguous Formation alias',async()=>{
+ await saveFormationResult(run,'worker');const row=await declareFormationSerialIdentity(run,[{start:10,end:13}],'Original sheet','worker',crypto.randomUUID(),new Date().toISOString());
+ // Synthetic older ambiguous history, retained rather than deleted or repaired.
+ const alias={...run,id:'older-ambiguous-alias'};await db.formationRuns.add(alias);
+ await expect(declareFormationSerialIdentity(alias,[{start:10,end:13}],'Conflicting alias sheet','master','alias-identity',new Date().toISOString())).rejects.toThrow();
+ expect(await db.formationSerialIdentities.toArray()).toEqual([row]);expect(await db.journal.get('alias-identity')).toBeUndefined();expect(await db.formationRuns.get(alias.id)).toEqual(alias);
+});
+it('retains serial reservation through the immutable declaration if older source rows are absent, while allowing the exact original lineage',async()=>{
+ await saveFormationResult(run,'worker');const originalAssembly=fill.sourceReceipt!.sourceAssembly!,row=await declareFormationSerialIdentity(run,[{start:10,end:13}],'Original processed sheet','worker',crypto.randomUUID(),new Date().toISOString());
+ // Synthetic missing-row recovery case; the preserved identity must still hold its original cells.
+ for(const table of [db.assemblyRuns,db.electrolyteIncoming,db.fillRuns,db.walzingIncoming,db.walzRuns,db.formationIncoming,db.formationRuns])await table.clear();
+ const unrelated:AssemblyRun={id:'unrelated',batchName:'Unrelated cells',cellType:'unassigned',ops:[],cellsOut:4,cellsScrap:0,defects:[],workerId:'worker',serialRange:run.serialRange,createdAt:run.createdAt,updatedAt:run.createdAt};
+ await expect(receiveAssemblyIntake(unrelated,UserRole.MASTER)).rejects.toThrow('номер');expect(await db.assemblyRuns.count()).toBe(0);
+ expect(await receiveAssemblyIntake(originalAssembly,UserRole.MASTER)).toEqual(originalAssembly);expect(await db.formationSerialIdentities.get(run.id)).toEqual(row);
+});
