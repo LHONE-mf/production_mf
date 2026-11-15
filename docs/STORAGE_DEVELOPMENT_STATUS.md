@@ -1,3 +1,9 @@
+# Verified session closeout — 2026-11-15
+
+Code/test source **dadd796d9fb97931f837369e64760f5cda5014d2** is IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED. Delivered immutable QA/count/return/split detail, complete frozen count-session CSV including unapproved observations, real 10,000/10,001-event boundary acceptance in CI, and visible mobile export errors. **666 frontend / 281 PostgreSQL tests**, real multi-profile browser, 44-table/two-restores and native proof/WebView/database verification pass. See the [exact-SHA checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md) for links/artifacts and concrete next paths. No product dependency, migration/outbox reset, production change, deployment or merge. S9 actual output acceptance/Slurry use and S10/physical gates remain open.
+
+Historical development notes follow and are superseded by this closeout.
+
 # Count-history export follow-up — 2026-11-15
 
 Complete selected-session count CSV is implemented: unapproved/zero observations, separate correction and snapshot-scoped closure, fixed through immutable sequence and current history/authority. Browser exports remain byte-identical after another device approval; refreshed history adds the later approval/closure. Real two-restores preserve the frozen history. Exact new-SHA hosted evidence is recorded in the resumption checkpoint after publication. No stock mutation, migration, dependency or offline-data reset. S8 resource acceptance, S9/S10 and physical/deployment gates remain open.
