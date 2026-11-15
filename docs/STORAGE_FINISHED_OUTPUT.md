@@ -1,0 +1,41 @@
+# Finished electrode output: server contract
+
+2026-11-15: S9A server/API increment. The mobile production submit screen, Storage acceptance screen and durable device proposals are **NOT IMPLEMENTED**. Do not describe this increment as an operator-ready finished-goods workflow. Cell output/serial accounting and measured Slurry consumption remain separate unfinished work.
+
+This increment implements D7 for an authenticated API caller: production explicitly attests completed manual sorting output; Storage explicitly accepts a counted grade into a new quarantined package; Chief QA remains a separate action. Submission, completion and acceptance are different records. Planned targets and journal text never create output or stock.
+
+## Submission
+
+`POST /inventory/outputs/electrodes` requires bearer authentication, current actor/device proof, `x-inventory-epoch`, and an active Chief or Master. A Master must have current membership in the workshop of the immutable approved route step. Warehouse access does not grant production submission authority.
+
+The strict request contains `operationId`, `deviceId`, `productionBatchId`, `stepNumber`, `completionId`, `source`, `outputs`, `reason`, `evidence`.
+
+- `completionId` identifies an actual server `completed` step event for this batch and step. It must be final Sorting on a cathode/anode route, with no later applicable electrode/common step. Batch/order must allow output: `in_progress` or `completed` batch, `released`/`in_progress`/`completed` order. Hold, scrap and cancellation block new submission/acceptance.
+- `source` preserves explicit `runId`, `cutRunId`, `specId`, mode, incoming good count, specification categories/bounds and all three manual station decisions. Decisions retain original local worker identities/timestamps, input/passed/rejected counts, optional rejection reasons and explicit Mass grades. These local identities are source attribution; the authenticated submitting server actor is separately recorded.
+- Visual → Thickness → Mass is mandatory. Each station conserves its actual input; rejected electrodes cannot reach the next station. Only Mass may grade, only in `grading` mode. All specification grades must be represented exactly. In `pass-fail` mode, output is explicitly `PASS`, without an inferred mass grade. Empty grade buckets are preserved in the source but do not create output lines.
+- `outputs` explicitly maps **every positive final bucket** to an active `electrode` material in `pieces`, with its exact grade quantity. The sum must equal the server completion quantity in `pieces`. No partial source submission, recalculated yield, new reading or electrodes-per-cell rule is introduced.
+- One immutable submission claims the complete completion event, sorting run and cutting source. Database uniqueness prevents submitting the source again under a new operation ID or another batch. Conflicting history remains untouched. No stock or stock-ledger event is created.
+
+The source is a deliberate authenticated attestation of manual station counts, not equipment verification or a verified import from the device database. Future app integration must select an existing finalized three-station `SortRun`, run the existing source/partition validation, freeze its original snapshot and require explicit matching to the correct server batch/step/completion. It must never offer planned quantities, free-text journal parsing, legacy one-step summaries or automatic relinking as equivalent sources.
+
+The confirmed response contains `status`, `operationId`, `submission`; the latter preserves the accepted source, outputs, revision `1`, actor, device, timestamp and evidence. Exact retries return the original response with `status: duplicate`.
+
+## Physical acceptance
+
+`POST /inventory/outputs/accept` requires the same current proof/history boundary and explicit Storage authority: Chief or an active Warehouse Manager/Operator grant. Master alone has no warehouse rights. It is a separate physical action; being the production submitter does not authorize it.
+
+The strict request contains `operationId`, `deviceId`, `submissionId`, `grade`, `expectedRevision: 1`, new `stockId`, active `locationId`, actual counted `quantity`, `reason`, `evidence`, and optional explicit `manufacturedOn`/`expiresOn` calendar dates. Physical quantity must equal the entire offered grade. A discrepancy is retained outside posting for investigation; this increment has no partial acceptance, shortage override or invented serial allocation.
+
+Acceptance atomically creates exactly one new package, one `receive` ledger event and one immutable acceptance record. Material and quantity come from the frozen offered grade. The lot identity is `production:<submissionId>:<grade>`; receipt reference is the submission ID. Stock starts at revision `1`, quarantine, zero reservations. Warehouse availability follows the existing quantity convention; issue eligibility still requires separate Chief release. New acceptance cannot bypass inactive catalogs/locations, held batches or the posting fence.
+
+The ledger event retains `production_batch_id`, source submission/grade in its original request, physical receiving actor/device, reason/evidence and exact stock result. Deferred database checks pair the acceptance with its receipt, enforce quantity/material/quarantine and prevent orphan receipts. Accepted history and grade mappings are append-only. Chief quality release is never automatic.
+
+Each offered grade can be accepted only once, including concurrent receivers. A new stock ID or operation ID cannot accept it again. An exact retry by the original actor/device returns the original accepted stock snapshot even after later QA or movement. Revoked access/device, expired proof, restored epoch and suspended posting are checked before replay; a retry cannot revive old authority.
+
+## Reading and recovery
+
+`GET /inventory/outputs?deviceId=…&after=…&limit=…&productionBatchId=…` provides explicit UUID-cursor pages, up to 100 submissions. Response includes organization, actor, device, current epoch/posting state, original accepted source and grade lines with nullable accepted stock/operation IDs. Chief/warehouse readers see their tenant; a Master sees only current workshop submissions. Reads are history discovery, not an export snapshot or permission to post. No credentials enter the response or source evidence.
+
+Migration `031_inventory_finished_electrodes.sql` adds three tables and extends the existing cross-endpoint operation namespace. It does not rewrite existing rows, outbox versions, local manufacturing records or business rules. No browser/device queue is introduced in this API slice. A future client must durably freeze the original operation/body/scope/epoch before sending, retain unknown responses, manually retry the same intent, validate the original ACK and atomically archive it with confirmed cache updates. No automatic synchronization or restored-history rebasing is authorized.
+
+The PostgreSQL tests exercise actual roles/device proofs, station/count validation, complete-output conservation, current workshop access, separate receiving/QA, exact retries, duplicate/racing receipts, tenant isolation, shared operation-ID collisions, immutable records, direct orphan-receipt rejection and membership revocation during a real database lock wait. The actual dump/two-restore drill verifies an additive upgrade over populated 001–030 history, all 47 tables, new output/receipt records, immutable evidence, exact restored retries and restore fences. Existing browser/native regressions remain required; this increment does not claim a new S9 mobile/native user flow.

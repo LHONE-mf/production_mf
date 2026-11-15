@@ -1,4 +1,12 @@
-# Verified session closeout — 2026-11-15
+# Current S9A API increment — 2026-11-15
+
+Finished electrode submission and separate quarantined Storage acceptance are implemented at the **server/API** level. Explicit actual manual three-station counts/grades, final server completion, independent production/warehouse authority, duplicate-source/receipt protection and original retries are preserved. Migration **031** is additive; outbox **v7**, existing journals/queues, dependencies and D1–D8 remain intact. See [contract](STORAGE_FINISHED_OUTPUT.md) and [current checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
+Local evidence: 666 frontend tests, prior PostgreSQL regression plus 14 new database tests (295 total), typechecks/builds, active PWA and actual 47-table/two-restores including populated upgrade, finished source/receipt and restored replay fences. Existing two-profile Chromium regression passes. Exact current-head CI/native results will be recorded after publication. New S9 screens/durable proposals, source discovery/local allocation checks, cell serials, Slurry consumption, S10 and physical/deployment gates remain **UNFINISHED**. This is not an operator-ready S9 feature or a production deployment.
+
+Historical development notes follow and are superseded by the current checkpoint.
+
+# Earlier verified session closeout — 2026-11-15
 
 Code/test source **dadd796d9fb97931f837369e64760f5cda5014d2** is IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED. Delivered immutable QA/count/return/split detail, complete frozen count-session CSV including unapproved observations, real 10,000/10,001-event boundary acceptance in CI, and visible mobile export errors. **666 frontend / 281 PostgreSQL tests**, real multi-profile browser, 44-table/two-restores and native proof/WebView/database verification pass. See the [exact-SHA checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md) for links/artifacts and concrete next paths. No product dependency, migration/outbox reset, production change, deployment or merge. S9 actual output acceptance/Slurry use and S10/physical gates remain open.
 
