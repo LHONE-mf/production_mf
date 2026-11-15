@@ -1,3 +1,5 @@
+import {registerInventoryCellOutputDiscovery} from './inventory-cell-output-discovery.js';
+import {registerInventoryCellOutputRoutes} from './inventory-cell-output-routes.js';
 import {registerInventoryQualityRoutes} from './inventory-quality-routes.js';
 import {registerInventoryIssueRoutes} from './inventory-issue-routes.js';
 import {registerInventoryOutcomeRoutes} from './inventory-outcome-routes.js';
@@ -98,6 +100,8 @@ export function buildApp(pool: Pool) {
   registerInventoryAlertPolicyRoutes(app, pool);
   registerInventoryReconciliationRoutes(app, pool);
   registerInventoryOutputRoutes(app, pool);
+  registerInventoryCellOutputRoutes(app,pool);
+  registerInventoryCellOutputDiscovery(app,pool);
   registerInventoryOutputDiscovery(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
