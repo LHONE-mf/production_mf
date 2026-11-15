@@ -39,7 +39,12 @@ export async function issueTransaction<T>(pool: Pool, authorization: string | un
     const current = await currentInventoryActor(client, actor.organization_id, actor.id, deviceId, authorization!, proof); if (!current) issueFail(403, 'current_device_proof_required');
     const level = await issueWarehouseLevel(client, current), stream = await inventoryStream(client, actor.organization_id);
     if (write) { const fence = await inventoryWriteFence(client, actor.organization_id, epoch); if (fence) issueFail(fence === 'inventory_epoch_required' ? 428 : 409, fence); }
-    const result = await task(client, current, level, stream.epoch); await client.query('COMMIT'); return result;
+    const result = await task(client, current, level, stream.epoch);
+    // Production batch/step locks may wait independently of the inventory lock.
+    // Row locks prevent revocation, but time can still expire the proof/session.
+    // Roll back all effects rather than release a result under expired authority.
+    if (!await currentInventoryActor(client, actor.organization_id, actor.id, deviceId, authorization!, proof)) issueFail(403, 'current_device_proof_required');
+    await client.query('COMMIT'); return result;
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
 }
 export function issueHttpError(error: unknown) {

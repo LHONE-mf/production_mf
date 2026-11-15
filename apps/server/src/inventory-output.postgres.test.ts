@@ -218,4 +218,55 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('finished electrode submission a
   }finally{await client.query('ROLLBACK');client.release();if(pending)await pending;}
   expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_output_submissions WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
  });
+
+ it('discovers only completed final sorting steps and active electrode-piece materials for the current production workshop',async()=>{
+  const page=await f.get('/inventory/outputs/steps?deviceId='+f.actors[3].device,3);
+  expect(page.statusCode,page.body).toBe(200);expect(page.json()).toMatchObject({organizationId:f.org,actorId:f.actors[3].id,deviceId:f.actors[3].device,epoch:f.epoch,postingEnabled:true,items:[{completionId:completion,productionBatchId:batch,quantity:7,unit:'pieces',materialLine:'cathode'}],nextAfter:null});
+  const q=new URLSearchParams({deviceId:f.actors[3].device,completionId:completion,productionBatchId:batch,stepNumber:'1'});
+  const materials=await f.get('/inventory/outputs/materials?'+q,3);expect(materials.statusCode,materials.body).toBe(200);
+  expect(materials.json().items).toHaveLength(1);expect(materials.json().items[0]).toMatchObject({category:'electrode',baseUnit:'pieces'});
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[2].device,2)).statusCode).toBe(403);
+  expect((await submit(await proposal())).statusCode).toBe(201);
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[3].device,3)).json().items).toEqual([]);
+  expect((await f.get('/inventory/outputs/materials?'+q,3)).statusCode).toBe(404);
+ });
+ it('does not discover another tenant, revoked workshop or held output, and validates source/material cursors',async()=>{
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[3].device+'&after=bad',3)).statusCode).toBe(400);
+  const other=await createInventoryHandoffFixture();try{
+   expect((await other.get('/inventory/outputs/steps?deviceId='+other.actors[3].device,3)).json().items).toEqual([]);
+   const q=new URLSearchParams({deviceId:other.actors[3].device,completionId:completion,productionBatchId:batch,stepNumber:'1'});
+   expect((await other.get('/inventory/outputs/materials?'+q,3)).statusCode).toBe(404);
+  }finally{await other.app.close();await other.pool.end();}
+  await f.pool.query('DELETE FROM user_workshop_memberships WHERE organization_id=$1 AND user_id=$2',[f.org,f.actors[3].id]);
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[3].device,3)).json().items).toEqual([]);
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[0].device)).json().items).toHaveLength(1);
+  expect((await f.post('/planning/batches/'+batch+'/status',{expectedStatus:'in_progress',status:'hold',reason:'Hold before offering actual output'})).statusCode).toBe(200);
+  expect((await f.get('/inventory/outputs/steps?deviceId='+f.actors[0].device)).json().items).toEqual([]);
+ });
+ it('pages actual completions and eligible materials without duplicates or planned quantity substitution',async()=>{
+  const secondBatch=randomUUID(),secondCompletion=randomUUID(),secondMaterial=randomUUID();
+  await f.pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) SELECT organization_id,$2,order_id,$2::uuid::text,material_line,'in_progress',created_by FROM production_batches WHERE organization_id=$1 AND id=$3",[f.org,secondBatch,batch]);
+  for(const event of [{eventId:randomUUID(),kind:'started'},{eventId:secondCompletion,kind:'completed',quantity:'7',quantityUnit:'pieces'}])expect((await f.post('/planning/batches/'+secondBatch+'/steps/1/evidence',event,3)).statusCode).toBe(201);
+  const p='/inventory/outputs/steps?deviceId='+f.actors[3].device+'&limit=1',first=await f.get(p,3),next=await f.get(p+'&after='+first.json().nextAfter,3);
+  expect(first.json().hasMore).toBe(true);expect(next.json().hasMore).toBe(false);expect(new Set([...first.json().items,...next.json().items].map((r:{completionId:string})=>r.completionId))).toEqual(new Set([completion,secondCompletion]));
+  expect([...first.json().items,...next.json().items].every((r:{quantity:number})=>r.quantity===7)).toBe(true);
+  expect((await f.post('/inventory/materials',{id:secondMaterial,deviceId:f.actors[0].device,code:'SECOND-ELECTRODE',name:'Second eligible synthetic electrode',category:'electrode',baseUnit:'pieces'})).statusCode).toBe(201);
+  const q=new URLSearchParams({deviceId:f.actors[3].device,completionId:completion,productionBatchId:batch,stepNumber:'1',limit:'1'}),a=await f.get('/inventory/outputs/materials?'+q,3);q.set('after',a.json().nextAfter);const b=await f.get('/inventory/outputs/materials?'+q,3);
+  expect(a.json().hasMore).toBe(true);expect(b.json().hasMore).toBe(false);expect(new Set([...a.json().items,...b.json().items].map((r:{id:string})=>r.id)).size).toBe(2);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
+ it.each(['read','submit'] as const)('rejects proof that expires while %s waits for the production batch lock',async(kind)=>{
+  const body=await proposal(),client=await f.pool.connect();let pending:Promise<Awaited<ReturnType<typeof f.get>>>|undefined;
+  try{
+   await client.query('BEGIN');await client.query('SELECT id FROM production_batches WHERE organization_id=$1 AND id=$2 FOR UPDATE',[f.org,batch]);
+   await f.pool.query("UPDATE device_proof_grants SET expires_at=clock_timestamp()+interval '2 seconds' WHERE organization_id=$1 AND device_id=$2",[f.org,f.actors[3].device]);
+   pending=Promise.resolve(kind==='read'?f.get('/inventory/outputs/steps?deviceId='+f.actors[3].device,3):f.post('/inventory/outputs/electrodes',body,3));
+   const deadline=Date.now()+4000;let blocked=false;
+   while(!blocked&&Date.now()<deadline){blocked=!!(await f.pool.query("SELECT 1 FROM pg_stat_activity WHERE application_name=$1 AND wait_event_type='Lock' AND query LIKE '%production_batches b%'",[f.applicationName])).rowCount;if(!blocked)await new Promise(r=>setTimeout(r,10));}
+   expect(blocked).toBe(true);
+   while(!(await f.pool.query('SELECT 1 FROM device_proof_grants WHERE organization_id=$1 AND device_id=$2 AND expires_at<=clock_timestamp()',[f.org,f.actors[3].device])).rowCount){if(Date.now()>deadline)throw Error('Disposable proof expiry deadline missed');await new Promise(r=>setTimeout(r,20));}
+   await client.query('COMMIT');expect((await pending).statusCode).toBe(403);
+  }finally{await client.query('ROLLBACK');client.release();if(pending)await pending;}
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_output_submissions WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
 });
