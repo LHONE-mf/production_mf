@@ -23,11 +23,14 @@ export function sourceFromSortRun(run:SortRun):ElectrodeOutputSource {
  validateSortPartition(run);
  const w=run.sortingWorkflow;
  if(!w||w.finalizedSortRunId!==run.id||w.stages.length!==3)throw Error('Нужен сохранённый итог всех трёх станций сортировки');
- const source:ElectrodeOutputSource={runId:run.id,cutRunId:w.cutRunId,specId:w.specSnapshot.id,mode:w.mode,inputCount:w.cutRunSnapshot.goodCount,
-  categories:w.specSnapshot.categories.map(c=>({name:c.name,...Object.fromEntries(['minMass','maxMass','minUm','maxUm'].filter(k=>c[k as keyof SortCategory]!==undefined).map(k=>[k,c[k as keyof SortCategory]]))})),
-  stages:w.stages.map(s=>({station:s.station,inputCount:s.inputCount,passedCount:s.passedCount,rejectedCount:s.rejectedCount,workerId:s.workerId,recordedAt:s.recordedAt,
+ return outputSourceCopy({runId:run.id,cutRunId:w.cutRunId,specId:w.specSnapshot.id,mode:w.mode,inputCount:w.cutRunSnapshot.goodCount,categories:w.specSnapshot.categories,stages:w.stages});
+}
+export function outputSourceCopy(source:ElectrodeOutputSource):ElectrodeOutputSource {
+ validateOutputSource(source);
+ return{runId:source.runId,cutRunId:source.cutRunId,specId:source.specId,mode:source.mode,inputCount:source.inputCount,
+  categories:source.categories.map(c=>({name:c.name,...Object.fromEntries(['minMass','maxMass','minUm','maxUm'].filter(k=>c[k as keyof typeof c]!==undefined).map(k=>[k,c[k as keyof typeof c]]))})),
+  stages:source.stages.map(s=>({station:s.station,inputCount:s.inputCount,passedCount:s.passedCount,rejectedCount:s.rejectedCount,workerId:s.workerId,recordedAt:s.recordedAt,
    ...(s.rejectionReasons?{rejectionReasons:s.rejectionReasons.map(r=>({reason:r.reason,count:r.count}))}:{}),...(s.grades?{grades:s.grades.map(g=>({categoryName:g.categoryName,count:g.count}))}:{})}))};
- validateOutputSource(source);return source;
 }
 
 /** Validate the bounded server snapshot independently of local journal content. */

@@ -106,7 +106,11 @@ public class StorageBackendWebViewTest {
                 assertNotNull("Missing frozen intent from the force-stopped process", saved);
                 result = run(instrumentation, view, "return await window.storageCi.finish(" + new JSONObject(saved) + ");");
                 assertTrue(result.getBoolean("passed"));
-                assertEquals(4, result.getInt("containers"));
+                assertEquals(5, result.getInt("containers"));
+                assertTrue(result.getBoolean("finishedProcessDeath"));
+                assertTrue(result.getBoolean("finishedLostReplies"));
+                assertTrue(result.getBoolean("finishedSourceHeld"));
+                assertEquals(7, result.getInt("finishedActualQuantity"));
                 assertTrue(result.getBoolean("nativeProof"));
                 assertTrue(result.getBoolean("operatorDenied"));
                 assertTrue(result.getBoolean("lostAckRetried"));

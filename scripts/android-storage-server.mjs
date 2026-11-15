@@ -8,6 +8,7 @@ import { buildApp } from '../apps/server/dist/app.js';
 import { hashPassword } from '../apps/server/dist/auth.js';
 import { disposableDatabase } from './lib/disposable-migrations.mjs';
 import { createDisposableIssueBatch } from './lib/disposable-issue-batch.mjs';
+import {createDisposableFinishedBatch} from './lib/disposable-finished-output.mjs';
 const require = createRequire(new URL('../apps/server/package.json', import.meta.url));
 const { Pool } = require('pg');
 const url = disposableDatabase(process.env.POSTGRES_TEST_URL);
@@ -27,6 +28,9 @@ try {
     await pool.query('INSERT INTO users(id,organization_id,login,password_hash,role) VALUES($1,$2,$5,$3,$4)', [fixture[key], org, hash, role, fixture[key]]);
   }
   Object.assign(fixture,await createDisposableIssueBatch(pool,org,fixture.chief,fixture.operator));
+  const finished=await createDisposableFinishedBatch({pool,organizationId:org,actorId:fixture.chief});
+  Object.assign(fixture,{finishedBatchId:finished.batch,finishedCompletionId:randomUUID(),finishedMaterialId:randomUUID()});
+  await pool.query("INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,'NATIVE-ELECTRODE','SYNTHETIC finished electrode','electrode','pieces')",[fixture.finishedMaterialId,org]);
   // Only catalogue fixtures; stock/authorization/proof are exercised via real APIs.
   await pool.query("INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,'CI-PVDF','CI synthetic PVDF','raw_material','mg')", [fixture.materialId, org]);
   await pool.query("INSERT INTO inventory_locations(id,organization_id,parent_id,label,kind) VALUES($1,$3,NULL,'CI receiving warehouse','warehouse'),($2,$3,NULL,'CI destination warehouse','warehouse')", [fixture.locationId, fixture.destinationId, org]);

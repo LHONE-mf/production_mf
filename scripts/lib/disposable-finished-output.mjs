@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 
 /** Synthetic engineering evidence only. The caller owns a disposable database. */
-export async function seedDisposableFinishedOutput({pool,post,organizationId,actorId,deviceId,locationId}){
- const org=organizationId,route=randomUUID(),order=randomUUID(),batch=randomUUID(),workshop='finished-'+randomUUID(),material=randomUUID(),completion=randomUUID();
+export async function createDisposableFinishedBatch({pool,organizationId,actorId}){
+ const org=organizationId,route=randomUUID(),order=randomUUID(),batch=randomUUID(),workshop='finished-'+randomUUID();
  await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop]);
  await pool.query("INSERT INTO process_routes(organization_id,id,code,name,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Synthetic final sorting',$3)",[org,route,actorId]);
  await pool.query('INSERT INTO process_route_versions(organization_id,route_id,version) VALUES($1,$2,1)',[org,route]);
@@ -11,9 +11,17 @@ export async function seedDisposableFinishedOutput({pool,post,organizationId,act
  await pool.query("UPDATE process_route_versions SET state='approved',approved_at=now(),approved_by=$3 WHERE organization_id=$1 AND route_id=$2",[org,route,actorId]);
  await pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Synthetic electrode',$3,1,'released',999,'pieces',$4)",[org,order,route,actorId]);
  await pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'anode','in_progress',$4)",[org,batch,order,actorId]);
+ return{batch,workshop};
+}
+export async function createDisposableFinishedStep({pool,post,organizationId,actorId,deviceId}){
+ const {batch,workshop}=await createDisposableFinishedBatch({pool,organizationId,actorId}),material=randomUUID(),completion=randomUUID();
  await post('/inventory/materials',{id:material,deviceId,code:'ELECTRODE-'+material,name:'Synthetic physical counted electrode',category:'electrode',baseUnit:'pieces'});
  await post('/planning/batches/'+batch+'/steps/1/evidence',{eventId:randomUUID(),kind:'started'});
  await post('/planning/batches/'+batch+'/steps/1/evidence',{eventId:completion,kind:'completed',quantity:'7',quantityUnit:'pieces'});
+ return{batch,completion,material,workshop};
+}
+export async function seedDisposableFinishedOutput({pool,post,organizationId,actorId,deviceId,locationId}){
+ const org=organizationId,{batch,completion,material}=await createDisposableFinishedStep({pool,post,organizationId,actorId,deviceId});
  const submission={operationId:randomUUID(),deviceId,productionBatchId:batch,stepNumber:1,completionId:completion,
   source:{runId:randomUUID(),cutRunId:randomUUID(),specId:randomUUID(),mode:'grading',inputCount:10,
    categories:[{name:'A',minMass:1,maxMass:2},{name:'B',minMass:2,maxMass:3}],

@@ -1,3 +1,11 @@
+# Current finished-electrode device integration — 2026-11-15
+
+Sorting now offers real finalized three-station output through an original durable whole-source claim; Storage separately freezes and posts the physical counted grade into quarantine. Explicit completed server step/catalog mapping, exact original retry/ACK, Assembly source exclusion, offline/reopen retention and separate Chief QA are implemented. Main Dexie22, outbox7 and PostgreSQL031 preserve existing records; previous v21 local-only backup compatibility remains supported. No dependency, merge, production change or deployment.
+
+Local verification passes **685 frontend / 300 real PostgreSQL tests**, builds/typechecks, genuine three-profile browser/old operator regression, populated upgrade, packaged PWA and actual 47-table/two-restore drill. Shared server transactions now recheck expiring proof/session after lock waits before committing, proved by failing-then-passing real database regressions. Expanded native harness passes its software-signer control; actual hosted Android evidence is recorded by exact SHA in the [current checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md), not inferred from the browser control.
+
+Finished cells/explicit processed serials, actual measured Slurry consumption and S10/physical/deployment gates remain unfinished. Local source ownership is not global offline allocation control. See [current contract](STORAGE_FINISHED_OUTPUT.md); older notes below are historical.
+
 # Current S9A API increment — 2026-11-15
 
 Finished electrode submission and separate quarantined Storage acceptance are implemented at the **server/API** level. Explicit actual manual three-station counts/grades, final server completion, independent production/warehouse authority, duplicate-source/receipt protection and original retries are preserved. Migration **031** is additive; outbox **v7**, existing journals/queues, dependencies and D1–D8 remain intact. See [contract](STORAGE_FINISHED_OUTPUT.md) and [current checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).

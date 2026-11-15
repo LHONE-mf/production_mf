@@ -20,12 +20,19 @@ import { inventoryOutbox, inventoryQueueForScope, confirmedInventoryForScope, ty
 import { useAuthStore } from '../../src/core/store/authStore';
 import { UserRole } from '../../src/core/types';
 import { db } from '../../src/core/db';
+import {useLiveQuery} from 'dexie-react-hooks';
+import {FinishedElectrodeOffers} from '../../src/stages/sorting/FinishedElectrodeOffers';
+import {startSortingWorkflow,recordSortingStation,completeSortingWorkflow} from '../../src/core/manufacturing/sortingWorkflow';
+import {takeAssemblySource} from '../../src/core/manufacturing/assemblyIntake';
+import {outputAcceptanceProposals} from '../../src/core/sync/inventoryOutputAcceptance';
 import '../../src/index.css';
 
-type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number };
+type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number;finishedBatchId:string;finishedCompletionId:string;finishedMaterialId:string };
 const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
 let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, loseSplitAck=false, loseCountAck=false, connection: ServerConnection, fixture: Fixture;
+let loseOutputAck=false,loseOutputReceiptAck=false;
+function NativeFinishedOffers(){const runs=useLiveQuery(()=>db.sortRuns.toArray(),[]);return <FinishedElectrodeOffers runs={runs??[]}/>;}
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
@@ -41,6 +48,8 @@ window.fetch = async (input, init) => {
     if(loseReturnAck&&url.pathname.endsWith('/outcomes')&&init?.method==='POST'&&response.ok){loseReturnAck=false;await response.arrayBuffer();throw new TypeError('CI return acknowledgement lost after commit');}
     if(loseSplitAck&&url.pathname.endsWith('/splits')&&init?.method==='POST'&&response.ok){loseSplitAck=false;await response.arrayBuffer();throw new TypeError('CI split acknowledgement lost after commit');}
     if(loseCountAck&&url.pathname==='/inventory/counts/operations'&&init?.method==='POST'&&response.ok){loseCountAck=false;await response.arrayBuffer();throw new TypeError('CI count acknowledgement lost after commit');}
+    if(loseOutputAck&&url.pathname==='/inventory/outputs/electrodes'&&init?.method==='POST'&&response.ok){loseOutputAck=false;await response.arrayBuffer();throw new TypeError('CI output acknowledgement lost after commit');}
+    if(loseOutputReceiptAck&&url.pathname==='/inventory/outputs/accept'&&init?.method==='POST'&&response.ok){loseOutputReceiptAck=false;await response.arrayBuffer();throw new TypeError('CI output receipt acknowledgement lost after commit');}
     return response;
   }
   return originalFetch(input, init);
@@ -90,7 +99,7 @@ async function select(role: 'chief' | 'operator') {
   if (useAuthStore.getState().session?.userId === user.id) await useAuthStore.getState().verifyLocalSession();
   else useAuthStore.getState().login(user);
   setServerConnection(connection);
-  root.render(<><ConfirmedStorage /><InventoryIssues /></>);
+  root.render(<><ConfirmedStorage /><InventoryIssues /><NativeFinishedOffers/></>);
   await until(() => button('Обновить подтверждённые данные'), 'Storage mounted');
 }
 function button(text: string, root: ParentNode = document) { return [...root.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.disabled); }
@@ -104,8 +113,8 @@ async function fill(label: string, value: string, persisted = true, root: Parent
     const control = root.querySelector(`[aria-label="${label}"]`);
     return control && !control.matches(':disabled') && (!(control instanceof HTMLSelectElement) || [...control.options].some(option => option.value === value));
   }, label);
-  const element = root.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`)!;
-  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const element = root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[aria-label="${label}"]`)!;
+  const prototype = element instanceof HTMLSelectElement ? HTMLSelectElement.prototype : element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   Object.getOwnPropertyDescriptor(prototype, 'value')!.set!.call(element, value);
   element.dispatchEvent(new Event(element instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));
   await new Promise(resolve => setTimeout(resolve, 0));
@@ -139,6 +148,7 @@ async function prepareIssueRequest(){
 }
 async function prepare() {
   await select('chief'); await refresh();
+  const finished=await prepareFinishedOutput();
   const open = (text: string) => { const summary = [...document.querySelectorAll('summary')].find(row => row.textContent === text); assert(summary, 'Missing native admin section'); summary!.click(); };
   open('Администрирование склада · Chief');
   await fill('Код материала', 'NATIVE-ADMIN', false); await fill('Название материала', 'Native synthetic component', false);
@@ -166,9 +176,11 @@ async function prepare() {
   const issueRequest=await prepareIssueRequest();
   const queued = await receipt();
   assert((await confirmedInventoryForScope(scope())).length === 0, 'No optimistic stock');
-  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request };
+  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request,finished };
 }
-async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string }) {
+async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string;finished:{cutRunId:string;operationId:string;request:string} }) {
+  const originalFinished=await db.warehouseOutputClaims.get(expected.finished.cutRunId);
+  assert(originalFinished?.state==='pending'&&originalFinished.request.operationId===expected.finished.operationId&&JSON.stringify(originalFinished.request)===expected.finished.request,'Process death changed original finished output/source');
   const frozenIssue=(await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.operationId===expected.issueOperationId);
   assert(frozenIssue?.fields.request===expected.issueRequest&&frozenIssue.fields.state==='pending','Process death changed frozen issue request');
   const restored = (await inventoryQueueForScope(scope()))[0];
@@ -215,10 +227,37 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const count=await finishCount(split.splitChildId);
   await finishMovementAudit(issueId,stock.stockId,returned.returnStockId,split.splitChildId,count.countObservationOperationId!,count.countCorrectionOperationId!);
   const identification=await finishIdentification(split.splitChildId);
+  const finished=await finishFinishedOutput(expected.finished);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
-  assert((await inventoryOutbox.acknowledgements.count()) === 10, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification };
+  assert((await inventoryOutbox.acknowledgements.count()) === 11, 'Logout destroyed retained evidence');
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 5, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification,...finished };
+}
+async function prepareFinishedOutput(){
+  for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.finishedCompletionId,kind:'completed',quantity:'7',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.finishedBatchId+'/steps/1/evidence',data,connection.session.accessToken);
+  const now=Date.now(),cut={id:crypto.randomUUID(),incomingId:'NATIVE-FINISHED-SOURCE',electrodeType:'strip' as const,goodCount:10,defectCount:0,workerId:fixture.chief,createdAt:now,updatedAt:now},spec={id:crypto.randomUUID(),cutRunId:cut.id,batchName:cut.incomingId,electrodeType:'strip' as const,parameterName:'Mass',unit:'g',categories:[{name:'A',criteria:'Synthetic station count',minMass:1}],authorId:fixture.chief,createdAt:now,updatedAt:now};
+  await db.cuttingRuns.add(cut);await db.sortSpecs.add(spec);await startSortingWorkflow(cut,spec,'pass-fail',fixture.chief);
+  for(const [i,station]of(['visual','thickness','mass']as const).entries())await recordSortingStation(cut.id,{station,passedCount:9-i,rejectedCount:1,workerId:fixture.chief});
+  const source=await completeSortingWorkflow(cut.id,crypto.randomUUID());await click('Загрузить завершённые шаги и предложения');await fill('Локальный итог сортировки',source.id,false);await fill('Завершённый шаг партии',fixture.finishedCompletionId,false);await click('Загрузить материалы выхода');await fill('Материал сорта PASS',fixture.finishedMaterialId,false);await fill('Основание предложения','Native actual finished count');await fill('Свидетельство фактического выхода','NATIVE-FINISHED-COUNT-42');
+  offline=true;await click('Сохранить исходное предложение без приёмки');await until(async()=>!!await db.warehouseOutputClaims.get(cut.id),'native original finished source claim');offline=false;
+  const claim=(await db.warehouseOutputClaims.get(cut.id))!;assert(claim.request.outputs[0].quantity===7&&claim.state==='pending','Native finished proposal inferred planned output');
+  let refused=false;try{await takeAssemblySource(source,fixture.chief,crypto.randomUUID());}catch(e){refused=String(e).includes('склад');}assert(refused,'Native claimed source allocated into Assembly');
+  return{cutRunId:cut.id,operationId:claim.request.operationId,request:JSON.stringify(claim.request)};
+}
+async function finishFinishedOutput(original:{cutRunId:string;operationId:string;request:string}){
+  await select('chief');await refresh();await click('Загрузить завершённые шаги и предложения');
+  const sendOffer='Отправить исходное предложение '+original.operationId.slice(0,8);loseOutputAck=true;await click(sendOffer);
+  await until(()=>!loseOutputAck&&document.querySelector('[aria-label="Предложение готовых электродов"] [role="alert"]')?.textContent?.includes('CI output acknowledgement lost after commit'),'native actual lost output reply');
+  assert((await db.warehouseOutputClaims.get(original.cutRunId))?.state==='pending','Lost output reply changed original intent');await refresh();await click(sendOffer);await until(async()=>(await db.warehouseOutputClaims.get(original.cutRunId))?.state==='accepted','native original output ACK');
+  assert((await confirmedInventoryForScope(scope())).length===4,'Production submission created warehouse stock');
+  await select('operator');await refresh();const panel=()=>document.querySelector<HTMLElement>('[aria-label="Приёмка готовых электродов"]')!;
+  await click('Загрузить предложения готовых электродов',panel());await fill('Физически принято, шт','7',true,panel());await fill('Место приёмки выхода',fixture.locationId,true,panel());await fill('Основание приёмки выхода','Native separate physical Storage acceptance',true,panel());await fill('Свидетельство физического подсчёта','NATIVE-FINISHED-RECEIPT-42',true,panel());offline=true;await click('Сохранить физический подсчёт без проведения',panel());
+  await until(async()=>(await outputAcceptanceProposals(scope(),fixture.operator)).some(r=>JSON.parse(r.fields.request).submissionId===original.operationId),'native frozen output receipt');offline=false;
+  const row=(await outputAcceptanceProposals(scope(),fixture.operator)).find(r=>JSON.parse(r.fields.request).submissionId===original.operationId)!,request=JSON.parse(row.fields.request),send='Подтвердить исходную приёмку '+row.operationId!.slice(0,8);
+  await refresh();loseOutputReceiptAck=true;await click(send,panel());await until(()=>!loseOutputReceiptAck&&panel().querySelector('[role="alert"]')?.textContent?.includes('CI output receipt acknowledgement lost after commit'),'native actual lost receipt reply');
+  assert((await inventoryOutbox.receivingDrafts.get(row.key))?.fields.request===row.fields.request,'Lost receipt reply changed original body');await refresh();await click(send,panel());await until(async()=>(await inventoryOutbox.receivingDrafts.get(row.key))?.fields.state==='accepted','native original output receipt ACK');await refresh();
+  const stock=(await confirmedInventoryForScope(scope())).find(s=>s.stockId===request.stockId);assert(stock?.onHand===7&&stock.unit==='pieces'&&stock.quality==='quarantine'&&stock.materialId===fixture.finishedMaterialId,'Native acceptance changed actual count/quarantine/material');
+  return{finishedProcessDeath:true,finishedLostReplies:true,finishedSourceHeld:true,finishedOfferOperationId:original.operationId,finishedCutRunId:original.cutRunId,finishedReceiptOperationId:row.operationId,finishedStockId:request.stockId,finishedActualQuantity:7};
 }
 async function finishReconciliation(issueId:string,stockId:string){
   await select('operator');await refresh();
