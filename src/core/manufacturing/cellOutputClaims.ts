@@ -29,8 +29,9 @@ export async function freezeCellOutput(scope:InventoryScope,localActorId:string,
    if(old.localActorId===localActorId&&old.localActorRole===actor.role&&inventoryScopeKey(old.scope)===inventoryScopeKey(safeScope)&&old.epoch===epoch&&sameOutput(old.identity,original)&&sameOutput(old.request,request))return old;
    throw Error('Источник уже предложен; исходные ID, автор, устройство и история удержаны');
   }
-  if(!sameOutput(await db.formationSerialIdentities.get(original.runId),original))throw Error('Сохранённое заявление номеров изменено или отсутствует');
-  const claim:CellOutputClaim={version:1,runId:original.runId,identityId:original.id,assemblyOutputId:original.assemblyOutputId,identity:original,scope:safeScope,localActorId,localActorRole:actor.role,epoch,request,createdAt:new Date().toISOString(),revision:1,state:'pending'};
+  const saved=await db.formationSerialIdentities.get(original.runId);
+  if(!saved||!sameOutput(saved,original))throw Error('Сохранённое заявление номеров изменено или отсутствует');
+  const claim:CellOutputClaim={version:1,runId:original.runId,identityId:original.id,assemblyOutputId:original.assemblyOutputId,identity:structuredClone(saved),scope:safeScope,localActorId,localActorRole:actor.role,epoch,request,createdAt:new Date().toISOString(),revision:1,state:'pending'};
   await db.cellOutputClaims.add(claim);return claim;
  });
 }

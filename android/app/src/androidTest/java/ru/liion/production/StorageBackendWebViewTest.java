@@ -108,6 +108,10 @@ public class StorageBackendWebViewTest {
                 assertTrue(result.getBoolean("passed"));
                 assertEquals(5, result.getInt("containers"));
                 assertTrue(result.getBoolean("nativeCellSubmissionApi"));
+                assertTrue(result.getBoolean("nativeCellProposalUi"));
+                assertTrue(result.getBoolean("cellProposalProcessDeath"));
+                assertTrue(result.getBoolean("cellProposalOriginalAckArchived"));
+                assertTrue(result.getBoolean("cellSubmissionIdenticalBodies"));
                 assertTrue(result.getBoolean("cellSubmissionLostReplyRetried"));
                 assertTrue(result.getBoolean("cellSubmissionNoStock"));
                 assertEquals(2, result.getInt("cellSubmissionActualQuantity"));

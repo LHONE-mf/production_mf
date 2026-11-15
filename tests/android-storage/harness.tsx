@@ -1,5 +1,7 @@
 import {sameOutput} from '../../src/core/sync/inventoryOutputTypes';
 import {cellSourceFromIdentity} from '../../src/core/sync/inventoryCellOutputTypes';
+import {createFormationSerialIdentity,declareFormationSerialIdentity} from '../../src/core/manufacturing/formationSerialIdentity';
+import type {CellOutputClaim} from '../../src/core/manufacturing/cellOutputClaims';
 /** Instrumentation-only entry. This file is never part of the production build. */
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -38,12 +40,14 @@ const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
 let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, loseSplitAck=false, loseCountAck=false, connection: ServerConnection, fixture: Fixture;
 let loseOutputAck=false,loseOutputReceiptAck=false,loseCellSubmissionAck=false;
+const cellSubmissionBodies:string[]=[];
 function NativeFinishedOffers(){const runs=useLiveQuery(()=>db.sortRuns.toArray(),[]);return <FinishedElectrodeOffers runs={runs??[]}/>;}
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
   const url = new URL(input instanceof Request ? input.url : String(input), location.href);
   if (url.origin === 'http://127.0.0.1:3002') {
     if (offline) throw new TypeError('CI network disconnected');
+    if(url.pathname==='/inventory/cell-outputs'&&init?.method==='POST')cellSubmissionBodies.push(String(init.body));
     const response = await originalFetch(input, init);
     if (loseAck && url.pathname === '/inventory/receipts' && response.ok) {
       loseAck = false;
@@ -157,6 +161,7 @@ async function prepare() {
   await select('chief'); await refresh();
   const finished=await prepareFinishedOutput();
   const serialIdentity=await prepareFormationIdentity();
+  const cellProposal=await prepareCellProposal();
   const open = (text: string) => { const summary = [...document.querySelectorAll('summary')].find(row => row.textContent === text); assert(summary, 'Missing native admin section'); summary!.click(); };
   open('Администрирование склада · Chief');
   await fill('Код материала', 'NATIVE-ADMIN', false); await fill('Название материала', 'Native synthetic component', false);
@@ -184,9 +189,10 @@ async function prepare() {
   const issueRequest=await prepareIssueRequest();
   const queued = await receipt();
   assert((await confirmedInventoryForScope(scope())).length === 0, 'No optimistic stock');
-  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request,finished,serialIdentity };
+  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request,finished,serialIdentity,cellProposal };
 }
-async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string;finished:{cutRunId:string;operationId:string;request:string};serialIdentity:FormationSerialIdentity }) {
+async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string;finished:{cutRunId:string;operationId:string;request:string};serialIdentity:FormationSerialIdentity;cellProposal:CellOutputClaim }) {
+  assert(sameOutput(await db.cellOutputClaims.get(expected.cellProposal.runId),expected.cellProposal),'Process death changed original cell proposal/source/body/epoch');
   const serialDraft=(await loadLocalDraft(fixture.chief,'formation'))?.payload as {attempt?:FormationSerialIdentity}|undefined;
   assert(JSON.stringify(serialDraft?.attempt)===JSON.stringify(expected.serialIdentity),'Process death changed original processed serial declaration');
   const originalFinished=await db.warehouseOutputClaims.get(expected.finished.cutRunId);
@@ -239,7 +245,7 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const identification=await finishIdentification(split.splitChildId);
   const finished=await finishFinishedOutput(expected.finished);
   const serialIdentity=await finishFormationIdentity(expected.serialIdentity);
-  const cellSubmission=await finishCellSubmission(expected.serialIdentity);
+  const cellSubmission=await finishCellSubmission(expected.cellProposal);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 11, 'Logout destroyed retained evidence');
@@ -261,16 +267,33 @@ async function finishFormationIdentity(expected:FormationSerialIdentity){
   const row=await db.formationSerialIdentities.get(expected.runId);assert(JSON.stringify(row)===JSON.stringify(expected),'Native retry changed original serial attribution');assert(JSON.stringify(await db.formationRuns.get(expected.runId))===JSON.stringify(expected.source),'Native serial declaration rewrote Formation source');assert(row?.count===2&&JSON.stringify(row.ranges)===JSON.stringify([{start:10,end:10},{start:12,end:12}]),'Native serial subset inferred full input');assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Local processed serial declaration changed the refreshed original warehouse cache');
   return{formationIdentityProcessDeath:true,formationIdentityPreservedSource:true,formationIdentityNoStock:true,formationExplicitProcessed:2,formationFullInput:4,formationExplicitRanges:row!.ranges,formationIdentityId:row!.id};
 }
-/** API exercise through real native device proof; product cell proposal/acceptance UI is unfinished. */
-async function finishCellSubmission(identity:FormationSerialIdentity){
+/** A second independent synthetic source lets the existing serial-declaration
+ * rollback/process-death test remain intact while a real cell proposal is frozen. */
+async function prepareCellProposal(){
+  const source=await syntheticFormationLineage(fixture.chief,fixture.operator),actor=(await db.users.get(fixture.chief))!;
+  const identity=await declareFormationSerialIdentity(createFormationSerialIdentity(source,[{start:10,end:10},{start:12,end:12}],'NATIVE-CELL-SOURCE-42',actor,crypto.randomUUID(),new Date().toISOString()),fixture.chief);
   for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.cellCompletionId,kind:'completed',quantity:'2',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.cellBatchId+'/steps/1/evidence',data,connection.session.accessToken);
-  const epoch=await preflightInventoryStream(connection.session,scope()),source=cellSourceFromIdentity(identity),request={operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,productionBatchId:fixture.cellBatchId,completionId:fixture.cellCompletionId,stepNumber:1,materialId:fixture.cellMaterialId,source,reason:'Native actual completed cell source offered without stock',evidence:'NATIVE-CELL-SUBMISSION-42'},body=JSON.stringify(request),before=await confirmedInventoryForScope(scope());
-  const headers={authorization:'Bearer '+connection.session.accessToken,'x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':epoch,'content-type':'application/json'};
-  async function send(){const response=await fetch(fixture.serverUrl+'/inventory/cell-outputs',{method:'POST',headers,body});assert(response.ok,'Native cell submission API failed: '+response.status);return response.json();}
-  loseCellSubmissionAck=true;let lost=false;try{await send();}catch(error){lost=String(error).includes('CI cell submission acknowledgement lost after commit');}assert(lost&&!loseCellSubmissionAck,'Native cell test did not consume the genuine lost committed reply');
-  const accepted=await send();assert(accepted.status==='duplicate'&&accepted.operationId===request.operationId&&accepted.submission.quantity===2&&sameOutput(accepted.submission.source,source),'Native cell exact retry changed original source/count');
-  assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Cell source submission invented warehouse cache');
-  return{nativeCellSubmissionApi:true,cellSubmissionLostReplyRetried:true,cellSubmissionNoStock:true,cellSubmissionOperationId:request.operationId,cellSubmissionActualQuantity:2};
+  const panel=()=>document.querySelector<HTMLElement>('[data-native-formation]')!;
+  await click('Предложение ячеек',panel());await click('Загрузить завершённые шаги и предложения ячеек',panel());
+  await fill('Заявление номеров для предложения',identity.id,false,panel());await fill('Завершённый шаг ячеек',fixture.cellCompletionId,false,panel());await click('Загрузить материалы ячеек',panel());await fill('Материал ячеек',fixture.cellMaterialId,true,panel());
+  await fill('Основание предложения ячеек','Native actual completed cell source offered without stock',true,panel());await fill('Свидетельство выхода ячеек','NATIVE-CELL-SUBMISSION-42',true,panel());
+  offline=true;try{await click('Сохранить исходное предложение ячеек',panel());await until(async()=>!!await db.cellOutputClaims.get(source.id),'native original offline cell proposal');}finally{offline=false;}
+  const claim=(await db.cellOutputClaims.get(source.id))!;assert(claim.state==='pending'&&claim.request.source.formation.cellsOut===2&&sameOutput(claim.identity,identity),'Native proposal changed original cells');assert(cellSubmissionBodies.length===0,'Native proposal preparation posted automatically');return claim;
+}
+/** Actual product UI/client under native proof, original force-stopped proposal
+ * and exact ACK archive. Physical serialized warehouse acceptance remains separate. */
+async function finishCellSubmission(expected:CellOutputClaim){
+  const panel=()=>document.querySelector<HTMLElement>('[data-native-formation]')!,before=await confirmedInventoryForScope(scope());
+  await click('Предложение ячеек',panel());await click('Загрузить завершённые шаги и предложения ячеек',panel());
+  const send='Отправить исходное предложение ячеек '+expected.request.operationId.slice(0,8);
+  loseCellSubmissionAck=true;await click(send,panel());await until(()=>panel().querySelector('[role="alert"]')?.textContent?.includes('CI cell submission acknowledgement lost after commit'),'native cell lost committed reply');
+  assert(!loseCellSubmissionAck&&sameOutput(await db.cellOutputClaims.get(expected.runId),expected),'Native unknown reply lost or changed original proposal');
+  await click(send,panel());await until(async()=>(await db.cellOutputClaims.get(expected.runId))?.state==='accepted','native original cell ACK archive');
+  const claim=(await db.cellOutputClaims.get(expected.runId))!,accepted=claim.acknowledgement!;
+  assert(sameOutput(claim.request,expected.request)&&sameOutput(claim.identity,expected.identity)&&accepted.operationId===expected.request.operationId&&accepted.quantity===2&&sameOutput(accepted.source,cellSourceFromIdentity(expected.identity)),'Native cell retry changed original source/count');
+  assert(cellSubmissionBodies.length===2&&cellSubmissionBodies[0]===cellSubmissionBodies[1]&&cellSubmissionBodies[0]===JSON.stringify(expected.request),'Native cell retry changed original serialized request');
+  assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Cell proposal/ACK invented warehouse cache');
+  return{nativeCellSubmissionApi:true,nativeCellProposalUi:true,cellProposalProcessDeath:true,cellProposalOriginalAckArchived:true,cellSubmissionIdenticalBodies:true,cellSubmissionLostReplyRetried:true,cellSubmissionNoStock:true,cellSubmissionOperationId:expected.request.operationId,cellSubmissionIdentityId:expected.identityId,cellSubmissionActualQuantity:2};
 }
 async function prepareFinishedOutput(){
   for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.finishedCompletionId,kind:'completed',quantity:'7',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.finishedBatchId+'/steps/1/evidence',data,connection.session.accessToken);

@@ -44,3 +44,7 @@ it('exports original claims but refuses to restore device-bound proposals throug
  expect(JSON.parse(archive).payload.tables.find(([name]:[string,unknown])=>name==='cellOutputClaims')[1]).toHaveLength(1);
  await expect(restoreLocalBackup(archive)).rejects.toThrow('серверную синхронизацию');expect(await db.cellOutputClaims.get(run.id)).toEqual(claim);
 });
+it('retains the exact saved identity, including undefined source fields, when the durable JSON form omits them',async()=>{
+ const throughForm=JSON.parse(JSON.stringify(identity)),claim=await freezeCellOutput(scope,'chief',epoch,throughForm,input());
+ expect(claim.identity).toStrictEqual(identity);expect((await db.cellOutputClaims.get(run.id))?.identity).toStrictEqual(identity);
+});

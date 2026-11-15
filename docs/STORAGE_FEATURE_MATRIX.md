@@ -1,3 +1,11 @@
+# Cell proposal/client/UI implemented — 2026-11-15
+
+Formation now saves durable original cell proposals offline, explicitly sends only the frozen request and atomically archives its exact ACK. Original identity/source/actor/role/device/scope/epoch/ID/body survive reopen, unknown replies and conflicts; no stock, physical receipt or QA is created. Main Dexie **24** adds cell claims and preserves all 37 previous main tables. Outbox **v7** / PostgreSQL **032** and old queues remain unchanged. Local-only v21/v22/v23 backups remain compatible; cell claims retain device-bound restore restrictions. [Cell contract](STORAGE_CELL_OUTPUT.md).
+
+Full local **716 frontend / 319 PostgreSQL tests**, builds/typechecks, real two-device cell/previous operator/electrode/serial browser workflows, active packaged PWA and **49-table/two-restores** pass. Current native harness now uses the real product cell proposal UI/client before and after force-stop; its software-signer diagnostic control passes, with independent ledger verification. Exact current-source hosted/native evidence is pending until recorded in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md). Earlier source results are historical.
+
+**S9 remains PARTIAL:** separate physically counted serialized cell acceptance/quarantine/Chief QA and actual measured Slurry consumption remain unfinished. S10/physical/deployment gates remain open. No merge, production mutation, deployment or dependency/lockfile changes.
+
 # Current cell submission API (2026-11-15)
 
 **IMPLEMENTED / LOCAL TESTED:** authenticated cell source submission, completed-final-step/material discovery and scoped immutable history. Actual explicit processed serials and ended Formation counts match a real final applicable cell-route completion; whole serial domains/source IDs are exclusive across submitting devices. Exact original retries, current role/workshop/proof/epoch checks, immutable paired serial rows and zero stock on submission. PostgreSQL **032**, main Dexie **23**, inventory outbox **v7**. [Cell contract](STORAGE_CELL_OUTPUT.md).
