@@ -46,7 +46,23 @@ export function registerInventoryCountRoutes(app:FastifyInstance,pool:Pool){
   try{return await issueTransaction(pool,request.headers.authorization,request.headers['x-device-proof'],data.deviceId,false,undefined,async(client,actor,level,epoch)=>{if(!level)issueFail(403,'count_authority_required');const rows=(await client.query("SELECT c.count_id,c.actor_id,c.reason,c.evidence,c.recorded_at,EXISTS(SELECT 1 FROM inventory_count_events x WHERE x.organization_id=c.organization_id AND x.count_id=c.count_id AND x.kind='close') AS closed FROM inventory_count_events c WHERE c.organization_id=$1 AND c.kind='open' AND c.count_id>$2 ORDER BY c.count_id LIMIT $3",[actor.organization_id,data.after??'00000000-0000-0000-0000-000000000000',data.limit+1])).rows;const items=rows.slice(0,data.limit).map(r=>({countId:r.count_id,openedBy:r.actor_id,reason:r.reason,evidence:r.evidence,recordedAt:r.recorded_at.toISOString(),closed:r.closed}));return{epoch,items,hasMore:rows.length>data.limit,nextAfter:rows.length>data.limit?items.at(-1)!.countId:null};});}catch(error){const e=failure(error);return reply.code(e.status).send(e.body);}
  });
  app.get('/inventory/counts/:countId/events',async(request,reply)=>{
-  const p=z.object({countId:uuid}).strict().safeParse(request.params),q=z.object({deviceId:uuid,after:z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0),limit:z.coerce.number().int().min(1).max(100).default(50)}).strict().safeParse(request.query);if(!p.success||!q.success)return reply.code(400).send({error:'invalid_count_history'});const data=q.data;
-  try{return await issueTransaction(pool,request.headers.authorization,request.headers['x-device-proof'],data.deviceId,false,undefined,async(client,actor,level,epoch)=>{if(!level)issueFail(403,'count_authority_required');if(!(await client.query("SELECT 1 FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND kind='open'",[actor.organization_id,p.data.countId])).rowCount)issueFail(404,'count_not_found');const rows=(await client.query('SELECT * FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND sequence>$3 ORDER BY sequence LIMIT $4',[actor.organization_id,p.data.countId,data.after,data.limit+1])).rows,closed=!!(await client.query("SELECT 1 FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND kind='close'",[actor.organization_id,p.data.countId])).rowCount,items=rows.slice(0,data.limit).map(r=>({...snapshot(r),sequence:Number(r.sequence)}));return{epoch,closed,items,hasMore:rows.length>data.limit,nextAfter:rows.length>data.limit?items.at(-1)!.sequence:null};});}catch(error){const e=failure(error);return reply.code(e.status).send(e.body);}
+  const sequence=z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+  const p=z.object({countId:uuid}).strict().safeParse(request.params);
+  const q=z.object({deviceId:uuid,after:sequence.default(0),until:sequence.optional(),limit:z.coerce.number().int().min(1).max(100).default(50)}).strict().safeParse(request.query);
+  if(!p.success||!q.success)return reply.code(400).send({error:'invalid_count_history'});
+  const data=q.data;
+  try{return await issueTransaction(pool,request.headers.authorization,request.headers['x-device-proof'],data.deviceId,false,undefined,async(client,actor,level,epoch)=>{
+   if(!level)issueFail(403,'count_authority_required');
+   const countId=p.data.countId;
+   if(!(await client.query("SELECT 1 FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND kind='open'",[actor.organization_id,countId])).rowCount)issueFail(404,'count_not_found');
+   const head=Number((await client.query('SELECT MAX(sequence)::text AS high FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2',[actor.organization_id,countId])).rows[0].high);
+   if(!Number.isSafeInteger(head)||head<1)throw Error('invalid_count_sequence');
+   const throughSequence=data.until??head;
+   if(throughSequence>head||data.after>throughSequence)issueFail(409,'count_history_cursor_out_of_range');
+   const rows=(await client.query('SELECT * FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND sequence>$3 AND sequence<=$4 ORDER BY sequence LIMIT $5',[actor.organization_id,countId,data.after,throughSequence,data.limit+1])).rows;
+   const closed=!!(await client.query("SELECT 1 FROM inventory_count_events WHERE organization_id=$1 AND count_id=$2 AND kind='close' AND sequence<=$3",[actor.organization_id,countId,throughSequence])).rowCount;
+   const items=rows.slice(0,data.limit).map(r=>({...snapshot(r),sequence:Number(r.sequence)}));
+   return{epoch,throughSequence,closed,items,hasMore:rows.length>data.limit,nextAfter:rows.length>data.limit?items.at(-1)!.sequence:null};
+  });}catch(error){const e=failure(error);return reply.code(e.status).send(e.body);}
  });
 }

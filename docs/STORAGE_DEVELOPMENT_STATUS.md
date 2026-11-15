@@ -1,3 +1,7 @@
+# Count-history export follow-up — 2026-11-15
+
+Complete selected-session count CSV is implemented: unapproved/zero observations, separate correction and snapshot-scoped closure, fixed through immutable sequence and current history/authority. Browser exports remain byte-identical after another device approval; refreshed history adds the later approval/closure. Real two-restores preserve the frozen history. Exact new-SHA hosted evidence is recorded in the resumption checkpoint after publication. No stock mutation, migration, dependency or offline-data reset. S8 resource acceptance, S9/S10 and physical/deployment gates remain open.
+
 # Current increment — 2026-11-15
 
 S8 immutable movement audit detail is implemented and locally tested: original QA disposition/evidence, original physical count and separate approved correction, split conservation/paired identities and received-issue return source. Mobile UI and formula-safe frozen/page CSV share strict validation. Actual PostgreSQL multi-page detail and 207-event acceptance, two-profile browser and 44-table/two-restore regression pass; exact new-SHA CI/native results are recorded in the resumption checkpoint after publication. No production data, schema/outbox version or dependencies changed. S8 remains partial; S9/S10 and physical/deployment pilot remain unfinished.

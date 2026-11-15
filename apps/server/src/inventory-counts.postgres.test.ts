@@ -37,4 +37,23 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('anytime physical counts and sep
   expect((await f.post('/inventory/receipts',{operationId:c.operationId,stockId:randomUUID(),deviceId:f.actors[2].device,materialId:f.material,locationId:f.location,manufacturerLot:'Never adopt count ID',quantity:1,expectedRevision:0,reason:'Intent collision'},2)).statusCode).toBe(409);
   await f.pool.query('UPDATE inventory_access SET active=false WHERE organization_id=$1 AND user_id=$2',[f.org,f.actors[1].id]);expect((await send(action('correct',c.countId,1,{observationId:a.body.operationId,expectedRevision:2}),1)).statusCode).toBe(403);expect((await f.pool.query('SELECT on_hand FROM inventory_stocks WHERE id=$1',[id])).rows[0].on_hand).toBe('1000');
  });
+ it('freezes complete count evidence and closure across later approval and session closure',async()=>{
+  const id=await f.stock(),c=await count(),a=await observe(c.countId,id,900);
+  const url=(extra='')=>'/inventory/counts/'+c.countId+'/events?deviceId='+f.actors[2].device+extra;
+  const first=await f.get(url('&limit=1'),2);expect(first.statusCode,first.body).toBe(200);
+  expect(first.json().throughSequence).toBeGreaterThan(0);
+  const upper=first.json().throughSequence;
+  const approve=await send(action('correct',c.countId,1,{observationId:a.body.operationId,expectedRevision:2}),1);expect(approve.statusCode,approve.body).toBe(201);
+  expect((await send(action('close',c.countId))).statusCode).toBe(201);
+  const frozen=await f.get(url('&until='+upper),2);expect(frozen.statusCode,frozen.body).toBe(200);
+  expect(frozen.json()).toMatchObject({closed:false,throughSequence:upper,hasMore:false});
+  expect(frozen.json().items.map((r:{kind:string})=>r.kind)).toEqual(['open','observe']);
+  const next=await f.get(url('&until='+upper+'&after='+first.json().nextAfter+'&limit=1'),2);
+  expect(next.json().items.map((r:{kind:string})=>r.kind)).toEqual(['observe']);
+  const current=await f.get(url(),2);expect(current.json().closed).toBe(true);
+  expect(current.json().items.map((r:{kind:string})=>r.kind)).toEqual(['open','observe','correct','close']);
+  expect((await f.get(url('&until=9007199254740991'),2)).statusCode).toBe(409);
+  expect((await f.get(url('&until='+upper+'&after='+(upper+1)),2)).statusCode).toBe(409);
+  expect((await f.get(url('&until=-1'),2)).statusCode).toBe(400);
+ });
 });

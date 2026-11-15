@@ -1,3 +1,13 @@
+# Current follow-up — complete count-session export (2026-11-15)
+
+Complete frozen count history is implemented and LOCAL TESTED: the selected session exports open/unapproved/zero/recount observations, separate corrections and closure in one bounded, formula-safe CSV. The API's `throughSequence`/`until` freezes event population and closure together; another device's approval does not alter old exports. The browser verifies byte-identical before-approval CSV after another profile correction, then a refreshed complete history. Native harness verifies the old unapproved snapshot after approval/closure and the actual export control.
+
+Local verification: **664 frontend / 281 actual PostgreSQL server tests**, all frontend/server/native-harness typechecks/builds, real two-profile browser/downloads, active-PWA navigation and actual dump/two-restores comparing 44 tables. Both restored DBs reproduce the original frozen count evidence; changed restore epoch is explicit. Mutation removing the snapshot-closure guard fails its regression; restored code passes. No data/schema/outbox/dependency change, merge or deployment. New-SHA hosted checks are pending publication and will be recorded below.
+
+Audit-detail source `b9e0f4ff3e7c884fb3a1616747afcb9f07e4bd4d` is fully VERIFIED: [Tests 43684637157](https://github.com/LHONE-mf/production_mf/actions/runs/43684637157), [push CI 43684633515](https://github.com/LHONE-mf/production_mf/actions/runs/43684633515), [PR CI 43684637100](https://github.com/LHONE-mf/production_mf/actions/runs/43684637100), [Route A 43684633427](https://github.com/LHONE-mf/production_mf/actions/runs/43684633427). Those links certify that earlier source, not the unpushed count follow-up. Skills/tools/security audit remain as recorded below; all six repo skills and Ponytail FULL/simplification/review used, Graphify stale main confirmed, no agents or new dependencies.
+
+Next: S8 10,000-row/resource/performance acceptance; S9A actual output submit and separate Storage quarantine acceptance; S9B real measured Slurry use, then S10. No claim of finished S9, physical OnePlus/ColorOS handling/QA/count, signed installed upgrade, physical camera/printer, deployed TLS or production backup acceptance.
+
 # Current increment — immutable report evidence (2026-11-15)
 
 Starting branch/PR HEAD `83f32101e95bdfec6b86b5ad6e6286b8d604dfce` remained current and clean; PR #5 stays draft against `feat/hybrid-server-foundation`. Added immutable QA/count/return/split audit detail to the actual movement API, strict client, mobile UI and both formula-safe frozen CSV paths. See [movement contract](STORAGE_MOVEMENT_REPORT.md). No schema/outbox/dependency change; original data and approved D1–D8 rules remain intact.

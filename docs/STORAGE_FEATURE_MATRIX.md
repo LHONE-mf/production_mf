@@ -1,3 +1,11 @@
+# Current follow-up — complete count-session exports (2026-11-15)
+
+The Counts screen now exports the complete frozen selected session, including observations awaiting approval, separate corrections and closure. Count history pages and the closed flag share one immutable upper sequence; another device's later approval cannot alter the displayed/exported snapshot. Explicit refresh selects newer evidence. Actual PostgreSQL, two-profile CSV comparison and dump/two-restores cover this behavior. See [count contract](STORAGE_COUNTS.md).
+
+LOCAL TESTED: 664 frontend / 281 actual PostgreSQL server tests, all typechecks/builds, browser/native harness and real restore regressions. Current follow-up CI/native verification is PENDING until recorded in the checkpoint. Previous audit-detail code `b9e0f4ff3e7c884fb3a1616747afcb9f07e4bd4d` passed [Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43684637157), [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43684633515), [PR CI](https://github.com/LHONE-mf/production_mf/actions/runs/43684637100), [Route A](https://github.com/LHONE-mf/production_mf/actions/runs/43684633427). Those certify the named previous source.
+
+S8 remains PARTIAL for full 10,000-row/resource/performance and remaining acceptance. S9 finished-output acceptance and measured Slurry use remain NOT IMPLEMENTED; S10 and physical/deployment pilot remain pending. Existing data, D1–D8, schema 030/outbox v7 and dependencies are preserved.
+
 # Current increment — immutable audit details (2026-11-15)
 
 Starting HEAD `83f32101e95bdfec6b86b5ad6e6286b8d604dfce` still matched live draft PR #5; no concurrent work was present. S8 movement rows now show original Chief QA evidence, original count observation and separate correction approval, conserved split parent/child relationships and received-issue return provenance. UI and safe page/full frozen CSV use the same validated evidence. Count observations themselves remain separate from stock movements. See [movement contract](STORAGE_MOVEMENT_REPORT.md).
