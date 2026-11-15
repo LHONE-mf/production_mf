@@ -102,6 +102,7 @@ jobs:
           npm run build
           node scripts/build-android-storage-harness.mjs
           node scripts/android-storage-harness-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/packaged-harness.log"
+          node scripts/storage-camera-fixture-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/camera-fixture.log"
           node scripts/storage-operator-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/operator.log"
           node scripts/formation-serial-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/formation-serial.log"
           node scripts/storage-finished-output-smoke.mjs 2>&1 | tee "$STORAGE_ARTIFACT_DIR/finished-output.log"

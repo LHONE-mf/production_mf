@@ -1,3 +1,7 @@
+# Camera regression fixture correction — 2026-11-15
+
+A later documentation-only PR CI exposed an undersized synthetic QR video despite passing push CI and verified cell API/native source. The exact failing payload reproduces with the real decoder; integer-aligned camera raster at 8px/module fixes it. A fixed-payload real-camera regression and the full two-profile operator/API workflow pass locally; the new regression runs in CI. Production labels/decoder, runtime/native/API code, permissions and original data are unchanged. Exact failed and current checks are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
 # Cell submission API verified — 2026-11-15
 
 Code/test source **6aab1677c46ad70826d49ed8287c469ed5bd4493** passed all four hosted workflows, including the real native proofed cell API, deliberately lost committed reply/exact retry and independent PostgreSQL verification. **700 frontend / 319 real PostgreSQL tests**, current browser/PWA regressions, additive populated upgrade and 49-table/two-restores pass. Exact runs/artifact digests and limits are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
