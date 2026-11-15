@@ -52,8 +52,20 @@ WIP regulation engines are deferred.
 lip sealing **between coatings**, Assembly tab insulation, Assembly winding
 jelly-roll/block taping. Coating tape is support material, never a slurry ingredient
 or assumed final-cell constituent. Partial consumption and leftovers need the
-original received lot. Unit (length/roll/piece), widths and shared versus separate
-SKUs remain unconfirmed; no conversion is inferred.
+original received lot.
+
+**Owner confirmed, 2026-11-15:** tape is issued **by roll**. Each of these three
+operations uses a different width/thickness specification, requiring a distinct
+operation-specific stock variant. Do not substitute one application's tape for
+another or treat all three as an interchangeable SKU. Actual dimensions and
+catalogue codes must come from approved specifications; none are invented here.
+`POLYIMIDE_STOCK_POLICY` records this decision in the advisory blueprint.
+
+**Not yet implemented:** warehouse roll issue and per-roll partial consumption/
+leftover tracking. Existing ledger base units remain `mg/ul/mm/pieces`; a roll
+must not be silently relabelled as a piece or converted to a fixed length. The
+consumption measurement basis and actual per-roll content still need explicit
+evidence before any roll-to-consumption conversion is implemented.
 
 **Approved:** cylindrical, prismatic **and pouch** products exist; partial use and
 multi-lot parents are permitted. **Not yet implemented:** legacy `CellType` and
@@ -162,5 +174,7 @@ Next three concrete tasks:
 
 Factory choices still needed before dependent operational work: when a receiver
 ACKs (handover or next-operation start), actual pouch stations/dry declaration,
-serial subset/count evidence, actual post-Formation operations/location, and tape
-issue units/SKUs. These do not block the nonposting foundation.
+serial subset/count evidence and actual post-Formation operations/location.
+Tape issue by roll and different width/thickness specifications per application
+are confirmed; exact specification values/catalogue codes and the consumption
+measurement basis remain to be supplied. These do not block the nonposting foundation.

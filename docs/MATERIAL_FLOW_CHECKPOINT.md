@@ -71,6 +71,19 @@ capabilities and legacy packet/route guards still need additive implementation.
 
 Next three tasks and remaining factory decisions are in
 [the room matrix and continuation](PRODUCTION_MATERIAL_FLOW.md#validation-and-continuation).
-Immediate factory inputs: receipt ACK timing and tape issue unit/SKU. Pouch dry
+Owner clarification: polyimide tape is issued **by roll**, with a different
+width/thickness specification for each application. The advisory blueprint now
+records that policy. Existing ledger units are unchanged; roll issue/partial-roll
+consumption remains unimplemented, with no guessed piece/length conversion.
+Exact dimensions/catalogue codes and consumption measurement still need evidence.
+
+Roll-policy follow-up verification: the new policy assertion failed before the
+constant was added, then all **16 focused / 732 frontend tests** passed, along
+with typecheck and the Vite/PWA build. Logs:
+`/tmp/production-mf-tape-tests.log`, `/tmp/production-mf-tape-build.log`.
+Only the advisory blueprint, its test and these two flow documents changed;
+the original 628ade0 results above remain attributed to that source.
+
+Immediate factory input: receipt ACK timing. Pouch dry
 declaration/stations, serialized subset evidence and post-Formation steps/location
 remain decisions before their dependent operational slices.

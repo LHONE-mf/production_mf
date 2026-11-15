@@ -142,7 +142,13 @@ export const OPTIONAL_STORAGE_OUTPUTS = Object.entries(MATERIAL_FLOW_BLUEPRINT).
   })),
 );
 
-/** One material category; actual tape SKUs/approved specifications must be chosen per use. */
+/** Owner-approved physical policy; does not add roll support to the warehouse ledger. */
+export const POLYIMIDE_STOCK_POLICY = {
+  issueUnit:'roll',distinctSpecificationPerApplication:true,
+  requiredSpecificationFields:['width','thickness'],
+} as const;
+
+/** Each application needs its own width/thickness specification and stock variant. */
 export const POLYIMIDE_APPLICATIONS = [
   {room:StageId.COATING,application:'coating-lip-sealing'},
   {room:StageId.ASSEMBLY,application:'tab-insulation'},

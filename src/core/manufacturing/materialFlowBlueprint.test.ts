@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {StageId} from '../types';
 import {
   CELL_FORMAT_PLANS, DEFAULT_DIRECT_HANDOFFS, MATERIAL_FLOW_BLUEPRINT,
-  POLYIMIDE_APPLICATIONS, WIP_RELEASE_HANDOFFS, CONDITIONAL_HANDOFFS, OPTIONAL_STORAGE_OUTPUTS, FLOW_MATERIAL_KINDS,
+  POLYIMIDE_APPLICATIONS, POLYIMIDE_STOCK_POLICY, WIP_RELEASE_HANDOFFS, CONDITIONAL_HANDOFFS, OPTIONAL_STORAGE_OUTPUTS, FLOW_MATERIAL_KINDS,
 } from './materialFlowBlueprint';
 
 describe('approved material flow blueprint (advisory only)',()=>{
@@ -42,6 +42,13 @@ describe('approved material flow blueprint (advisory only)',()=>{
     expect(links).toContainEqual({from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells'});
     expect(links).toContainEqual({from:StageId.ELECTROLYTE_705,to:StageId.WALZING,material:'filled-cells'});
     expect(links).toContainEqual({from:StageId.WALZING,to:StageId.FORMATION,material:'walzed-cells'});
+  });
+
+  it('requires operation-specific tape width/thickness specifications and warehouse issue by roll',()=>{
+    expect(POLYIMIDE_STOCK_POLICY).toEqual({
+      issueUnit:'roll',distinctSpecificationPerApplication:true,
+      requiredSpecificationFields:['width','thickness'],
+    });
   });
 
   it('releases Assembly WIP explicitly before a handoff without changing its initial custody',()=>{
