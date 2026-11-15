@@ -1,3 +1,24 @@
+# Verified finished-electrode device workflow — 2026-11-15
+
+Code/test/CI source **317aeecb28a2d746b5fc095e0d58a5d710d22fa0** is IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED. A following documentation-only closeout records these results without changing application, backend, native, migrations, tests or CI. Draft [PR #5](https://github.com/LHONE-mf/production_mf/pull/5) remains based on `feat/hybrid-server-foundation`; no merge, production mutation or deployment.
+
+All exact-source hosted runs PASSED:
+
+- [Tests 43707566405](https://github.com/LHONE-mf/production_mf/actions/runs/43707566405).
+- [Push CI 43707561804](https://github.com/LHONE-mf/production_mf/actions/runs/43707561804).
+- [PR CI 43707566380](https://github.com/LHONE-mf/production_mf/actions/runs/43707566380).
+- [Android Route A 43707561876](https://github.com/LHONE-mf/production_mf/actions/runs/43707561876). Real AndroidKeyStore proofs, WebView/API, frozen finished source across force-stop, source submission and separate physical Storage receipt with lost replies/exact original retries, held Assembly source and 7-piece quarantine. All previous QA/count/issue/return/split/identity/camera/print regressions retained. Independent PostgreSQL verification checks five packages, eleven warehouse ledger events, one finished source and one separately authorized receipt, no duplicate or automatic finished QA. The job confirms **“PASS: native WebView Storage and disposable PostgreSQL ledger agree.”** This is emulator engineering evidence; physical factory acceptance remains separate.
+
+Hosted server evidence independently confirms actual **7** against planned **999**, two grade packages, lost submission/receipt ACK retries, competing receiver held, populated v21→22 upgrade (35 prior main tables), quarantine before separate Chief QA, **47-table** actual dump/two-restores and history fences. Export acceptance: 10,001 accepted events, **10,000 exported rows**, **zero over-limit partial files**, 4,667,399 CSV bytes; observed setup 61.2s/export 1.65s. Timings are observations, not physical-device guarantees. Full local totals: **685 frontend / 300 actual PostgreSQL tests**, all frontend/server/native typechecks/builds, migration guards, existing operator browser and packaged-PWA checks pass.
+
+Engineering artifact **14159157202**, SHA-256 `15d0ab5eaa896b76f29289bec9b4a3b2030943228693e5a22c7e3f419637ff12`, expires 2026-11-29. Native artifact **14158739109**, SHA-256 `aa2f016bfc9a99aec3a28b320131a7e0770cc1b36146da10cf4a6fd1b33b0c43`, expires 2026-11-22. Both identify the exact source SHA above. Download from their runs for real JSON/logs/screenshots. Local evidence paths and implementation details follow below. Owned disposable container `production-mf-codex-output-ui-20261115` was removed after matching `production-mf.owner=codex-output-ui-20261115`; temporary software-control credentials were removed. No production infrastructure was used.
+
+Main Dexie **22**, inventory outbox **v7**, PostgreSQL **031**; existing data/business rules and original intentions/ACKs preserved. Device-local ownership is not global offline coordination. Unknown/conflict/old-epoch source claims remain held; cancellation/reconciliation needs an explicit design. No inferred chemical polarity, cells-per-electrode rule, serial subset or actual consumption.
+
+Next implementation: **finished cells with authentic Assembly/Formation lineage and explicitly selected processed serials**. Start with `src/core/manufacturing/assemblyCellOutput.ts`, `formationResults.ts`, `src/core/types.ts` and the finished-output contract; preserve full existing input range and add separate explicit actual output identity. Then S9B measured Slurry use from received issues without a second warehouse debit, preserving calculators/journals and original offline evidence. S10, physical signed installed upgrade/OnePlus/ColorOS/camera/printer/factory QA/count/TLS/production-backup acceptance remain open. No overall roadmap completion or unattended background work is claimed.
+
+The detailed session below records implementation and earlier pending states; this verified closeout supersedes those pending-status sentences.
+
 # Current S9A device workflow — 2026-11-15
 
 Continued from clean local/remote/PR HEAD `286767cf0e61f669fd6943c83446b6d4edebd1bd`. Draft [PR #5](https://github.com/LHONE-mf/production_mf/pull/5) stays on `feat/storage-inventory-foundation`, base `feat/hybrid-server-foundation`. No production data, merge or deployment. Prior entries below are historical.

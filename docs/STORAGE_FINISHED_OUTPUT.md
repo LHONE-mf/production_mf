@@ -1,6 +1,6 @@
 # Finished electrode output: device workflow and server contract
 
-2026-11-15: electrode integration is implemented and locally verified; exact hosted/native evidence is in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md). Finished cells/serials, measured Slurry use and physical/deployment acceptance remain unfinished.
+2026-11-15: electrode integration is implemented and verified locally, in CI and on the Android emulator at code SHA `317aeecb28a2d746b5fc095e0d58a5d710d22fa0`; exact hosted/native evidence is in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md). Finished cells/serials, measured Slurry use and physical/deployment acceptance remain unfinished.
 
 This increment implements D7 for an authenticated API caller: production explicitly attests completed manual sorting output; Storage explicitly accepts a counted grade into a new quarantined package; Chief QA remains a separate action. Submission, completion and acceptance are different records. Planned targets and journal text never create output or stock.
 

@@ -1,3 +1,9 @@
+# Finished-electrode device workflow verified — 2026-11-15
+
+Code/test source **317aeecb28a2d746b5fc095e0d58a5d710d22fa0** passed all four hosted workflows, including the new real native source/process-death/submission/physical-receipt path and independent PostgreSQL verification. **685 frontend / 300 actual PostgreSQL tests**, populated upgrade, real multi-profile browser, 47-table/two-restores and 10,000/10,001 export boundary pass. Exact runs/artifact digests and limits are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
+S9 electrode device integration is implemented; finished-cell/explicit processed serial integration, measured Slurry use and S10/physical/deployment gates remain unfinished. Main Dexie22/outbox7/PostgreSQL031 preserve existing data. The session-owned disposable database was removed after checking ownership. No merge, production mutation or deployment. A following documentation-only closeout preserves the verified runtime/test/CI source.
+
 # Current finished-electrode device integration — 2026-11-15
 
 Sorting now offers real finalized three-station output through an original durable whole-source claim; Storage separately freezes and posts the physical counted grade into quarantine. Explicit completed server step/catalog mapping, exact original retry/ACK, Assembly source exclusion, offline/reopen retention and separate Chief QA are implemented. Main Dexie22, outbox7 and PostgreSQL031 preserve existing records; previous v21 local-only backup compatibility remains supported. No dependency, merge, production change or deployment.
