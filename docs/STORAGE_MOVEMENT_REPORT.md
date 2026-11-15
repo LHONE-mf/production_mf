@@ -104,3 +104,52 @@ and frozen pre-transfer views. Real mobile browser tests use the control for a
 matching and an empty location and download both scoped exports; the native
 WebView harness checks both states with a current device proof. No migration,
 stock write or reinterpretation of old history is involved.
+
+## Immutable audit detail — 2026-11-15
+
+Every returned row now includes `audit`, either null for ordinary stock events or
+one of four validated evidence shapes:
+
+- `quality`: original Chief disposition (`release`, `hold`, `block`, `reject`) and
+  its evidence reference. A later hold never rewrites a previous release row.
+- `count`: count/session and original observation IDs; original recorded and
+  physically counted base-unit quantities; counted stock revision; observer,
+  device, UTC time and observation evidence; separate correction evidence. The
+  movement row's actor/device/time/reason identify the approving Chief/Manager.
+  Signed discrepancy is counted minus originally recorded stock. Observation
+  alone remains absent from the stock-movement ledger and changes no balance.
+- `split`: immutable parent/child package and paired operation IDs, parent
+  on-hand before/after and recorded evidence. The child quantity is the operation's
+  unsigned quantity; before = parent after + child. Both split ledger rows carry
+  the same relationship. A subsequent parent hold/transfer never changes it.
+- `return`: actual received-issue ID, original source package and condition
+  evidence. The row's stock ID is the separate return package. This does not
+  create another debit from warehouse stock or record measured consumption.
+
+The server joins only tenant-scoped immutable evidence by accepted operation ID,
+without per-row queries or current-package genealogy guesses. Missing required
+paired evidence aborts the report. The client validates shape, identities,
+quantities, split conservation and counted-minus-book discrepancy before display
+or export. All new evidence/IDs appear in the mobile report and both CSV paths;
+formula quoting applies to evidence and signed quantities too. No raw request
+payload, device proof or session credential is exported.
+
+Deploy the matching server response before the updated client: a report missing
+`audit` fails closed with a visible error rather than manufacturing evidence.
+Existing confirmed stock and all offline queues remain intact. There is no new
+migration, dependency or mutation; inventory schema remains 030 and outbox v7.
+
+Executed local coverage: actual API receive/QA/count/approval/split/return,
+post-event changes, frozen detail pagination and two users; a 207-event snapshot
+across three real PostgreSQL pages excludes later receiving activity and exactly
+matches its ledger population. Client checks reject false discrepancies and
+forged genealogy, preserve zero counts and check CSV column alignment/escaping.
+Real two-profile Chromium compares details/downloads with independent PostgreSQL;
+the native harness checks QA, original count/approval and both genealogy paths.
+Current-SHA hosted verification is recorded in the resumption checkpoint.
+
+S8 remains partial: independent unapproved count-observation report/export,
+10,000-row/memory/performance acceptance, further report scopes and S9's actual
+consumption/finished-acceptance activity remain separate work. Unapproved count
+history remains readable in the existing Counts screen. Physical pilot gates
+are unchanged.

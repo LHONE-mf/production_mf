@@ -46,10 +46,32 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
        o.result_stock->>'reserved' AS reserved_after,
        s.material_id,o.result_stock->>'manufacturerLot' AS manufacturer_lot,
        o.result_stock->>'locationId' AS location_id,
-       m.material_code,m.display_name,m.base_unit
+       m.material_code,m.display_name,m.base_unit,
+       CASE
+        WHEN o.kind='quality_change' AND qa.operation_id IS NOT NULL THEN jsonb_build_object(
+         'type','quality','disposition',qa.disposition,'evidence',qa.evidence)
+        WHEN o.kind='count_adjustment' AND observation.operation_id IS NOT NULL THEN jsonb_build_object(
+         'type','count','countId',correction.count_id,'observationId',observation.operation_id,
+         'recordedOnHand',observation.observed_stock->'onHand','countedOnHand',observation.quantity,
+         'observedRevision',observation.expected_revision,'observedBy',observation.actor_id,
+         'observedDeviceId',observation.device_id,'observedAt',observation.recorded_at,
+         'observationEvidence',observation.evidence,'evidence',correction.evidence)
+        WHEN o.kind IN ('split_in','split_out') AND split.operation_id IS NOT NULL THEN jsonb_build_object(
+         'type','split','parentStockId',split.parent_stock_id,'childStockId',split.child_stock_id,
+         'parentOperationId',split.operation_id,'childOperationId',split.child_operation_id,
+         'parentOnHandBefore',split.parent_before->'onHand','parentOnHandAfter',split.parent_after->'onHand',
+         'evidence',split.evidence)
+        WHEN o.kind='return' AND returned.operation_id IS NOT NULL THEN jsonb_build_object(
+         'type','return','sourceStockId',returned.source_stock_id,'issueId',returned.issue_id,'evidence',returned.evidence)
+        ELSE NULL END AS audit
        FROM inventory_operations o
        LEFT JOIN inventory_stocks s ON s.organization_id=o.organization_id AND s.id=o.stock_id
        LEFT JOIN inventory_materials m ON m.organization_id=s.organization_id AND m.id=s.material_id
+       LEFT JOIN inventory_quality_dispositions qa ON qa.organization_id=o.organization_id AND qa.operation_id=o.operation_id
+       LEFT JOIN inventory_count_events correction ON correction.organization_id=o.organization_id AND correction.operation_id=o.operation_id AND correction.kind='correct'
+       LEFT JOIN inventory_count_events observation ON observation.organization_id=correction.organization_id AND observation.operation_id=correction.observation_id AND observation.kind='observe'
+       LEFT JOIN inventory_splits split ON split.organization_id=o.organization_id AND (split.operation_id=o.operation_id OR split.child_operation_id=o.operation_id)
+       LEFT JOIN inventory_issue_outcomes returned ON returned.organization_id=o.organization_id AND returned.operation_id=o.operation_id AND returned.kind='return'
        WHERE o.organization_id=$1 AND o.sequence>$2 AND o.sequence<=$3
          AND ($4::uuid IS NULL OR o.stock_id=$4)
          AND ($5::uuid IS NULL OR s.material_id=$5)
@@ -64,7 +86,11 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
        [actor.organization_id,q.after,upper,q.stockId??null,q.materialId??null,
         q.productionBatchId??null,q.actorId??null,q.kind??null,q.from??null,q.through??null,q.limit+1,q.manufacturerLot??null,q.locationId??null]);
      const slice=result.rows.slice(0,q.limit);
-     const items=slice.map(row=>({
+     const items=slice.map(row=>{
+      if(['quality_change','count_adjustment','split_in','split_out','return'].includes(row.kind)&&!row.audit)
+       throw Error('inventory_report_audit_missing');
+      if(row.audit?.type==='count')row.audit.observedAt=new Date(row.audit.observedAt).toISOString();
+      return{
        sequence:count(row.sequence),operationId:String(row.operation_id),
        stockId:String(row.stock_id),kind:String(row.kind),quantity:count(row.quantity),
        onHandAfter:count(row.on_hand_after),reservedAfter:count(row.reserved_after),
@@ -76,7 +102,9 @@ export function registerInventoryMovementReportRoutes(app:FastifyInstance,pool:P
        locationId:row.location_id??null,
        fromLocationId:row.from_location_id??null,toLocationId:row.to_location_id??null,
        unit:row.base_unit??null,
-     }));
+       audit:row.audit,
+      };
+     });
      return{epoch,throughSequence:upper,items,hasMore:result.rows.length>q.limit,
        nextAfter:items.length?items[items.length-1].sequence:q.after};
     });
