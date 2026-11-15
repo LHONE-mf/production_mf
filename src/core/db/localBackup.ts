@@ -141,14 +141,15 @@ async function readLocalBackup(text:string):Promise<{
     throw new Error('Неизвестный формат резервной копии');
   const archive=value as Record<string,unknown>;
   await db.open();
+  const previousLocalSchema=archive.schemaVersion===21&&db.verno===22;
   if(archive.format!==FORMAT||archive.version!==VERSION||
-     archive.database!==db.name||archive.schemaVersion!==db.verno||
+     archive.database!==db.name||archive.schemaVersion!==db.verno&&!previousLocalSchema||
      typeof archive.sha256!=='string')
     throw new Error('Формат или версия базы не подходят этому приложению');
   const payload=archive.payload as {tables?:unknown}|undefined;
   if(!payload||!Array.isArray(payload.tables))throw new Error('Не хватает таблиц резервной копии');
   const rows=payload.tables as unknown[];
-  const names=tableNames();
+  const names=tableNames().filter(name=>!previousLocalSchema||name!=='warehouseOutputClaims');
   if(rows.length!==names.length)throw new Error('Неполный набор таблиц резервной копии');
   for(let i=0;i<names.length;i++){
     const entry=rows[i];
@@ -165,7 +166,8 @@ async function readLocalBackup(text:string):Promise<{
       throw new Error('Некорректные записи таблицы '+name);
     restored.set(name,decoded as Record<string,unknown>[]);
   }
-  const restricted=['hybridTaskOutbox','hybridTaskRevisions','hybridTaskResolutions',
+  if(previousLocalSchema)restored.set('warehouseOutputClaims',[]);
+  const restricted=['warehouseOutputClaims','hybridTaskOutbox','hybridTaskRevisions','hybridTaskResolutions',
     'hybridTaskEditLeases','hybridTaskDeferred','hybridSyncMetadata'];
   if(restricted.some(name=>(restored.get(name)?.length??0)>0))
     throw new Error('Архив содержит серверную синхронизацию. Перенос на другое устройство требует отдельной безопасной процедуры');

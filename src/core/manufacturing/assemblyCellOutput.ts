@@ -3,7 +3,7 @@ import {StageId,UserRole,type AssemblyRun,type AssemblyCellOutput,type SerialRan
 import {validateAssemblyOperationRun,receiveAssemblyOperationRun} from './assemblyOperations';
 
 export const CELL_OUTPUT_ROLES=[UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF];
-export const assemblyOutputTables=()=>[db.assemblyRuns,db.journal,db.users,db.electrolyteIncoming,db.fillRuns,db.walzingIncoming,db.walzRuns,db.formationIncoming,db.formationRuns];
+export const assemblyOutputTables=()=>[db.assemblyRuns,db.warehouseOutputClaims,db.journal,db.users,db.electrolyteIncoming,db.fillRuns,db.walzingIncoming,db.walzRuns,db.formationIncoming,db.formationRuns];
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const validRange=(range:SerialRange)=>!!range&&Number.isSafeInteger(range.start)&&Number.isSafeInteger(range.end)&&range.start>=0&&range.end>=range.start&&(range.prefix===undefined||typeof range.prefix==='string'&&range.prefix===range.prefix.trim()&&range.prefix.length<=80);
 export function eligibleAssemblyCellOperations(run:AssemblyRun){
