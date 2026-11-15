@@ -16,6 +16,7 @@ export type FlowMaterial =
   | 'walzed-cells' | 'formed-cells';
 
 export type DefaultHandling = 'direct' | 'room-wip';
+export interface FlowHandoffPlan {from:StageId;to:StageId;material:FlowMaterial}
 export interface RoomFlowBlueprint {
   /** Eligible candidates only; an actual stock issue still needs authenticated approval. */
   warehouseIssueCandidates: readonly FlowMaterial[];
@@ -91,19 +92,42 @@ export const MATERIAL_FLOW_BLUEPRINT = {
   },
 } as const satisfies Readonly<Record<StageId,RoomFlowBlueprint>>;
 
-/** Route choices are not inventory transfers. The two Filling rooms are alternatives. */
+/** Advisory successors, never executable permissions or acknowledgements. */
 export const DEFAULT_DIRECT_HANDOFFS = [
   {from:StageId.SLURRY,to:StageId.COATING,material:'slurry'},
   {from:StageId.COATING,to:StageId.CALENDARING,material:'coated-roll'},
   {from:StageId.CALENDARING,to:StageId.CUTTING,material:'calendered-roll'},
   {from:StageId.CUTTING,to:StageId.SORTING,material:'cut-electrodes'},
   {from:StageId.SORTING,to:StageId.ASSEMBLY,material:'sorted-electrodes'},
-  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE,material:'assembled-dry-cells'},
-  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE_705,material:'assembled-dry-cells'},
   {from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells'},
   {from:StageId.ELECTROLYTE_705,to:StageId.WALZING,material:'filled-cells'},
   {from:StageId.WALZING,to:StageId.FORMATION,material:'walzed-cells'},
-] as const;
+] as const satisfies readonly FlowHandoffPlan[];
+
+/** Dry cells remain Assembly WIP until explicitly released to ONE Filling room. */
+export const WIP_RELEASE_HANDOFFS = [
+  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE,material:'assembled-dry-cells'},
+  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE_705,material:'assembled-dry-cells'},
+] as const satisfies readonly FlowHandoffPlan[];
+
+type HandoffRequirement = 'approved-calendaring-bypass' | 'cylindrical'
+  | 'complete-known-filled-output' | 'complete-known-processed-output' | 'exact-source-serials';
+
+/** Current protected source restrictions remain authoritative; this list cannot enable a route. */
+export const CONDITIONAL_HANDOFFS = [
+  {from:StageId.COATING,to:StageId.CUTTING,material:'coated-roll',requires:['approved-calendaring-bypass']},
+  {from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells',requires:['complete-known-filled-output','exact-source-serials']},
+  {from:StageId.ELECTROLYTE_705,to:StageId.WALZING,material:'filled-cells',requires:['cylindrical','complete-known-filled-output','exact-source-serials']},
+  {from:StageId.WALZING,to:StageId.FORMATION,material:'walzed-cells',requires:['complete-known-processed-output','exact-source-serials']},
+] as const satisfies readonly (FlowHandoffPlan & {requires:readonly HandoffRequirement[]})[];
+
+/** Candidates only. Most have no warehouse receipt implementation or approved catalogue yet. */
+export const OPTIONAL_STORAGE_OUTPUTS = Object.entries(MATERIAL_FLOW_BLUEPRINT).flatMap(([from,room])=>
+  room.outputs.map(output=>({
+    from:from as StageId,material:output.material,
+    requires:['approved-catalogue-mapping','independent-physical-count','quarantine','separate-chief-qa'] as const,
+  })),
+);
 
 /** One material category; actual tape SKUs/approved specifications must be chosen per use. */
 export const POLYIMIDE_APPLICATIONS = [
