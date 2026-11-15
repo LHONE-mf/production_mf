@@ -25,6 +25,10 @@ import {FinishedElectrodeOffers} from '../../src/stages/sorting/FinishedElectrod
 import {startSortingWorkflow,recordSortingStation,completeSortingWorkflow} from '../../src/core/manufacturing/sortingWorkflow';
 import {takeAssemblySource} from '../../src/core/manufacturing/assemblyIntake';
 import {outputAcceptanceProposals} from '../../src/core/sync/inventoryOutputAcceptance';
+import {FormationModule} from '../../src/stages/formation/FormationRoom';
+import {syntheticFormationLineage} from '../fixtures/formation-lineage';
+import {loadLocalDraft} from '../../src/core/db/localFormDrafts';
+import type {FormationSerialIdentity} from '../../src/core/manufacturing/formationSerialIdentity';
 import '../../src/index.css';
 
 type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number;finishedBatchId:string;finishedCompletionId:string;finishedMaterialId:string };
@@ -99,7 +103,7 @@ async function select(role: 'chief' | 'operator') {
   if (useAuthStore.getState().session?.userId === user.id) await useAuthStore.getState().verifyLocalSession();
   else useAuthStore.getState().login(user);
   setServerConnection(connection);
-  root.render(<><ConfirmedStorage /><InventoryIssues /><NativeFinishedOffers/></>);
+  root.render(<><ConfirmedStorage /><InventoryIssues /><NativeFinishedOffers/><div data-native-formation><FormationModule/></div></>);
   await until(() => button('Обновить подтверждённые данные'), 'Storage mounted');
 }
 function button(text: string, root: ParentNode = document) { return [...root.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text && !b.disabled); }
@@ -149,6 +153,7 @@ async function prepareIssueRequest(){
 async function prepare() {
   await select('chief'); await refresh();
   const finished=await prepareFinishedOutput();
+  const serialIdentity=await prepareFormationIdentity();
   const open = (text: string) => { const summary = [...document.querySelectorAll('summary')].find(row => row.textContent === text); assert(summary, 'Missing native admin section'); summary!.click(); };
   open('Администрирование склада · Chief');
   await fill('Код материала', 'NATIVE-ADMIN', false); await fill('Название материала', 'Native synthetic component', false);
@@ -176,9 +181,11 @@ async function prepare() {
   const issueRequest=await prepareIssueRequest();
   const queued = await receipt();
   assert((await confirmedInventoryForScope(scope())).length === 0, 'No optimistic stock');
-  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request,finished };
+  return { operationId: queued.operationId, request: queued.request, issueOperationId:issueRequest.operationId,issueRequest:issueRequest.fields.request,finished,serialIdentity };
 }
-async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string;finished:{cutRunId:string;operationId:string;request:string} }) {
+async function finish(expected: { operationId: string; request: unknown;issueOperationId:string;issueRequest:string;finished:{cutRunId:string;operationId:string;request:string};serialIdentity:FormationSerialIdentity }) {
+  const serialDraft=(await loadLocalDraft(fixture.chief,'formation'))?.payload as {attempt?:FormationSerialIdentity}|undefined;
+  assert(JSON.stringify(serialDraft?.attempt)===JSON.stringify(expected.serialIdentity),'Process death changed original processed serial declaration');
   const originalFinished=await db.warehouseOutputClaims.get(expected.finished.cutRunId);
   assert(originalFinished?.state==='pending'&&originalFinished.request.operationId===expected.finished.operationId&&JSON.stringify(originalFinished.request)===expected.finished.request,'Process death changed original finished output/source');
   const frozenIssue=(await inventoryIssueProposals(scope(),fixture.operator)).find(r=>r.operationId===expected.issueOperationId);
@@ -228,10 +235,27 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   await finishMovementAudit(issueId,stock.stockId,returned.returnStockId,split.splitChildId,count.countObservationOperationId!,count.countCorrectionOperationId!);
   const identification=await finishIdentification(split.splitChildId);
   const finished=await finishFinishedOutput(expected.finished);
+  const serialIdentity=await finishFormationIdentity(expected.serialIdentity);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 11, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 5, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification,...finished };
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 5, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification,...finished,...serialIdentity };
+}
+async function prepareFormationIdentity(){
+  const source=await syntheticFormationLineage(fixture.chief,fixture.operator),panel=()=>document.querySelector<HTMLElement>('[data-native-formation]')!;
+  await click('Номера обработанных',panel());await fill('Источник номеров формирования',source.id,false,panel());await fill('Явные номера обработанных ячеек','10; 12',false,panel());await fill('Основание номеров формирования','NATIVE-EXPLICIT-PROCESSED-SERIALS-42',false,panel());
+  await until(async()=>{const draft=(await loadLocalDraft(fixture.chief,'formation'))?.payload as {serials?:string;evidence?:string}|undefined;return draft?.serials==='10; 12'&&draft.evidence==='NATIVE-EXPLICIT-PROCESSED-SERIALS-42';},'native durable local serial fields');
+  const fail=()=>{throw Error('CI serial identity journal unavailable');};db.journal.hook('creating',fail);
+  try{offline=true;await click('Сохранить исходное заявление номеров',panel());await until(()=>panel().querySelector('[role="alert"]')?.textContent?.includes('CI serial identity journal unavailable'),'native held serial identity after real journal rollback');}finally{offline=false;db.journal.hook('creating').unsubscribe(fail);}
+  const row=((await loadLocalDraft(fixture.chief,'formation'))!.payload as {attempt:FormationSerialIdentity}).attempt;
+  assert(row?.count===2&&row.source.cellsIn===4&&JSON.stringify(row.source)===JSON.stringify(source),'Native serial declaration changed full source');assert(await db.formationSerialIdentities.count()===0,'Failed native serial declaration partially committed');return row;
+}
+async function finishFormationIdentity(expected:FormationSerialIdentity){
+  await select('chief');await refresh();const before=await confirmedInventoryForScope(scope());assert(before.length===5,'Native Chief cache must explicitly refresh the separate warehouse receipt');const panel=()=>document.querySelector<HTMLElement>('[data-native-formation]')!;
+  await click('Номера обработанных',panel());await until(()=>panel().textContent?.includes(expected.id),'native recovered original serial declaration');
+  offline=true;try{await click('Сохранить исходное заявление номеров',panel());await until(async()=>!!await db.formationSerialIdentities.get(expected.runId),'native offline serial declaration');}finally{offline=false;}
+  const row=await db.formationSerialIdentities.get(expected.runId);assert(JSON.stringify(row)===JSON.stringify(expected),'Native retry changed original serial attribution');assert(JSON.stringify(await db.formationRuns.get(expected.runId))===JSON.stringify(expected.source),'Native serial declaration rewrote Formation source');assert(row?.count===2&&JSON.stringify(row.ranges)===JSON.stringify([{start:10,end:10},{start:12,end:12}]),'Native serial subset inferred full input');assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Local processed serial declaration changed the refreshed original warehouse cache');
+  return{formationIdentityProcessDeath:true,formationIdentityPreservedSource:true,formationIdentityNoStock:true,formationExplicitProcessed:2,formationFullInput:4,formationExplicitRanges:row!.ranges,formationIdentityId:row!.id};
 }
 async function prepareFinishedOutput(){
   for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.finishedCompletionId,kind:'completed',quantity:'7',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.finishedBatchId+'/steps/1/evidence',data,connection.session.accessToken);

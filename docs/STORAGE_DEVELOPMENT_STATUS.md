@@ -1,3 +1,9 @@
+# Current Formation processed serial identity — 2026-11-15
+
+Separate explicit processed-cell serial attribution is implemented locally, with original protected lineage, immutable declaration/journal, offline durable draft and original retry after reopen. Existing full input serial range and Formation observations remain unchanged; no inferred subset, QC or warehouse stock. Retained declarations prevent unrelated serial reuse even when older source rows are absent; original lineage reimport remains permitted. Main Dexie23/outbox7/PostgreSQL031 preserve old data; v21/v22 local-only backup compatibility remains supported.
+
+Real browser/migration/archive/restore and full PostgreSQL checks pass; exact frontend and hosted Android results are recorded in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md). [Contract](FORMATION_PROCESSED_SERIALS.md). Authenticated finished-cell/physical Storage acceptance, actual measured Slurry consumption and S10/physical/deployment acceptance remain unfinished. No production data, dependency, merge or deployment changes. Older entries below describe earlier source.
+
 # Finished-electrode device workflow verified — 2026-11-15
 
 Code/test source **317aeecb28a2d746b5fc095e0d58a5d710d22fa0** passed all four hosted workflows, including the new real native source/process-death/submission/physical-receipt path and independent PostgreSQL verification. **685 frontend / 300 actual PostgreSQL tests**, populated upgrade, real multi-profile browser, 47-table/two-restores and 10,000/10,001 export boundary pass. Exact runs/artifact digests and limits are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).

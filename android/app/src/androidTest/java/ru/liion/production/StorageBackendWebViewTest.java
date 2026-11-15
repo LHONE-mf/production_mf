@@ -107,6 +107,11 @@ public class StorageBackendWebViewTest {
                 result = run(instrumentation, view, "return await window.storageCi.finish(" + new JSONObject(saved) + ");");
                 assertTrue(result.getBoolean("passed"));
                 assertEquals(5, result.getInt("containers"));
+                assertTrue(result.getBoolean("formationIdentityProcessDeath"));
+                assertTrue(result.getBoolean("formationIdentityPreservedSource"));
+                assertTrue(result.getBoolean("formationIdentityNoStock"));
+                assertEquals(2, result.getInt("formationExplicitProcessed"));
+                assertEquals(4, result.getInt("formationFullInput"));
                 assertTrue(result.getBoolean("finishedProcessDeath"));
                 assertTrue(result.getBoolean("finishedLostReplies"));
                 assertTrue(result.getBoolean("finishedSourceHeld"));
