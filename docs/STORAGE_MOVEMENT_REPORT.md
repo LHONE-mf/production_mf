@@ -179,3 +179,10 @@ The former 10,000-row browser/export acceptance gap is covered. Physical
 OnePlus/ColorOS memory/lifecycle, broader factory acceptance and deployment remain
 S10/pilot gates; future actual-consumption/finished-acceptance reports depend on
 S9's real operations.
+
+Full-export failures now appear beside download controls in both movement and
+received-issue reconciliation panels, rather than above a long event list. Two
+UI regressions enforce that placement. The real 10,001-event mobile screenshot
+now captures the visible cancellation reason next to the CSV controls; the
+reviewed scale run again exported all 10,000 rows with exact quantities/balances
+and zero over-limit partial files (4,677,431 bytes; 1.65s export in this run).

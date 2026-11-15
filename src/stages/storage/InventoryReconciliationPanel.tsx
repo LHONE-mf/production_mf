@@ -54,7 +54,7 @@ export function InventoryReconciliationPanel({scope,session,epoch,materials}:{
     <label key={key}>{label} (UUID)<input className={cls} aria-label={label} value={draft[key]} onChange={e=>edit(key,e.target.value)} placeholder="Без фильтра"/></label>)}
   </div>
   <button type="button" className="my-2 min-h-11 rounded bg-blue-700 px-3 disabled:opacity-50" disabled={busy} onClick={()=>void load()}>Показать сверку выдач</button>
-  {error&&<p role="alert">{error}</p>}
+  {error&&!page&&<p role="alert">{error}</p>}
   {page&&<section aria-label="Результат сверки выдач" className="space-y-2 break-words">
    <p>История {page.epoch} · события выдач до № {page.throughIssueSequence}, возврата/списания до № {page.throughOutcomeSequence}. Названия справочников текущие; количества и связи исторические.</p>
    {page.items.map(row=><div role="group" aria-label={'Сверка выдачи '+row.issueId} key={row.issueId} className="rounded border border-slate-600 p-2">
@@ -67,6 +67,7 @@ export function InventoryReconciliationPanel({scope,session,epoch,materials}:{
    {!page.items.length&&<p>Принятых выдач в выбранной области нет.</p>}
    <p>CSV содержит выбранную страницу или весь фиксированный срез до 10 000 выдач. При ошибке или превышении лимита полный файл не создаётся.</p>
    <div className="flex flex-wrap gap-2">
+    {error&&<p role="alert" className="w-full">{error}</p>}
     <button type="button" className="min-h-11 rounded bg-blue-700 px-3" onClick={()=>download(page,'production-mf-issue-reconciliation-page.csv')}>Скачать CSV страницы сверки</button>
     <button type="button" disabled={busy} className="min-h-11 rounded border px-3" onClick={()=>void full()}>Скачать весь срез сверки</button>
     {page.hasMore&&<button type="button" disabled={busy} className="min-h-11 rounded border px-3" onClick={()=>void load(true)}>Следующая страница сверки</button>}

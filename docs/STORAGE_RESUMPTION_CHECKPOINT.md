@@ -1,3 +1,9 @@
+# Current final correction — 2026-11-15
+
+Real 10,001-event mobile screenshot review showed that export errors were too far above the download controls. Both movement and received-issue reconciliation panels now place failed-export feedback beside those controls; two regression tests fail on the old layout and pass with the correction. The reviewed real API/browser scale run passes 10,000 complete rows with exact quantities/balances, zero 10,001-event partial files and visible mobile feedback. First and reviewed exports were 4.67 MB; observed export times 1.7s/1.65s, not physical Android guarantees.
+
+Final local totals: **666 frontend / 281 actual PostgreSQL server tests**, root/server/native-harness typechecks/builds, real two-profile business workflow/downloads, 207-event frozen pagination parity, packaged PWA regression, and real 44-table/two-restores preserving frozen count history after epoch rotation. No ledger/data/schema/outbox/dependency or production changes. Final new-SHA hosted evidence follows after push. All preceding named-source results below remain preserved.
+
 # Scale acceptance and verified application source — 2026-11-15
 
 Application/native code `657b2da2a20b6f6cc5071ea7c94f82ffc4bf82b7` is fully VERIFIED: [Tests 43685672631](https://github.com/LHONE-mf/production_mf/actions/runs/43685672631), [push CI 43685668761](https://github.com/LHONE-mf/production_mf/actions/runs/43685668761), [PR CI 43685672645](https://github.com/LHONE-mf/production_mf/actions/runs/43685672645), [Route A 43685668770](https://github.com/LHONE-mf/production_mf/actions/runs/43685668770). This includes original QA/count/return/split report evidence and frozen complete count-session CSV, including unapproved/zero observations. Current totals: 664 frontend / 281 real PostgreSQL tests, full typechecks/builds, real multi-profile browser, packaged PWA regression and 44-table/two-restores with frozen count evidence preserved across restored epochs.

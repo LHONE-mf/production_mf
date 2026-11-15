@@ -1,3 +1,7 @@
+# Current UI correction — export failures beside controls (2026-11-15)
+
+The real large-report screenshot exposed distant error feedback; movement and reconciliation export failures now appear beside the download controls. Both regressions pass, and the reviewed real 10,000/10,001-event API/browser run passes exact quantities/balances with no partial file. Current totals: **666 frontend / 281 PostgreSQL tests**, builds/typechecks and packaged-PWA/harness checks. The final correction's own hosted verification is pending until recorded in the checkpoint. No stock mutation, schema/outbox/dependency change or production action.
+
 # Current acceptance — real 10,000-row export boundary (2026-11-15)
 
 The actual API/browser scale driver now verifies exactly 10,000 accepted events export completely, while 10,001 aborts without a partial file; the existing CI server job runs it and retains artifacts. See [movement contract](STORAGE_MOVEMENT_REPORT.md). This closes the browser/export-bound gap; physical Android memory/lifecycle and factory/deployment acceptance remain pending. S8's implemented reporting is not a production-release certificate. S9 finished-output acceptance and measured Slurry use remain NOT IMPLEMENTED.

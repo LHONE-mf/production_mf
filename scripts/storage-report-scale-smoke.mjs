@@ -60,7 +60,7 @@ try{
  await panel.getByText(/текущая страница: 50 записей/).waitFor();
  let partialFiles=0;page.on('download',()=>partialFiles++);
  await panel.getByRole('button',{name:'Скачать весь срез до 10 000 строк',exact:true}).click();
- await panel.getByRole('alert').filter({hasText:/Too many movement rows/}).waitFor();assert.equal(partialFiles,0,'Over-limit export created a partial file');
+ const limitError=panel.getByRole('alert').filter({hasText:/Too many movement rows/});await limitError.waitFor();await limitError.scrollIntoViewIfNeeded();assert.equal(partialFiles,0,'Over-limit export created a partial file');
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:artifact+'/movement-scale-over-limit-390.png',fullPage:true});
  const ledger=(await pool.query("SELECT count(*)::int AS events,SUM(quantity)::text AS quantity FROM inventory_operations WHERE organization_id=$1 AND kind='receive'",[org])).rows[0];
  assert.deepEqual(ledger,{events:10_001,quantity:'50015001'});assert.deepEqual(errors,[]);

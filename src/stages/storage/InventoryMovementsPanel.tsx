@@ -99,7 +99,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
    <label>Конечная дата включительно (UTC)<input type="date" className={cls} aria-label="События по дату" value={draft.through} onChange={e=>edit('through',e.target.value)}/></label>
   </div>
   <button type="button" disabled={busy} className="my-2 min-h-11 rounded bg-blue-700 px-3 disabled:opacity-50" onClick={()=>void load()}>{busy?'Загрузка…':'Показать журнал'}</button>
-  {error&&<p role="alert">{error}</p>}
+  {error&&!page&&<p role="alert">{error}</p>}
   {page&&<section aria-label="Результат журнала движений" className="space-y-2">
    <p>Подтверждённые события до № {page.throughSequence}; текущая страница: {page.items.length} записей. Последующие изменения не добавляются в этот просмотр.</p>
    {page.items.map(item=><div role="group" aria-label={'Операция склада '+item.operationId} key={item.sequence} className="break-words rounded border border-slate-600 p-2">
@@ -126,6 +126,7 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
    {!page.items.length&&<p>Записей в выбранной области нет.</p>}
    <p>Можно скачать текущую страницу или все события этого серверного среза (до 10 000 строк). При превышении лимита выгрузка прерывается без неполного файла — уточните фильтры.</p>
    <div className="flex flex-wrap gap-2">
+    {error&&<p role="alert" className="w-full">{error}</p>}
     <button type="button" className="min-h-11 rounded bg-blue-700 px-3" onClick={download}>Скачать CSV страницы журнала</button>
     <button type="button" disabled={busy} className="min-h-11 rounded border px-3 disabled:opacity-50" onClick={()=>void downloadFull()}>Скачать весь срез до 10 000 строк</button>
     {page.hasMore&&<button type="button" disabled={busy} className="min-h-11 rounded border px-3" onClick={()=>void load(true)}>Следующая страница</button>}
