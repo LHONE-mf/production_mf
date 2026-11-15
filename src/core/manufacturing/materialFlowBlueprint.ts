@@ -16,6 +16,19 @@ export type FlowMaterial =
   | 'walzed-cells' | 'formed-cells';
 
 export type DefaultHandling = 'direct' | 'room-wip';
+/** Additive semantics; does not change the existing warehouse catalogue categories. */
+export const FLOW_MATERIAL_KINDS = {
+  'active-powder':'raw-material','binder':'raw-material','conductive-additive':'raw-material',
+  'solvent':'raw-material','slurry-additive':'raw-material','lithium-feedstock':'raw-material',
+  'collector-foil':'component','polyimide-tape':'component','separator':'component',
+  'tabs':'component','cell-housings':'component','closures':'component','insulators':'component',
+  'pouch-film':'component','tab-seal-adhesive':'component','electrolyte':'raw-material',
+  'slurry':'work-in-process','coated-roll':'work-in-process','calendered-roll':'work-in-process',
+  'cut-electrodes':'work-in-process','sorted-electrodes':'work-in-process',
+  'lithium-electrodes':'work-in-process','electrode-stacks':'work-in-process','wound-blocks':'work-in-process',
+  'assembled-dry-cells':'work-in-process','filled-cells':'work-in-process',
+  'walzed-cells':'work-in-process','formed-cells':'work-in-process',
+} as const satisfies Readonly<Record<FlowMaterial,'raw-material'|'component'|'work-in-process'>>;
 export interface FlowHandoffPlan {from:StageId;to:StageId;material:FlowMaterial}
 export interface RoomFlowBlueprint {
   /** Eligible candidates only; an actual stock issue still needs authenticated approval. */

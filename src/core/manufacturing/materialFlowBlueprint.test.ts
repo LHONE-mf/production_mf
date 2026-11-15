@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {StageId} from '../types';
 import {
   CELL_FORMAT_PLANS, DEFAULT_DIRECT_HANDOFFS, MATERIAL_FLOW_BLUEPRINT,
-  POLYIMIDE_APPLICATIONS, WIP_RELEASE_HANDOFFS, CONDITIONAL_HANDOFFS, OPTIONAL_STORAGE_OUTPUTS,
+  POLYIMIDE_APPLICATIONS, WIP_RELEASE_HANDOFFS, CONDITIONAL_HANDOFFS, OPTIONAL_STORAGE_OUTPUTS, FLOW_MATERIAL_KINDS,
 } from './materialFlowBlueprint';
 
 describe('approved material flow blueprint (advisory only)',()=>{
@@ -27,6 +27,8 @@ describe('approved material flow blueprint (advisory only)',()=>{
   });
 
   it('allows polyimide tape from Storage to serve the three distinct user-approved applications',()=>{
+    expect(FLOW_MATERIAL_KINDS['polyimide-tape']).toBe('component');
+    expect(FLOW_MATERIAL_KINDS['formed-cells']).toBe('work-in-process');
     const uses=POLYIMIDE_APPLICATIONS.map(x=>x.application).sort();
     expect(uses).toEqual(['coating-lip-sealing','jelly-roll-taping','tab-insulation']);
     for(const point of POLYIMIDE_APPLICATIONS)

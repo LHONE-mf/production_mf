@@ -89,7 +89,29 @@ separate room requires factory input. Nothing auto-posts warehouse stock.
 
 ## Shared contract and storage boundaries
 
-Next shared contract is an additive identity/allocation vocabulary, not another
+**Implemented as unpersisted Slice 2 contracts:** `materialFlowAllocations.ts`
+defines explicit catalogue/spec/variant/lot, original source/operation/revision,
+polarity (including unknown), all three format targets, custody/location, base
+quantities and exact serial identity lists. `FLOW_MATERIAL_KINDS` adds raw/component/WIP
+semantics without changing warehouse categories. These types do not enable pouch
+operations in existing validators.
+
+`checkMaterialAllocations` projects remaining quantities for multiple partial
+parents and destination operations without mutating its inputs. It rejects stale
+source references, duplicate allocations, competing serial custody, wrong scope,
+held/unavailable sources, invalid/overflowing quantities, unit mismatch, overuse
+and missing/duplicate/out-of-source serial subsets. Unknown QA/polarity remains
+unknown; it is not warehouse eligibility. Same-lot containers remain separate.
+No input/output yield equality is imposed across transformations.
+
+`MaterialFlowDraft` distinguishes consumption, output declaration, WIP buffering/
+allocation and prepared/received handoff observations with actor/device/time,
+scope, evidence, original operation ID and explicit **no warehouse effect**.
+It is an internal typed draft, not a validated network packet, persisted ledger,
+acknowledgement or authorization grant. Runtime parsing/freezing, accepted/rejected/
+unknown/conflict lifecycle and exact replay/ACK persistence remain future work.
+
+The shared contract is an additive identity/allocation vocabulary, not another
 stock ledger. Retain original issue receipt/production operation IDs and revisions,
 tenant/workshop/room, batch/task/order, catalogue/spec/variant/lot, custody/location,
 actual quantity/base unit, exact serial subsets, actor/device/time and evidence.
@@ -128,12 +150,15 @@ introducing persistent WIP. Rollback is code-only; retain all existing user data
 
 Next three concrete tasks:
 
-1. Add and test pure exact identity/partial allocation contracts, including explicit
-   catalogue/spec/polarity, safe base units, multiple parents and exact serial subsets.
-2. Add one Slurry received-issue/measured-use path with atomic frozen local evidence,
-   server authority/concurrency and no second warehouse debit, then direct Coating ACK.
-3. Extend Coating foil/polyimide use and measured roll custody; separately coordinate
-   physical serialized cell quarantine acceptance with Storage PR #5.
+1. Resolve actual Slurry received issues to immutable source/spec identities; add
+   frozen actual weighing/partial consumption evidence with compatible populated
+   Dexie/outbox upgrade and rollback tests. Preserve existing calculators/journals.
+2. Commit measured consumption and Slurry→Coating prepared/received custody with
+   server authority/concurrency, original-ID retries and no second warehouse debit;
+   keep existing offline handover available.
+3. Extend Coating foil/polyimide use and measured roll custody; coordinate physical
+   serialized cell quarantine acceptance with Storage PR #5. Later add guarded
+   pouch capabilities and atomic multi-lot polarity pairing without weakening old claims.
 
 Factory choices still needed before dependent operational work: when a receiver
 ACKs (handover or next-operation start), actual pouch stations/dry declaration,
