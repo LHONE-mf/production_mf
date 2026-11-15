@@ -49,7 +49,10 @@ export function AssemblyModule() {
   }, []);
 
   // Партии, готовые принять в сборку: результаты сортировки ещё не взятые в работу
-  const sortRuns = useLiveQuery(async()=> (await db.sortRuns.toArray()).filter(row=>row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0)), []);
+  const sortRuns = useLiveQuery(async()=>{
+    const claimed=new Set(await db.warehouseOutputClaims.toCollection().primaryKeys());
+    return(await db.sortRuns.toArray()).filter(row=>!claimed.has(row.cutRunId??'')&&row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0));
+  }, []);
 
   const selected = useMemo(
     () => (runs ?? []).find((r) => r.id === selectedId) ?? null,

@@ -1,3 +1,4 @@
+import {invalidateInventoryOfflineViews} from './inventoryOutbox';
 import { useSyncExternalStore } from 'react';
 import type { HybridSession } from './hybridClient';
 
@@ -27,11 +28,13 @@ export function subscribeServerConnection(listener: () => void): () => void {
 }
 
 export function setServerConnection(next: ServerConnection | null): void {
+  if(current&&(!next||['serverUrl','organizationId','serverActorId','selectedDeviceId'].some(key=>current![key as keyof ServerConnection]!==next[key as keyof ServerConnection])))void invalidateInventoryOfflineViews();
   current = next;
   for (const listener of listeners) listener();
 }
 
 export function clearServerConnection(): void {
+  if(!current)void invalidateInventoryOfflineViews();
   setServerConnection(null);
 }
 

@@ -25,6 +25,7 @@ let generation=0;
 export const useAuthStore=create<AuthState>()(persist((set,get)=>({
  session:null,currentUser:null,permissions:null,isAuthenticated:false,sessionChecked:false,sessionError:'',
  login:user=>{
+  if(get().currentUser?.id!==user.id)clearServerConnection();
   generation++;const now=Date.now();set({session:{userId:user.id,role:user.role,issuedAt:now,expiresAt:new Date(now+DAY)},currentUser:user,permissions:getPermissions(user.role),isAuthenticated:true,sessionChecked:true,sessionError:''});
  },
  logout:()=>{generation++;clearServerConnection();set({session:null,currentUser:null,permissions:null,isAuthenticated:false,sessionChecked:true,sessionError:''});},

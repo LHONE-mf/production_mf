@@ -11,7 +11,7 @@ export const FRAME_TTL_MS = 5 * 60 * 1000;
 const types = new Set(['task', 'result', 'journal', 'storage-history', 'comment', 'user', 'mix-batch',
   'mix-component', 'mix-recipe', 'coating-mix', 'coat-run', 'roll-spec', 'calender-result', 'cutting-roll',
   'cut-run', 'sort-spec', 'sort-run', 'sort-handoff', 'defect-entry', 'assembly-run', 'electrolyte-in', 'fill-run',
-  'walzing-in', 'walz-run', 'formation-in', 'formation-run', 'chat', 'forced-push']);
+  'walzing-in', 'walz-run', 'formation-in', 'formation-run', 'formation-serial-identity', 'chat', 'forced-push']);
 const administrativeTypes = new Set(['user', 'mix-component', 'mix-recipe', 'sort-spec']);
 export const validId = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0 && v.length <= 200;
 export const validEpoch = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 8.64e15;

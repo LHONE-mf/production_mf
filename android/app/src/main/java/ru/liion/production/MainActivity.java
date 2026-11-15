@@ -22,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         // Регистрация нативного BLE-плагина (advertiser + GATT server + scanner)
         registerPlugin(BleBridgePlugin.class);
         registerPlugin(DeviceProofPlugin.class);
+        registerPlugin(InventoryLabelPrinterPlugin.class);
         super.onCreate(savedInstanceState);
         // Android 15+ enforces edge-to-edge for target SDK 35+. Inset the
         // native content *container*, rather than the WebView drawing surface.

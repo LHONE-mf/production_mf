@@ -1,0 +1,113 @@
+import Dexie from 'dexie';
+import {afterEach,describe,expect,it} from 'vitest';
+import {inventoryOutbox,inventoryScopeKey,type InventoryScope} from './inventoryOutbox';
+import {queueInventoryStockChange,inventoryStockQueueForScope} from './inventoryStockOutbox';
+
+const scope:InventoryScope={
+  serverUrl:'https://inventory.example',
+  organizationId:'11111111-1111-4111-8111-111111111111',
+  actorId:'22222222-2222-4222-8222-222222222222',
+  deviceId:'33333333-3333-4333-8333-333333333333',
+};
+const stockId='44444444-4444-4444-8444-444444444444';
+const locationId='55555555-5555-4555-8555-555555555555';
+const materialId='66666666-6666-4666-8666-666666666666';
+const scopeKey=inventoryScopeKey(scope);
+const session={
+  serverUrl:scope.serverUrl,accessToken:'A'.repeat(43),
+  deviceProofDeviceId:scope.deviceId,offlineEditExpiresAt:Date.now()+300_000,
+};
+afterEach(async()=>{
+  inventoryOutbox.close();
+  await inventoryOutbox.delete();
+});
+
+describe('Storage inventory outbox upgrade',()=>{
+  it('upgrades actual v1 IndexedDB data to v2 without deleting receipts, snapshots or the feed cursor',async()=>{
+    inventoryOutbox.close();
+    await inventoryOutbox.delete();
+    const old=new Dexie('ProductionMfInventoryOutbox');
+    old.version(1).stores({
+      operations:'operationId,scopeKey,state,queuedAt',
+      stocks:'[scopeKey+stockId],scopeKey',
+      metadata:'key',
+    });
+    await old.open();
+    const operationId='77777777-7777-4777-8777-777777777777';
+    const originalReceipt={
+      operationId,scopeKey,state:'pending',queuedAt:1234,
+      request:{operationId,deviceId:scope.deviceId,
+        stockId:'88888888-8888-4888-8888-888888888888',
+        materialId,locationId,manufacturerLot:'LOT-2',
+        quantity:10,expectedRevision:0,reason:'Existing frozen receipt'},
+    };
+    const originalStock={
+      scopeKey,stockId,materialId,locationId,manufacturerLot:'LOT-1',
+      unit:'mg',quality:'quarantine',onHand:5000,reserved:0,
+      revision:1,available:5000,
+    };
+    await old.table('operations').add(originalReceipt);
+    await old.table('stocks').add(originalStock);
+    await old.table('metadata').add({key:scopeKey+':cursor',value:42});
+    old.close();
+
+    await inventoryOutbox.open();
+    expect(await inventoryOutbox.operations.get(operationId)).toEqual({...originalReceipt,requiresStreamReview:true});
+    expect(await inventoryOutbox.stocks.get([scopeKey,stockId])).toEqual(originalStock);
+    expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);
+    expect(await inventoryStockQueueForScope(scope)).toEqual([]);
+
+    const pendingId=await queueInventoryStockChange(session,scope,{
+      stockId,kind:'transfer',toLocationId:'99999999-9999-4999-8999-999999999999',
+      expectedRevision:1,quantity:5000,reason:'Verified container moved offline',
+    });
+    expect((await inventoryStockQueueForScope(scope))[0]).toMatchObject({
+      operationId:pendingId,state:'pending',
+    });
+    expect(await inventoryOutbox.operations.get(operationId)).toEqual({...originalReceipt,requiresStreamReview:true});
+    expect(await inventoryOutbox.stocks.get([scopeKey,stockId])).toEqual(originalStock);
+    expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);
+    inventoryOutbox.close();await inventoryOutbox.open();
+    expect((await inventoryStockQueueForScope(scope))[0].operationId).toBe(pendingId);
+  });
+});
+it('preserves populated v2 stock proposals when adding v3 receiving drafts',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();
+ const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});
+ old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});
+ await old.open();
+ const row={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,stockId,state:'conflict',queuedAt:123,error:'revision_conflict',base:{revision:1},request:{kind:'transfer',expectedRevision:1}};
+ await old.table('stockOperations').put(row);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();
+ await inventoryOutbox.open();expect(await inventoryOutbox.stockOperations.get(row.operationId)).toEqual(row);
+ expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.receivingDrafts.count()).toBe(0);
+});
+it('upgrades v3 with frozen receiving evidence to v4 without resetting its checkpoint',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});
+ old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});
+ old.version(3).stores({receivingDrafts:'key'});await old.open();
+ const draft={key:scopeKey,revision:8,fields:{reason:'Receiving evidence'},operationId:'77777777-7777-4777-8777-777777777777'};
+ await old.table('receivingDrafts').put(draft);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();
+ await inventoryOutbox.open();expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(draft);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.history.count()).toBe(0);
+});
+it('adds v5 offline views without resetting v4 history, frozen forms or cursor',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});old.version(3).stores({receivingDrafts:'key'});old.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});await old.open();
+ const event={scopeKey,sequence:12,stockId,operationId:'77777777-7777-4777-8777-777777777777',reason:'Existing audit'};const form={key:scopeKey,revision:8,operationId:event.operationId,fields:{reason:'Frozen evidence'}};
+ await old.table('history').put(event);await old.table('receivingDrafts').put(form);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();
+ expect(await inventoryOutbox.history.get([scopeKey,12])).toEqual(event);expect(await inventoryOutbox.receivingDrafts.get(scopeKey)).toEqual(form);expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.offlineViews.count()).toBe(0);
+});
+it('keeps v5 pending intent unchanged and marks its unknown pre-epoch outcome for administrator review',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(1).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key'});old.version(2).stores({stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt'});old.version(3).stores({receivingDrafts:'key'});old.version(4).stores({history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]'});old.version(5).stores({offlineViews:'localActorId,scopeKey'});await old.open();
+ const row={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,state:'pending',queuedAt:123,request:{reason:'Original physical evidence',quantity:2125000}};
+ await old.table('operations').put(row);await old.table('metadata').put({key:scopeKey+':cursor',value:42});old.close();await inventoryOutbox.open();expect(await inventoryOutbox.operations.get(row.operationId)).toEqual({...row,requiresStreamReview:true});expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);expect(await inventoryOutbox.acknowledgements.count()).toBe(0);
+});
+it('adds v7 recovery archives without marking already bound v6 pending work for review',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(6).stores({operations:'operationId,scopeKey,state,queuedAt',stocks:'[scopeKey+stockId],scopeKey',metadata:'key',stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',receivingDrafts:'key',history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]',offlineViews:'localActorId,scopeKey',streams:'scopeKey',acknowledgements:'operationId,scopeKey,epoch'});await old.open();
+ const epoch='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',row={operationId:stockId,scopeKey,state:'pending',queuedAt:123,request:{reason:'Bound original intent',quantity:2125000}},ack={operationId:materialId,scopeKey,epoch,request:{reason:'Accepted evidence'}};
+ await old.table('operations').put(row);await old.table('streams').put({scopeKey,epoch});await old.table('acknowledgements').put(ack);old.close();await inventoryOutbox.open();
+ expect(await inventoryOutbox.operations.get(stockId)).toEqual(row);expect(await inventoryOutbox.acknowledgements.get(materialId)).toEqual(ack);expect((await inventoryOutbox.streams.get(scopeKey))?.epoch).toBe(epoch);expect(await inventoryOutbox.recoveryArchives.count()).toBe(0);
+});

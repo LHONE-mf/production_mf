@@ -26,8 +26,14 @@ async function mount(){
  return node!;
 }
 async function clickRoomButton(text:string){
- const button=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes(text));
- expect(button,'Expected button containing '+text).toBeTruthy();
+ let button:HTMLButtonElement|undefined;
+ // The live query can expose the next station before draft cleanup releases busy.
+ // A click on its disabled control is ignored; wait for an actionable button.
+ await vi.waitFor(()=>{
+  button=[...node!.querySelectorAll('button')].find(b=>b.textContent?.includes(text));
+  expect(button,'Expected button containing '+text).toBeTruthy();
+  expect(button!.disabled).toBe(false);
+ });
  await act(async()=>{button!.click();});
 }
 async function typeCount(label:string,value:string){

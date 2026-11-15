@@ -6,6 +6,8 @@
 // кулоновская эффективность, ёмкость 5-го цикла, годные/брак/дефекты.
 // Результат уходит на старение/master пакетом formation-run.
 // ============================================================
+import {FinishedCellOffers} from './FinishedCellOffers';
+import {FormationSerialIdentities} from './FormationSerialIdentities';
 import {hasFormationSource,hasFormationResult,saveFormationResult,validateFormationResult,FORMATION_UNITS} from '../../core/manufacturing/formationResults';
 import React, { useRef,useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -19,7 +21,7 @@ import { useAuthStore } from '../../core/store/authStore';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { CommentsSection } from '../_common/CommentsSection';
 
-type Tab = 'incoming' | 'new' | 'journal' | 'comments';
+type Tab = 'incoming' | 'new' | 'journal' | 'serials' | 'outputs' | 'comments';
 
 const inputCls =
   'min-h-11 min-w-0 w-full bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -96,6 +98,8 @@ function FormationContent() {
     { id: 'incoming', label: `📥 С заливки/вальцовки (${(incoming ?? []).length})` },
     { id: 'new', label: '✍️ Новая формовка' },
     { id: 'journal', label: `📒 Журнал (${(runs ?? []).length})` },
+    { id: 'serials', label: 'Номера обработанных' },
+    { id: 'outputs', label: 'Предложение ячеек' },
     { id: 'comments', label: '💬 Комментарии' },
   ];
 
@@ -232,6 +236,10 @@ function FormationContent() {
           ))}
         </div>
       )}
+
+      {tab==='outputs'&&<FinishedCellOffers/>}
+
+      {tab==='serials'&&<FormationSerialIdentities runs={runs??[]} onPacket={setOutPacket}/>}
 
       {/* ---- КОММЕНТАРИИ ---- */}
       {tab === 'comments' && (

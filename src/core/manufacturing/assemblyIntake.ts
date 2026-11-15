@@ -3,6 +3,7 @@ import {hasAssemblyOperationLedger,receiveAssemblyOperationRun} from './assembly
 import {db} from '../db';
 import {StageId,UserRole,type AssemblyRun,type SortRun} from '../types';
 import {validateAssemblyIntake} from './assemblyIntakeValidation';
+import {assertAssemblySourceNotOffered} from './warehouseOutputClaims';
 export {validateAssemblyIntake} from './assemblyIntakeValidation';
 
 
@@ -23,10 +24,11 @@ export async function takeAssemblySource(source:SortRun,workerId:string,id:strin
   cellType:'unassigned',electrodeType:spec?.electrodeType,coatingType:spec?.coatingType,
   ops:[],cellsOut:0,cellsScrap:0,defects:[],workerId,createdAt:now,updatedAt:now};
  validateAssemblyIntake(run);
- return db.transaction('rw',db.sortRuns,db.assemblyRuns,db.journal,async()=>{
+ return db.transaction('rw',db.sortRuns,db.assemblyRuns,db.journal,db.warehouseOutputClaims,async()=>{
   const old=await existingIntake(run);if(old)return old;
   const current=await db.sortRuns.get(source.id);
   if(!current||JSON.stringify(current)!==JSON.stringify(source))throw new Error('Источник изменён. Обновите выбор.');
+  await assertAssemblySourceNotOffered(run);
   await db.assemblyRuns.add(run);
   await db.journal.add({id:run.id,stage:StageId.ASSEMBLY,workerId,createdAt:new Date(now),summary:`Приёмка электродов: ${source.id}`,
    params:{'Источник сортировки':source.id,'Электродов принято, шт':count,'Выход ячеек':'не определён'}});
@@ -53,6 +55,6 @@ export async function receiveAssemblyIntake(run:AssemblyRun,senderRole?:UserRole
    }
    if(previous&&previous.updatedAt>=run.updatedAt)return previous;
   }
-  await db.assemblyRuns.put(run);return run;
+  await assertAssemblySourceNotOffered(run);await db.assemblyRuns.put(run);return run;
  });
 }

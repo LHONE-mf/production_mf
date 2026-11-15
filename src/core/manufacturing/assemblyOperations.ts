@@ -3,6 +3,7 @@ import {validateAssemblySources,declaredAssemblySources} from './assemblySource'
 import {db} from '../db';
 import {ASSEMBLY_SUBSTATIONS,StageId,type AssemblyOp,type AssemblyRun} from '../types';
 import {validAssemblyCounts} from './assemblyCounts';
+import {assertAssemblySourceNotOffered} from './warehouseOutputClaims';
 
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 export function hasAssemblyOperationLedger(run?:AssemblyRun):boolean {
@@ -39,6 +40,7 @@ export function validateAssemblyOperationRun(run:AssemblyRun):void {
  validateAssemblySources(run);
 }
 async function assertOperationOwnership(run:AssemblyRun):Promise<void>{
+ await assertAssemblySourceNotOffered(run);
  const ids=new Set(run.ops.filter(op=>op.id).map(op=>op.id));
  const declared=new Set(declaredAssemblySources(run));
  const others=(await db.assemblyRuns.toArray()).filter(other=>other.id!==run.id);
@@ -49,7 +51,7 @@ async function assertOperationOwnership(run:AssemblyRun):Promise<void>{
 export async function appendAssemblyOperation(expected:AssemblyRun,op:AssemblyOp,actorId:string):Promise<AssemblyRun>{
  validateAssemblyOperation(op);
  if(op.workerId!==actorId||!actorId)throw new Error('Автор операции не совпадает с текущим профилем');
- return db.transaction('rw',db.assemblyRuns,db.journal,async()=>{
+ return db.transaction('rw',db.assemblyRuns,db.journal,db.warehouseOutputClaims,async()=>{
   const current=await db.assemblyRuns.get(expected.id);
   if(!current)throw new Error('Партия недоступна для станционных наблюдений');
   const previous=current.ops.find(row=>row.id===op.id);
@@ -67,7 +69,7 @@ export async function appendAssemblyOperation(expected:AssemblyRun,op:AssemblyOp
  });
 }
 export async function receiveAssemblyOperationRun(run:AssemblyRun):Promise<AssemblyRun>{
- return db.transaction('rw',db.assemblyRuns,async()=>{
+ return db.transaction('rw',db.assemblyRuns,db.warehouseOutputClaims,async()=>{
   if(run.cellOutput!==undefined)throw new Error('Заявленный выход принимается отдельной проверкой');
   validateAssemblyOperationRun(run);
   const old=await db.assemblyRuns.get(run.id);

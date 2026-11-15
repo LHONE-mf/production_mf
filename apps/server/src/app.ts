@@ -1,3 +1,21 @@
+import {registerInventoryCellOutputDiscovery} from './inventory-cell-output-discovery.js';
+import {registerInventoryCellOutputRoutes} from './inventory-cell-output-routes.js';
+import {registerInventoryQualityRoutes} from './inventory-quality-routes.js';
+import {registerInventoryIssueRoutes} from './inventory-issue-routes.js';
+import {registerInventoryOutcomeRoutes} from './inventory-outcome-routes.js';
+import {registerInventorySplitRoutes} from './inventory-split-routes.js';
+import {registerInventoryCountRoutes} from './inventory-count-routes.js';
+import {registerInventoryIdentificationRoutes} from './inventory-identification-routes.js';
+import {registerInventoryAlertRoutes} from './inventory-alert-routes.js';
+import {registerInventoryMovementReportRoutes} from './inventory-movement-report-routes.js';
+import {registerInventoryMaterialSummaryRoutes} from './inventory-material-summary-routes.js';
+import {registerInventoryAlertPolicyRoutes} from './inventory-alert-policy-routes.js';
+import {registerInventoryReconciliationRoutes} from './inventory-reconciliation-routes.js';
+import {registerInventoryOutputRoutes} from './inventory-output-routes.js';
+import {registerInventoryOutputDiscovery} from './inventory-output-discovery.js';
+import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
+import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
+import {registerInventoryRecoveryRoutes} from './inventory-recovery-routes.js';
 import Fastify from 'fastify';
 import type { Pool } from 'pg';
 import rateLimit from '@fastify/rate-limit';
@@ -14,6 +32,9 @@ import { registerInspectionObservationRoutes } from './inspection-observation-ro
 import { registerInspectionReviewRoutes } from './inspection-review-routes.js';
 import { registerInspectionCriteriaRoutes } from './inspection-criteria-routes.js';
 import { registerDeviceChallengeRoutes } from './device-challenge-routes.js';
+import { registerInventoryRoutes } from './inventory-routes.js';
+import { registerInventoryCatalogRoutes } from './inventory-catalog-routes.js';
+import { registerInventoryStockOperations } from './inventory-stock-operations.js';
 
 function allowedBrowserOrigins(): Set<string> {
   // Android Capacitor's local WebView uses https://localhost. Other frontend
@@ -44,7 +65,7 @@ export function buildApp(pool: Pool) {
   void app.register(cors, {
     origin: (origin, callback) => callback(null, Boolean(origin && origins.has(origin))),
     methods: ['GET', 'POST', 'PUT', 'OPTIONS'],
-    allowedHeaders: ['authorization', 'content-type', 'x-device-proof'],
+    allowedHeaders: ['authorization', 'content-type', 'x-device-proof','x-inventory-epoch'],
     maxAge: 600,
     credentials: false,
   });
@@ -61,6 +82,27 @@ export function buildApp(pool: Pool) {
   registerInspectionObservationRoutes(app, pool);
   registerInspectionReviewRoutes(app, pool);
   registerInspectionCriteriaRoutes(app, pool);
+  registerInventoryRoutes(app, pool);
+  registerInventoryRecoveryRoutes(app,pool);
+  registerInventoryCatalogRoutes(app, pool);
+  registerInventoryAdministrationRoutes(app, pool);
+  registerInventoryCatalogChanges(app, pool);
+  registerInventoryQualityRoutes(app,pool);
+  registerInventoryStockOperations(app, pool);
+  registerInventoryIssueRoutes(app, pool);
+  registerInventoryOutcomeRoutes(app, pool);
+  registerInventorySplitRoutes(app, pool);
+  registerInventoryCountRoutes(app, pool);
+  registerInventoryIdentificationRoutes(app, pool);
+  registerInventoryAlertRoutes(app, pool);
+  registerInventoryMovementReportRoutes(app, pool);
+  registerInventoryMaterialSummaryRoutes(app, pool);
+  registerInventoryAlertPolicyRoutes(app, pool);
+  registerInventoryReconciliationRoutes(app, pool);
+  registerInventoryOutputRoutes(app, pool);
+  registerInventoryCellOutputRoutes(app,pool);
+  registerInventoryCellOutputDiscovery(app,pool);
+  registerInventoryOutputDiscovery(app, pool);
   app.get('/health/live', async () => ({ status: 'ok' }));
   app.get('/health/ready', async (_request, reply) => {
     try {

@@ -3,7 +3,7 @@ import {StageId,UserRole,type AssemblyRun,type AssemblyCellOutput,type SerialRan
 import {validateAssemblyOperationRun,receiveAssemblyOperationRun} from './assemblyOperations';
 
 export const CELL_OUTPUT_ROLES=[UserRole.TECHNOLOGIST,UserRole.MASTER,UserRole.CHIEF];
-export const assemblyOutputTables=()=>[db.assemblyRuns,db.journal,db.users,db.electrolyteIncoming,db.fillRuns,db.walzingIncoming,db.walzRuns,db.formationIncoming,db.formationRuns];
+export const assemblyOutputTables=()=>[db.assemblyRuns,db.warehouseOutputClaims,db.journal,db.users,db.electrolyteIncoming,db.fillRuns,db.walzingIncoming,db.walzRuns,db.formationIncoming,db.formationRuns,db.formationSerialIdentities,db.cellOutputClaims];
 const same=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 const validRange=(range:SerialRange)=>!!range&&Number.isSafeInteger(range.start)&&Number.isSafeInteger(range.end)&&range.start>=0&&range.end>=range.start&&(range.prefix===undefined||typeof range.prefix==='string'&&range.prefix===range.prefix.trim()&&range.prefix.length<=80);
 export function eligibleAssemblyCellOperations(run:AssemblyRun){
@@ -31,15 +31,16 @@ export function validateAssemblyCellOutput(run:AssemblyRun,output:AssemblyCellOu
 }
 export async function assertAssemblySerialAvailability(run:AssemblyRun,rangeToAssign:SerialRange,outputId?:string,originSnapshot?:AssemblyRun):Promise<void>{
  if(!validRange(rangeToAssign))throw new Error('Диапазон номеров должен быть целым, неотрицательным и явно заданным');
- const rows=await Promise.all([db.assemblyRuns.toArray(),db.electrolyteIncoming.toArray(),db.fillRuns.toArray(),db.walzingIncoming.toArray(),db.walzRuns.toArray(),db.formationIncoming.toArray(),db.formationRuns.toArray()]);
+ const rows=await Promise.all([db.assemblyRuns.toArray(),db.electrolyteIncoming.toArray(),db.fillRuns.toArray(),db.walzingIncoming.toArray(),db.walzRuns.toArray(),db.formationIncoming.toArray(),db.formationRuns.toArray(),db.formationSerialIdentities.toArray().then(rows=>rows.map(row=>row.source)),db.cellOutputClaims.toArray().then(rows=>rows.map(row=>row.identity.source))]);
  for(const [tableIndex,table] of rows.entries())for(const row of table){
   if(tableIndex===0&&row.id===run.id)continue;
-  // A validated transfer carries the same reserved cells, not a new serial claim.
+  // A validated transfer (including a retained serial declaration) carries the
+  // same reserved cells, not a new serial claim.
   if(tableIndex===1&&originSnapshot&&'sourceAssembly' in row&&row.sourceAssembly&&same(row.sourceAssembly,originSnapshot)&&'handover' in row&&row.handover?.outputId===outputId&&'fromAssemblyRunId' in row&&row.fromAssemblyRunId===run.id&&'cellsIn' in row&&row.cellsIn===originSnapshot.cellOutput?.count&&'cellType' in row&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign)&&'box' in row&&['dry-room','floor7-room5'].includes(row.box))continue;
   if(tableIndex===2&&originSnapshot&&'sourceReceipt' in row&&row.resultVersion===1&&same(row.sourceReceipt?.sourceAssembly,originSnapshot)&&row.sourceReceipt?.handover?.outputId===outputId&&row.sourceReceipt?.receipt?.count===originSnapshot.cellOutput?.count&&row.box===row.sourceReceipt?.box&&row.batchName===originSnapshot.batchName&&row.cellsIn===originSnapshot.cellOutput?.count&&row.cellType===originSnapshot.cellOutput?.cellType&&same(row.serialRange,rangeToAssign))continue;
   if(tableIndex===3&&originSnapshot&&'sourceFill' in row&&row.destination===StageId.WALZING&&row.sourceFill?.box==='floor7-room5'&&row.fromFillRunId===row.sourceFill.id&&same(row.sourceFill.sourceReceipt?.sourceAssembly,originSnapshot)&&row.cellsIn===originSnapshot.cellOutput?.count&&same(row.serialRange,rangeToAssign))continue;
   if(tableIndex===4&&originSnapshot&&'inputSnapshot' in row&&row.sourceLedger===1&&row.inputSnapshot?.destination===StageId.WALZING&&same(row.inputSnapshot.sourceFill?.sourceReceipt?.sourceAssembly,originSnapshot)&&row.cellsIn===originSnapshot.cellOutput?.count&&same(row.serialRange,rangeToAssign))continue;
-  if(originSnapshot&&(tableIndex===5||tableIndex===6)){
+  if(originSnapshot&&(tableIndex===5||tableIndex===6||tableIndex===7||tableIndex===8)){
    const formation=row as FormationIncoming|FormationRun;
    const input='mode' in formation?formation.inputSnapshot:formation;
    const fill=input?.sourceFill??input?.sourceWalz?.inputSnapshot?.sourceFill;

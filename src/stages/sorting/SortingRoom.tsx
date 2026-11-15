@@ -19,8 +19,9 @@ import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { SortingWorkflowTab } from './SortingWorkflowTab';
+import {FinishedElectrodeOffers} from './FinishedElectrodeOffers';
 
-type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments';
+type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'outputs';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -79,6 +80,7 @@ export function SortingModule() {
     { id: 'defects', label: `🗂️ Реестр дефектов (${(defects ?? []).length})` },
     { id: 'journal', label: `📒 Журнал (${(runs ?? []).length})` },
     { id: 'comments', label: '💬 Комментарии' },
+    ...(isTechManager?[{id:'outputs' as const,label:'Выход на склад'}]:[]),
   ];
 
   return (
@@ -97,6 +99,7 @@ export function SortingModule() {
         ))}
       </div>
 
+      {tab==='outputs'&&<FinishedElectrodeOffers runs={runs??[]}/>}
       {tab === 'batches' && (
         <BatchesTab
           items={batches ?? []}

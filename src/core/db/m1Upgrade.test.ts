@@ -63,7 +63,7 @@ it('preserves v17 local production records through the v18–v21 additive upgrad
   }
 
   await db.open();
-  expect(db.verno).toBe(21);
+  expect(db.verno).toBe(24);
   expect(await db.localFormDrafts.count()).toBe(0);
   expect(await db.sortingWorkflows.count()).toBe(0);
   expect((await db.tasks.get(taskId))?.title).toBe('Pre-upgrade work');
