@@ -213,11 +213,12 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const warehouseWaste=await finishWarehouseScrap(returned.returnStockId);
   const split=await finishSplit(stock.stockId);
   const count=await finishCount(split.splitChildId);
+  await finishMovementAudit(issueId,stock.stockId,returned.returnStockId,split.splitChildId,count.countObservationOperationId!,count.countCorrectionOperationId!);
   const identification=await finishIdentification(split.splitChildId);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 10, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification };
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 4, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification };
 }
 async function finishReconciliation(issueId:string,stockId:string){
   await select('operator');await refresh();
@@ -237,6 +238,19 @@ async function finishReconciliation(issueId:string,stockId:string){
   await until(()=>movements!.querySelector('[aria-label^="Операция склада "]'),'native location-scoped ledger');
   await fill('Фильтр по историческому месту',crypto.randomUUID(),false,movements!);await click('Показать журнал',movements!);
   await until(()=>movements!.textContent?.includes('Записей в выбранной области нет.'),'native other-location empty ledger');movements!.open=false;
+}
+async function finishMovementAudit(issueId:string,sourceId:string,returnId:string,childId:string,observationId:string,correctionId:string){
+  const panel=document.querySelector<HTMLDetailsElement>('[aria-label="Журнал движений склада"]');assert(panel,'Native movement audit panel missing');panel!.open=true;
+  await fill('Фильтр по историческому месту','',false,panel!);await fill('Фильтр по типу движения','',false,panel!);await click('Показать журнал',panel!);
+  await until(()=>panel!.querySelector('[aria-label="Операция склада '+correctionId+'"]'),'native approved-count audit row');
+  const counted=panel!.querySelector('[aria-label="Подробности коррекции пересчёта"]')!.textContent!;
+  assert(counted.includes(observationId)&&counted.includes('125000')&&counted.includes('124000')&&counted.includes('Расхождение: -1000')&&counted.includes(fixture.operator)&&counted.includes(fixture.chief),'Native count audit lost original observer/approval/quantity');
+  assert(panel!.querySelector('[aria-label="Подробности решения QA"]')?.textContent?.includes('Разрешено'),'Native QA audit missing');
+  const split=panel!.querySelector('[aria-label="Подробности разделения упаковки"]')!.textContent!;
+  assert(split.includes(sourceId)&&split.includes(childId),'Native split audit lost parent/child');
+  const returned=panel!.querySelector('[aria-label="Подробности происхождения возврата"]')!.textContent!;
+  assert(returned.includes(issueId)&&returned.includes(sourceId)&&returned.includes(returnId),'Native return audit lost provenance');
+  assert(document.documentElement.scrollWidth<=innerWidth,'Native movement audit overflow');panel!.open=false;
 }
 async function finishIssue(stockId:string,requestId:string){
   await select('operator');await refreshIssues();

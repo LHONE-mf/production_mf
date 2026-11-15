@@ -1,3 +1,7 @@
+# Current increment — 2026-11-15
+
+S8 immutable movement audit detail is implemented and locally tested: original QA disposition/evidence, original physical count and separate approved correction, split conservation/paired identities and received-issue return source. Mobile UI and formula-safe frozen/page CSV share strict validation. Actual PostgreSQL multi-page detail and 207-event acceptance, two-profile browser and 44-table/two-restore regression pass; exact new-SHA CI/native results are recorded in the resumption checkpoint after publication. No production data, schema/outbox version or dependencies changed. S8 remains partial; S9/S10 and physical/deployment pilot remain unfinished.
+
 # Current status — 2026-11-14 continuation
 
 S8 now includes a real received-material reconciliation report with batch, recipient, material and source-package filters, immutable issue/outcome history cursors, confirmed returns/issued scrap, explicit NOT RECORDED consumption, and formula-safe page/full exports capped at 10,000 issues. IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED at code SHA `ae63127dd0deb6c251470efd6c9b23bc7955927c`, including historical location-filtered movements; exact hosted evidence is in [STORAGE_RESUMPTION_CHECKPOINT.md](STORAGE_RESUMPTION_CHECKPOINT.md). S8 remains PARTIAL; S9 finished-goods and Slurry integration are NOT IMPLEMENTED; S10/factory release remain open. No production data or existing journals/queues changed.

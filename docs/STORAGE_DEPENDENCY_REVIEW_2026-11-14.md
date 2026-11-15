@@ -30,3 +30,7 @@ universally safe. Reassess by **2026-11-21**, before a production release, or wh
 adding externally supplied build patterns/configuration or a new uuid API use,
 whichever comes first. Preview fixes and changelogs individually; no forced audit
 fix, broad dependency upgrade or production deployment is authorized by this audit.
+
+Rechecked 2026-11-15 during immutable report-detail development: same root/server
+lockfiles and advisory totals, no high/critical findings and no dependency change.
+The reachability notes and 2026-11-21 review deadline above remain applicable.

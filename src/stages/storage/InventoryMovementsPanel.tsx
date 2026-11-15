@@ -102,13 +102,26 @@ export function InventoryMovementsPanel({scope,session,epoch,materials}:{
   {error&&<p role="alert">{error}</p>}
   {page&&<section aria-label="Результат журнала движений" className="space-y-2">
    <p>Подтверждённые события до № {page.throughSequence}; текущая страница: {page.items.length} записей. Последующие изменения не добавляются в этот просмотр.</p>
-   {page.items.map(item=><div role="group" aria-label={'Операция склада '+item.operationId} key={item.sequence} className="rounded border border-slate-600 p-2">
+   {page.items.map(item=><div role="group" aria-label={'Операция склада '+item.operationId} key={item.sequence} className="break-words rounded border border-slate-600 p-2">
     <p>№ {item.sequence} · {new Date(item.recordedAt).toLocaleString('ru-RU')} · {item.kind}</p>
     <p>{item.materialName??'Материал не указан'} · {item.materialCode??''} · {item.manufacturerLot??''}</p>
     <p>Контейнер {item.stockId} · Количество операции (без знака): {item.quantity} {item.unit??'ед.'} · партия производства {item.productionBatchId??'не указана'}</p>
     <p>Подтверждённый остаток сразу после события: {item.onHandAfter} {item.unit??'ед.'}; из него зарезервировано: {item.reservedAfter} {item.unit??'ед.'}. Это исторические значения, не текущий остаток.</p>
     <p>Место после операции: {item.locationId??'не записано'}{item.kind==='transfer'&&<> · Исходное место: {item.fromLocationId??'не записано'} · Назначение: {item.toLocationId??'не записано'}</>}</p>
     <p>Основание: {item.reason} · Автор: {item.actorId}</p>
+    {item.audit?.type==='quality'&&<p aria-label="Подробности решения QA">Решение Chief по QA: {({release:'Разрешено',hold:'Удержание',block:'Блокировка',reject:'Отклонено'})[item.audit.disposition]} · Свидетельство: {item.audit.evidence}</p>}
+    {item.audit?.type==='count'&&<div aria-label="Подробности коррекции пересчёта">
+     <p>Сессия пересчёта {item.audit.countId} · Наблюдение {item.audit.observationId} · Исходная версия {item.audit.observedRevision}</p>
+     <p>Учтено до пересчёта: {item.audit.recordedOnHand} · Фактически посчитано: {item.audit.countedOnHand} · Расхождение: {item.audit.countedOnHand-item.audit.recordedOnHand} {item.unit??'ед.'}</p>
+     <p>Наблюдение записал {item.audit.observedBy} · Устройство {item.audit.observedDeviceId} · {new Date(item.audit.observedAt).toLocaleString('ru-RU')} · Свидетельство наблюдения: {item.audit.observationEvidence}</p>
+     <p>Коррекцию отдельно подтвердил {item.actorId} · Свидетельство одобрения: {item.audit.evidence}. Само наблюдение не меняло остаток.</p>
+    </div>}
+    {item.audit?.type==='split'&&<div aria-label="Подробности разделения упаковки">
+     <p>Исходная упаковка {item.audit.parentStockId} → новая упаковка {item.audit.childStockId}</p>
+     <p>Сохранение количества: {item.audit.parentOnHandBefore} = {item.audit.parentOnHandAfter} + {item.quantity} {item.unit??'ед.'}. Упаковки сохраняют разные идентификаторы.</p>
+     <p>Операция исходной упаковки {item.audit.parentOperationId} · Операция новой упаковки {item.audit.childOperationId} · Свидетельство: {item.audit.evidence}</p>
+    </div>}
+    {item.audit?.type==='return'&&<p aria-label="Подробности происхождения возврата">Возврат из принятой выдачи {item.audit.issueId} · Исходная упаковка {item.audit.sourceStockId} · Новая упаковка возврата {item.stockId} · Свидетельство: {item.audit.evidence}</p>}
    </div>)}
    {!page.items.length&&<p>Записей в выбранной области нет.</p>}
    <p>Можно скачать текущую страницу или все события этого серверного среза (до 10 000 строк). При превышении лимита выгрузка прерывается без неполного файла — уточните фильтры.</p>

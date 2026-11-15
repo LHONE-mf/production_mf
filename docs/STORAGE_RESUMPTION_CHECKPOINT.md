@@ -1,3 +1,13 @@
+# Current increment — immutable report evidence (2026-11-15)
+
+Starting branch/PR HEAD `83f32101e95bdfec6b86b5ad6e6286b8d604dfce` remained current and clean; PR #5 stays draft against `feat/hybrid-server-foundation`. Added immutable QA/count/return/split audit detail to the actual movement API, strict client, mobile UI and both formula-safe frozen CSV paths. See [movement contract](STORAGE_MOVEMENT_REPORT.md). No schema/outbox/dependency change; original data and approved D1–D8 rules remain intact.
+
+LOCAL TESTED: **661 frontend / 280 actual PostgreSQL server tests**, frontend/server/native-harness typechecks/builds, real two-profile Chromium and CSV/viewport checks, active-PWA/harness regression, real custom dump/two restores comparing 44 tables. A real 207-event snapshot crosses three PostgreSQL pages, remains frozen against later receiving and exactly matches its ledger population. Removing the count-variance guard makes its regression fail; restored code passes. New-SHA CI/native verification is pending publication and will be recorded here after checking live results.
+
+All six vendored skills and Ponytail FULL plus auxiliary simplification/review remain applied. GitHub live PR/check/branch evidence used; Graphify still indexes old main `0505307`, so current source controls implementation. No agents spawned. Fresh dependency audits retain 0 server advisories and frontend 2 low/6 moderate, no high/critical; the dated reachability review remains applicable. Synthetic fixtures only; no production data, merge or deployment.
+
+Next: independent unapproved count-observation report/export and full 10,000-row/resource acceptance; S9A real output submit/separate Storage quarantine acceptance; S9B measured Slurry use followed by S10 hardening. Physical OnePlus/ColorOS, signed upgrades, factory handling/count/QA, printer/camera, TLS and production restore remain PENDING. The earlier verified sources below certify their named commits only.
+
 # Verified continuation — 2026-11-14
 
 Branch `feat/storage-inventory-foundation`; draft PR https://github.com/LHONE-mf/production_mf/pull/5 against `feat/hybrid-server-foundation`. Starting SHA `d1acf0ba85e08175a3c31030cc68e5698a47f52d`; no newer work/review threads were present. Latest **code** SHA: **ae63127dd0deb6c251470efd6c9b23bc7955927c**. A subsequent documentation-only commit records this result without changing the verified application/native code.

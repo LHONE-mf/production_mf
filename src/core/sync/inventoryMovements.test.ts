@@ -18,7 +18,7 @@ describe('inventory movement CSV',()=>{
    sequence:3,operationId:id,stockId:id,kind:'receive',quantity:100,onHandAfter:100,reservedAfter:0,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'=RUN(1)\nquoted "note"',productionBatchId:null,
    materialId:id,materialCode:'-INPUT',materialName:' @SUM(1,2)',manufacturerLot:'"LOT,7"',
-   locationId:id,fromLocationId:null,toLocationId:null,unit:'mg',
+   locationId:id,fromLocationId:null,toLocationId:null,unit:'mg',audit:null,
   }]};
   const csv=inventoryMovementsCsv(p);
   expect(csv).toContain('"\'-INPUT"');
@@ -46,7 +46,7 @@ describe('bounded immutable movement export',()=>{
    quantity:1,onHandAfter:1,reservedAfter:0,recordedAt:'2026-11-14T00:00:00.000Z',
    actorId:id,deviceId:id,reason:'CI',productionBatchId:null,
    materialId:null,materialCode:null,materialName:null,manufacturerLot:null,
-   locationId:null,fromLocationId:null,toLocationId:null,unit:null})),
+   locationId:null,fromLocationId:null,toLocationId:null,unit:null,audit:null})),
  });
  it('retrieves all pages within one immutable upper cursor',async()=>{
   const calls:number[]=[];

@@ -13,6 +13,7 @@ import{storageSplitSmoke}from'./lib/storage-split-smoke.mjs';
 import{storageCountSmoke}from'./lib/storage-count-smoke.mjs';
 import{storageIdentificationSmoke}from'./lib/storage-identification-smoke.mjs';
 import{storageReconciliationSmoke}from'./lib/storage-reconciliation-smoke.mjs';
+import{storageMovementAuditSmoke}from'./lib/storage-movement-audit-smoke.mjs';
 const require=createRequire(new URL('../apps/server/package.json',import.meta.url)),{Pool}=require('pg');
 const{chromium}=await import(process.env.STORAGE_PLAYWRIGHT_MODULE??'playwright');
 const url=new URL(process.env.POSTGRES_TEST_URL??'');assert(['localhost','127.0.0.1'].includes(url.hostname)&&url.pathname==='/production_mf_ci'&&url.username==='production_mf_ci','Disposable local test database/user required');
@@ -185,6 +186,7 @@ try{
  issueScenarios.push(...await storageReconciliationSmoke({pool,org,pages,issueId:issueResult.issueId,artifact}));
  issueScenarios.push(...await storageSplitSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],artifact}));
  issueScenarios.push(...await storageCountSmoke({pool,org,pages,actors,connection,qualityStock,artifact}));
+ issueScenarios.push(...await storageMovementAuditSmoke({pool,org,pages,artifact}));
  issueScenarios.push(...await storageIdentificationSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],batchId:(await pool.query('SELECT production_batch_id FROM inventory_issues WHERE id=$1',[issueResult.issueId])).rows[0].production_batch_id,artifact}));
  // A changed server history must halt queued work before any POST; evidence remains exportable.
  await p.getByRole('button',{name:'Другая упаковка',exact:true}).click();await p.getByRole('button',{name:'Да, другая физическая упаковка',exact:true}).click();await fill('Held for restore review');
