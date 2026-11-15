@@ -1,3 +1,9 @@
+# Cell proposal/client/UI verified — 2026-11-15
+
+Exact source **0b48f0a795011c3c5e250dd76d544ae8c09fc781** passed Tests, push CI, PR CI and Android Route A. The real product proposal is saved offline before actual force-stop, recovered unchanged, sent through native device proof and retried after a lost committed reply; its exact ACK is archived with independent PostgreSQL verification. **716 frontend / 319 PostgreSQL tests**, all browser/PWA regressions, three failed QR-payload regressions and **49-table/two-restores** pass. Run links/artifact digests and source limits are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
+Main Dexie24/outbox7/PostgreSQL032 preserve original data and approved rules. Owned disposable infrastructure and control credentials are removed. A following docs-only closeout preserves the verified source. Next: physical serialized cell acceptance/quarantine/Chief QA, measured Slurry consumption and S10/physical/deployment gates. No cell stock or QA is inferred from submission. No merge, deployment or production mutation; S9 remains partial.
+
 # Cell proposal/client/UI implemented — 2026-11-15
 
 Formation now saves durable original cell proposals offline, explicitly sends only the frozen request and atomically archives its exact ACK. Original identity/source/actor/role/device/scope/epoch/ID/body survive reopen, unknown replies and conflicts; no stock, physical receipt or QA is created. Main Dexie **24** adds cell claims and preserves all 37 previous main tables. Outbox **v7** / PostgreSQL **032** and old queues remain unchanged. Local-only v21/v22/v23 backups remain compatible; cell claims retain device-bound restore restrictions. [Cell contract](STORAGE_CELL_OUTPUT.md).
