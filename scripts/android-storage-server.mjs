@@ -1,3 +1,4 @@
+import {createDisposableCellBatch} from './lib/disposable-cell-output.mjs';
 /** Disposable loopback fixture. Never imported by the production server/app. */
 import assert from 'node:assert/strict';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -30,6 +31,8 @@ try {
   Object.assign(fixture,await createDisposableIssueBatch(pool,org,fixture.chief,fixture.operator));
   const finished=await createDisposableFinishedBatch({pool,organizationId:org,actorId:fixture.chief});
   Object.assign(fixture,{finishedBatchId:finished.batch,finishedCompletionId:randomUUID(),finishedMaterialId:randomUUID()});
+  const cells=await createDisposableCellBatch({pool,organizationId:org,actorId:fixture.chief});Object.assign(fixture,{cellBatchId:cells.batch,cellCompletionId:randomUUID(),cellMaterialId:randomUUID()});
+  await pool.query("INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,'NATIVE-CELL','SYNTHETIC offered cells','cell','pieces')",[fixture.cellMaterialId,org]);
   await pool.query("INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,'NATIVE-ELECTRODE','SYNTHETIC finished electrode','electrode','pieces')",[fixture.finishedMaterialId,org]);
   // Only catalogue fixtures; stock/authorization/proof are exercised via real APIs.
   await pool.query("INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,'CI-PVDF','CI synthetic PVDF','raw_material','mg')", [fixture.materialId, org]);

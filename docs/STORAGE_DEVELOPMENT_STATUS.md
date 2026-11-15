@@ -1,3 +1,9 @@
+# Current authenticated cell-source submission — 2026-11-15
+
+Cell submission/source ownership API, explicit final-completion/material discovery and tenant/workshop-scoped history are implemented and locally tested. Actual explicit local serials and Formation counts match a completed final server cell step. Submission claims the original whole serial domain but creates no stock or QA; exact retries preserve original evidence. PostgreSQL032 is additive, main Dexie23/outbox7 and old electrode/local records remain preserved.
+
+**700 frontend / 319 actual PostgreSQL tests**, builds/typechecks and real 49-table/two-restores pass. Exact hosted/native API results are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md); [contract](STORAGE_CELL_OUTPUT.md). Durable server cell proposal/UI, separate physical serialized cell acceptance/quarantine/QA, Slurry measured use and S10/physical/deployment gates remain unfinished. No dependency/lockfile, production mutation, merge or deployment changes.
+
 # Processed serial identity verified — 2026-11-15
 
 Code/test source **74ee64cf1b1e4c31bd5a3a5712e8b298099cc34f** passed all four hosted workflows, including real AndroidKeyStore/WebView/force-stop and preserved explicit processed serials without source or stock changes. **697 frontend / 300 real PostgreSQL tests**, genuine browser/populated upgrade/archive restore, existing warehouse/electrode regressions, 47-table/two-restores and 10,000/10,001 export boundary pass. Exact runs and artifact digests are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).

@@ -1,3 +1,5 @@
+import {sameOutput} from '../../src/core/sync/inventoryOutputTypes';
+import {cellSourceFromIdentity} from '../../src/core/sync/inventoryCellOutputTypes';
 /** Instrumentation-only entry. This file is never part of the production build. */
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -31,11 +33,11 @@ import {loadLocalDraft} from '../../src/core/db/localFormDrafts';
 import type {FormationSerialIdentity} from '../../src/core/manufacturing/formationSerialIdentity';
 import '../../src/index.css';
 
-type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number;finishedBatchId:string;finishedCompletionId:string;finishedMaterialId:string };
+type Fixture = { serverUrl: string; organizationId: string; password: string; chief: string; operator: string; materialId: string; locationId: string; destinationId: string; batchId:string;workshopId:string;stepNumber:number;finishedBatchId:string;finishedCompletionId:string;finishedMaterialId:string;cellBatchId:string;cellCompletionId:string;cellMaterialId:string };
 const root = createRoot(document.getElementById('root')!);
 const originalFetch = window.fetch.bind(window);
 let offline = false, loseAck = false, loseIssueAck = false, loseReturnAck = false, loseSplitAck=false, loseCountAck=false, connection: ServerConnection, fixture: Fixture;
-let loseOutputAck=false,loseOutputReceiptAck=false;
+let loseOutputAck=false,loseOutputReceiptAck=false,loseCellSubmissionAck=false;
 function NativeFinishedOffers(){const runs=useLiveQuery(()=>db.sortRuns.toArray(),[]);return <FinishedElectrodeOffers runs={runs??[]}/>;}
 const connections: Partial<Record<'chief' | 'operator', ServerConnection>> = {};
 window.fetch = async (input, init) => {
@@ -52,6 +54,7 @@ window.fetch = async (input, init) => {
     if(loseReturnAck&&url.pathname.endsWith('/outcomes')&&init?.method==='POST'&&response.ok){loseReturnAck=false;await response.arrayBuffer();throw new TypeError('CI return acknowledgement lost after commit');}
     if(loseSplitAck&&url.pathname.endsWith('/splits')&&init?.method==='POST'&&response.ok){loseSplitAck=false;await response.arrayBuffer();throw new TypeError('CI split acknowledgement lost after commit');}
     if(loseCountAck&&url.pathname==='/inventory/counts/operations'&&init?.method==='POST'&&response.ok){loseCountAck=false;await response.arrayBuffer();throw new TypeError('CI count acknowledgement lost after commit');}
+    if(loseCellSubmissionAck&&url.pathname==='/inventory/cell-outputs'&&init?.method==='POST'&&response.ok){loseCellSubmissionAck=false;await response.arrayBuffer();throw new TypeError('CI cell submission acknowledgement lost after commit');}
     if(loseOutputAck&&url.pathname==='/inventory/outputs/electrodes'&&init?.method==='POST'&&response.ok){loseOutputAck=false;await response.arrayBuffer();throw new TypeError('CI output acknowledgement lost after commit');}
     if(loseOutputReceiptAck&&url.pathname==='/inventory/outputs/accept'&&init?.method==='POST'&&response.ok){loseOutputReceiptAck=false;await response.arrayBuffer();throw new TypeError('CI output receipt acknowledgement lost after commit');}
     return response;
@@ -236,10 +239,11 @@ async function finish(expected: { operationId: string; request: unknown;issueOpe
   const identification=await finishIdentification(split.splitChildId);
   const finished=await finishFinishedOutput(expected.finished);
   const serialIdentity=await finishFormationIdentity(expected.serialIdentity);
+  const cellSubmission=await finishCellSubmission(expected.serialIdentity);
   await useAuthStore.getState().logout();
   await until(() => !document.body.textContent?.includes('На руках:'), 'logout conceals confirmed cache');
   assert((await inventoryOutbox.acknowledgements.count()) === 11, 'Logout destroyed retained evidence');
-  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 5, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification,...finished,...serialIdentity };
+  return { passed: true, operationId: expected.operationId, nativeProof: true, exactQuantity: 2_125_000, containers: 5, quarantineOnReceipt: true, chiefQaRelease: true, operatorQaDenied: true, lostAckRetried: true, operatorDenied: true, logoutConcealed: true,issueId,issuedQuantity:500000,issueProcessDeath:true,chiefIssueApproved:true,issueLostAckRetried:true,assignedReceipt:true,issueNotConsumption:true,nativeMovementAudit:true,nativeIssueReconciliation:true,reconciledOutstanding:300000,...returned,...warehouseWaste,...split,...count,...identification,...finished,...serialIdentity,...cellSubmission };
 }
 async function prepareFormationIdentity(){
   const source=await syntheticFormationLineage(fixture.chief,fixture.operator),panel=()=>document.querySelector<HTMLElement>('[data-native-formation]')!;
@@ -256,6 +260,17 @@ async function finishFormationIdentity(expected:FormationSerialIdentity){
   offline=true;try{await click('Сохранить исходное заявление номеров',panel());await until(async()=>!!await db.formationSerialIdentities.get(expected.runId),'native offline serial declaration');}finally{offline=false;}
   const row=await db.formationSerialIdentities.get(expected.runId);assert(JSON.stringify(row)===JSON.stringify(expected),'Native retry changed original serial attribution');assert(JSON.stringify(await db.formationRuns.get(expected.runId))===JSON.stringify(expected.source),'Native serial declaration rewrote Formation source');assert(row?.count===2&&JSON.stringify(row.ranges)===JSON.stringify([{start:10,end:10},{start:12,end:12}]),'Native serial subset inferred full input');assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Local processed serial declaration changed the refreshed original warehouse cache');
   return{formationIdentityProcessDeath:true,formationIdentityPreservedSource:true,formationIdentityNoStock:true,formationExplicitProcessed:2,formationFullInput:4,formationExplicitRanges:row!.ranges,formationIdentityId:row!.id};
+}
+/** API exercise through real native device proof; product cell proposal/acceptance UI is unfinished. */
+async function finishCellSubmission(identity:FormationSerialIdentity){
+  for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.cellCompletionId,kind:'completed',quantity:'2',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.cellBatchId+'/steps/1/evidence',data,connection.session.accessToken);
+  const epoch=await preflightInventoryStream(connection.session,scope()),source=cellSourceFromIdentity(identity),request={operationId:crypto.randomUUID(),deviceId:connection.selectedDeviceId,productionBatchId:fixture.cellBatchId,completionId:fixture.cellCompletionId,stepNumber:1,materialId:fixture.cellMaterialId,source,reason:'Native actual completed cell source offered without stock',evidence:'NATIVE-CELL-SUBMISSION-42'},body=JSON.stringify(request),before=await confirmedInventoryForScope(scope());
+  const headers={authorization:'Bearer '+connection.session.accessToken,'x-device-proof':connection.session.deviceProofToken!,'x-inventory-epoch':epoch,'content-type':'application/json'};
+  async function send(){const response=await fetch(fixture.serverUrl+'/inventory/cell-outputs',{method:'POST',headers,body});assert(response.ok,'Native cell submission API failed: '+response.status);return response.json();}
+  loseCellSubmissionAck=true;let lost=false;try{await send();}catch(error){lost=String(error).includes('CI cell submission acknowledgement lost after commit');}assert(lost&&!loseCellSubmissionAck,'Native cell test did not consume the genuine lost committed reply');
+  const accepted=await send();assert(accepted.status==='duplicate'&&accepted.operationId===request.operationId&&accepted.submission.quantity===2&&sameOutput(accepted.submission.source,source),'Native cell exact retry changed original source/count');
+  assert(JSON.stringify(await confirmedInventoryForScope(scope()))===JSON.stringify(before),'Cell source submission invented warehouse cache');
+  return{nativeCellSubmissionApi:true,cellSubmissionLostReplyRetried:true,cellSubmissionNoStock:true,cellSubmissionOperationId:request.operationId,cellSubmissionActualQuantity:2};
 }
 async function prepareFinishedOutput(){
   for(const data of [{eventId:crypto.randomUUID(),kind:'started'},{eventId:fixture.finishedCompletionId,kind:'completed',quantity:'7',quantityUnit:'pieces'}])await post('/planning/batches/'+fixture.finishedBatchId+'/steps/1/evidence',data,connection.session.accessToken);

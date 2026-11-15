@@ -18,6 +18,8 @@ on:
       - 'src/stages/storage/**'
       - 'src/transfer/QrScanner*'
       - 'scripts/lib/disposable-issue-batch.mjs'
+      - 'scripts/lib/disposable-finished-output.mjs'
+      - 'scripts/lib/disposable-cell-output.mjs'
       - 'vite.config.js'
       - '.github/workflows/android-emulator-smoke.yml'
 
