@@ -141,7 +141,7 @@ async function readLocalBackup(text:string):Promise<{
     throw new Error('Неизвестный формат резервной копии');
   const archive=value as Record<string,unknown>;
   await db.open();
-  const missingStores=db.verno===23&&archive.schemaVersion===21?['warehouseOutputClaims','formationSerialIdentities']:db.verno===23&&archive.schemaVersion===22?['formationSerialIdentities']:[];
+  const missingStores=db.verno===24&&typeof archive.schemaVersion==='number'?({21:['warehouseOutputClaims','formationSerialIdentities','cellOutputClaims'],22:['formationSerialIdentities','cellOutputClaims'],23:['cellOutputClaims']} as Record<number,string[]>)[archive.schemaVersion]??[]:[];
   const previousLocalSchema=missingStores.length>0;
   if(archive.format!==FORMAT||archive.version!==VERSION||
      archive.database!==db.name||archive.schemaVersion!==db.verno&&!previousLocalSchema||
@@ -168,7 +168,7 @@ async function readLocalBackup(text:string):Promise<{
     restored.set(name,decoded as Record<string,unknown>[]);
   }
   for(const name of missingStores)restored.set(name,[]);
-  const restricted=['warehouseOutputClaims','hybridTaskOutbox','hybridTaskRevisions','hybridTaskResolutions',
+  const restricted=['cellOutputClaims','warehouseOutputClaims','hybridTaskOutbox','hybridTaskRevisions','hybridTaskResolutions',
     'hybridTaskEditLeases','hybridTaskDeferred','hybridSyncMetadata'];
   if(restricted.some(name=>(restored.get(name)?.length??0)>0))
     throw new Error('Архив содержит серверную синхронизацию. Перенос на другое устройство требует отдельной безопасной процедуры');

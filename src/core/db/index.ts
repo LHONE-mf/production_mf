@@ -1,6 +1,7 @@
 import Dexie, { Table } from 'dexie';
 import type {LocalFormDraft} from './localFormDrafts';
 import type {FormationSerialIdentity} from '../manufacturing/formationSerialIdentity';
+import type {CellOutputClaim} from '../manufacturing/cellOutputClaims';
 import type {WarehouseOutputClaim} from '../manufacturing/warehouseOutputClaims';
 import { migratePasswords } from '../security';
 import type { PendingTaskOperation } from '../sync/hybridOutbox';
@@ -10,6 +11,7 @@ import type { DeferredTaskChange } from '../sync/deferredTaskChange';
 import { User, Task, TechCard, SyncDevice, SyncLog, JournalEntry, StageComment, StageId, MixComponent, MixRecipe, MixBatch, CoatRun, CoatingMixSnapshot, RollSpec, CalenderRun, ChatMessage, CuttingIncoming, CutRun, SortSpec, SortRun, SortingWorkflow, DefectEntry, AssemblyRun, ElectrolyteIncoming, FillRun, WalzingIncoming, WalzRun, FormationIncoming, FormationRun } from '../types';
 
 export class AppDatabase extends Dexie {
+  cellOutputClaims!: Table<CellOutputClaim,string>;
   formationSerialIdentities!: Table<FormationSerialIdentity,string>;
   warehouseOutputClaims!: Table<WarehouseOutputClaim,string>;
   localFormDrafts!: Table<LocalFormDraft, string>;
@@ -179,6 +181,9 @@ export class AppDatabase extends Dexie {
 
     // v23: separate immutable processed-cell identities; no observation rewritten.
     this.version(23).stores({formationSerialIdentities:'runId, &id, &assemblyOutputId, recordedBy'});
+
+    // v24: original-scope cell proposals and exact ACKs; prior rows unchanged.
+    this.version(24).stores({cellOutputClaims:'runId, &identityId, &assemblyOutputId, &request.operationId, localActorId'});
 
     // v11: миграция старых записей нарезки (stage:'sorting') → новый этап CUTTING.
     // Комнаты нарезки и сортировки разделены (Шаг S4). Миграция однократная,

@@ -1,3 +1,5 @@
+import {issueIdValid,issueTextValid} from './inventoryIssueTypes';
+import {outcomeInteger} from './inventoryOutcomeTypes';
 import {validateFormationSerialIdentity,type FormationSerialIdentity,type ProcessedSerialRange} from '../manufacturing/formationSerialIdentity';
 import type {UserRole,SerialRange,FormationRun} from '../types';
 export interface CellOutputSource {
@@ -16,4 +18,15 @@ export function cellSourceFromIdentity(identity:FormationSerialIdentity):CellOut
  return{version:1,identityId:identity.id,formationRunId:run.id,lineage:{assemblyRunId:assembly.id,assemblyOutputId:output.id,assemblyOperationId:output.operationId,fillingRunId:fill.id,fillingReceiptId:fill.sourceReceipt!.receipt!.id,fillingBox:fill.box,formationInputId:input.id,...(input.sourceWalz?{walzingRunId:input.sourceWalz.id}:{})},cellType:output.cellType as 'cylindrical'|'prismatic',inputSerialRange:{start:run.serialRange!.start,end:run.serialRange!.end,...(run.serialRange!.prefix!==undefined?{prefix:run.serialRange!.prefix}:{})},ranges:identity.ranges.map(r=>({...r})),
   formation:{cellsIn:run.cellsIn,cellsOut:run.cellsOut,cellsScrap:run.cellsScrap,cellsUnknown:run.cellsUnknown!,workerId:run.workerId,recordedRole:run.recordedRole!,recordedAt:run.createdAt,startDate:run.startDate,endDate:run.endDate,mode:{cycles:run.mode.cycles,...(run.mode.currentA!==undefined?{currentA:run.mode.currentA}:{}),...(run.mode.voltageV!==undefined?{voltageV:run.mode.voltageV}:{})},...(run.capacityCycle5Ah!==undefined?{capacityCycle5Ah:run.capacityCycle5Ah}:{}),...(run.coulombEfficiencyPct!==undefined?{coulombEfficiencyPct:run.coulombEfficiencyPct}:{}),...(run.equipmentRef?{equipmentRef:run.equipmentRef}:{}),measurementBasis:run.measurementBasis!,measurementUnits:{current:'A',voltage:'V',capacity:'Ah',efficiency:'%',cycles:'count'}},
   declaration:{recordedBy:identity.recordedBy,recordedRole:identity.recordedRole,recordedAt:identity.recordedAt,evidence:identity.evidence}};
+}
+
+export interface CellSubmissionRequest {
+ operationId:string;deviceId:string;productionBatchId:string;stepNumber:number;completionId:string;materialId:string;
+ source:CellOutputSource;reason:string;evidence:string;
+}
+export type CellSubmissionInput=Omit<CellSubmissionRequest,'source'>;
+export interface CellSubmission extends CellSubmissionRequest {quantity:number;unit:'pieces';revision:1;actorId:string;recordedAt:string}
+export function cellSubmissionFromIdentity(identity:FormationSerialIdentity,input:CellSubmissionInput):CellSubmissionRequest {
+ if(!input||![input.operationId,input.deviceId,input.productionBatchId,input.completionId,input.materialId].every(issueIdValid)||!outcomeInteger(input.stepNumber,1)||!issueTextValid(input.reason)||!issueTextValid(input.evidence))throw Error('Invalid cell submission identity or evidence');
+ return{operationId:input.operationId,deviceId:input.deviceId,productionBatchId:input.productionBatchId,stepNumber:input.stepNumber,completionId:input.completionId,materialId:input.materialId,source:cellSourceFromIdentity(identity),reason:input.reason.trim(),evidence:input.evidence.trim()};
 }
