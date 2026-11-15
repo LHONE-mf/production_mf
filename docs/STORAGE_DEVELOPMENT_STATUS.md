@@ -1,3 +1,9 @@
+# Cell submission API verified — 2026-11-15
+
+Code/test source **6aab1677c46ad70826d49ed8287c469ed5bd4493** passed all four hosted workflows, including the real native proofed cell API, deliberately lost committed reply/exact retry and independent PostgreSQL verification. **700 frontend / 319 real PostgreSQL tests**, current browser/PWA regressions, additive populated upgrade and 49-table/two-restores pass. Exact runs/artifact digests and limits are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
+This verifies the authenticated cell source API, not a product cell proposal/acceptance screen. Durable original-scope submission client/UI, separate physical cell/serial acceptance/quarantine/QA, measured Slurry consumption and S10/physical/deployment gates remain unfinished. Main Dexie23/outbox7/PostgreSQL032 preserve old data. No dependency changes, production mutation, merge or deployment. Owned disposable infrastructure and temporary control credentials were removed; a following documentation-only closeout preserves the verified runtime/test/CI source.
+
 # Current authenticated cell-source submission — 2026-11-15
 
 Cell submission/source ownership API, explicit final-completion/material discovery and tenant/workshop-scoped history are implemented and locally tested. Actual explicit local serials and Formation counts match a completed final server cell step. Submission claims the original whole serial domain but creates no stock or QA; exact retries preserve original evidence. PostgreSQL032 is additive, main Dexie23/outbox7 and old electrode/local records remain preserved.
