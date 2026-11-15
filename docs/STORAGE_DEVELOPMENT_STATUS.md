@@ -1,3 +1,9 @@
+# Processed serial identity verified — 2026-11-15
+
+Code/test source **74ee64cf1b1e4c31bd5a3a5712e8b298099cc34f** passed all four hosted workflows, including real AndroidKeyStore/WebView/force-stop and preserved explicit processed serials without source or stock changes. **697 frontend / 300 real PostgreSQL tests**, genuine browser/populated upgrade/archive restore, existing warehouse/electrode regressions, 47-table/two-restores and 10,000/10,001 export boundary pass. Exact runs and artifact digests are in the [checkpoint](STORAGE_RESUMPTION_CHECKPOINT.md).
+
+This completes local explicit processed-cell identity, not authenticated cell warehouse handoff. Next: cell API/ledger, separate counted cell acceptance and measured Slurry consumption. S10 and physical/deployment gates remain unfinished. Main Dexie23/outbox7/PostgreSQL031 preserve existing data; no dependencies, production mutation, merge or deployment. Owned disposable infrastructure and temporary control credentials were removed. A following documentation-only closeout preserves the verified runtime/test/CI source.
+
 # Current Formation processed serial identity — 2026-11-15
 
 Separate explicit processed-cell serial attribution is implemented locally, with original protected lineage, immutable declaration/journal, offline durable draft and original retry after reopen. Existing full input serial range and Formation observations remain unchanged; no inferred subset, QC or warehouse stock. Retained declarations prevent unrelated serial reuse even when older source rows are absent; original lineage reimport remains permitted. Main Dexie23/outbox7/PostgreSQL031 preserve old data; v21/v22 local-only backup compatibility remains supported.
