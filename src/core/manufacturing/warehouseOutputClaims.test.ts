@@ -59,17 +59,17 @@ it('rolls a failed source freeze back so an unclaimed source still permits the e
  await expect(takeAssemblySource(source,'assembler','assembly')).resolves.toHaveProperty('id','assembly');
 });
 it('adds claims to a populated v21 installation without changing any original row or manufacturing snapshot',async()=>{
- const tables=db.tables.filter(t=>t.name!=='warehouseOutputClaims');
+ const tables=db.tables.filter(t=>!['warehouseOutputClaims','formationSerialIdentities'].includes(t.name));
  const stores=Object.fromEntries(tables.map(t=>[t.name,[t.schema.primKey.src,...t.schema.indexes.map(i=>i.src)].join(',')]));
  const rows=new Map<string,unknown[]>();for(const t of tables)rows.set(t.name,await t.toArray());
  db.close();await db.delete();const old=new Dexie(db.name);old.version(21).stores(stores);
  await old.open();for(const [name,data] of rows)if(data.length)await old.table(name).bulkAdd(data);old.close();
- await db.open();expect(db.verno).toBe(22);expect(await db.warehouseOutputClaims.count()).toBe(0);
+ await db.open();expect(db.verno).toBe(23);expect(await db.warehouseOutputClaims.count()).toBe(0);
  for(const [name,data] of rows)expect(await db.table(name).toArray(),name).toEqual(data);
  await freezeWarehouseOutput(scope,'master',epoch,source,input());db.close();await db.open();expect(await db.warehouseOutputClaims.count()).toBe(1);
 });
 it('retains v21 local-only backup restoration but archives new device-bound offers without granting their transfer',async()=>{
- const archive=JSON.parse(await exportLocalBackup());archive.schemaVersion=21;archive.payload.tables=archive.payload.tables.filter(([name]:[string,unknown])=>name!=='warehouseOutputClaims');
+ const archive=JSON.parse(await exportLocalBackup());archive.schemaVersion=21;archive.payload.tables=archive.payload.tables.filter(([name]:[string,unknown])=>!['warehouseOutputClaims','formationSerialIdentities'].includes(name));
  archive.sha256=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(archive.payload)))),b=>b.toString(16).padStart(2,'0')).join('');
  db.close();await db.delete();await restoreLocalBackup(JSON.stringify(archive));expect(await db.sortRuns.get(source.id)).toEqual(source);
  const claim=await freezeWarehouseOutput(scope,'master',epoch,source,input()),withClaim=await exportLocalBackup();

@@ -141,7 +141,8 @@ async function readLocalBackup(text:string):Promise<{
     throw new Error('Неизвестный формат резервной копии');
   const archive=value as Record<string,unknown>;
   await db.open();
-  const previousLocalSchema=archive.schemaVersion===21&&db.verno===22;
+  const missingStores=db.verno===23&&archive.schemaVersion===21?['warehouseOutputClaims','formationSerialIdentities']:db.verno===23&&archive.schemaVersion===22?['formationSerialIdentities']:[];
+  const previousLocalSchema=missingStores.length>0;
   if(archive.format!==FORMAT||archive.version!==VERSION||
      archive.database!==db.name||archive.schemaVersion!==db.verno&&!previousLocalSchema||
      typeof archive.sha256!=='string')
@@ -149,7 +150,7 @@ async function readLocalBackup(text:string):Promise<{
   const payload=archive.payload as {tables?:unknown}|undefined;
   if(!payload||!Array.isArray(payload.tables))throw new Error('Не хватает таблиц резервной копии');
   const rows=payload.tables as unknown[];
-  const names=tableNames().filter(name=>!previousLocalSchema||name!=='warehouseOutputClaims');
+  const names=tableNames().filter(name=>!missingStores.includes(name));
   if(rows.length!==names.length)throw new Error('Неполный набор таблиц резервной копии');
   for(let i=0;i<names.length;i++){
     const entry=rows[i];
@@ -166,7 +167,7 @@ async function readLocalBackup(text:string):Promise<{
       throw new Error('Некорректные записи таблицы '+name);
     restored.set(name,decoded as Record<string,unknown>[]);
   }
-  if(previousLocalSchema)restored.set('warehouseOutputClaims',[]);
+  for(const name of missingStores)restored.set(name,[]);
   const restricted=['warehouseOutputClaims','hybridTaskOutbox','hybridTaskRevisions','hybridTaskResolutions',
     'hybridTaskEditLeases','hybridTaskDeferred','hybridSyncMetadata'];
   if(restricted.some(name=>(restored.get(name)?.length??0)>0))
@@ -194,7 +195,7 @@ export async function inspectLocalBackup(text:string):Promise<LocalBackupInspect
   return (await readLocalBackup(text)).summary;
 }
 
-/** Restore only into a completely empty, same-schema installation. Never
+/** Restore only into a completely empty, compatible-schema installation. Never
  * resurrect remote authorization, device binding or pending shared task edits.
  * All local writes either commit together or are rolled back. */
 export async function restoreLocalBackup(text:string):Promise<void>{

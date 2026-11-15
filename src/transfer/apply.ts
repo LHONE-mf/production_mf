@@ -1,3 +1,4 @@
+import {receiveFormationSerialIdentity} from '../core/manufacturing/formationSerialIdentity';
 import {receiveCoatingRun} from '../stages/coating/coatingJournal';
 import {isStorageJournal,receiveStorageJournal,receiveStorageHistory} from '../core/manufacturing/storageReceipts';
 import {receiveFormationIncoming,receiveFormationResult} from '../core/manufacturing/formationResults';
@@ -248,6 +249,11 @@ export async function applyPacket(p: SyncPacket): Promise<ApplyResult> {
         if (!fi.id || !fi.batchName) return { ok: false, message: 'Партия на формировку повреждена' };
         await receiveFormationIncoming(fi,p.stage,p.role,p.from);
         return {ok:true,message:'Вход формирования сохранён; пакет не подтверждает физическую приёмку'};
+      }
+      case 'formation-serial-identity': {
+        if(p.stage!==StageId.FORMATION)return {ok:false,message:'Неверный этап заявления номеров'};
+        await receiveFormationSerialIdentity(p.payload,p.role,p.from);
+        return {ok:true,message:'Явные номера обработанных ячеек сохранены; QA и складская приёмка не подтверждены'};
       }
       case 'formation-run': {
         const fr=p.payload as FormationRun;

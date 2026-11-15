@@ -86,3 +86,10 @@ export async function saveFormationResult(run:FormationRun,actorId:string):Promi
 export async function receiveFormationResult(run:FormationRun,role?:UserRole,senderId?:string):Promise<FormationRun>{
  return db.transaction('rw',assemblyOutputTables(),async()=>{if(hasFormationResult(run)){validateFormationResult(run);if(!role||!CELL_OUTPUT_ROLES.includes(role)&&(senderId!==run.workerId||role!==run.recordedRole))throw new Error('Подписант результата не совпадает с автором');}return insertResult(run);});
 }
+
+/** For a separate processed-serial declaration; never rewrites its observation. */
+export async function assertSavedFormationSource(run:FormationRun):Promise<void>{
+ validateFormationResult(run);
+ if(!hasFormationResult(run)||!run.inputSnapshot||!same(await db.formationRuns.get(run.id),run)||!same(await db.formationIncoming.get(run.inputSnapshot.id),run.inputSnapshot))throw Error('Исходный результат формирования отсутствует или изменён');
+ await checkSource(run.inputSnapshot);
+}

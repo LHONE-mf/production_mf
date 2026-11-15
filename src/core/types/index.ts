@@ -71,6 +71,7 @@ export type SyncPacketType =
   | 'walzing-in'      // залитые ячейки с 7 этажа/к.5 → на вальцовку
   | 'walz-run'        // запись журнала вальцовки (→ формирование/master)
   | 'formation-in'    // партия на формировку (заливка сух.комнаты/вальцовка → формирование)
+  | 'formation-serial-identity' // explicit processed subset, no QC/warehouse effect
   | 'formation-run'   // запись журнала формировки (→ старение/master)
   | 'chat'            // сообщение меш-чата (работник ↔ мастер ↔ технолог ↔ начальник)
   | 'forced-push';  // принудительная запись master'ом в slave-устройство
