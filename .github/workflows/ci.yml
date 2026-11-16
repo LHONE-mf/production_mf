@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feat/hybrid-server-foundation, feat/storage-inventory-foundation]
   pull_request:
-    branches: [main, feat/hybrid-server-foundation, feat/material-flow-authoritative-wip, feat/slurry-coating-custody, feat/coating-slurry-consumption, feat/tape-roll-specifications]
+    branches: [main, feat/hybrid-server-foundation, feat/material-flow-authoritative-wip, feat/slurry-coating-custody, feat/coating-slurry-consumption, feat/tape-roll-specifications, feat/coating-foil-consumption]
   workflow_dispatch:
 
 permissions:
@@ -97,7 +97,7 @@ jobs:
         run: |
           mkdir -p /tmp/storage-artifacts
           export WIP_BROWSER_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
-          npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts src/inventory-tape.browser.test.ts src/coating-foil.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
+          npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts src/inventory-tape.browser.test.ts src/coating-foil.browser.test.ts src/coating-roll.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
       - name: Collect room browser evidence even on failure
         if: ${{ always() }}
         working-directory: .
@@ -108,6 +108,7 @@ jobs:
           if [ -d /tmp/production-mf-custody-browser ]; then cp -r /tmp/production-mf-custody-browser /tmp/storage-artifacts/room-custody-browser; fi
           if [ -d /tmp/production-mf-tape-browser ]; then cp -r /tmp/production-mf-tape-browser /tmp/storage-artifacts/tape-browser; fi
           if [ -d /tmp/production-mf-foil-browser ]; then cp -r /tmp/production-mf-foil-browser /tmp/storage-artifacts/foil-browser; fi
+          if [ -d /tmp/production-mf-roll-browser ]; then cp -r /tmp/production-mf-roll-browser /tmp/storage-artifacts/coating-roll-browser; fi
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash

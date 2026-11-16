@@ -103,7 +103,10 @@ when every local record can be discarded.
   whole-roll issues.
   [Measured collector-foil use](docs/COATING_FOIL_CONSUMPTION.md) settles actual
   mass/length from received issues against the shared return/scrap balance.
-  Roll-issued use/remainders remain open. Production
+  [Measured coated rolls and direct Calendaring custody](docs/COATING_ROLL_CUSTODY.md)
+  link actual inputs to physical rolls, reserve explicit offers and require the
+  assigned receiver to confirm count and identity.
+  Roll-issued use/remainders and output reconciliation remain open. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.
 

@@ -1,3 +1,35 @@
+## 2026-11-16 — Measured coated rolls and direct Calendaring custody
+
+- `feat/coating-roll-custody` stacks on unchanged draft #12 (`b5a601f`), then
+  #11/#10/#9/#8. Latest main remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_ROLL_CUSTODY.md): explicit actual Slurry/foil
+  measurements are claimed once per declaration; multiple physical rolls retain
+  shared declaration genealogy. Each roll has independent length, optional mass,
+  explicit SKU/physical label and ready/held disposition. Unknown scrap stays null.
+  Tape remains explicitly not applicable or received-but-unmeasured, with typed
+  whole-roll issue references and no invented actual use.
+- PostgreSQL 038–039 extends existing room lots/handoff/events and adds immutable
+  output/claim rows. Direct whole-roll Coating→Calendaring offers reserve source;
+  only the assigned current receiver confirms actual count/identity. Separate
+  discrepancies create no custody. No warehouse effect, inferred conversion/yield,
+  QA release, legacy journal rewrite or schema/dependency reset.
+- Durable scoped forms/proposals preserve original offline bodies/IDs/epoch and
+  full actual source snapshots. Unknown/lost replies retry unchanged; exact ACK
+  validation and late-response checks preserve newer state. Async preparation
+  disables editing of the previous scoped form.
+- Local full regression: **755 frontend / 364 server tests** pass, including a
+  populated 037→039 comparison of all old rows and actual post-upgrade receipt.
+  The real 59-table pg_dump/two-restores drill preserves original ACKs, typed tape,
+  two output rolls, shared parent claims and one separately received Calendaring
+  roll; old Slurry balances reconstruct independently. Web/server types/builds,
+  Android harness types, migration guards and all five actual browsers pass.
+  Current-source hosted evidence belongs to the PR.
+- Next: actual Calendaring consumption/output→Cutting, partial-roll measurement/
+  splitting/corrections, output incorporation/loss reconciliation, actual foil/tape
+  policy and remaining room flows/pairing/pouch/physical cell acceptance. Browser
+  reopening does not establish Android process-death or installed-upgrade proof.
+  OnePlus/factory reconciliation remain open. No merge or deployment.
+
 ## 2026-11-16 — Actual Coating collector-foil use
 
 - `feat/coating-foil-consumption` stacks on unchanged draft #11 (`b7c5635`),

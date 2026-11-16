@@ -1,3 +1,23 @@
+# Current material-flow increment — 2026-11-16
+
+Measured coated-roll output and direct whole-roll Coating→Calendaring custody are
+implemented on `feat/coating-roll-custody`, stacked on draft #12. Actual Slurry/foil
+measurement claims belong once to a declaration; multiple physical rolls retain
+shared genealogy, independent measured length and optional mass. Assigned receiver
+count/identity confirmation establishes custody; discrepancy does not. Output stays
+unreviewed/unreconciled and creates no warehouse stock. Typed tape references retain
+whole-roll issue specifications without inventing consumption. PostgreSQL 038–039,
+main Dexie 24/outbox v7, existing journals/queues/dependencies preserved.
+[Contract, tests and remaining gates](COATING_ROLL_CUSTODY.md).
+
+Local **755 frontend / 364 server** regression tests and populated 037→039 upgrade
+pass. Real pg_dump/two-fresh-restores compare **59 tables**, original acknowledgements
+and measured roll/earlier Slurry custody separately. Current-source full verification
+and hosted artifacts are recorded in the draft PR. Native/OnePlus/physical factory
+acceptance, measured incorporation/loss reconciliation, partial-roll use/corrections,
+Calendaring output and subsequent room flows, physical cell acceptance and deployment
+remain open. Earlier entries below describe their historical sources.
+
 # Cell proposal/client/UI implemented — 2026-11-15
 
 Formation now saves durable original cell proposals offline, explicitly sends only the frozen request and atomically archives its exact ACK. Original identity/source/actor/role/device/scope/epoch/ID/body survive reopen, unknown replies and conflicts; no stock, physical receipt or QA is created. Main Dexie **24** adds cell claims and preserves all 37 previous main tables. Outbox **v7** / PostgreSQL **032** and old queues remain unchanged. Local-only v21/v22/v23 backups remain compatible; cell claims retain device-bound restore restrictions. [Cell contract](STORAGE_CELL_OUTPUT.md).
