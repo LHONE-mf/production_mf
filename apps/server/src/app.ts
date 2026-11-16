@@ -1,3 +1,4 @@
+import {registerCoatingFoilRoutes} from './coating-foil-routes.js';
 import {registerCoatingConsumptionRoutes} from './coating-consumption-routes.js';
 import {registerRoomCustodyRoutes} from './room-custody-routes.js';
 import {registerRoomMaterialRoutes} from './room-material-routes.js';
@@ -97,6 +98,7 @@ export function buildApp(pool: Pool) {
   registerRoomMaterialRoutes(app,pool);
   registerRoomCustodyRoutes(app,pool);
   registerCoatingConsumptionRoutes(app,pool);
+  registerCoatingFoilRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);
   registerInventoryIdentificationRoutes(app, pool);
