@@ -1,3 +1,4 @@
+import {registerRoomMaterialRoutes} from './room-material-routes.js';
 import {registerInventoryCellOutputDiscovery} from './inventory-cell-output-discovery.js';
 import {registerInventoryCellOutputRoutes} from './inventory-cell-output-routes.js';
 import {registerInventoryQualityRoutes} from './inventory-quality-routes.js';
@@ -91,6 +92,7 @@ export function buildApp(pool: Pool) {
   registerInventoryStockOperations(app, pool);
   registerInventoryIssueRoutes(app, pool);
   registerInventoryOutcomeRoutes(app, pool);
+  registerRoomMaterialRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);
   registerInventoryIdentificationRoutes(app, pool);

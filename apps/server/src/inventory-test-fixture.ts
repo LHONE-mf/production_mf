@@ -4,9 +4,10 @@ import {Pool} from 'pg';
 import {buildApp} from './app.js';
 import {tokenHash} from './auth.js';
 /** Synthetic fixtures; every stock/QA/handoff transition uses the actual API. */
-export async function createInventoryHandoffFixture(){
+export async function createInventoryHandoffFixture(searchPath?:string){
+  if(searchPath&&!/^room_upgrade_[a-f0-9]{32}$/.test(searchPath))throw Error('Invalid isolated test schema');
   const applicationName='inventory-outcome-'+randomUUID();
-  const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL,application_name:applicationName }), app = buildApp(pool);
+  const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL,application_name:applicationName,...(searchPath?{options:'-c search_path='+searchPath}:{}) }), app = buildApp(pool);
   const org = randomUUID(), epoch = randomUUID(), material = randomUUID(), location = randomUUID(), batch = randomUUID(), workshop = 'issue-' + randomUUID();
   const actors = ['chief', 'worker', 'worker', 'master', 'worker', 'worker'].map(role => ({ id: randomUUID(), role, token: randomBytes(32).toString('base64url'), device: '', proof: '' }));
   const headers = (i = 0) => ({ authorization: 'Bearer ' + actors[i].token, 'x-device-proof': actors[i].proof, 'x-inventory-epoch': epoch });
