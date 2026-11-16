@@ -1,3 +1,27 @@
+## 2026-11-16 — Actual Coating collector-foil use
+
+- `feat/coating-foil-consumption` stacks on unchanged draft #11 (`b7c5635`),
+  then #10/#9/#8. Main checked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_FOIL_CONSUMPTION.md): independently measured
+  single-SKU mass/length consumption from received Coating issues, explicit
+  specification/operation reference, partial/multiple lots and shared
+  consume/return/scrap remainder. No second warehouse debit or roll conversion.
+- PostgreSQL 037 adds an immutable header and nullable parent link in existing
+  outcomes. Existing records/units/ACKs, Slurry/tape behavior, current authority,
+  device proof, QA/expiry and history fencing remain. Dexie 24/outbox v7,
+  dependencies and local journals are unchanged.
+- Local: 750 frontend / 357 PostgreSQL server tests, types/builds and Android
+  harness/migration guards pass. Real foil browser at 390/412/1365 saves offline,
+  reopens and repeats identical bytes after lost committed reply; 500 mm use from
+  800 mm leaves 300 mm, warehouse unchanged. Populated 036→037 compares all old
+  rows. Actual 57-table pg_dump/two restores reconstruct foil source snapshots,
+  consumption/remainder, original ACK and history fence. Final committed-source
+  hosted results and all-browser evidence belong to the next draft PR.
+- Next: real roll-issued foil measurement policy, tape use/recoverable remainder,
+  measured coated output and Calendaring custody, other room flows/corrections,
+  pairing/pouch/physical cell acceptance. Factory/native OnePlus/installed upgrade
+  and physical reconciliation remain open. No merge or deployment.
+
 ## 2026-11-16 — Whole-roll tape specifications and approved issues
 
 - `feat/tape-roll-specifications` stacks on unchanged draft #10 (`639702b`),

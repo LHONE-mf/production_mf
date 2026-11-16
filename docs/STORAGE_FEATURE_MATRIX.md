@@ -203,3 +203,12 @@ supersedes earlier missing-roll-unit notes for catalogue/receiving/issues only.
 Actual tape use/partial-roll remainder, foil use, Coating output and other
 room/native/physical acceptance remain open. Historical entries retain their
 original source-specific scope.
+
+# Current Coating foil-use increment — 2026-11-16
+
+[Actual collector-foil use](COATING_FOIL_CONSUMPTION.md) adds independently
+measured single-SKU mass/length use, partial/multiple received lots and shared
+consume/return/scrap settlement. PostgreSQL 037; Dexie 24/outbox v7 unchanged.
+This covers issued mass/length only. Factory foil issue/use measurement, roll
+conversions, tape use/remainder, measured Coating output and Calendaring custody
+remain open; current evidence belongs to the candidate SHA recorded in the PR.
