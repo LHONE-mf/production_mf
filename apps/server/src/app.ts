@@ -1,3 +1,5 @@
+import {registerCoatingRollCustodyRoutes} from './coating-roll-custody-routes.js';
+import {registerCoatingRollRoutes} from './coating-roll-routes.js';
 import {registerCoatingFoilRoutes} from './coating-foil-routes.js';
 import {registerCoatingConsumptionRoutes} from './coating-consumption-routes.js';
 import {registerRoomCustodyRoutes} from './room-custody-routes.js';
@@ -99,6 +101,8 @@ export function buildApp(pool: Pool) {
   registerRoomCustodyRoutes(app,pool);
   registerCoatingConsumptionRoutes(app,pool);
   registerCoatingFoilRoutes(app,pool);
+  registerCoatingRollRoutes(app,pool);
+  registerCoatingRollCustodyRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);
   registerInventoryIdentificationRoutes(app, pool);

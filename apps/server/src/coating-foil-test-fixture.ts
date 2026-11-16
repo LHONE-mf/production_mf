@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
-import { createInventoryHandoffFixture } from "./inventory-test-fixture.js";
-export async function createCoatingFoilFixture(searchPath?: string) {
-  const f = await createInventoryHandoffFixture(searchPath, true);
+import { createRoomHandoffFixture } from "./room-handoff-test-fixture.js";
+export async function createCoatingFoilFixture(searchPath?: string, withCalendaring=false) {
+  const f = await createRoomHandoffFixture(searchPath, withCalendaring);
   async function received(unit = "mm", materialId?: string) {
     materialId ??= randomUUID();
     if (
