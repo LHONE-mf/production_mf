@@ -167,6 +167,9 @@ describe('durable measured Slurry output and explicit custody', () => {
     const s = source(),
       r = request();
     expect(copySlurrySource(s).inputQuantity).toBe(1000);
+    const fractional = structuredClone(s);
+    fractional.sourceSnapshot.consumption.source.recordedAt = 1000.5;
+    expect(copySlurrySource(fractional).sourceSnapshot.consumption.source.recordedAt).toBe(1000.5);
     expect(copyDeclaration(declaration(r, s)).unknownMg).toBe(50);
     expect(() => copyDeclaration({...declaration(r, s), unknownMg: 0})).toThrow();
     expect(() => copySlurrySource({...s, sourceSnapshot: {...s.sourceSnapshot, parents: []}})).toThrow();

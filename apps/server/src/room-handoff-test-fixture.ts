@@ -18,7 +18,7 @@ export async function createRoomHandoffFixture(searchPath?: string) {
       stepNumber: 1,
       source: {
         id: randomUUID(),
-        recordedAt: Date.now(),
+        recordedAt: Date.now() + 0.5,
         recordedBy: 'synthetic-local-author',
         recordedRole: 'worker',
         batchCode: 'SYNTHETIC-MIX',

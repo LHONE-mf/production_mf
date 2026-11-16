@@ -6,7 +6,7 @@ Implementation candidate on `feat/slurry-coating-custody`, stacked on draft
 The dependency branch is unchanged; this increment does not duplicate or replace
 its received-material consumption work. Nothing is merged or deployed.
 
-Committed implementation/test/CI source: **630abb84669092a965661fa782acdb209714c7c3**.
+Initial implementation/test/CI source: **630abb84669092a965661fa782acdb209714c7c3**.
 Backend increment **67a7b07**; offline client/UI **aaa0d32**; form-transition
 regression **5fd929e**. A documentation-only closeout records verification.
 
@@ -68,8 +68,10 @@ Unknown replies remain pending. Exact retry recovers the original stored ACK;
 changed-body or changed-owner reuse conflicts. Stale history, suspended posting,
 revoked authority, changed roles, source holds and overspending never silently
 rebase a proposal. Late ACKs use compare-and-save and cannot replace a newer
-conflict. An ACK storage failure leaves the pending original intact. Only
-allowlisted, validated network fields are retained; no tokens/proofs enter drafts.
+conflict. An ACK storage failure leaves the pending original intact. The source
+reader preserves the existing API's finite positive observation timestamps
+exactly, including fractional milliseconds; these timestamps grant no authority.
+Only allowlisted, validated network fields are retained; no tokens/proofs enter drafts.
 Preparing a new form disables editing of the previous form during the transition.
 
 The local guard conservatively permits one unresolved offer per lot per device

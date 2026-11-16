@@ -250,7 +250,9 @@ function copySourceSnapshot(value: unknown): SlurrySourceSnapshot {
     !instant(c.recordedAt) ||
     ![c.reason, c.evidence].every(text) ||
     ![s.id, s.recordedBy, s.recordedRole, s.batchCode, s.recipeName, s.measurementNote].every(text) ||
-    !integer(s.recordedAt, 1, 8640000000000000) ||
+    typeof s.recordedAt !== 'number' ||
+    !Number.isFinite(s.recordedAt) ||
+    s.recordedAt <= 0 ||
     !(s.recipeId === null || text(s.recipeId)) ||
     !(s.recipeRevision === null || integer(s.recipeRevision, 1))
   )
