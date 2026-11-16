@@ -9,7 +9,7 @@ import { issueTransaction, issueHttpError, issueFail, issueWarehouseLevel, issue
 import { registerInventoryIssueReads } from './inventory-issue-reads.js';
 const id = z.guid(), revision = z.number().int().min(1).max(2147483646), text = z.string().trim().min(1).max(2000);
 const common = z.object({ operationId: id, deviceId: id, reason: text, evidence: text });
-const create = common.extend({ issueId: id, materialId: id, productionBatchId: id, stepNumber: z.number().int().min(1).max(2147483647), recipientId: id, quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), tapeSpecification: tapeSpecification.optional(), operationReference: text.optional() }).strict();
+const create = common.extend({ issueId: id, materialId: id, productionBatchId: id, stepNumber: z.number().int().min(1).max(2147483647), recipientId: id, quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), tapeSpecification: tapeSpecification.optional(), operationReference: z.string().min(1).max(2000).refine(value => !!value.trim()).optional() }).strict();
 const action = common.extend({ expectedIssueRevision: revision });
 const operation = z.discriminatedUnion('kind', [
   action.extend({ kind: z.literal('reserve'), stockId: id, expectedStockRevision: revision }).strict(),

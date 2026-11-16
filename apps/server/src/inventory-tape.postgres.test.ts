@@ -355,5 +355,20 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)(
         ),
       ).rejects.toThrow("inventory_tape_ack_mismatch");
     });
+    it("preserves the exact operation reference submitted by an offline client", async () => {
+      const material = sku();
+      expect((await f.post("/inventory/materials", material)).statusCode).toBe(
+        201,
+      );
+      const body = issue(material.id, {
+        operationReference: "  Synthetic card with original whitespace  ",
+      });
+      const r = await f.post("/inventory/issues", body, 5);
+      expect(r.statusCode, r.body).toBe(201);
+      expect(r.json().issue.operationReference).toBe(body.operationReference);
+      expect((await f.post("/inventory/issues", body, 5)).json().issue).toEqual(
+        r.json().issue,
+      );
+    });
   },
 );

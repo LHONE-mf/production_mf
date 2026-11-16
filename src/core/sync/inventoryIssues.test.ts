@@ -77,7 +77,7 @@ it('never prepares a privileged action from an issue card belonging to a previou
 
 it('freezes tape application and operation attribution offline and refuses altered metadata acknowledgements',async()=>{
  const tapeSpecification={application:'coating_support' as const,widthMm:'12.50',thicknessUm:'25.00',reference:'Synthetic drawing'};
- const tapeIntent={...intent,tapeSpecification,operationReference:'Synthetic Coating card',quantity:2};
+ const tapeIntent={...intent,tapeSpecification,operationReference:'  Synthetic Coating card  ',quantity:2};
  const row=await freezeInventoryIssue(scope,'local',context,tapeIntent,{unit:'rolls',workshopId:'coating'});
  inventoryOutbox.close();await inventoryOutbox.open();
  const expected=JSON.parse(row.fields.expected);let wrong=true;const posts:string[]=[];
