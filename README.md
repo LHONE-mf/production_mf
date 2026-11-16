@@ -106,7 +106,10 @@ when every local record can be discarded.
   [Measured coated rolls and direct Calendaring custody](docs/COATING_ROLL_CUSTODY.md)
   link actual inputs to physical rolls, reserve explicit offers and require the
   assigned receiver to confirm count and identity.
-  Roll-issued use/remainders and output reconciliation remain open. Production
+  [Actual Calendaring roll use](docs/CALENDARING_ROLL_CONSUMPTION.md) records
+  independently measured partial length against received physical rolls, retaining
+  each source remainder without another warehouse debit.
+  Roll-issued foil/tape use and output reconciliation remain open. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.
 

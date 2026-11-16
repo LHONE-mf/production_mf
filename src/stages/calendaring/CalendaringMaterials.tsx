@@ -210,7 +210,7 @@ export function CalendaringMaterialsPanel({
           Следующие принятые рулоны
         </button>
       )}
-      <label>
+      <label className="block">
         Партия и шаг фактического расхода
         <select
           aria-label="Партия, шаг и SKU расхода Calendaring"
@@ -286,7 +286,7 @@ export function CalendaringMaterialsPanel({
       >
         Подготовить измерение расхода рулонов
       </button>
-      <label>
+      <label className="block">
         Сохранённая форма расхода
         <select
           className={control}
@@ -518,7 +518,11 @@ function ConsumptionForm({
         задаёт предел; остаток не является новым выходом или измеренным браком.
         Пустая длина неизвестна и не считается нулём.
       </p>
-      <label>
+      <p>
+        Повторный проход того же участка не добавляйте к расходу исходного
+        рулона.
+      </p>
+      <label className="block">
         Фактически обработано, м
         <input
           className={control}
@@ -527,7 +531,7 @@ function ConsumptionForm({
           onChange={(e) => edit({ actualM: e.target.value })}
         />
       </label>
-      <label>
+      <label className="block">
         Время измерения расхода
         <input
           className={control}
@@ -536,7 +540,7 @@ function ConsumptionForm({
           onChange={(e) => edit({ observedAt: e.target.value })}
         />
       </label>
-      <label>
+      <label className="block">
         Операционная карта или ссылка на запись Calendaring
         <input
           className={control}
@@ -547,7 +551,7 @@ function ConsumptionForm({
       {lines.map((line, i) => (
         <fieldset key={line.id} className={frame}>
           <legend>Принятый источник {i + 1}</legend>
-          <label>
+          <label className="block">
             Подтверждённая приёмка {i + 1}
             <select
               aria-label={"Подтверждённая приёмка " + (i + 1)}
@@ -579,7 +583,7 @@ function ConsumptionForm({
               ))}
             </select>
           </label>
-          <label>
+          <label className="block">
             Фактически из этого рулона {i + 1}, м
             <input
               className={control}
@@ -624,7 +628,7 @@ function ConsumptionForm({
       >
         Добавить принятый рулон
       </button>
-      <label>
+      <label className="block">
         Основание расхода Calendaring
         <input
           className={control}
@@ -632,7 +636,7 @@ function ConsumptionForm({
           onChange={(e) => edit({ reason: e.target.value })}
         />
       </label>
-      <label>
+      <label className="block">
         Свидетельство фактической длины
         <textarea
           className={control}

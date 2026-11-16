@@ -1,3 +1,37 @@
+## 2026-11-16 — Actual Calendaring use of received coated rolls
+
+- `feat/calendaring-roll-consumption` stacks on unchanged draft #13 (`f57d74d`),
+  then #12/#11/#10/#9/#8. Main remains
+  `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CALENDARING_ROLL_CONSUMPTION.md): independently measured
+  partial length from one or more actually received rolls of the same explicit
+  SKU/batch/Calendaring step, exact allocation totals and per-receipt remainder.
+  Capacity comes from each immutable Coating length measurement, with its basis
+  visible; one roll never becomes one metre and no mass conversion is inferred.
+- PostgreSQL 040 adds immutable use/allocation rows referencing existing custody.
+  Current source/route/device/tenant/QA/history checks, paired exact ACKs,
+  exclusive operation IDs and multi-row SQL overuse protection preserve old data.
+  Actual use creates no warehouse debit, QA release, output roll, Cutting transfer
+  or legacy CalenderRun. Main Dexie 24/outbox v7, old queues/journals, dependencies
+  and lockfiles are unchanged.
+- Scoped forms and frozen proposals preserve offline original body/IDs/sources,
+  role/device/actor/epoch, retain unknown replies/conflicts and reject changed or
+  late ACKs. Loading is separate from offline observation save and explicit send.
+- Full local **758 frontend / 370 server tests** pass, along with builds/types,
+  Android harness types and migration guards. Populated 039→040 preserves every
+  old row and creates no past use. Actual browser records 250 mm from a 400 mm
+  source, reopens and retries identical bytes after a committed lost reply,
+  retaining 150 mm with no warehouse effect at 390/412/1365. The actual **61-table
+  pg_dump/two-restores** reconstructs 250 mm used/50 mm remaining from its distinct
+  300 mm source, original ACKs, immutability and history fencing. All six actual
+  room browsers pass. Current-source hosted evidence belongs to the next draft PR.
+- Next: independently measured calendered-roll output and direct Calendaring→
+  Cutting custody; then actual Cutting→Sorting. Remnant identification/splitting,
+  cross-batch allocations, return/scrap/corrections, incorporation/loss balance,
+  factory foil/tape policy and later rooms/pairing/pouch/physical cell acceptance
+  remain open. Browser reopening is not native process-death/installed-upgrade
+  proof. Physical OnePlus/factory reconciliation remain gates. No merge/deployment.
+
 ## 2026-11-16 — Measured coated rolls and direct Calendaring custody
 
 - `feat/coating-roll-custody` stacks on unchanged draft #12 (`b5a601f`), then

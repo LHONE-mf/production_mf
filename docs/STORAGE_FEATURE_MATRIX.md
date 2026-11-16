@@ -1,3 +1,23 @@
+# Current Calendaring material-use increment — 2026-11-16
+
+Actual independently measured Calendaring input length is implemented on
+`feat/calendaring-roll-consumption`, stacked on unchanged draft #13. Explicit
+partial/multiple receipt allocations retain each same-SKU roll's remaining length
+and genealogy. Capacity uses the immutable measured Coating length acknowledged
+with the received physical roll; no nominal roll conversion, repeated warehouse
+debit, automatic output/QA or legacy CalenderRun is created. PostgreSQL 040 adds
+immutable use/allocation records; Dexie 24/outbox v7 and all old data/queues remain.
+[Contract and next gates](CALENDARING_ROLL_CONSUMPTION.md).
+
+Local **758 frontend / 370 server** tests, builds/types, Android harness types,
+migration guards, populated 039→040 preservation and actual **61-table/two-restores**
+pass. The new real browser verifies offline/reopen/lost-ACK original retry and
+150 mm remaining from 400 mm after 250 mm measured use at 390/412/1365. Exact-source
+hosted and all-browser evidence are recorded in the draft PR. Calendered output→
+Cutting, physical remnant splitting/corrections, reconciliation, factory foil/tape
+measurement, later room flows and native/OnePlus/physical acceptance remain open.
+Earlier entries describe their historical sources. No merge or deployment.
+
 # Current material-flow increment — 2026-11-16
 
 Measured coated-roll output and direct whole-roll Coating→Calendaring custody are
