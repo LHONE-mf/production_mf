@@ -330,7 +330,7 @@ export function RoomCustodyPanel({session, scope, localActorId, room}: Props) {
             Партия {h.productionBatchId} · шаг Coating {h.destinationStepNumber} · получатель {h.recipientId}
           </p>
           <p>
-            Подтверждённая масса в Coating: {h.custodyQuantity / 1000} г.{' '}
+            Физически принято по передаче: {h.custodyQuantity / 1000} г.{' '}
             {h.eligible ? 'Исходные материалы не удержаны' : 'Источник удержан / операция недоступна'}
           </p>
           <Genealogy value={h.sourceSnapshot} />

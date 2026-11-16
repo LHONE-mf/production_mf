@@ -38,7 +38,7 @@ export interface CustodyPage<T> {
   items: T[];
   nextAfter: string | null;
 }
-async function readPage<T>(
+export async function readPage<T>(
   session: HybridSession,
   scope: InventoryScope,
   path: string,

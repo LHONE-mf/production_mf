@@ -34,8 +34,8 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
         await writeFile(
           file,
           `<html><meta name="viewport" content="width=device-width,initial-scale=1"><div id="root"></div><script type="module">
-    import React from'react';import{createRoot}from'react-dom/client';import{RoomCustodyPanel}from'/src/stages/_common/RoomCustody.tsx';import{db}from'/src/core/db/index.ts';import'/src/index.css';
-    window.mount=async props=>{await db.users.put({id:props.localActorId,role:'worker',isActive:true,fullName:'Synthetic custody operator',login:props.localActorId,createdAt:new Date()});createRoot(document.getElementById('root')).render(React.createElement(RoomCustodyPanel,props));};</script></html>`,
+    import React from'react';import{createRoot}from'react-dom/client';import{RoomCustodyPanel}from'/src/stages/_common/RoomCustody.tsx';import{CoatingMaterialsPanel}from'/src/stages/coating/CoatingMaterials.tsx';import{db}from'/src/core/db/index.ts';import'/src/index.css';
+    window.mount=async props=>{await db.users.put({id:props.localActorId,role:'worker',isActive:true,fullName:'Synthetic custody operator',login:props.localActorId,createdAt:new Date()});createRoot(document.getElementById('root')).render(React.createElement(props.screen==='use'?CoatingMaterialsPanel:RoomCustodyPanel,props));};</script></html>`,
         );
         const url = origin + '/' + file.pathname.split('/').at(-1),
           props = (index: number, room: string) => ({
@@ -56,12 +56,12 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
             localActorId: 'browser-custody-' + index,
           });
         let page = await sender.newPage();
-        const receiving = await receiver.newPage();
-        const mount = async (p: any, index: number, room: string) => {
+        let receiving = await receiver.newPage();
+        const mount = async (p: any, index: number, room: string, screen='custody') => {
           p.on('pageerror', (e: Error) => console.error('Custody browser error:', e.message));
           await p.goto(url);
           await p.waitForFunction(() => typeof (window as any).mount === 'function');
-          await p.evaluate((v: unknown) => (window as any).mount(v), props(index, room));
+          await p.evaluate((v: unknown) => (window as any).mount(v), {...props(index, room),screen});
         };
         await mount(page, 4, 'slurry');
         await page.getByRole('button', {name: 'Обновить движение Slurry', exact: true}).click();
@@ -149,7 +149,7 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
         await page.getByText(/Отправка записана/).waitFor();
         await mount(receiving, 5, 'coating');
         await receiving.getByRole('button', {name: 'Обновить движение Coating', exact: true}).click();
-        await receiving.getByText('Подтверждённая масса в Coating: 0 г.', {exact: false}).waitFor();
+        await receiving.getByText('Физически принято по передаче: 0 г.', {exact: false}).waitFor();
         await receiving.getByRole('button', {name: /Подготовить наблюдение приёмки/}).click();
         await receiving.getByLabel('Результат физической приёмки').selectOption('discrepancy');
         await receiving.getByLabel('Фактически наблюдаемая масса, г').fill('0.399');
@@ -184,7 +184,7 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
         await receiving.getByRole('button', {name: /Отправить исходное событие/}).click();
         await receiving.getByRole('alert').waitFor();
         await receiving.getByRole('button', {name: /Отправить исходное событие/}).click();
-        await receiving.getByText(/Подтверждённая масса в Coating: 0.4 г/).waitFor();
+        await receiving.getByText(/Физически принято по передаче: 0.4 г/).waitFor();
         for (const requests of Object.values(bodies)) {
           expect(requests).toHaveLength(2);
           expect(requests[0]).toBe(requests[1]);
@@ -221,6 +221,37 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
               fullPage: true,
             });
           }
+        // Actual receiver use is a separate measured event, never derived from setup flow.
+        await mount(receiving,5,'coating','use');
+        await receiving.getByRole('button',{name:'Обновить принятый Slurry Coating',exact:true}).click();
+        await receiving.getByText(/Принято 0.4 г; израсходовано 0 г; осталось 0.4 г/).waitFor();
+        await receiving.getByLabel('Партия и шаг фактического расхода').selectOption(f.batch+':2');
+        await receiving.getByRole('button',{name:'Подготовить измерение расхода Slurry',exact:true}).click();
+        await receiving.getByLabel('Фактически израсходовано Slurry, г').fill('0.3');
+        await receiving.getByLabel('Время измерения расхода').fill('2026-11-16T08:30');
+        await receiving.getByLabel('Операционная карта или ссылка на запись Coating').fill('Synthetic operation C-1 actual measurement');
+        const receiptId=(await f.pool.query("SELECT operation_id FROM inventory_room_handoff_events WHERE organization_id=$1 AND kind='receive'",[f.org])).rows[0].operation_id;
+        await receiving.getByLabel('Подтверждённая приёмка 1',{exact:true}).selectOption(receiptId);
+        await receiving.getByLabel('Фактически из этого лота 1, г').fill('0.3');
+        await receiving.getByLabel('Основание расхода Coating').fill('Actual independent use weighing');
+        await receiving.getByLabel('Свидетельство фактической массы').fill('0.3 g used, independent of estimated pump delivery');
+        await receiver.setOffline(true);
+        await receiving.getByRole('button',{name:'Сохранить расход Coating без отправки',exact:true}).click();
+        await receiving.getByRole('button',{name:/Отправить исходный расход Coating/}).waitFor();
+        expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_coating_consumptions WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+        await receiver.setOffline(false);await receiving.close();receiving=await receiver.newPage();
+        await mount(receiving,5,'coating','use');
+        await loseFirst(receiving,'/inventory/room-materials/coating/consumptions');
+        await receiving.getByRole('button',{name:/Отправить исходный расход Coating/}).click();
+        await receiving.getByRole('alert').waitFor();
+        await receiving.getByRole('button',{name:/Отправить исходный расход Coating/}).click();
+        await receiving.getByText(/Сервер подтвердил фактический расход Coating/).waitFor();
+        await receiving.getByText(/Принято 0.4 г; израсходовано 0.3 г; осталось 0.1 г/).waitFor();
+        expect(bodies['/inventory/room-materials/coating/consumptions']).toHaveLength(2);
+        expect(bodies['/inventory/room-materials/coating/consumptions'][0]).toBe(bodies['/inventory/room-materials/coating/consumptions'][1]);
+        expect((await f.pool.query('SELECT on_hand,revision FROM inventory_stocks WHERE id=$1',[stockId])).rows).toEqual(before);
+        expect((await f.pool.query('SELECT count(*)::int AS n,sum(quantity)::text AS quantity FROM inventory_coating_allocations WHERE organization_id=$1',[f.org])).rows[0]).toEqual({n:1,quantity:'300'});
+        for(const width of [390,412,1365]){await receiving.setViewportSize({width,height:900});expect(await receiving.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await receiving.evaluate(()=>{document.querySelectorAll('*').forEach(e=>{if(e.scrollTop)e.scrollTop=0;});window.scrollTo(0,0);});await receiving.screenshot({path:`/tmp/production-mf-custody-browser/coating-use-${width}.png`,fullPage:true});}
         await writeFile(
           '/tmp/production-mf-custody-browser/result.json',
           JSON.stringify(
@@ -236,6 +267,9 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
               offeredMg: 400,
               receivedMg: 400,
               senderAvailableMg: 500,
+              coatingConsumedMg:300,
+              coatingRemainingMg:100,
+              coatingUseOfflineReopenLostReply:true,
               viewports: [390, 412, 1365],
               sourceRef: process.env.GITHUB_SHA ?? 'local-working-tree',
             },
