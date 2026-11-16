@@ -1,3 +1,4 @@
+import {CoatingFoil} from './CoatingFoil';
 import {hasSlurryHandover} from '../../core/manufacturing/slurryBatch';
 // Комната «Нанесение покрытия» (coating). Полностью офлайн.
 // Вкладки: 📥 Данные замесов · ⚙️ Намазка (расчёты) · 📒 Журнал нанесения · 💬 Комментарии
@@ -17,7 +18,7 @@ import {CoatingMaterials} from './CoatingMaterials';
 import {RoomCustody} from '../_common/RoomCustody';
 import {CoatingSetup} from './CoatingSetup';
 
-type Tab = 'mixes' | 'setup' | 'journal' | 'comments' | 'custody' | 'materials';
+type Tab = 'mixes' | 'setup' | 'journal' | 'comments' | 'custody' | 'materials' | 'foil';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -72,6 +73,7 @@ export function CoatingModule() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: 'materials', label: '📦 Фактический расход Slurry' },
+    { id: 'foil', label: '📏 Фактический расход фольги' },
     { id: 'custody', label: '🔁 Подтверждённая приёмка' },
     { id: 'mixes', label: `📥 Данные замесов${availableMixes.length ? ` (${availableMixes.length})` : ''}` },
     { id: 'setup', label: '⚙️ Подстройка линии' },
@@ -103,6 +105,7 @@ export function CoatingModule() {
       {handoverError && <p role="alert" className="text-sm text-red-200">{handoverError}</p>}
       {handoverBusy && <p role="status" className="text-sm text-slate-300">Сохраняем данные рулона…</p>}
       {tab === 'materials' && <CoatingMaterials/>}
+      {tab === 'foil' && <CoatingFoil/>}
       {tab === 'custody' && <RoomCustody room="coating"/>}
       {tab === 'mixes' && <MixesTab mixes={availableMixes} />}
       {currentUser&&<div hidden={tab!=='setup'}><CoatingSetup mixes={availableMixes} onSaved={()=>setTab('journal')}/></div>}
