@@ -80,6 +80,14 @@ remainder now accounts for measured Slurry use, returns and scrap; UI proposals
 remain durable and separate from posting. PostgreSQL 033; Dexie 24/outbox v7 unchanged.
 This supersedes older Slurry “NOT IMPLEMENTED” rows for this specific mass-use slice only.
 
+# Current Coating Slurry-use increment — 2026-11-16
+
+[Actual Coating Slurry use](COATING_SLURRY_CONSUMPTION.md) adds independent
+measured consumption, partial/multiple received-source allocations, current
+remainder and immutable history. PostgreSQL 035; Dexie 24/outbox v7 unchanged.
+This supersedes the earlier missing-Coating-consumption note for Slurry only.
+Foil/tape use, roll units/output, other rooms and native/physical acceptance remain.
+
 # Current Slurry output / Coating custody increment — 2026-11-16
 
 [Measured output and direct custody](SLURRY_COATING_CUSTODY.md) adds complete measured

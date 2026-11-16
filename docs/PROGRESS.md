@@ -1,3 +1,25 @@
+## 2026-11-16 — Actual Coating use of received Slurry
+
+- Source `5cc21220c9b20641f2bd5c9c8d130d2e74982b8b` on
+  `feat/coating-slurry-consumption`, stacked on unchanged draft #9 (`3f66812`).
+  Latest main checked remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_SLURRY_CONSUMPTION.md): independently measured
+  Slurry use, partial/multiple confirmed receipts, exact totals/current remainder,
+  immutable source-before/intent/ACK history and current scope/QA/history fencing.
+  No warehouse debit, automatic QA/roll output, or legacy-journal rewrite.
+- Coating controls freeze original scoped offline measurements separately from
+  send. Unknown replies, lost committed ACK, role/history changes and late ACK
+  preserve original evidence. Actual mass never comes from calculated pump flow.
+- Local: 742 frontend / 342 PostgreSQL server tests, builds/typechecks, both real
+  room browsers at 390/412/1365, two enrolled/authenticated test devices, populated
+  034→035 preservation, actual 56-table backup/two restores with 25 g consumed /
+  15 g remaining and exact original ACK. Hosted results belong to their named SHA
+  and are tracked in the draft PR; earlier #9 checks certify the dependency only.
+- Next: foil and operation-specific roll-issued tape use, actual roll output and
+  Calendaring custody, then other rooms/corrections/pairing/pouch/cell acceptance.
+  Native OnePlus/installed upgrade and physical factory reconciliation remain.
+  No merge/deploy without owner approval.
+
 ## 2026-11-16 — Measured Slurry output and direct Coating custody
 
 - Implementation/test/CI source `630abb84669092a965661fa782acdb209714c7c3`, stacked

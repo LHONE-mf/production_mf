@@ -95,7 +95,9 @@ when every local record can be discarded.
   claims are implemented; [received room materials and actual Slurry use](docs/ROOM_MATERIAL_CUSTODY.md)
   now track measured consumption separately from warehouse dispatch.
   [Measured Slurry output and direct Coating custody](docs/SLURRY_COATING_CUSTODY.md)
-  add partial offers, explicit receipt/discrepancy and durable original retries. Production
+  add partial offers, explicit receipt/discrepancy and durable original retries.
+  [Actual Coating Slurry use](docs/COATING_SLURRY_CONSUMPTION.md) settles measured
+  partial allocations against those received sources. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.
 

@@ -1,5 +1,9 @@
 # Measured Slurry output and direct Coating custody — 2026-11-16
 
+Continuation: [actual Coating Slurry use](COATING_SLURRY_CONSUMPTION.md) is
+implemented on a separate stacked draft branch. This document retains the
+verified scope/evidence of the original output and physical-custody increment.
+
 Implementation candidate on `feat/slurry-coating-custody`, stacked on draft
 [PR #8](https://github.com/LHONE-mf/production_mf/pull/8). Latest main remains
 `df1c7735f14f8ef268e382b4217f6a31dd2f33bc` (merged PRs #3/#5/#7).
@@ -162,7 +166,8 @@ was accessed. Migration, merge and deployment still require owner approval.
 
 1. Actual **Coating consumption** of received Slurry, issued collector foil and
    application-specific polyimide tape; measured roll output and explicit
-   Calendaring receipt. Coating custody presently has no consumption command.
+   Calendaring receipt. Actual Slurry consumption is implemented by the separate continuation;
+   foil/tape use and roll output remain next.
 2. Tape is **issued by roll**, with a distinct thickness/width specification per
    Coating lip-support, Assembly tab-insulation and winding application. Operational
    roll units, actual use/recoverable remainder and explicit catalogue dimensions
