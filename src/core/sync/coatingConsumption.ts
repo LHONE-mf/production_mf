@@ -223,6 +223,18 @@ export async function loadCoatingSlurry(session: HybridSession, scope: Inventory
     )
   ).page;
 }
+export async function loadCoatingConsumptions(session: HybridSession, scope: InventoryScope, after?: string) {
+  return (
+    await readPage(
+      session,
+      scope,
+      '/inventory/room-materials/coating/consumptions',
+      copyConsumption,
+      (r) => r.operationId,
+      after,
+    )
+  ).page;
+}
 export function coatingConsumptionProposals(scope: InventoryScope, actor: string) {
   return inventoryOutbox.receivingDrafts
     .filter((row) => {

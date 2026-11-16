@@ -40,4 +40,22 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('Populated 032 → 033 room use 
   }finally{await f?.app.close();await f?.pool.end();await client.query('ROLLBACK');await client.query('RESET search_path');await client.query('DROP SCHEMA '+schema+' CASCADE');client.release();await admin.end();}
  },30000);
 
+ it('preserves populated 034 output/receipt and adds no invented Coating use during 035 upgrade',async()=>{
+  const target=new URL(process.env.POSTGRES_TEST_URL!);if(!['localhost','127.0.0.1'].includes(target.hostname)||target.pathname!=='/production_mf_ci'||target.username!=='production_mf_ci')throw Error('Owned disposable PostgreSQL required');
+  const admin=new Pool({connectionString:process.env.POSTGRES_TEST_URL}),client=await admin.connect(),schema='room_upgrade_'+randomUUID().replaceAll('-','');
+  let f:Awaited<ReturnType<typeof createRoomHandoffFixture>>|undefined;
+  try{
+   await client.query('CREATE SCHEMA '+schema);await client.query('SET search_path TO '+schema);
+   for(const file of (await readdir('migrations')).filter(f=>/^\d{3}_/.test(f)&&Number(f.slice(0,3))<=34).sort())await client.query(await readFile('migrations/'+file,'utf8'));
+   f=await createRoomHandoffFixture(schema);const received=await f.receivedSlurry();
+   const names=(await client.query('SELECT tablename FROM pg_tables WHERE schemaname=$1 ORDER BY tablename',[schema])).rows.map(r=>r.tablename as string),before=new Map<string,unknown[]>();
+   for(const name of names)before.set(name,(await client.query('SELECT to_jsonb(t) AS row FROM '+name+' t')).rows.map(r=>r.row));
+   await client.query(await readFile('migrations/035_coating_slurry_consumption.sql','utf8'));
+   for(const name of names)expect((await client.query('SELECT to_jsonb(t) AS row FROM '+name+' t')).rows.map(r=>r.row),name).toEqual(before.get(name));
+   for(const name of ['inventory_coating_consumptions','inventory_coating_allocations'])expect((await client.query('SELECT count(*)::int AS n FROM '+name)).rows[0].n).toBe(0);
+   const after=await f.get(`/inventory/room-materials/coating/slurry?deviceId=${f.actors[5].device}`,5);expect(after.statusCode,after.body).toBe(200);expect(after.json().items[0]).toMatchObject({received:400,consumed:0,remaining:400,revision:1});
+   const replay=await f.post('/inventory/room-handoffs/acknowledgements',received.receiptRequest,5);expect(replay.statusCode,replay.body).toBe(200);expect(replay.json().receipt).toEqual(received.receipt);
+  }finally{await f?.app.close();await f?.pool.end();await client.query('ROLLBACK');await client.query('RESET search_path');await client.query('DROP SCHEMA '+schema+' CASCADE');client.release();await admin.end();}
+ },30000);
+
 });

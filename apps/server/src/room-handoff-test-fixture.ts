@@ -45,5 +45,48 @@ export async function createRoomHandoffFixture(searchPath?: string) {
     expect(r.statusCode, r.body).toBe(201);
     return {stockId, consumption: r.json().consumption};
   }
-  return {...f, consumed};
+  async function receivedSlurry() {
+    const {stockId, consumption} = await consumed();
+    const output = {
+      operationId: randomUUID(),
+      deviceId: f.actors[4].device,
+      consumptionId: consumption.operationId,
+      outputs: [{id: randomUUID(), materialId: f.material, quantity: 900}],
+      scrapMg: 0,
+      measuredLossMg: 50,
+      unknownMg: 50,
+      basis: 'weighed-slurry-mass',
+      specificationReference: 'Synthetic approved product card',
+      observedAt: Date.now(),
+      reason: 'Independent output weighing',
+      evidence: 'Synthetic net output observation',
+    };
+    const declared = await f.post('/inventory/room-outputs/slurry', output, 4);
+    expect(declared.statusCode, declared.body).toBe(201);
+    const offer = {
+      operationId: randomUUID(),
+      deviceId: f.actors[4].device,
+      outputLotId: output.outputs[0].id,
+      quantity: 400,
+      expectedSourceRevision: 1,
+      recipientId: f.actors[5].id,
+      destinationStepNumber: 2,
+      reason: 'Explicit actual transfer',
+      evidence: 'Synthetic transfer container',
+    };
+    expect((await f.post('/inventory/room-handoffs', offer, 4)).statusCode).toBe(201);
+    const receiptRequest = {
+      operationId: randomUUID(),
+      deviceId: f.actors[5].device,
+      handoffId: offer.operationId,
+      kind: 'receive',
+      observedQuantity: 400,
+      reason: 'Independent exact receipt',
+      evidence: 'Synthetic Coating scale',
+    };
+    const accepted = await f.post('/inventory/room-handoffs/acknowledgements', receiptRequest, 5);
+    expect(accepted.statusCode, accepted.body).toBe(201);
+    return {stockId, consumption, output, offer, receiptRequest, receipt: accepted.json().receipt};
+  }
+  return {...f, consumed, receivedSlurry};
 }

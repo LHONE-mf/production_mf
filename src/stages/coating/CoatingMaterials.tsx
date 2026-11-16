@@ -13,11 +13,13 @@ import {saveReceivingDraft} from '../../core/sync/inventoryReceiving';
 import {measuredMg, type CustodyPage} from '../../core/sync/roomCustody';
 import {
   loadCoatingSlurry,
+  loadCoatingConsumptions,
   freezeCoatingConsumption,
   sendCoatingConsumption,
   coatingConsumptionProposals,
   type CoatingSlurrySource,
   type CoatingConsumptionRequest,
+  type CoatingConsumption,
 } from '../../core/sync/coatingConsumption';
 import {useOutputDraft, outputButton as button, outputControl as control} from '../_common/useOutputDraft';
 const frame = 'min-w-0 space-y-2 rounded border border-slate-600 p-3';
@@ -79,6 +81,7 @@ export function CoatingMaterialsPanel({session, scope, localActorId}: Props) {
       [scopeKey, localActorId],
     ) ?? [];
   const [page, setPage] = useState<CustodyPage<CoatingSlurrySource>>(),
+    [history, setHistory] = useState<CustodyPage<CoatingConsumption>>(),
     [step, setStep] = useState(''),
     [formKey, setFormKey] = useState(''),
     [busy, setBusy] = useState(false),
@@ -106,8 +109,15 @@ export function CoatingMaterialsPanel({session, scope, localActorId}: Props) {
     }
   }
   async function refresh() {
-    const p = await loadCoatingSlurry(session, scope);
-    if (alive.current) setPage(p);
+    const [p, h] = await Promise.all([
+      loadCoatingSlurry(session, scope),
+      loadCoatingConsumptions(session, scope),
+    ]);
+    if (p.epoch !== h.epoch) throw Error('История изменилась; исходные формы сохранены');
+    if (alive.current) {
+      setPage(p);
+      setHistory(h);
+    }
   }
   const selected = forms.find((r) => r.key === formKey);
   return (
@@ -228,6 +238,40 @@ export function CoatingMaterialsPanel({session, scope, localActorId}: Props) {
         <fieldset disabled={busy} className="min-w-0">
           <ConsumptionForm key={selected.key} {...{scope, localActorId, initial: selected}} />
         </fieldset>
+      )}
+      <h4>Подтверждённые измерения на сервере</h4>
+      {history?.items.map((c) => (
+        <article className={frame} key={c.operationId}>
+          <p>
+            {c.actualMg / 1000} г · {c.reference} · {c.operationId}
+          </p>
+          <p>
+            Наблюдение {new Date(c.observedAt).toLocaleString()} · исполнитель {c.actorId} · записано{' '}
+            {c.recordedAt}
+          </p>
+          <p>
+            {c.reason} · {c.evidence}
+          </p>
+          <details>
+            <summary className="min-h-11 py-2">Измерение и исходные приёмки</summary>
+            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(c, null, 2)}</pre>
+          </details>
+        </article>
+      ))}
+      {history?.nextAfter && (
+        <button
+          className={button}
+          disabled={busy}
+          onClick={() =>
+            void work(async () => {
+              const h = await loadCoatingConsumptions(session, scope, history.nextAfter!);
+              if (h.epoch !== history.epoch) throw Error('История изменилась');
+              if (alive.current) setHistory({...h, items: [...history.items, ...h.items]});
+            })
+          }
+        >
+          Следующие измерения Coating
+        </button>
       )}
       <h4>Исходные предложения расхода Coating</h4>
       {proposals.map((r) => (

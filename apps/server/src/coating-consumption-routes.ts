@@ -102,19 +102,17 @@ export function registerCoatingConsumptionRoutes(app: FastifyInstance, pool: Poo
               [actor.organization_id, q.after ?? zero, 'receive', actor.role, actor.id, q.limit + 1],
             )
           ).rows;
-          const items = rows
-            .slice(0, q.limit)
-            .map((r) => ({
-              ...r.snapshot,
-              productionBatchId: r.production_batch_id,
-              stepNumber: r.destination_step,
-              materialId: r.material_id,
-              materialCode: r.material_code,
-              materialName: r.display_name,
-              batchCode: r.batch_code,
-              eligible: r.eligible,
-              unit: 'mg',
-            }));
+          const items = rows.slice(0, q.limit).map((r) => ({
+            ...r.snapshot,
+            productionBatchId: r.production_batch_id,
+            stepNumber: r.destination_step,
+            materialId: r.material_id,
+            materialCode: r.material_code,
+            materialName: r.display_name,
+            batchCode: r.batch_code,
+            eligible: r.eligible,
+            unit: 'mg',
+          }));
           return {
             organizationId: actor.organization_id,
             actorId: actor.id,
@@ -124,6 +122,49 @@ export function registerCoatingConsumptionRoutes(app: FastifyInstance, pool: Poo
             items,
             hasMore: rows.length > q.limit,
             nextAfter: rows.length > q.limit ? items.at(-1)!.receipt.operationId : null,
+          };
+        },
+      );
+    } catch (error) {
+      const e = custodyFailure(error);
+      return reply.code(e.status).send(e.body);
+    }
+  });
+  app.get('/inventory/room-materials/coating/consumptions', async (request, reply) => {
+    const parsed = page.safeParse(request.query);
+    if (!parsed.success) return reply.code(400).send({error: 'invalid_coating_use_history'});
+    const q = parsed.data;
+    try {
+      return await issueTransaction(
+        pool,
+        request.headers.authorization,
+        request.headers['x-device-proof'],
+        q.deviceId,
+        false,
+        undefined,
+        async (client, actor, _level, epoch) => {
+          const rows = (
+            await client.query(
+              `SELECT c.operation_id,c.result_payload FROM inventory_coating_consumptions c
+       JOIN production_batches b ON b.organization_id=c.organization_id AND b.id=c.production_batch_id
+       JOIN production_orders o ON o.organization_id=b.organization_id AND o.id=b.order_id
+       JOIN process_route_steps s ON s.organization_id=o.organization_id AND s.route_id=o.route_id AND s.route_version=o.route_version AND s.step_number=c.step_number AND s.electrode_line=CASE WHEN b.material_line='cell' THEN 'common' ELSE b.material_line END
+       WHERE c.organization_id=$1 AND c.operation_id>$2 AND s.stage='coating'
+       AND ($3='chief' OR (c.actor_id=$4 OR $3='master') AND EXISTS(SELECT 1 FROM user_workshop_memberships w WHERE w.organization_id=c.organization_id AND w.user_id=$4 AND w.workshop_id=s.workshop_id))
+       ORDER BY c.operation_id LIMIT $5`,
+              [actor.organization_id, q.after ?? zero, actor.role, actor.id, q.limit + 1],
+            )
+          ).rows;
+          const items = rows.slice(0, q.limit).map((r) => r.result_payload);
+          return {
+            organizationId: actor.organization_id,
+            actorId: actor.id,
+            deviceId: q.deviceId,
+            epoch,
+            postingEnabled: (await inventoryStream(client, actor.organization_id)).posting_enabled,
+            items,
+            hasMore: rows.length > q.limit,
+            nextAfter: rows.length > q.limit ? items.at(-1)!.operationId : null,
           };
         },
       );
