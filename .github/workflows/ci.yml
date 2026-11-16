@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feat/hybrid-server-foundation, feat/storage-inventory-foundation]
   pull_request:
-    branches: [main, feat/hybrid-server-foundation]
+    branches: [main, feat/hybrid-server-foundation, feat/material-flow-authoritative-wip]
   workflow_dispatch:
 
 permissions:
@@ -97,8 +97,9 @@ jobs:
         run: |
           mkdir -p /tmp/storage-artifacts
           export WIP_BROWSER_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
-          npm test -- src/room-materials.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
+          npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
           cp -r /tmp/production-mf-wip-browser /tmp/storage-artifacts/room-material-browser
+          cp -r /tmp/production-mf-custody-browser /tmp/storage-artifacts/room-custody-browser
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash
