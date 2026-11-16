@@ -74,3 +74,20 @@ it('never prepares a privileged action from an issue card belonging to a previou
   await expect(prepareInventoryIssue(session,scope,'local',action,{issue},epoch)).rejects.toThrow('перепривязано');
   expect(await inventoryOutbox.receivingDrafts.count()).toBe(0);expect(fetch).toHaveBeenCalledTimes(1);
 });
+
+it('freezes tape application and operation attribution offline and refuses altered metadata acknowledgements',async()=>{
+ const tapeSpecification={application:'coating_support' as const,widthMm:'12.50',thicknessUm:'25.00',reference:'Synthetic drawing'};
+ const tapeIntent={...intent,tapeSpecification,operationReference:'Synthetic Coating card',quantity:2};
+ const row=await freezeInventoryIssue(scope,'local',context,tapeIntent,{unit:'rolls',workshopId:'coating'});
+ inventoryOutbox.close();await inventoryOutbox.open();
+ const expected=JSON.parse(row.fields.expected);let wrong=true;const posts:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:URL,init?:RequestInit)=>{
+  if(url.pathname.endsWith('/context'))return response(context);
+  posts.push(String(init?.body));return response({status:'duplicate',operationId:intent.operationId,issue:{...expected,operationReference:wrong?'Different operation':tapeIntent.operationReference}});
+ }));
+ await expect(sendInventoryIssue(session,scope,'local',row.key)).rejects.toThrow('acknowledgement');
+ expect((await inventoryIssueProposals(scope,'local'))[0].fields.state).toBe('pending');wrong=false;
+ await sendInventoryIssue(session,scope,'local',row.key);expect(posts[0]).toBe(posts[1]);
+ expect(JSON.parse(posts[0])).toMatchObject({tapeSpecification,operationReference:tapeIntent.operationReference});
+ await expect(freezeInventoryIssue(scope,'local',context,{...tapeIntent,operationId:crypto.randomUUID(),operationReference:undefined},{unit:'rolls',workshopId:'coating'})).rejects.toThrow();
+});

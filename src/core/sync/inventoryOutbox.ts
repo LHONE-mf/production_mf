@@ -35,7 +35,7 @@ export interface InventoryReceiptRequest {
 }
 export interface InventoryStockSnapshot {
   stockId: string;materialId: string;manufacturerLot: string;
-  unit: 'mg'|'ul'|'mm'|'pieces';locationId: string;
+  unit: 'mg'|'ul'|'mm'|'pieces'|'rolls';locationId: string;
   quality: 'quarantine'|'released'|'blocked';
   onHand: number;reserved: number;revision: number;available: number;
   expiresAt?:string;manufacturedOn?:string;disposition?:'release'|'hold'|'block'|'reject';
@@ -113,7 +113,7 @@ export function validateInventoryStock(stock:unknown):asserts stock is Inventory
   if(!stock||typeof stock!=='object')throw new Error('Invalid inventory stock');
   const s=stock as InventoryStockSnapshot;
   if(!uuid.test(s.stockId)||!uuid.test(s.materialId)||!uuid.test(s.locationId)||
-      !text(s.manufacturerLot,200)||!['mg','ul','mm','pieces'].includes(s.unit)||
+      !text(s.manufacturerLot,200)||!['mg','ul','mm','pieces','rolls'].includes(s.unit)||
       !['quarantine','released','blocked'].includes(s.quality)||
       !Number.isSafeInteger(s.onHand)||s.onHand<0||!Number.isSafeInteger(s.reserved)||
       s.reserved<0||s.reserved>s.onHand||!positive(s.revision)||

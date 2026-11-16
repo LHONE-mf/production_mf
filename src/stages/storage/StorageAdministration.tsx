@@ -1,3 +1,4 @@
+import {tapeApplications, tapeDescription, type TapeSpecification} from '../../core/sync/inventoryTape';
 import {StorageCatalogEditor} from './StorageCatalogEditor';
 import React, { useEffect, useRef, useState } from 'react';
 import type { HybridSession } from '../../core/sync/hybridClient';
@@ -15,7 +16,7 @@ function summary(row: ReceivingDraft) {
     if(row.fields.kind==='alert_policy')return `Порог материала ${request.materialId}: ${request.lowAvailable} базовых единиц · срок ${request.expiryDays} дней · ${request.active?'Активен':'Выключен'} · версия ${request.expectedRevision} · ${request.reason}`;
     if(row.fields.kind==='material_change')return `Изменение материала ${request.id}: ${request.name} · артикул ${request.supplierReference??'не указан'} · ${request.active?'Активен':'Неактивен'} · версия ${request.expectedRevision} · ${request.reason}`;
     if(row.fields.kind==='location_change')return `Изменение места ${request.id}: ${request.label} · ${request.active?'Активно':'Неактивно'} · версия ${request.expectedRevision} · ${request.reason}`;
-    return row.fields.kind === 'material' ? `Материал: ${request.code} · ${request.name} · ${request.baseUnit}` : row.fields.kind === 'location' ? `Место: ${request.label}` : `Доступ сотрудника ${request.userId}: ${request.level === 'manager' ? 'Менеджер склада' : 'Оператор склада'} · ${request.action === 'grant' ? 'Выдать' : 'Отозвать'}`;
+    return row.fields.kind === 'material' ? `Материал: ${request.code} · ${request.name} · ${request.baseUnit}${request.tapeSpecification ? ' · '+tapeDescription(request.tapeSpecification) : ''}` : row.fields.kind === 'location' ? `Место: ${request.label}` : `Доступ сотрудника ${request.userId}: ${request.level === 'manager' ? 'Менеджер склада' : 'Оператор склада'} · ${request.action === 'grant' ? 'Выдать' : 'Отозвать'}`;
   } catch { return 'Повреждённое предложение сохранено для сверки'; }
 }
 export function StorageAdministration({ scope, session, localActorId, access, materials, locations, onChanged }: {
@@ -23,6 +24,7 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
   materials: InventoryMaterial[]; locations: InventoryLocation[]; onChanged: () => void;
 }) {
   const [material, setMaterial] = useState({ code: '', name: '', category: 'raw_material' as InventoryMaterial['category'], baseUnit: 'mg' as InventoryMaterial['baseUnit'] });
+  const [isTape, setIsTape] = useState(false), [tapeApplication, setTapeApplication] = useState(''), [widthMm, setWidthMm] = useState(''), [thicknessUm, setThicknessUm] = useState(''), [tapeReference, setTapeReference] = useState('');
   const [place, setPlace] = useState({ label: '', kind: 'warehouse' as InventoryLocation['kind'], parentId: '' });
   const [users, setUsers] = useState<WarehouseUser[]>([]), [after, setAfter] = useState<string | null>(null);
   const [target, setTarget] = useState(''), [level, setLevel] = useState<'manager' | 'operator'>('operator'), [action, setAction] = useState<'grant' | 'revoke'>('grant');
@@ -63,15 +65,23 @@ export function StorageAdministration({ scope, session, localActorId, access, ma
     <summary className="min-h-11 cursor-pointer py-2">Администрирование склада · {levels[access.level]}</summary>
     <p>Создание справочников и изменение доступа доступны онлайн после проверки устройства. Проверка сохраняет отдельное предложение; отправка требует отдельного подтверждения. Неизвестный ответ повторяется с тем же ID.</p>
     <label className="block">Поиск по загруженным справочникам<input aria-label="Поиск по загруженным справочникам" className={control} value={search} onChange={event => setSearch(event.target.value)} /></label>
-    <details><summary className="min-h-11 cursor-pointer py-2">Материалы ({materials.length})</summary>{materials.filter(row => `${row.code} ${row.name} ${row.category} ${row.supplierReference??''}`.toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{row.code} · {row.name} · {row.category} · {row.baseUnit} · {row.active===false?'Неактивен':'Активен'} · Артикул: {row.supplierReference??'не указан'} · Версия {row.revision??'не передана'} · {row.id}</p>)}</details>
+    <details><summary className="min-h-11 cursor-pointer py-2">Материалы ({materials.length})</summary>{materials.filter(row => `${row.code} ${row.name} ${row.category} ${row.supplierReference??''}`.toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{row.code} · {row.name} · {row.category} · {row.baseUnit} {row.tapeSpecification && '· '+tapeDescription(row.tapeSpecification)} · {row.active===false?'Неактивен':'Активен'} · Артикул: {row.supplierReference??'не указан'} · Версия {row.revision??'не передана'} · {row.id}</p>)}</details>
     <details><summary className="min-h-11 cursor-pointer py-2">Места ({locations.length})</summary>{locations.filter(row => inventoryLocationPath(locations, row.id).toLowerCase().includes(search.toLowerCase())).map(row => <p key={row.id}>{inventoryLocationPath(locations, row.id)} · {row.active ? 'Активно' : 'Неактивно'} · {row.id}</p>)}</details>
-    <form aria-label="Новый материал" className="space-y-2" onSubmit={event => { event.preventDefault(); void prepare({ resource: 'material', ...material, code: material.code.trim(), name: material.name.trim() }); }}>
+    <form aria-label="Новый материал" className="space-y-2" onSubmit={event => { event.preventDefault(); void prepare({ resource: 'material', ...material, code: material.code.trim(), name: material.name.trim(), ...(isTape ? {category:'component',baseUnit:'rolls',tapeSpecification:{application:tapeApplication as TapeSpecification['application'],widthMm:widthMm.trim().replace(',','.'),thicknessUm:thicknessUm.trim().replace(',','.'),reference:tapeReference.trim()}} : {}) }); }}>
       <h4>Новый материал</h4><p>Код и базовая единица задают отдельную идентичность. Повторный код не создаёт другой материал.</p>
       <fieldset disabled={busy} className="space-y-2">
         <label>Код материала<input aria-label="Код материала" required maxLength={100} className={control} value={material.code} onChange={event => setMaterial({ ...material, code: event.target.value })} /></label>
         <label>Название материала<input aria-label="Название материала" required maxLength={200} className={control} value={material.name} onChange={event => setMaterial({ ...material, name: event.target.value })} /></label>
-        <label>Категория материала<select aria-label="Категория материала" className={control} value={material.category} onChange={event => setMaterial({ ...material, category: event.target.value as InventoryMaterial['category'] })}>{[['raw_material', 'Сырьё'], ['component', 'Компонент'], ['electrode', 'Электрод'], ['cell', 'Ячейка']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>Базовая единица<select aria-label="Базовая единица" className={control} value={material.baseUnit} onChange={event => setMaterial({ ...material, baseUnit: event.target.value as InventoryMaterial['baseUnit'] })}>{['mg', 'ul', 'mm', 'pieces'].map(unit => <option key={unit}>{unit}</option>)}</select></label>
+        <label className="flex min-h-11 items-center gap-2"><input type="checkbox" checked={isTape} onChange={e=>{setIsTape(e.target.checked);if(e.target.checked)setMaterial({...material,category:'component',baseUnit:'rolls'});}}/>Полиимидная лента · выдача целыми рулонами</label>
+        {isTape && <div className="space-y-2">
+          <p>Для каждого назначения, ширины и толщины создайте отдельный код. Спецификация сохраняется без последующего изменения. Длина рулона и расход здесь не рассчитываются.</p>
+          <label>Назначение ленты<select required aria-label="Назначение ленты" className={control} value={tapeApplication} onChange={e=>setTapeApplication(e.target.value)}><option value="">Выберите применение</option>{Object.entries(tapeApplications).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+          <label>Ширина ленты (мм)<input required inputMode="decimal" maxLength={25} aria-label="Ширина ленты (мм)" className={control} value={widthMm} onChange={e=>setWidthMm(e.target.value)}/></label>
+          <label>Толщина ленты (мкм)<input required inputMode="decimal" maxLength={25} aria-label="Толщина ленты (мкм)" className={control} value={thicknessUm} onChange={e=>setThicknessUm(e.target.value)}/></label>
+          <label>Документ спецификации ленты<input required maxLength={200} aria-label="Документ спецификации ленты" className={control} value={tapeReference} onChange={e=>setTapeReference(e.target.value)}/></label>
+        </div>}
+        <label>Категория материала<select aria-label="Категория материала" disabled={isTape} className={control} value={material.category} onChange={event => setMaterial({ ...material, category: event.target.value as InventoryMaterial['category'] })}>{[['raw_material', 'Сырьё'], ['component', 'Компонент'], ['electrode', 'Электрод'], ['cell', 'Ячейка']].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>Базовая единица<select aria-label="Базовая единица" disabled={isTape} className={control} value={material.baseUnit} onChange={event => setMaterial({ ...material, baseUnit: event.target.value as InventoryMaterial['baseUnit'] })}>{['mg', 'ul', 'mm', 'pieces', 'rolls'].map(unit => <option key={unit}>{unit}</option>)}</select></label>
         <button className={button}>Проверить новый материал</button>
       </fieldset>
     </form>

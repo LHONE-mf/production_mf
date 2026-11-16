@@ -39,7 +39,7 @@ export async function loadIssueReconciliation(session:HybridSession,scope:Invent
   if(!record(row)||['issueId',...filterKeys,'dispatchOperationId','receiptOperationId'].some(key=>typeof row[key]!=='string'||!uuid.test(row[key] as string))||
    String(row.issueId)<=prior||!safe(row.stepNumber)||row.stepNumber<1||
    ['workshopId','manufacturerLot','materialCode','materialName','batchCode','recipientName'].some(key=>typeof row[key]!=='string'||(row[key] as string).length>2000)||
-   !['mg','ul','mm','pieces'].includes(String(row.unit))||
+   !['mg','ul','mm','pieces','rolls'].includes(String(row.unit))||
    ['issued','returned','scrapped','outstanding'].some(key=>!safe(row[key]))||row.issued===0||
    !(row.consumed===null&&row.consumptionStatus==='not_recorded'||safe(row.consumed)&&row.consumed>0&&row.consumptionStatus==='recorded'))throw Error('Invalid reconciliation row');
   const item=row as unknown as ReconciliationRow;

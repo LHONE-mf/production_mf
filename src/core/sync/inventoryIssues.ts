@@ -13,7 +13,7 @@ interface Bases { issue?: InventoryIssue; stock?: InventoryStockSnapshot; unit?:
 function expectedIssue(scope: InventoryScope, intent: InventoryIssueIntent, bases: Bases, checkExpiry = false): InventoryIssue {
   validateIssueIntent(intent, scope);
   if (intent.kind === 'request') {
-    const result: InventoryIssue = { id: intent.issueId, materialId: intent.materialId, productionBatchId: intent.productionBatchId, stepNumber: intent.stepNumber, workshopId: bases.workshopId!, recipientId: intent.recipientId, requestedBy: scope.actorId, quantity: intent.quantity, unit: bases.unit!, state: 'requested', revision: 1, stockId: null, source: null, approvalOperationId: null, approvedStockRevision: null, approvedBy: null, approvedDeviceId: null, dispatchOperationId: null, receiptOperationId: null }; validateIssue(result); return result;
+    const result: InventoryIssue = { id: intent.issueId, materialId: intent.materialId, productionBatchId: intent.productionBatchId, stepNumber: intent.stepNumber, workshopId: bases.workshopId!, recipientId: intent.recipientId, requestedBy: scope.actorId, quantity: intent.quantity, unit: bases.unit!, ...(intent.tapeSpecification ? {tapeSpecification: intent.tapeSpecification, operationReference: intent.operationReference} : {}), state: 'requested', revision: 1, stockId: null, source: null, approvalOperationId: null, approvedStockRevision: null, approvedBy: null, approvedDeviceId: null, dispatchOperationId: null, receiptOperationId: null }; validateIssue(result); return result;
   }
   validateIssue(bases.issue); const base = bases.issue; if (base.id !== intent.issueId || base.revision !== intent.expectedIssueRevision) throw Error('Issue intent changed');
   const result = { ...base, revision: base.revision + 1 };

@@ -1,3 +1,4 @@
+import {tapeDescription} from '../../core/sync/inventoryTape';
 import {inventoryLocationPath} from '../../core/sync/inventoryCatalogClient';
 import React,{useEffect,useRef,useState} from 'react';
 import {inventoryOutbox,inventoryScopeKey,type InventoryScope,type ReceivingDraft} from '../../core/sync/inventoryOutbox';
@@ -46,10 +47,11 @@ function ScopedReceiving({scope,session,materials,locations,onQueued,draftKey}:{
  <h4>Приёмка в подтверждённый склад</h4><p>Новая упаковка получает отдельный ID, даже для той же партии производителя. Сохранение в очередь не меняет остаток. После подтверждения сервером — карантин.</p>
  <fieldset disabled={!!draft?.operationId||saving&&preview} className="space-y-2">
  <label className="block">Материал приёмки<select aria-label="Материал приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.materialId} onChange={e=>edit('materialId',e.target.value)}><option value="">Выберите материал</option>{materials.filter(m=>m.active!==false).map(m=><option key={m.id} value={m.id}>{m.name} ({m.baseUnit})</option>)}</select></label>
+ {material?.tapeSpecification && <p>{tapeDescription(material.tapeSpecification)} · Укажите число целых рулонов. Приёмка не определяет длину или расход.</p>}
  {input('manufacturerLot','Партия производителя',200)}
  <label className="block">Место приёмки<select aria-label="Место приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.locationId} onChange={e=>edit('locationId',e.target.value)}><option value="">Выберите место</option>{locations.filter(l=>l.active).map(l=><option key={l.id} value={l.id}>{inventoryLocationPath(locations,l.id)} · {l.id.slice(0,8)}</option>)}</select></label>
  {input('quantity','Количество приёмки',30)}
- <label className="block">Единица приёмки<select aria-label="Единица приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.unit||material?.baseUnit||''} onChange={e=>edit('unit',e.target.value)}><option value="">Выберите единицу</option>{(material?.baseUnit==='mg'?['mg','g','kg']:material?.baseUnit==='ul'?['ul','ml','L']:material?.baseUnit==='mm'?['mm','m']:['pieces']).map(u=><option key={u}>{u}</option>)}</select></label>
+ <label className="block">Единица приёмки<select aria-label="Единица приёмки" className="block min-h-11 w-full bg-slate-900" value={fields.unit||material?.baseUnit||''} onChange={e=>edit('unit',e.target.value)}><option value="">Выберите единицу</option>{(material?.baseUnit==='mg'?['mg','g','kg']:material?.baseUnit==='ul'?['ul','ml','L']:material?.baseUnit==='mm'?['mm','m']:material?.baseUnit==='rolls'?['rolls']:['pieces']).map(u=><option key={u}>{u}</option>)}</select></label>
  <p>Даты необязательны. Годность действует до конца указанной даты UTC; новые поступления остаются в карантине.</p>{input('manufacturedOn','Дата изготовления (UTC)',10)}{input('expiresOn','Годен по (дата UTC)',10)}
  {input('supplier','Поставщик',200)}{input('receiptReference','Документ приёмки',200)}{input('reason','Основание приёмки / свидетельство',2000)}
  </fieldset>

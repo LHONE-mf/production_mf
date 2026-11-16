@@ -52,3 +52,8 @@ it('preserves optional manufacture/expiry intent and uses an inclusive UTC expir
  expect((await inventoryOutbox.operations.get(id))?.request).toMatchObject({expiresOn:'2099-12-31',manufacturedOn:'2026-01-01'});
  expect(await inventoryOutbox.stocks.count()).toBe(0);
 });
+
+it('counts whole rolls without converting pieces, length or mass into rolls',()=>{
+ expect(toInventoryBaseUnits('3','rolls','rolls')).toBe(3);
+ for(const [q,u,b] of [['0.5','rolls','rolls'],['1','pieces','rolls'],['1','mm','rolls'],['1','mg','rolls'],['1','rolls','pieces']])expect(()=>toInventoryBaseUnits(q,u,b)).toThrow();
+});

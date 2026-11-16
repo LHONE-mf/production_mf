@@ -1,3 +1,4 @@
+import {tapeDescription} from '../../core/sync/inventoryTape';
 import React, { useState } from 'react';
 import type { HybridSession } from '../../core/sync/hybridClient';
 import type { InventoryScope, InventoryStockSnapshot } from '../../core/sync/inventoryOutbox';
@@ -18,6 +19,7 @@ export function InventoryIssueCard({ session, scope, context, localActorId, issu
   async function loadSources(next?: string) { const page = await loadIssueSources(session, scope, context, issue, next); setSources(rows => next ? [...rows, ...page.items] : page.items); setAfter(page.nextAfter); }
   return <article aria-label={'Выдача ' + issue.id} className="min-w-0 space-y-2 break-words rounded border border-slate-600 p-3">
     <h4 className="font-semibold">{issueStates[issue.state]} · {issue.quantity} {issue.unit}</h4>
+    {issue.tapeSpecification && <p>{tapeDescription(issue.tapeSpecification)} · Операция: {issue.operationReference}</p>}
     <p>Запрос: {issue.id} · Версия {issue.revision}</p><p>Материал: {labels ? `${labels.materialName} (${labels.materialCode})` : issue.materialId} · Производственная партия: {labels?.batchCode ?? issue.productionBatchId} · Шаг {issue.stepNumber} · Цех: {issue.workshopId}</p>
     <p>Заявитель: {issue.requestedBy} · Назначенный получатель: {labels?.recipientName ?? issue.recipientId} ({issue.recipientId})</p>
     {issue.source && <p>Контейнер: {issue.source.stockId} · Партия производителя: {issue.source.manufacturerLot} · Место: {issue.source.locationId} {issue.source.expiresAt && <>· Годность до (UTC): {issue.source.expiresAt}</>}</p>}

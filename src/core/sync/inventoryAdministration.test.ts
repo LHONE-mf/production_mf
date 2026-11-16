@@ -120,3 +120,20 @@ it('rejects unexpected material alert policy history, malformed values and inval
  await expect(loadWarehouseAlertPolicies(session,scope)).rejects.toThrow('policy');
  await expect(loadWarehouseAlertPolicies(session,scope,undefined,101)).rejects.toThrow('page');
 });
+
+it('retains exact tape dimensions through reopen and rejects a changed specification acknowledgement',async()=>{
+ const tapeSpecification={application:'coating_support' as const,widthMm:'12.50',thicknessUm:'25.00',reference:'Synthetic supplier drawing'};
+ let wrong=true;const posts:string[]=[];
+ vi.stubGlobal('fetch',vi.fn(async(url:URL,init?:RequestInit)=>{
+  if(url.pathname==='/inventory/access/me')return response(access);
+  if(url.pathname==='/inventory/stream')return response(stream);
+  posts.push(String(init?.body));const body=JSON.parse(String(init?.body));
+  return response({...body,tapeSpecification:{...body.tapeSpecification,widthMm:wrong?'12.5':'12.50'}});
+ }));
+ const frozen=await freezeInventoryAdministration(session,scope,'local',{...draft,baseUnit:'rolls',tapeSpecification});
+ inventoryOutbox.close();await inventoryOutbox.open();
+ await expect(sendInventoryAdministration(session,scope,'local',frozen.key)).rejects.toThrow('acknowledgement');
+ expect((await inventoryOutbox.receivingDrafts.get(frozen.key))?.fields.state).toBe('pending');wrong=false;
+ await sendInventoryAdministration(session,scope,'local',frozen.key);
+ expect(posts[0]).toBe(posts[1]);expect(JSON.parse(posts[0]).tapeSpecification).toEqual(tapeSpecification);
+});

@@ -83,7 +83,7 @@ function validateMovementPage(value:unknown,epoch:string,after:number,until:numb
      !optionalId(raw.locationId)||!optionalId(raw.fromLocationId)||
      !optionalId(raw.toLocationId)||!optionalText(raw.materialCode)||
      !optionalText(raw.materialName)||!optionalText(raw.manufacturerLot)||
-     (raw.unit!==null&&!['mg','ul','mm','pieces'].includes(String(raw.unit))))
+     (raw.unit!==null&&!['mg','ul','mm','pieces','rolls'].includes(String(raw.unit))))
     throw Error('Invalid movement report row');
   previous=raw.sequence;
   items.push({...raw,audit:movementAudit(raw.audit,raw)} as unknown as MovementRow);

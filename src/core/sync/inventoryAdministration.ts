@@ -1,3 +1,4 @@
+import {sameTapeSpecification} from './inventoryTape';
 import { inventoryRequest, preflightInventoryStream } from './inventoryClient';
 import { loadWarehouseAccess, material, location, type InventoryMaterial, type InventoryLocation, type InventoryPage } from './inventoryCatalogClient';
 import { inventoryOutbox, inventoryScopeKey, type InventoryScope, type ReceivingDraft } from './inventoryOutbox';
@@ -5,7 +6,7 @@ import { withInventorySync } from './inventorySyncLock';
 import type { HybridSession } from './hybridClient';
 
 export type InventoryAdminDraft =
-  | ({ resource: 'material' } & Pick<InventoryMaterial, 'code' | 'name' | 'category' | 'baseUnit'>)
+  | ({ resource: 'material' } & Pick<InventoryMaterial, 'code' | 'name' | 'category' | 'baseUnit' | 'tapeSpecification'>)
   | ({ resource: 'location' } & Pick<InventoryLocation, 'label' | 'kind' | 'parentId'>)
   | { resource: 'material_change'; id: string; expectedRevision: number; name: string; supplierReference: string | null; active: boolean; reason: string }
   | { resource: 'location_change'; id: string; expectedRevision: number; label: string; parentId: string | null; active: boolean; reason: string }
@@ -37,7 +38,7 @@ function validatedBody(kind: string, body: unknown, scope: InventoryScope): asse
     return;
   }
   if (kind === 'material' ? !material(body) : kind === 'location' ? !location({ ...body, active: true }) : kind !== 'access' || !uuid.test(String(body.userId)) || !['manager', 'operator'].includes(String(body.level)) || !['grant', 'revoke'].includes(String(body.action))) throw Error('Invalid administration request');
-  const allowed = kind === 'material' ? ['id', 'deviceId', 'code', 'name', 'category', 'baseUnit'] : kind === 'location' ? ['id', 'deviceId', 'label', 'kind', 'parentId'] : ['changeId', 'deviceId', 'userId', 'level', 'action'];
+  const allowed = kind === 'material' ? ['id', 'deviceId', 'code', 'name', 'category', 'baseUnit', 'tapeSpecification'] : kind === 'location' ? ['id', 'deviceId', 'label', 'kind', 'parentId'] : ['changeId', 'deviceId', 'userId', 'level', 'action'];
   if (Object.keys(body).some(key => !allowed.includes(key))) throw Error('Unknown administration field');
 }
 export async function listInventoryAdministration(scope: InventoryScope, localActorId: string) {
@@ -82,7 +83,7 @@ export function sendInventoryAdministration(session: HybridSession, scope: Inven
       result.policy.active === body.active && result.policy.revision === Number(body.expectedRevision)+1 :
       row.fields.kind === 'access' ? result.changeId === body.changeId && ['confirmed', 'duplicate'].includes(String(result.status)) :
       row.fields.kind.endsWith('_change') ? (row.fields.kind === 'material_change' ? material(result) && ['name', 'supplierReference', 'active'].every(key => result[key] === body[key]) : location(result) && ['label', 'parentId', 'active'].every(key => result[key] === body[key])) && result.id === body.id && result.revision === Number(body.expectedRevision) + 1 :
-      row.fields.kind === 'material' ? material(result) && ['id', 'code', 'name', 'category', 'baseUnit'].every(key => result[key] === body[key]) :
+      row.fields.kind === 'material' ? material(result) && ['id', 'code', 'name', 'category', 'baseUnit'].every(key => result[key] === body[key]) && sameTapeSpecification(result.tapeSpecification, body.tapeSpecification) :
         ['id', 'parentId', 'label', 'kind'].every(key => result[key] === body[key]));
     if (!correct) throw Error('Invalid administration acknowledgement; original request retained');
     await inventoryOutbox.transaction('rw', inventoryOutbox.receivingDrafts, async () => {
