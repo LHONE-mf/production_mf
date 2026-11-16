@@ -1,3 +1,4 @@
+import {registerCoatingConsumptionRoutes} from './coating-consumption-routes.js';
 import {registerRoomCustodyRoutes} from './room-custody-routes.js';
 import {registerRoomMaterialRoutes} from './room-material-routes.js';
 import {registerInventoryCellOutputDiscovery} from './inventory-cell-output-discovery.js';
@@ -95,6 +96,7 @@ export function buildApp(pool: Pool) {
   registerInventoryOutcomeRoutes(app, pool);
   registerRoomMaterialRoutes(app,pool);
   registerRoomCustodyRoutes(app,pool);
+  registerCoatingConsumptionRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);
   registerInventoryIdentificationRoutes(app, pool);
