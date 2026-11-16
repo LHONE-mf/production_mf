@@ -143,6 +143,10 @@ and receipt, retries identical bodies and checks one receipt/no warehouse change
 A receiver discrepancy stays visible before explicit recount. Screens are checked
 at **390, 412 and 1365** pixels. A delayed-form regression protects prior drafts. Deliberately removing its
 fieldset guard made that check fail; the guard was restored and the flow passed.
+Both room browser fixtures disable the app's fixed HMR socket and allow Vite
+to choose a free port. A parallel local run with port 5173 deliberately occupied
+passed both suites; this corrects the initial hosted port-collision failure.
+Screenshots/JSON are collected even when another browser fails.
 CI runs this browser with the earlier actual-use browser and existing Storage
 regressions, and uploads phone-readable screenshots/JSON/logs. Hosted results
 must identify their actual SHA; earlier PR #8 checks do not certify this increment.

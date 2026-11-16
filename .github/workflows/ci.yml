@@ -98,8 +98,14 @@ jobs:
           mkdir -p /tmp/storage-artifacts
           export WIP_BROWSER_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
           npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
-          cp -r /tmp/production-mf-wip-browser /tmp/storage-artifacts/room-material-browser
-          cp -r /tmp/production-mf-custody-browser /tmp/storage-artifacts/room-custody-browser
+      - name: Collect room browser evidence even on failure
+        if: ${{ always() }}
+        working-directory: .
+        shell: bash
+        run: |
+          mkdir -p /tmp/storage-artifacts
+          if [ -d /tmp/production-mf-wip-browser ]; then cp -r /tmp/production-mf-wip-browser /tmp/storage-artifacts/room-material-browser; fi
+          if [ -d /tmp/production-mf-custody-browser ]; then cp -r /tmp/production-mf-custody-browser /tmp/storage-artifacts/room-custody-browser; fi
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash

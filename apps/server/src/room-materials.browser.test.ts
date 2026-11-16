@@ -5,7 +5,7 @@ import {createInventoryHandoffFixture} from './inventory-test-fixture.js';
 describe.skipIf(!process.env.POSTGRES_TEST_URL||!process.env.WIP_BROWSER_MODULE)('Actual mobile Slurry material screen',()=>{
  it('preserves offline proposal, reopens, loses committed reply and retries the exact original body',async()=>{
   const viteModule=new URL('../../../node_modules/vite/dist/node/index.js',import.meta.url).href;
-  const {createServer}=await import(viteModule),vite=await createServer({root:new URL('../../../',import.meta.url).pathname,server:{host:'127.0.0.1',port:0}});await vite.listen();
+  const {createServer}=await import(viteModule),vite=await createServer({root:new URL('../../../',import.meta.url).pathname,server:{host:'127.0.0.1',port:5173,strictPort:false,hmr:false}});await vite.listen();
   const origin=new URL(vite.resolvedUrls.local[0]).origin;process.env.CORS_ALLOWED_ORIGINS=origin;
   const f=await createInventoryHandoffFixture(),file=new URL('../../../.wip-browser-'+randomUUID()+'.html',import.meta.url);
   const modulePath=process.env.WIP_BROWSER_MODULE!;

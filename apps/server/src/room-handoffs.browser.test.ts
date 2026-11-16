@@ -10,7 +10,7 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL || !process.env.WIP_BROWSER_MODUL
         {createServer} = await import(viteModule);
       const vite = await createServer({
         root: new URL('../../../', import.meta.url).pathname,
-        server: {host: '127.0.0.1', port: 0},
+        server: {host: '127.0.0.1', port: 5173, strictPort: false, hmr: false},
       });
       await vite.listen();
       const origin = new URL(vite.resolvedUrls.local[0]).origin;
