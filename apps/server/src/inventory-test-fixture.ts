@@ -4,7 +4,7 @@ import {Pool} from 'pg';
 import {buildApp} from './app.js';
 import {tokenHash} from './auth.js';
 /** Synthetic fixtures; every stock/QA/handoff transition uses the actual API. */
-export async function createInventoryHandoffFixture(searchPath?:string){
+export async function createInventoryHandoffFixture(searchPath?:string,withCoating=false){
   if(searchPath&&!/^room_upgrade_[a-f0-9]{32}$/.test(searchPath))throw Error('Invalid isolated test schema');
   const applicationName='inventory-outcome-'+randomUUID();
   const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL,application_name:applicationName,...(searchPath?{options:'-c search_path='+searchPath}:{}) }), app = buildApp(pool);
@@ -48,6 +48,11 @@ export async function createInventoryHandoffFixture(searchPath?:string){
     await pool.query("INSERT INTO process_routes(organization_id,id,code,name,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Issue route',$3)", [org, route, actors[0].id]);
     await pool.query('INSERT INTO process_route_versions(organization_id,route_id,version) VALUES($1,$2,1)', [org, route]);
     await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,1,'Weigh','slurry',$3,'cathode')", [org, route, workshop]);
+    if(withCoating){
+      await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop+'-coating']);
+      await pool.query('INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,$3)',[org,actors[5].id,workshop+'-coating']);
+      await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,2,'Coat','coating',$3,'cathode')",[org,route,workshop+'-coating']);
+    }
     await pool.query("UPDATE process_route_versions SET state='approved',approved_at=now(),approved_by=$3 WHERE organization_id=$1 AND route_id=$2", [org, route, actors[0].id]);
     await pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'NMC',$3,1,'released',1,'kg',$4)", [org, order, route, actors[0].id]);
     await pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'cathode','created',$4)", [org, batch, order, actors[0].id]);

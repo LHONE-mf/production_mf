@@ -1,3 +1,4 @@
+import {registerRoomCustodyRoutes} from './room-custody-routes.js';
 import {registerRoomMaterialRoutes} from './room-material-routes.js';
 import {registerInventoryCellOutputDiscovery} from './inventory-cell-output-discovery.js';
 import {registerInventoryCellOutputRoutes} from './inventory-cell-output-routes.js';
@@ -93,6 +94,7 @@ export function buildApp(pool: Pool) {
   registerInventoryIssueRoutes(app, pool);
   registerInventoryOutcomeRoutes(app, pool);
   registerRoomMaterialRoutes(app,pool);
+  registerRoomCustodyRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);
   registerInventoryIdentificationRoutes(app, pool);
