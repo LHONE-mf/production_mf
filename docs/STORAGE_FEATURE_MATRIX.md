@@ -193,3 +193,13 @@ S8 identification adds no stock schema or product dependency. It reuses the came
 ## S8 stock health first increment — 2026-11-14
 
 A read-only proof-bound PostgreSQL stock report and an explicitly refreshed mobile alert page with scoped CSV page export have been implemented. See [STORAGE_ALERTS.md](STORAGE_ALERTS.md). This covers ad hoc expiry and per-material available-quantity warnings only. Persistent thresholds, automated alerts, full ledger/audit reporting, all-pages export and S9/S10 remain pending. Verify exact-head CI before claiming acceptance.
+
+# Current tape specification / whole-roll issue increment — 2026-11-16
+
+[Polyimide tape](TAPE_ROLL_SPECIFICATIONS.md) adds whole-roll receiving and the
+existing approved issue path with immutable application/dimensions and explicit
+operation attribution. PostgreSQL 036; Dexie 24/outbox v7 unchanged. This
+supersedes earlier missing-roll-unit notes for catalogue/receiving/issues only.
+Actual tape use/partial-roll remainder, foil use, Coating output and other
+room/native/physical acceptance remain open. Historical entries retain their
+original source-specific scope.

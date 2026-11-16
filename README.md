@@ -97,7 +97,10 @@ when every local record can be discarded.
   [Measured Slurry output and direct Coating custody](docs/SLURRY_COATING_CUSTODY.md)
   add partial offers, explicit receipt/discrepancy and durable original retries.
   [Actual Coating Slurry use](docs/COATING_SLURRY_CONSUMPTION.md) settles measured
-  partial allocations against those received sources. Production
+  partial allocations against those received sources.
+  [Roll-issued tape specifications](docs/TAPE_ROLL_SPECIFICATIONS.md) preserve
+  application-specific width/thickness and operation attribution through approved
+  whole-roll issues. Actual partial-roll use/remainders remain open. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.
 

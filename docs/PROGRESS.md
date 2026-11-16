@@ -1,3 +1,27 @@
+## 2026-11-16 — Whole-roll tape specifications and approved issues
+
+- `feat/tape-roll-specifications` stacks on unchanged draft #10 (`639702b`),
+  then #9/#8. Main rechecked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](TAPE_ROLL_SPECIFICATIONS.md): exact whole-roll unit,
+  immutable per-SKU width/thickness/application/reference, explicit operation
+  attribution through request/reserve/approval/dispatch/recipient receipt.
+  Separate Coating support, Assembly tab insulation and Assembly winding tape;
+  no invented dimensions, roll length, consumption or partial remainder.
+- PostgreSQL 036 adds nullable metadata without changing original units/rows/ACKs.
+  Current device/tenant/route/QA/history/approval checks remain. Existing offline
+  proposal storage, Dexie 24/outbox v7, dependencies and legacy journals remain.
+- Local full regression: 746 frontend / 349 server checks before the final exact
+  operation-reference regression; all six tape API cases then pass, including
+  exact whitespace preservation. Builds/types, Android harness types, disposable
+  migration guard, all three real browsers at 390/412/1365, populated 035→036
+  preservation and 56-table pg_dump/two restores pass. Final-source hosted results
+  and counts are recorded in the draft PR; earlier PR #10 evidence certifies its
+  dependency only.
+- Next: factory basis for actual partial-roll tape use/remainder; actual foil
+  use, measured Coating output and Calendaring custody, then remaining rooms,
+  corrections/pairing/pouch/physical cell acceptance. OnePlus/native upgrade and
+  physical factory reconciliation remain open. No merge or deployment.
+
 ## 2026-11-16 — Actual Coating use of received Slurry
 
 - Source `5cc21220c9b20641f2bd5c9c8d130d2e74982b8b` on
