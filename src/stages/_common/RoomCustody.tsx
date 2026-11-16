@@ -363,7 +363,12 @@ export function RoomCustodyPanel({session, scope, localActorId, room}: Props) {
       )}
       <label>
         Сохранённая форма
-        <select className={control} value={selectedForm} onChange={(e) => setSelectedForm(e.target.value)}>
+        <select
+          className={control}
+          disabled={busy}
+          value={selectedForm}
+          onChange={(e) => setSelectedForm(e.target.value)}
+        >
           <option value="">Выберите или подготовьте форму</option>
           {forms.map((r) => (
             <option key={r.key} value={r.key}>
@@ -373,7 +378,9 @@ export function RoomCustodyPanel({session, scope, localActorId, room}: Props) {
         </select>
       </label>
       {chosenForm && (
-        <CustodyForm key={chosenForm.key} {...{session, scope, localActorId, initial: chosenForm}} />
+        <fieldset disabled={busy} className="min-w-0">
+          <CustodyForm key={chosenForm.key} {...{session, scope, localActorId, initial: chosenForm}} />
+        </fieldset>
       )}
       <h4>Исходные предложения</h4>
       {proposals
