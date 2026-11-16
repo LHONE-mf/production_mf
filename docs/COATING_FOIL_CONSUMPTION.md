@@ -63,7 +63,9 @@ The organization inventory lock and issue locks serialize API competitors.
 Database guards pair every header/allocation, enforce current source quantities,
 original receipt ACK and settlement snapshots, exact totals/ACKs and immutable
 history. Global operation-ID ownership includes the new zero-stock header.
-A single multi-row SQL allocation statement cannot overspend a source.
+A single multi-row SQL allocation statement cannot overspend a source. A changed
+issue projection cannot grant more quantity or different scope than its original
+immutable receive ACK; it is held until reconciled.
 
 The additive migration keeps every existing row and original ACK. It extends
 only the consumption-parent constraint/guard and operation namespace; return,

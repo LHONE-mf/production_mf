@@ -494,5 +494,31 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)(
         (await f.post(path, f.consumption(source, 800), 5)).statusCode,
       ).toBe(201);
     });
+    it("refuses a changed issue projection instead of granting quantity beyond the immutable receipt", async () => {
+      const source = await f.received();
+      try {
+        await f.pool.query(
+          "UPDATE inventory_issues SET quantity=900 WHERE id=$1",
+          [source.issue.id],
+        );
+        const snapshot = (
+          await f.pool.query("SELECT coating_foil_source($1,$2) AS source", [
+            f.org,
+            source.issue.id,
+          ])
+        ).rows[0].source;
+        expect(snapshot).toBeNull();
+        expect(
+          (await f.post(path, f.consumption(source, 801), 5)).statusCode,
+        ).toBe(409);
+      } finally {
+        await f.pool.query(
+          "UPDATE inventory_issues SET quantity=800 WHERE id=$1",
+          [source.issue.id],
+        );
+      }
+      const r = await f.post(path, f.consumption(source, 800), 5);
+      expect(r.statusCode, r.body).toBe(201);
+    });
   },
 );

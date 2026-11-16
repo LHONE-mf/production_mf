@@ -10,12 +10,14 @@
   outcomes. Existing records/units/ACKs, Slurry/tape behavior, current authority,
   device proof, QA/expiry and history fencing remain. Dexie 24/outbox v7,
   dependencies and local journals are unchanged.
-- Local: 750 frontend / 357 PostgreSQL server tests, types/builds and Android
+- Local: 750 frontend / 358 PostgreSQL server tests, types/builds and Android
   harness/migration guards pass. Real foil browser at 390/412/1365 saves offline,
   reopens and repeats identical bytes after lost committed reply; 500 mm use from
   800 mm leaves 300 mm, warehouse unchanged. Populated 036→037 compares all old
   rows. Actual 57-table pg_dump/two restores reconstruct foil source snapshots,
-  consumption/remainder, original ACK and history fence. Final committed-source
+  consumption/remainder, original ACK and history fence. Final review also binds
+  issue identity/capacity to its immutable original receipt; the damaged-projection
+  regression and full server suite pass. Final committed-source
   hosted results and all-browser evidence belong to the next draft PR.
 - Next: real roll-issued foil measurement policy, tape use/recoverable remainder,
   measured coated output and Calendaring custody, other room flows/corrections,

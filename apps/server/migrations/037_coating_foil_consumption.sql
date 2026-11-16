@@ -30,6 +30,13 @@ CREATE FUNCTION coating_foil_source(org uuid,issue uuid) RETURNS jsonb LANGUAGE 
  FROM inventory_issues i JOIN inventory_issue_events e ON e.organization_id=i.organization_id AND e.operation_id=i.receipt_operation_id AND e.kind='receive'
  CROSS JOIN LATERAL(SELECT count(*) AS n,COALESCE(sum(quantity) FILTER(WHERE kind='return'),0) AS returned,COALESCE(sum(quantity) FILTER(WHERE kind='scrap'),0) AS scrapped,COALESCE(sum(quantity) FILTER(WHERE kind='consume'),0) AS consumed FROM inventory_issue_outcomes WHERE organization_id=org AND issue_id=i.id) a
  WHERE i.organization_id=org AND i.id=issue AND i.state='received'
+ -- An issue row is a repairable projection. Its identity and capacity must
+ -- still agree with the original immutable receive ACK before it can be used.
+ AND e.result_issue @> jsonb_build_object('id',i.id,'materialId',i.material_id,'productionBatchId',i.production_batch_id,
+ 'stepNumber',i.step_number,'workshopId',i.workshop_id,'recipientId',i.recipient_id,'requestedBy',i.requested_by,
+ 'quantity',i.quantity,'unit',i.unit,'state',i.state,'revision',i.revision,'stockId',i.stock_id,'source',i.source_snapshot,
+ 'approvalOperationId',i.approved_operation_id,'approvedStockRevision',i.approved_stock_revision,'approvedBy',i.approved_by,
+ 'approvedDeviceId',i.approved_device_id,'dispatchOperationId',i.dispatch_operation_id,'receiptOperationId',i.receipt_operation_id)
 $$;
 CREATE FUNCTION guard_coating_foil_consumption() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
