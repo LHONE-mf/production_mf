@@ -91,8 +91,11 @@ when every local record can be discarded.
   configured backend and authorized **server** login. They are separate from
   legacy local room data; automatic local→server manufacturing sync is not
   implemented.
-- **Inventory:** no verified real stock posting; quantity differences are
-  comparisons of declarations, not proof of material loss or accepted yield.
+- **Inventory:** authenticated warehouse receiving/QA/issues/returns and source
+  claims are implemented; [received room materials and actual Slurry use](docs/ROOM_MATERIAL_CUSTODY.md)
+  now track measured consumption separately from warehouse dispatch. Production
+  declarations do not automatically create stock or prove accepted yield. Physical
+  factory/device acceptance and deployment remain separate gates.
 
 For requirements and current acceptance gates consult
 [Product Specification](docs/PRODUCT_SPECIFICATION.md),

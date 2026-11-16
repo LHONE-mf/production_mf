@@ -1,3 +1,12 @@
+# Slurry room custody / actual-use continuation — 2026-11-16
+
+From merged `main` df1c773, PostgreSQL 033 adds actual measured Slurry consumption
+from received issues without another warehouse debit. Room view, durable proposal,
+explicit send, consumed-aware returns/reports and upgrade/browser/two-restore checks
+are implemented. [Current contract and limits](ROOM_MATERIAL_CUSTODY.md).
+Earlier “consumption NOT RECORDED” statements below describe their original sources.
+Direct-room custody, general WIP outputs, native/physical acceptance and deployment remain open.
+
 # Verified durable cell proposal/client/UI — 2026-11-15
 
 Code/test/CI source **0b48f0a795011c3c5e250dd76d544ae8c09fc781** is IMPLEMENTED / LOCAL TESTED / CI VERIFIED / NATIVE VERIFIED. A following documentation-only closeout preserves application/backend/native/test/migration/CI source. Draft [PR #5](https://github.com/LHONE-mf/production_mf/pull/5) stays on `feat/storage-inventory-foundation`, base `feat/hybrid-server-foundation`. No merge, production mutation or deployment.

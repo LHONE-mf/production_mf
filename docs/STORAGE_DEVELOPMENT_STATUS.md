@@ -4,6 +4,15 @@ Exact source **0b48f0a795011c3c5e250dd76d544ae8c09fc781** passed Tests, push CI,
 
 Main Dexie24/outbox7/PostgreSQL032 preserve original data and approved rules. Owned disposable infrastructure and control credentials are removed. A following docs-only closeout preserves the verified source. Next: physical serialized cell acceptance/quarantine/Chief QA, measured Slurry consumption and S10/physical/deployment gates. No cell stock or QA is inferred from submission. No merge, deployment or production mutation; S9 remains partial.
 
+# Actual Slurry use implemented — 2026-11-16
+
+[Received room materials and actual Slurry consumption](ROOM_MATERIAL_CUSTODY.md)
+now share the existing issue settlement stream, without another warehouse debit.
+Durable measured-source proposals, explicit send, multi-lot partial use and
+consumption-aware returns/reports are implemented with additive PostgreSQL 033.
+Broader WIP/direct transfers, serialized cell physical acceptance and native/
+physical release remain unfinished. Earlier statuses below are historical.
+
 # Cell proposal/client/UI implemented — 2026-11-15
 
 Formation now saves durable original cell proposals offline, explicitly sends only the frozen request and atomically archives its exact ACK. Original identity/source/actor/role/device/scope/epoch/ID/body survive reopen, unknown replies and conflicts; no stock, physical receipt or QA is created. Main Dexie **24** adds cell claims and preserves all 37 previous main tables. Outbox **v7** / PostgreSQL **032** and old queues remain unchanged. Local-only v21/v22/v23 backups remain compatible; cell claims retain device-bound restore restrictions. [Cell contract](STORAGE_CELL_OUTPUT.md).

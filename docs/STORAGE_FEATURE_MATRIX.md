@@ -73,6 +73,13 @@ The follow-up adds an immutable post-event location filter to movements, includi
 
 Historical entries below describe their original checkpoints; use this section and the current feature rows for present scope.
 
+# Current Slurry increment — 2026-11-16
+
+[Room custody / actual-use contract](ROOM_MATERIAL_CUSTODY.md): received source
+remainder now accounts for measured Slurry use, returns and scrap; UI proposals
+remain durable and separate from posting. PostgreSQL 033; Dexie 24/outbox v7 unchanged.
+This supersedes older Slurry “NOT IMPLEMENTED” rows for this specific mass-use slice only.
+
 # Storage feature matrix
 
 Latest fully verified runtime: `4b310659307b60666cbbfbe84d5b2c7f8d749700` (S7). S8 identification first increment is implemented locally; exact-head hosted checks are tracked in PR #5. Exact current-head checks are maintained in PR #5.

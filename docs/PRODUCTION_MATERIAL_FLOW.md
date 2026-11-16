@@ -1,5 +1,9 @@
 # Production MF — material flow contract (advisory Slice 1)
 
+Current implementation: [received room custody and measured Slurry use](ROOM_MATERIAL_CUSTODY.md)
+adds the first authoritative use transaction and operator screen (PostgreSQL 033).
+The broader direct/WIP/output mapping below remains advisory where not implemented.
+
 Status: **approved physical handling defaults + proposed integration architecture**.
 This document describes the user's decisions and the real existing room list. It does
 **not** certify physical production procedures, introduce new room types, release QA,
@@ -34,6 +38,9 @@ The tests make the difference between DIRECT and ROOM WIP explicit.
    Do not treat tape as an ingredient of slurry or infer that every coating
    tape piece becomes part of the finished cell. Actual size/spec/SKU and
    consumed or returned quantity must be declared.
+   The owner additionally confirmed: **issued by roll**, with a **different width
+   and thickness specification for each application**. Roll ledger/consumption
+   support remains a later implementation; do not assume a roll length or alias it to pieces.
 6. Warehouse approval policy remains: **Chief-only QA release**;
    **Chief/Manager approval for every material issue**; eligible unused
    returns directly available with retained source/condition evidence;
