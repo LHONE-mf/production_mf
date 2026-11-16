@@ -1,5 +1,9 @@
 # Received room material and measured Slurry use — 2026-11-16
 
+Continuation: [measured Slurry output and direct Coating custody](SLURRY_COATING_CUSTODY.md)
+is implemented on a separate stacked draft branch. The Phase 1 evidence below
+certifies its named source; the continuation records its own checks and limits.
+
 Implemented engineering candidate on `feat/material-flow-authoritative-wip`, from
 current merged `main` **df1c7735f14f8ef268e382b4217f6a31dd2f33bc**. PRs #3, #5 and
 #7 are included. The older open blueprint PR #6 and its branch are untouched.
@@ -79,9 +83,9 @@ No separate competing warehouse or room quantity ledger is created.
 
 Room custody in this slice is derived from **existing explicit received issues**
 and their approved immutable route; no old journal or free-text material name is
-backfilled into stock or declared physically received. Custody of manufactured
-intermediates, partial/mismatched receiving counts and room-to-room transfer
-states still need separate implementation.
+backfilled into stock or declared physically received. The separate continuation implements Slurry manufactured output and
+partial/mismatched Coating receiving; other manufactured intermediates and
+broader transfer states still need implementation.
 
 Main Dexie remains **24**, inventory outbox remains **v7**. New form/proposal
 namespaces use its existing scoped draft store and compare-and-save checks.
@@ -147,7 +151,8 @@ reassignment need an explicit immutable resolution, not silent rebasing.
 
 The next three implementation tasks are:
 
-1. Authoritative Slurry output declaration and **Slurry→Coating offer/receipt**,
+1. Implemented in the [separate continuation](SLURRY_COATING_CUSTODY.md):
+   authoritative Slurry output declaration and **Slurry→Coating offer/receipt**,
    with explicitly measured output/remainders, original source/actor/destination
    and exact retry; keep the current local offline handover working.
 2. Coating slurry/foil/tape actual use and measured roll output/receipt, then

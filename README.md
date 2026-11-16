@@ -93,7 +93,9 @@ when every local record can be discarded.
   implemented.
 - **Inventory:** authenticated warehouse receiving/QA/issues/returns and source
   claims are implemented; [received room materials and actual Slurry use](docs/ROOM_MATERIAL_CUSTODY.md)
-  now track measured consumption separately from warehouse dispatch. Production
+  now track measured consumption separately from warehouse dispatch.
+  [Measured Slurry output and direct Coating custody](docs/SLURRY_COATING_CUSTODY.md)
+  add partial offers, explicit receipt/discrepancy and durable original retries. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.
 

@@ -1,3 +1,25 @@
+## 2026-11-16 — Measured Slurry output and direct Coating custody
+
+- Implementation/test/CI source `630abb84669092a965661fa782acdb209714c7c3`, stacked
+  on unchanged draft PR #8; main remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](SLURRY_COATING_CUSTODY.md): complete independent measured
+  output/loss declaration, multiple lots, partial reserved transfer, assigned
+  Coating receiver's separate exact receipt or discrepancy, immutable genealogy.
+  No warehouse effect, automatic QA, local journal rewrite or production access.
+- Offline scoped forms/original proposals reuse Dexie 24/outbox v7. Current proof,
+  epoch, workshop/route, source holds, exact quantities, original-body replay and
+  late-ACK protection remain authoritative. Delayed form loading disables prior
+  edits; the real-browser regression catches deliberate removal of that guard.
+- Local regression: 737 frontend / 335 server tests, builds/typechecks, real
+  two-profile browser at 390/412/1365, populated 033→034 preservation, actual
+  54-table pg_dump/two-restores with exact output/offer/receipt ACKs and history
+  fence. Final committed-source/hosted results are tracked in the draft PR.
+- Next: Coating actual Slurry/foil/tape use and measured roll custody, other rooms,
+  immutable corrections, approved pairing/pouch, downstream physical cell receipt.
+  Tape remains issued by roll with distinct width/thickness per application.
+  Native OnePlus/installed-upgrade and physical factory acceptance remain open.
+  No merge/deploy without owner approval.
+
 ## 2026-11-12 — Slurry recipe selection preserves the working draft
 
 - Reproduced silent replacement of an occupied slurry draft on recipe selection,
