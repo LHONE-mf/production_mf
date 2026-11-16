@@ -173,7 +173,7 @@ export function copyCoatingSlurrySource(value: unknown): CoatingSlurrySource {
     unit: 'mg',
   };
 }
-function copyConsumption(value: unknown): CoatingConsumption {
+export function copyCoatingConsumption(value: unknown): CoatingConsumption {
   const r = object(value),
     request = copyCoatingRequest(Object.fromEntries(requestKeys.map((k) => [k, r[k]])));
   if (
@@ -229,7 +229,7 @@ export async function loadCoatingConsumptions(session: HybridSession, scope: Inv
       session,
       scope,
       '/inventory/room-materials/coating/consumptions',
-      copyConsumption,
+      copyCoatingConsumption,
       (r) => r.operationId,
       after,
     )
@@ -383,7 +383,7 @@ export function sendCoatingConsumption(
     if (![200, 201].includes(response.status))
       throw Error('Ответ неизвестен / доступ утрачен; повторите исходный ID: HTTP ' + response.status);
     const raw = await response.json(),
-      consumption = copyConsumption(raw?.consumption),
+      consumption = copyCoatingConsumption(raw?.consumption),
       expected = {
         ...request,
         room: 'coating',

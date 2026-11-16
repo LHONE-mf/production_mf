@@ -46,3 +46,10 @@ export const sameIssue = (a: InventoryIssue, b: InventoryIssue) => canonical(a) 
 function validTapeAttribution(value: {tapeSpecification?: unknown; operationReference?: unknown}) {
   return value.tapeSpecification === undefined && value.operationReference === undefined || validTapeSpecification(value.tapeSpecification) && issueTextValid(value.operationReference);
 }
+
+/** Snapshot only recognized issue fields before keeping external data in durable intent. */
+export function copyInventoryIssue(value:unknown):InventoryIssue {
+ validateIssue(value);
+ const keys=['id','materialId','productionBatchId','stepNumber','workshopId','recipientId','requestedBy','quantity','unit','state','revision','stockId','approvalOperationId','approvedStockRevision','approvedBy','approvedDeviceId','dispatchOperationId','receiptOperationId'] as const;
+ return{...Object.fromEntries(keys.map(k=>[k,value[k]])),source:value.source?{stockId:value.source.stockId,materialId:value.source.materialId,manufacturerLot:value.source.manufacturerLot,locationId:value.source.locationId,unit:value.source.unit,quality:value.source.quality,...(value.source.expiresAt?{expiresAt:value.source.expiresAt}:{}),...(value.source.manufacturedOn?{manufacturedOn:value.source.manufacturedOn}:{})}:null,...(value.tapeSpecification?{tapeSpecification:{application:value.tapeSpecification.application,widthMm:value.tapeSpecification.widthMm,thicknessUm:value.tapeSpecification.thicknessUm,reference:value.tapeSpecification.reference},operationReference:value.operationReference}:{})} as InventoryIssue;
+}

@@ -223,7 +223,7 @@ export function copyFoilSource(value: unknown): FoilSource {
     eligible: r.eligible as boolean,
   };
 }
-function copyConsumption(value: unknown): FoilConsumption {
+export function copyFoilConsumption(value: unknown): FoilConsumption {
   const r = object(value),
     request = copyFoilRequest(Object.fromEntries(keys.map((k) => [k, r[k]])));
   if (
@@ -285,7 +285,7 @@ export async function loadFoilHistory(
       session,
       scope,
       "/inventory/room-materials/coating/foil-consumptions",
-      copyConsumption,
+      copyFoilConsumption,
       (s) => s.operationId,
       after,
     )
@@ -475,7 +475,7 @@ export function sendFoilConsumption(
           response.status,
       );
     const raw = await response.json(),
-      consumption = copyConsumption(raw?.consumption),
+      consumption = copyFoilConsumption(raw?.consumption),
       expected = {
         ...request,
         room: "coating",
