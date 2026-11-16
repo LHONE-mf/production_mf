@@ -2,7 +2,7 @@ import React,{act,StrictMode,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {inventoryOutbox} from '../../core/sync/inventoryOutbox';
-import {useOutputDraft} from './useOutputDraft';
+import {useOutputDraft} from '../_common/useOutputDraft';
 function Probe({label,draftKey,epoch}:{label:string;draftKey:string;epoch:string}){
  const draft=useOutputDraft(draftKey,{epoch,quantity:''}),[result,setResult]=useState('');
  return <section data-probe={label}>{draft.row&&<><input readOnly value={draft.row.fields.quantity}/><button data-edit={label} onClick={()=>draft.edit({...draft.row!.fields,quantity:label==='second'?'8':'7'})}>Записать</button><button data-check={label} onClick={()=>void draft.flush().then(r=>setResult(JSON.stringify(r.fields))).catch(e=>setResult(String(e)))}>Проверить</button></>}{draft.error&&<p role="alert">{draft.error}</p>}<output>{result}</output></section>;

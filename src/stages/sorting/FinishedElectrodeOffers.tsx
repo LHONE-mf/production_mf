@@ -11,7 +11,7 @@ import type {InventoryMaterial} from '../../core/sync/inventoryCatalogClient';
 import {freezeWarehouseOutput,warehouseOutputClaims} from '../../core/manufacturing/warehouseOutputClaims';
 import {sourceFromSortRun,finishedBuckets} from '../../core/sync/inventoryOutputTypes';
 import {loadInventoryOutputs,loadOutputSteps,loadOutputMaterials,sendWarehouseOutput,validateOutputStep,type OutputStep,type OutputContext,type OfferedOutput} from '../../core/sync/inventoryOutputs';
-import {useOutputDraft,outputButton as button,outputControl as control} from '../storage/useOutputDraft';
+import {useOutputDraft,outputButton as button,outputControl as control} from '../_common/useOutputDraft';
 
 export function FinishedElectrodeOffers({runs}:{runs:SortRun[]}){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),[now,setNow]=useState(Date.now());

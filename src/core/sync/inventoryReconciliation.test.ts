@@ -11,6 +11,12 @@ const page=():ReconciliationPage=>({epoch:id,throughIssueSequence:5,throughOutco
 const load=(options={})=>loadIssueReconciliation({} as never,{deviceId:id} as never,id,options);
 beforeEach(()=>vi.mocked(inventoryRequest).mockReset());
 describe('received issue report boundary',()=>{
+ it('reports measured consumption and keeps it inside the conserved issue remainder',async()=>{
+  const p=page();Object.assign(p.items[0],{consumed:100,consumptionStatus:'recorded',outstanding:150});
+  vi.mocked(inventoryRequest).mockResolvedValue(new Response(JSON.stringify(p)));
+  expect((await load()).items[0].consumed).toBe(100);
+  expect(issueReconciliationCsv(p)).toContain('"500","200","50","100","150"');
+ });
  it('loads an explicitly scoped frozen report and validates conservation',async()=>{
   vi.mocked(inventoryRequest).mockResolvedValue(new Response(JSON.stringify(page())));
   expect(await load({productionBatchId:id,recipientId:id,materialId:id,stockId:id,untilIssue:5,untilOutcome:2})).toEqual(page());

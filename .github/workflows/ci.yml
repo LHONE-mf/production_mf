@@ -91,6 +91,14 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends ffmpeg
           fi
+      - name: Slurry actual-use offline/reopen/lost-ACK browser
+        working-directory: apps/server
+        shell: bash
+        run: |
+          mkdir -p /tmp/storage-artifacts
+          export WIP_BROWSER_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
+          npm test -- src/room-materials.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
+          cp -r /tmp/production-mf-wip-browser /tmp/storage-artifacts/room-material-browser
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash

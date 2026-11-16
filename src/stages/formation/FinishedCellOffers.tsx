@@ -13,7 +13,7 @@ import {cellSourceFromIdentity,type CellSubmission} from '../../core/sync/invent
 import {sameOutput} from '../../core/sync/inventoryOutputTypes';
 import type {OutputContext} from '../../core/sync/inventoryOutputs';
 import {loadCellOutputs,loadCellOutputSteps,loadCellOutputMaterials,sendCellOutput,validateCellOutputStep,type CellOutputStep} from '../../core/sync/inventoryCellOutputs';
-import {useOutputDraft,outputButton as button,outputControl as control} from '../storage/useOutputDraft';
+import {useOutputDraft,outputButton as button,outputControl as control} from '../_common/useOutputDraft';
 
 export function FinishedCellOffers(){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),identities=useLiveQuery(()=>db.formationSerialIdentities.toArray(),[])??[],[now,setNow]=useState(Date.now());
