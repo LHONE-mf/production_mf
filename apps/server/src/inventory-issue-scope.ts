@@ -25,6 +25,7 @@ export async function issueBatchStep(client: PoolClient, actor: IssueActor, batc
 }
 export function issueSnapshot(row: Record<string, unknown>) {
   return { id: row.id as string, materialId: row.material_id as string, productionBatchId: row.production_batch_id as string, stepNumber: row.step_number as number, workshopId: row.workshop_id as string, recipientId: row.recipient_id as string, requestedBy: row.requested_by as string, quantity: Number(row.quantity), unit: row.unit as string, state: row.state as string, revision: row.revision as number,
+    ...(row.tape_specification ? {tapeSpecification: row.tape_specification, operationReference: row.operation_reference as string} : {}),
     stockId: row.stock_id as string | null, source: row.source_snapshot as object | null,
     approvalOperationId: row.approved_operation_id as string | null, approvedStockRevision: row.approved_stock_revision as number | null, approvedBy: row.approved_by as string | null, approvedDeviceId: row.approved_device_id as string | null,
     dispatchOperationId: row.dispatch_operation_id as string | null, receiptOperationId: row.receipt_operation_id as string | null };
@@ -52,6 +53,6 @@ export function issueHttpError(error: unknown) {
   const code = (error as { code?: string }).code;
   if (code === '23505') return { status: 409, body: { error: 'operation_id_reused' } };
   if (code === '23503') return { status: 409, body: { error: 'inventory_reference_changed' } };
-  if (code === 'P0001' && ['inventory_issue_handoff_required','inventory_issue_stock_pair_required','issue_manager_required'].includes((error as Error).message)) return {status:409,body:{error:'issue_handoff_ineligible'}};
+  if (code === 'P0001' && ['inventory_issue_handoff_required','inventory_issue_stock_pair_required','issue_manager_required','inventory_tape_identity_immutable','inventory_tape_specification_mismatch','inventory_tape_operation_mismatch','inventory_tape_ack_mismatch'].includes((error as Error).message)) return {status:409,body:{error:'issue_handoff_ineligible'}};
   throw error;
 }

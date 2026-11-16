@@ -1,3 +1,4 @@
+import {tapeSpecification} from './inventory-tape.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';
 import { z } from 'zod';
@@ -7,7 +8,7 @@ import { inventoryPermission } from './inventory-routes.js';
 import { currentInventoryWriter, inventoryWriteFence } from './inventory-stream.js';
 
 const material = z.object({ deviceId: z.guid(), id: z.guid(), code: z.string().trim().min(1).max(100),
-  name: z.string().trim().min(1).max(200), category: z.enum(['raw_material', 'component', 'electrode', 'cell']), baseUnit: z.enum(['mg', 'ul', 'mm', 'pieces']) }).strict();
+  name: z.string().trim().min(1).max(200), category: z.enum(['raw_material', 'component', 'electrode', 'cell']), baseUnit: z.enum(['mg', 'ul', 'mm', 'pieces', 'rolls']), tapeSpecification: tapeSpecification.optional() }).strict().refine(data => !data.tapeSpecification || (data.category === 'component' && data.baseUnit === 'rolls'));
 const location = z.object({ deviceId: z.guid(), id: z.guid(), parentId: z.guid().nullable(), label: z.string().trim().min(1).max(200),
   kind: z.enum(['warehouse', 'cabinet', 'rack', 'shelf', 'container_area']) }).strict();
 const page = z.object({ deviceId: z.guid(), after: z.guid().optional(), limit: z.coerce.number().int().min(1).max(100).default(50) }).strict();
@@ -41,9 +42,11 @@ export function registerInventoryAdministrationRoutes(app: FastifyInstance, pool
         }
         let result: object;
         if ('code' in data) {
-          await client.query(`INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,$3,$4,$5,$6)`,
-            [data.id, actor.organization_id, data.code, data.name, data.category, data.baseUnit]);
-          result = { id: data.id, code: data.code, name: data.name, category: data.category, baseUnit: data.baseUnit };
+          const values = [data.id, actor.organization_id, data.code, data.name, data.category, data.baseUnit];
+          // Legacy requests still work in populated pre-036 upgrade fixtures.
+          if (data.tapeSpecification) await client.query(`INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit,tape_specification) VALUES($1,$2,$3,$4,$5,$6,$7)`, [...values, JSON.stringify(data.tapeSpecification)]);
+          else await client.query(`INSERT INTO inventory_materials(id,organization_id,material_code,display_name,category,base_unit) VALUES($1,$2,$3,$4,$5,$6)`, values);
+          result = { id: data.id, code: data.code, name: data.name, category: data.category, baseUnit: data.baseUnit, ...(data.tapeSpecification ? {tapeSpecification: data.tapeSpecification} : {}) };
         } else {
           const parents: Record<string, string[]> = { cabinet: ['warehouse'], rack: ['warehouse'], shelf: ['cabinet', 'rack'], container_area: ['shelf'] };
           const parent = data.parentId ? (await client.query('SELECT kind FROM inventory_locations WHERE organization_id=$1 AND id=$2 AND active FOR SHARE', [actor.organization_id, data.parentId])).rows[0] : null;

@@ -1,3 +1,4 @@
+import {tapeSpecification, tapeStage} from './inventory-tape.js';
 import type { FastifyInstance } from 'fastify';
 import type { Pool, PoolClient } from 'pg';
 import { z } from 'zod';
@@ -8,7 +9,7 @@ import { issueTransaction, issueHttpError, issueFail, issueWarehouseLevel, issue
 import { registerInventoryIssueReads } from './inventory-issue-reads.js';
 const id = z.guid(), revision = z.number().int().min(1).max(2147483646), text = z.string().trim().min(1).max(2000);
 const common = z.object({ operationId: id, deviceId: id, reason: text, evidence: text });
-const create = common.extend({ issueId: id, materialId: id, productionBatchId: id, stepNumber: z.number().int().min(1).max(2147483647), recipientId: id, quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict();
+const create = common.extend({ issueId: id, materialId: id, productionBatchId: id, stepNumber: z.number().int().min(1).max(2147483647), recipientId: id, quantity: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), tapeSpecification: tapeSpecification.optional(), operationReference: text.optional() }).strict();
 const action = common.extend({ expectedIssueRevision: revision });
 const operation = z.discriminatedUnion('kind', [
   action.extend({ kind: z.literal('reserve'), stockId: id, expectedStockRevision: revision }).strict(),
@@ -41,8 +42,16 @@ export function registerInventoryIssueRoutes(app: FastifyInstance, pool: Pool) {
         const prior = await duplicate(client, actor, data, data); if (prior) return prior;
         await issueBatchStep(client, actor, data.productionBatchId, data.stepNumber, !!level);
         if (!await issueMembership(client, actor.organization_id, data.recipientId, step.workshop_id)) issueFail(409, 'recipient_workshop_required');
-        const material = (await client.query('SELECT base_unit FROM inventory_materials WHERE organization_id=$1 AND id=$2 AND active FOR SHARE', [actor.organization_id, data.materialId])).rows[0]; if (!material) issueFail(404, 'material_not_found');
-        const inserted = await client.query(`INSERT INTO inventory_issues(id,organization_id,material_id,production_batch_id,step_number,workshop_id,recipient_id,requested_by,quantity,unit,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'requested') RETURNING *`, [data.issueId, actor.organization_id, data.materialId, data.productionBatchId, data.stepNumber, step.workshop_id, data.recipientId, actor.id, data.quantity, material.base_unit]);
+        const material = (await client.query(`SELECT base_unit,to_jsonb(inventory_materials)->'tape_specification' AS tape_specification FROM inventory_materials WHERE organization_id=$1 AND id=$2 AND active FOR SHARE`, [actor.organization_id, data.materialId])).rows[0]; if (!material) issueFail(404, 'material_not_found');
+        if (material.tape_specification) {
+          const original = tapeSpecification.parse(material.tape_specification);
+          if (!data.tapeSpecification || !data.operationReference || Object.keys(original).some(key => original[key as keyof typeof original] !== data.tapeSpecification![key as keyof typeof original])) issueFail(409, 'inventory_tape_specification_mismatch');
+          if (step.stage !== tapeStage(original.application)) issueFail(409, 'inventory_tape_operation_mismatch');
+        } else if (data.tapeSpecification || data.operationReference) issueFail(409, 'inventory_tape_specification_mismatch');
+        const values = [data.issueId, actor.organization_id, data.materialId, data.productionBatchId, data.stepNumber, step.workshop_id, data.recipientId, actor.id, data.quantity, material.base_unit];
+        const inserted = material.tape_specification
+          ? await client.query(`INSERT INTO inventory_issues(id,organization_id,material_id,production_batch_id,step_number,workshop_id,recipient_id,requested_by,quantity,unit,state,tape_specification,operation_reference) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'requested',$11,$12) RETURNING *`, [...values, JSON.stringify(data.tapeSpecification), data.operationReference])
+          : await client.query(`INSERT INTO inventory_issues(id,organization_id,material_id,production_batch_id,step_number,workshop_id,recipient_id,requested_by,quantity,unit,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'requested') RETURNING *`, values);
         return event(client, actor, epoch, data, 'request', 0, issueSnapshot(inserted.rows[0]), data);
       }); return reply.code(result.status === 'duplicate' ? 200 : 201).send(result);
     } catch (error) { const failure = issueHttpError(error); return reply.code(failure.status).send(failure.body); }

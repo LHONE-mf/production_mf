@@ -8,7 +8,7 @@ import { currentInventoryWriter, inventoryWriteFence } from './inventory-stream.
 const common = z.object({ id: z.guid(), changeId: z.guid(), deviceId: z.guid(), expectedRevision: z.number().int().min(1).max(2147483646), reason: z.string().trim().min(1).max(2000), active: z.boolean() });
 const materialChange = common.extend({ name: z.string().trim().min(1).max(200), supplierReference: z.string().trim().min(1).max(200).nullable() }).strict();
 const locationChange = common.extend({ label: z.string().trim().min(1).max(200), parentId: z.guid().nullable() }).strict();
-function material(row: Record<string, unknown>) { return { id: row.id, code: row.material_code, name: row.display_name, category: row.category, baseUnit: row.base_unit, active: row.active, supplierReference: row.supplier_reference, revision: row.revision }; }
+function material(row: Record<string, unknown>) { return { id: row.id, code: row.material_code, name: row.display_name, category: row.category, baseUnit: row.base_unit, ...(row.tape_specification ? {tapeSpecification: row.tape_specification} : {}), active: row.active, supplierReference: row.supplier_reference, revision: row.revision }; }
 function location(row: Record<string, unknown>) { return { id: row.id, parentId: row.parent_id, label: row.label, kind: row.kind, active: row.active, revision: row.revision }; }
 
 export function registerInventoryCatalogChanges(app: FastifyInstance, pool: Pool) {
