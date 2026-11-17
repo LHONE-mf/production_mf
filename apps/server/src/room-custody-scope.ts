@@ -57,7 +57,7 @@ export async function custodyEligible(client: PoolClient, org: string, consumpti
 export async function custodyDuplicate(
   client: PoolClient,
   actor: IssueActor,
-  table: 'inventory_coating_outputs' | 'inventory_room_outputs' | 'inventory_room_handoffs' | 'inventory_room_handoff_events',
+  table: 'inventory_calendaring_outputs' | 'inventory_coating_outputs' | 'inventory_room_outputs' | 'inventory_room_handoffs' | 'inventory_room_handoff_events',
   request: {operationId: string; deviceId: string},
   body: object,
   field: string,
