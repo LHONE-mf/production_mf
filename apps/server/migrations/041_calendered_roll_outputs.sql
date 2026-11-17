@@ -20,6 +20,7 @@ CREATE TRIGGER calendaring_output_immutable BEFORE UPDATE OR DELETE ON inventory
 CREATE TRIGGER calendaring_output_claim_immutable BEFORE UPDATE OR DELETE ON inventory_calendaring_output_claims FOR EACH ROW EXECUTE FUNCTION forbid_inventory_operation_rewrite();
 ALTER TABLE inventory_room_output_lots ADD COLUMN calendaring_declaration_id uuid;
 ALTER TABLE inventory_room_output_lots ADD FOREIGN KEY(organization_id,calendaring_declaration_id) REFERENCES inventory_calendaring_outputs(organization_id,operation_id);
+CREATE INDEX room_output_calendaring_parent ON inventory_room_output_lots(organization_id,calendaring_declaration_id) WHERE calendaring_declaration_id IS NOT NULL;
 ALTER TABLE inventory_room_output_lots DROP CONSTRAINT room_output_lot_origin;
 ALTER TABLE inventory_room_output_lots ADD CONSTRAINT room_output_lot_origin CHECK(
  (unit='mg' AND declaration_id IS NOT NULL AND coating_declaration_id IS NULL AND calendaring_declaration_id IS NULL) OR

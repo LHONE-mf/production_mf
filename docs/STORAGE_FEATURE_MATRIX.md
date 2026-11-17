@@ -1,3 +1,25 @@
+# Current calendered-output and Cutting-custody increment — 2026-11-17
+
+Measured calendered-roll output and direct whole-roll Calendaring→Cutting custody
+are implemented on `feat/calendaring-cutting-custody`, stacked on unchanged draft
+#14. Actual input measurements are claimed once per declaration; multiple rolls
+retain shared genealogy and independent physical output measurements. Offers
+reserve source, assigned receiver count/label confirmation establishes custody,
+and discrepancy does not. Quality remains unreviewed, accounting unreconciled;
+no warehouse stock/debit, accepted yield, Cutting use or legacy journal is created.
+PostgreSQL 041–042 preserves earlier snapshots and guards, Dexie 24/outbox v7 and
+all old data/queues/dependencies. [Contract](CALENDERED_ROLL_CUSTODY.md).
+
+Local **763 frontend / 376 server tests**, builds/types, migration/Android harness
+checks, all seven actual room browsers, populated 040→042 preservation and real
+**63-table/two-restores** pass. New browser covers offline/reopen/original lost-reply
+retry in two profiles, async form-switch protection, separate discrepancy and
+physical receipt at 390/412/1365. Exact-source hosted checks and downloadable
+screenshots/JSON/logs are recorded in the draft PR. Actual Cutting→Sorting,
+reconciliation, remnants/corrections, factory foil/tape measurement, later rooms
+and native/OnePlus/physical acceptance remain open. No merge or deployment.
+Earlier entries below describe their historical sources.
+
 # Current Calendaring material-use increment — 2026-11-16
 
 Actual independently measured Calendaring input length is implemented on
