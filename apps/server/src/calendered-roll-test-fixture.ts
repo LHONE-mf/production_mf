@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { createCalendaringFixture } from "./calendaring-consumption-test-fixture.js";
-export async function createCalenderedRollFixture(searchPath?: string) {
-  const f = await createCalendaringFixture(searchPath, true);
+export async function createCalenderedRollFixture(searchPath?: string,withSorting=false) {
+  const f = await createCalendaringFixture(searchPath, true,withSorting);
   async function inputs() {
     const received = await f.receivedRolls(),
       body = f.consumption(received),

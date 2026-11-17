@@ -1,3 +1,4 @@
+import {registerCuttingConsumptionRoutes} from './cutting-consumption-routes.js';
 import {registerCalenderedRollRoutes} from './calendered-roll-routes.js';
 import {registerCalenderedRollCustodyRoutes} from './calendered-roll-custody-routes.js';
 import {registerCalendaringConsumptionRoutes} from './calendaring-consumption-routes.js';
@@ -104,6 +105,7 @@ export function buildApp(pool: Pool) {
   registerRoomCustodyRoutes(app,pool);
   registerCoatingConsumptionRoutes(app,pool);
   registerCalendaringConsumptionRoutes(app,pool);
+  registerCuttingConsumptionRoutes(app,pool);
   registerCoatingFoilRoutes(app,pool);
   registerCoatingRollRoutes(app,pool);
   registerCalenderedRollRoutes(app,pool);
