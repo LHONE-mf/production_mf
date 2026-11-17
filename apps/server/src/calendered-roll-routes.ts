@@ -271,8 +271,8 @@ export function registerCalenderedRollRoutes(app: FastifyInstance, pool: Pool) {
         async (client, actor, _level, epoch) => {
           const rows = (
             await client.query(
-              `SELECT c.operation_id,c.production_batch_id,c.step_number,c.result_payload,cl.declaration_id,b.batch_code,b.status IN ('created','in_progress') AND o.status IN ('released','in_progress') AND calendered_roll_input_eligible(c.organization_id,c.operation_id) AS eligible
-    FROM inventory_calendaring_consumptions c ${rollJoins} LEFT JOIN inventory_calendaring_output_claims cl ON cl.organization_id=c.organization_id AND cl.calendaring_consumption_id=c.operation_id WHERE c.organization_id=$1 AND c.operation_id>$2 AND s.stage='calendaring' AND ${rollScope} ORDER BY c.operation_id LIMIT $5`,
+              `SELECT c.operation_id,c.production_batch_id,c.step_number,c.result_payload,cl.declaration_id,b.batch_code,m.material_code,m.display_name,b.status IN ('created','in_progress') AND o.status IN ('released','in_progress') AND calendered_roll_input_eligible(c.organization_id,c.operation_id) AS eligible
+    FROM inventory_calendaring_consumptions c ${rollJoins} JOIN inventory_materials m ON m.organization_id=c.organization_id AND m.id=c.material_id LEFT JOIN inventory_calendaring_output_claims cl ON cl.organization_id=c.organization_id AND cl.calendaring_consumption_id=c.operation_id WHERE c.organization_id=$1 AND c.operation_id>$2 AND s.stage='calendaring' AND ${rollScope} ORDER BY c.operation_id LIMIT $5`,
               [
                 actor.organization_id,
                 q.after ?? rollZero,
@@ -291,6 +291,8 @@ export function registerCalenderedRollRoutes(app: FastifyInstance, pool: Pool) {
             claimedBy: r.declaration_id ?? null,
             eligible: r.eligible,
             materialId: r.result_payload.materialId,
+            materialCode: r.material_code,
+            materialName: r.display_name,
           }));
           return {
             ...(await context(client, actor, q.deviceId, epoch)),
