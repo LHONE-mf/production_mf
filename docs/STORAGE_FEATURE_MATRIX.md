@@ -1,3 +1,28 @@
+# Current Cutting→Sorting increment — 2026-11-17
+
+Actual Cutting input length, independently counted unsorted electrode output and
+partial direct Sorting custody are implemented on `feat/cutting-sorting-flow`,
+stacked on unchanged draft #15. Explicit same-SKU partial/multiple source use retains
+received-roll remainder; input claims belong once to a declaration. Piece counts
+are independent observations, unknown rejects/trim stay null, and explicit partial
+offers/assigned receiver count and source-label confirmation establish custody.
+Discrepancy does not grant custody. No inferred yield/QA or warehouse stock/debit.
+PostgreSQL 043–045 preserves earlier rows/snapshots; Dexie 24/outbox v7, archives,
+queues, journals and dependencies remain unchanged. [Contract](CUTTING_SORTING_FLOW.md).
+
+Full frontend regression (136 files), 387 real-PostgreSQL server tests, locked
+installs, builds/types, migration and Android harness checks, all nine browsers
+and populated 042→043→045 upgrade pass. Two new actual
+browsers cover original offline/reopen/lost-reply retry, independent measurements,
+partial count receipt and no automatically created Sorting workflow at
+390/412/1365. Real 67-table/two-restores retain 150 mm used/50 mm remaining,
+independent 9 ready plus 3 held pieces, 4 received/5 ready available, original ACKs
+and immutable history without warehouse effect. Exact-source full regression and
+hosted evidence are recorded in the draft PR. Binding manual Visual→Thickness→Mass
+inspections/approved mode to custody, Sorting output, Assembly pairing,
+reconciliation/remnants/corrections, factory tape measurement and native/physical
+acceptance remain open. No merge or deployment. Earlier entries are historical.
+
 # Current calendered-output and Cutting-custody increment — 2026-11-17
 
 Measured calendered-roll output and direct whole-roll Calendaring→Cutting custody

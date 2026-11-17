@@ -1,3 +1,35 @@
+## 2026-11-17 — Actual Cutting use, counted output and partial Sorting custody
+
+- `feat/cutting-sorting-flow` stacks on unchanged draft #15 (`e86f010`), then
+  #14–#8. Main checked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CUTTING_SORTING_FLOW.md): explicit partial/multiple same-SKU
+  received-roll allocations record actual Cutting length; each original measured
+  calendered source retains its own remainder. Separately observed whole piece
+  counts create unsorted output lots with unknown rejects/trim kept null.
+- Actual-use claims belong once to the declaration, including multiple child lots.
+  No length-to-pieces estimate, accepted yield or automatic quality is created.
+  Explicit partial offers reserve only their count; only the assigned current
+  Sorting receiver confirms actual subset count and original lot label. A separate
+  discrepancy grants no custody. Sorting pieces cannot become mass/length capacity.
+- PostgreSQL 043–045 preserves populated history and extends existing custody.
+  Durable scoped forms/original-byte proposals survive offline reopen/lost ACKs;
+  exact ACK checks and late-reply protection preserve conflicts. Main Dexie 24,
+  outbox v7, archives, queues, journals, dependencies and lockfiles are unchanged.
+- New API/client and two actual UI browsers pass; populated 042→043→045 preserves
+  every pre-existing row. Actual pg_dump/two-fresh-restores compare 67 tables,
+  reconstruct 150 mm used/50 mm remaining, 9 ready plus 3 held counted pieces,
+  separate Sorting discrepancy/4-piece receipt and 5 available ready pieces,
+  original ACKs, immutable guards and history fencing with no warehouse effect.
+- Full frontend regression (136 files), 387 real-PostgreSQL server tests, all nine
+  material-flow browsers, locked installs, builds/types, Android harness types and
+  migration guards pass. Exact-source hosted CI/evidence are recorded in the draft PR.
+  Next: bind actual Sorting Visual→Thickness→Mass inspections and approved mode
+  to received custody, then Sorting output and Assembly pairing. Remnants,
+  corrections/returns/scrap, scientific reconciliation, factory tape measurement,
+  physical cell acceptance and signed Android/OnePlus/two-device acceptance remain.
+  Browser reopen does not prove Android process death or installed upgrade.
+  No production access, merge or deployment. Earlier entries are historical.
+
 ## 2026-11-17 — Measured calendered output and direct Cutting custody
 
 - `feat/calendaring-cutting-custody` stacks on unchanged draft #14 (`c0d454c`),
