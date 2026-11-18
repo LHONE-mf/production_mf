@@ -81,6 +81,33 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
 
+  it.each([
+    ['blank title', { title: '   ' }],
+    ['overlong title', { title: 'T'.repeat(301) }],
+    ['overlong description', { description: 'D'.repeat(20_001) }],
+    ['invalid priority', { priority: 'urgent-plus' as TaskPriority }],
+  ])('rejects %s before an offline task edit enters the outbox', async (_case, fields) => {
+    await authorizeTaskEditing();
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const original = task();
+    await db.tasks.put(original);
+    await expect(editServerManagedTask(taskId, fields)).rejects.toThrow('Invalid server task fields');
+    expect(await db.tasks.get(taskId)).toEqual(original);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
+  it.each([
+    ['blank title', { title: '   ' }],
+    ['overlong title', { title: 'T'.repeat(301) }],
+    ['overlong description', { description: 'D'.repeat(20_001) }],
+    ['invalid priority', { priority: 'urgent-plus' as TaskPriority }],
+  ])('rejects %s at the shared server-task save boundary', async (_case, fields) => {
+    await expect(saveServerManagedTask({ ...task(), ...fields }, deviceId))
+      .rejects.toThrow('Invalid server task fields');
+    expect(await db.tasks.count()).toBe(0);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
   it('refuses forbidden status jumps without changing tasks or queued operations', async () => {
     await authorizeTaskEditing();
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
