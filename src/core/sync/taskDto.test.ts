@@ -24,6 +24,37 @@ describe('task JSON boundary', () => {
     expect(decodeTask(id, payload)).toEqual(original);
   });
 
+  it('rejects falsey malformed nullable fields from remote server snapshots', () => {
+    const base = encodeTask(fixture());
+    for (const payload of [
+      { ...base, assignedTo: false },
+      { ...base, assignedTo: 0 },
+      { ...base, assignedTo: '' },
+      { ...base, techCardId: false },
+      { ...base, techCardId: 0 },
+      { ...base, techCardId: '' },
+      { ...base, dueDate: false },
+      { ...base, dueDate: 0 },
+      { ...base, dueDate: '' },
+    ]) {
+      expect(() => decodeTask(id, payload as unknown as TaskPayloadV1)).toThrow('Invalid optional task field');
+    }
+  });
+
+  it('refuses malformed optional task fields before encoding an offline operation', () => {
+    for (const changed of [
+      { assignedTo: false },
+      { assignedTo: 0 },
+      { techCardId: false },
+      { techCardId: 0 },
+      { dueDate: false },
+      { dueDate: 0 },
+    ]) {
+      expect(() => encodeTask({ ...fixture(), ...changed } as unknown as Task))
+        .toThrow('Invalid optional task field');
+    }
+  });
+
   it('rejects malformed remote text and collections', () => {
     const payload = encodeTask(fixture());
     for (const changed of [
