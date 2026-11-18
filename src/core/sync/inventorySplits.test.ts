@@ -26,3 +26,19 @@ it('never authorizes operators or binds an original split screen to a restored e
  let level='operator',currentEpoch=epoch;let posts=0;vi.stubGlobal('fetch',vi.fn(async(url:URL)=>url.pathname.endsWith('/me')?response({...access,level,canCorrectStock:level==='manager',canManageCatalog:level==='manager',correctionRoleEligible:level==='manager'}):url.pathname==='/inventory/stream'?response({...scope,epoch:currentEpoch,postingEnabled:true,sequence:0}):(posts++,response({error:'revision_conflict'},409))));
  await expect(prepareInventorySplit(session,scope,'local',base,epoch,300,base.locationId,'Reason','Evidence')).rejects.toThrow();level='manager';const row=await prepareInventorySplit(session,scope,'local',base,epoch,300,base.locationId,'Reason','Evidence');currentEpoch=crypto.randomUUID();await expect(sendInventorySplit(session,scope,'local',row.key)).rejects.toThrow();expect(posts).toBe(0);currentEpoch=epoch;await expect(sendInventorySplit(session,scope,'local',row.key)).rejects.toThrow();expect((await inventorySplitProposals(scope,'local'))[0].fields).toMatchObject({state:'conflict',request:row.fields.request});
 });
+
+
+it('rejects blocked stock and requires a persisted quarantine acknowledgement before proposal creation',async()=>{
+ vi.stubGlobal('fetch',vi.fn(async(url:URL)=>url.pathname.endsWith('/me')?response(access):response({...scope,epoch,postingEnabled:true,sequence:0})));
+ const quarantined={...base,quality:'quarantine' as const,reserved:0,available:1000};
+ await expect(prepareInventorySplit(session,scope,'local',quarantined,epoch,300,base.locationId,'Quarantine repack','Counted',false))
+  .rejects.toThrow('Требуется явное подтверждение карантина');
+ expect(await inventorySplitProposals(scope,'local')).toHaveLength(0);
+ const row=await prepareInventorySplit(session,scope,'local',quarantined,epoch,300,base.locationId,'Quarantine repack','Counted',true);
+ expect(JSON.parse(row.fields.request).quarantineAcknowledged).toBe(true);
+ inventoryOutbox.close();await inventoryOutbox.open();
+ expect((await inventorySplitProposals(scope,'local'))[0].fields.request).toBe(row.fields.request);
+ await expect(prepareInventorySplit(session,scope,'local',{...quarantined,quality:'blocked'},epoch,300,base.locationId,'Blocked repack','Counted',true))
+  .rejects.toThrow('Заблокированный материал нельзя разделять');
+ expect(await inventorySplitProposals(scope,'local')).toHaveLength(1);
+});
