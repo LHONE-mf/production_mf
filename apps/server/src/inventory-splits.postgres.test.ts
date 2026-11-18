@@ -78,6 +78,11 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authorized physical package spl
   expect(result.json().child).toMatchObject({quality:'quarantine',onHand:300});
   const stored=await f.pool.query('SELECT quarantine_acknowledged FROM inventory_splits WHERE operation_id=$1',[approved.operationId]);
   expect(stored.rows[0]?.quarantine_acknowledged).toBe(true);
+  const history=await f.get('/inventory/stocks/'+approved.childStockId+'/genealogy?deviceId='+f.actors[1].device,1);
+  expect(history.statusCode,history.body).toBe(200);
+  expect(history.json().items).toContainEqual(expect.objectContaining({
+   operationId:approved.operationId,quarantineAcknowledged:true
+  }));
   expect((await send(id,approved)).json()).toEqual({...result.json(),status:'duplicate'});
  });
 });
