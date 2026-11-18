@@ -30,7 +30,7 @@ Read the applicable `SKILL.md` before making significant changes. Some upstream 
 ## Verification
 
 Frontend: `npm ci && npm run typecheck && npm test -- --reporter=default && npm run build`.
-Server: from `apps/server`, `npm install && npm run typecheck && npm test -- --reporter=default && npm run build`.
+Server: from `apps/server`, `npm ci && npm run typecheck && npm test -- --reporter=default && npm run build`.
 
 ## Branch and evidence policy
 
