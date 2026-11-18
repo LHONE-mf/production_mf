@@ -19,6 +19,22 @@ function validateLocation(stage: unknown, workshopId: unknown) {
   if (workshopId != null && (typeof workshopId !== 'string' || workshopId.length > 120))
     throw new Error('Invalid task workshop');
 }
+/** Mirror server task-schema limits before enqueueing or accepting task children. */
+function assertTaskChildLimits(
+  comments: Array<{ text: string }>,
+  attachments: Array<{ fileName: string; fileType: string; data: string }>,
+) {
+  if (!Array.isArray(comments) || comments.length > 1000 ||
+      !Array.isArray(attachments) || attachments.length > 30)
+    throw new Error('Invalid task child record count');
+  if (comments.some(comment => !comment || typeof comment.text !== 'string' || comment.text.length > 10_000))
+    throw new Error('Invalid task comment length');
+  if (attachments.some(attachment => !attachment ||
+      typeof attachment.fileName !== 'string' || attachment.fileName.length > 255 ||
+      typeof attachment.fileType !== 'string' || attachment.fileType.length > 120 ||
+      typeof attachment.data !== 'string' || attachment.data.length > 1_000_000))
+    throw new Error('Invalid task attachment length');
+}
 function date(value: Date, field: string) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error('Invalid date: ' + field);
   return value.toISOString();
@@ -28,6 +44,7 @@ export function encodeTask(task: Task): TaskPayloadV1 {
   if (task.assignedTo) uuid(task.assignedTo, 'task.assignedTo');
   if (task.techCardId) uuid(task.techCardId, 'task.techCardId');
   validateLocation(task.stage, task.workshopId);
+  assertTaskChildLimits(task.comments, task.attachments);
   for (const comment of task.comments) {
     uuid(comment.id,'comment.id'); uuid(comment.taskId,'comment.taskId'); uuid(comment.authorId,'comment.authorId');
     if (comment.taskId !== task.id) throw new Error('Comment task mismatch');
@@ -60,6 +77,7 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
       !Array.isArray(payload.comments) || !Array.isArray(payload.attachments)) {
     throw new Error('Invalid remote task fields');
   }
+  assertTaskChildLimits(payload.comments, payload.attachments);
   const statuses = Object.values(TaskStatus);
   const priorities = Object.values(TaskPriority);
   if (!statuses.includes(payload.status) || !priorities.includes(payload.priority)) throw new Error('Invalid task status/priority');
