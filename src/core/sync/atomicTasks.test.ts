@@ -81,6 +81,33 @@ describe('server-managed task offline writes', () => {
     expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
 
+  it.each([
+    ['blank title', { title: '   ' }],
+    ['overlong title', { title: 'T'.repeat(301) }],
+    ['overlong description', { description: 'D'.repeat(20_001) }],
+    ['invalid priority', { priority: 'urgent-plus' as TaskPriority }],
+  ])('rejects %s before an offline task edit enters the outbox', async (_case, fields) => {
+    await authorizeTaskEditing();
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const original = task();
+    await db.tasks.put(original);
+    await expect(editServerManagedTask(taskId, fields)).rejects.toThrow('Invalid server task fields');
+    expect(await db.tasks.get(taskId)).toEqual(original);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
+  it.each([
+    ['blank title', { title: '   ' }],
+    ['overlong title', { title: 'T'.repeat(301) }],
+    ['overlong description', { description: 'D'.repeat(20_001) }],
+    ['invalid priority', { priority: 'urgent-plus' as TaskPriority }],
+  ])('rejects %s at the shared server-task save boundary', async (_case, fields) => {
+    await expect(saveServerManagedTask({ ...task(), ...fields }, deviceId))
+      .rejects.toThrow('Invalid server task fields');
+    expect(await db.tasks.count()).toBe(0);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
   it('refuses forbidden status jumps without changing tasks or queued operations', async () => {
     await authorizeTaskEditing();
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 1 });
@@ -198,6 +225,31 @@ describe('server-managed task offline writes', () => {
     await db.open();
     expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
+  it('keeps the original task and outbox intact for mixed invalid server-field cases', async () => {
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    const baseline = task();
+    const invalidFields: Array<Record<string, unknown>> = [
+      { title: '   ' },
+      { priority: 'urgent-plus' },
+      { stage: 'unrecognized-room' },
+      { workshopId: 'w'.repeat(121) },
+      { comments: [{ id: crypto.randomUUID(), taskId, authorId: baseline.createdBy,
+        text: 'C'.repeat(10_001), createdAt: baseline.createdAt }] },
+      { attachments: [{ id: crypto.randomUUID(), taskId, fileName: 'note.txt',
+        fileType: 'text/plain', data: 'A'.repeat(1_000_001), createdAt: baseline.createdAt }] },
+      { dueDate: false },
+      { techCardId: 0 },
+      { assignedTo: false },
+    ];
+    for (const fields of invalidFields) {
+      await expect(saveServerManagedTask({ ...baseline, ...fields } as Task, deviceId))
+        .rejects.toThrow();
+      expect(await db.tasks.get(taskId)).toBeUndefined();
+      expect(await db.hybridTaskOutbox.count()).toBe(0);
+    }
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+  });
+
   it('does not create new edits over conflicts, rejected operations or another device queue', async () => {
     const firstId = await saveServerManagedTask(task(), deviceId);
     await expect(saveServerManagedTask(task(), '55555555-5555-4555-8555-555555555555'))
@@ -352,6 +404,28 @@ describe('server-managed task offline writes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(await db.hybridTaskOutbox.count()).toBe(1);
     expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
+  });
+
+  it('uploads only the proved device queue even when an older device has pending edits', async () => {
+    const oldDevice = '55555555-5555-4555-8555-555555555555';
+    const oldTask = { ...task(), id: '77777777-7777-4777-8777-777777777777' };
+    const oldId = await saveServerManagedTask(oldTask, oldDevice);
+    const currentId = await saveServerManagedTask(task(), deviceId);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [{ operationId: currentId, status: 'accepted', revision: 1 }],
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    expect((await pushAtomicTasks(session)).accepted).toBe(1);
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body).operations;
+    expect(sent.map((op: {operationId:string}) => op.operationId)).toEqual([currentId]);
+    expect(await db.hybridTaskOutbox.get(oldId)).toMatchObject({ state: 'pending', deviceId: oldDevice });
+    expect(await db.hybridTaskOutbox.get(currentId)).toBeUndefined();
+    expect((await db.tasks.get(oldTask.id))?.title).toBe(oldTask.title);
   });
 
   it('preserves pending edits when a push response is incomplete or duplicated', async () => {
