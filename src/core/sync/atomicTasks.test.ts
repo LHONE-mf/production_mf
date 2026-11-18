@@ -354,6 +354,28 @@ describe('server-managed task offline writes', () => {
     expect((await db.tasks.get(taskId))?.title).toBe('Offline task');
   });
 
+  it('uploads only the proved device queue even when an older device has pending edits', async () => {
+    const oldDevice = '55555555-5555-4555-8555-555555555555';
+    const oldTask = { ...task(), id: '77777777-7777-4777-8777-777777777777' };
+    const oldId = await saveServerManagedTask(oldTask, oldDevice);
+    const currentId = await saveServerManagedTask(task(), deviceId);
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [{ operationId: currentId, status: 'accepted', revision: 1 }],
+    }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    expect((await pushAtomicTasks(session)).accepted).toBe(1);
+    const sent = JSON.parse(fetchMock.mock.calls[0][1].body).operations;
+    expect(sent.map((op: {operationId:string}) => op.operationId)).toEqual([currentId]);
+    expect(await db.hybridTaskOutbox.get(oldId)).toMatchObject({ state: 'pending', deviceId: oldDevice });
+    expect(await db.hybridTaskOutbox.get(currentId)).toBeUndefined();
+    expect((await db.tasks.get(oldTask.id))?.title).toBe(oldTask.title);
+  });
+
   it('preserves pending edits when a push response is incomplete or duplicated', async () => {
     const operationId = await saveServerManagedTask(task(), deviceId);
     const session = {
