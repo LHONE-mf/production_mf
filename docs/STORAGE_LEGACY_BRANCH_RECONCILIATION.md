@@ -38,3 +38,9 @@ Current `main` exposes `/inventory/receipts`, `/inventory/stocks`, `/inventory/s
 | Offline provisional intents | `inventoryOutbox.ts` | No journal backfill; no cross-actor replay; recovery after timeout |
 
 **Coverage status:** API/module overlap confirmed; behavioral parity **not yet proven** by executing the full PostgreSQL and Android test suites. Do not claim all legacy tests have been superseded until each row is covered by tests on current `main`.
+
+## Verified test inventory (2026-11-18)
+
+The current `apps/server/src/inventory-routes.postgres.test.ts` explicitly tests device authorization, quarantined receipt and exact retry, two-device committed-feed cursors, idempotent restore-fence migration, restore races, authorization revocation while blocked on a lock, invalid quantities, and competing device receipts. `apps/server/src/inventory-stock-operations.postgres.test.ts` explicitly tests concurrent stock changes, reservation protection, insufficient stock, exact retries, and append-only operation history.
+
+**Still not established by this inspection:** exact parity of historical fractional quantities (current inventory uses integral base units), same-manufacturer-lot separate receipts, split/move conservation under competing devices, count correction approval, and end-to-end Android recovery after intermittent connectivity. These are validation tasks, not permission to revive the historical `storage_*` ledger. The server CI Storage browser/recovery drill was still in progress when this was recorded.
