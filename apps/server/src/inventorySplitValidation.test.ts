@@ -29,6 +29,7 @@ describe('inventory split preconditions (pure, no writes)',()=>{
     expect(validateInventorySplit(stock,200,'cabinet-a'))
       .toEqual({ok:false,reason:'same_location'});
     expect(validateInventorySplit(stock,200,'  ').ok).toBe(false);
+    expect(validateInventorySplit(stock,200,null as unknown as string).ok).toBe(false);
   });
   it('rejects corrupted stock balances before planning a split',()=>{
     for(const invalid of [{onHand:-1},{reserved:-1},{reserved:1001},{onHand:1.5}])
