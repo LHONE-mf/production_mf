@@ -1026,6 +1026,32 @@ describe('server-managed task offline writes', () => {
     },
   );
 
+  it('rejects a server-invalid remote task title without persisting the task or advancing its cursor', async () => {
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    const { encodeTask } = await import('./taskDto');
+    const payload = { ...encodeTask(task()), title: '' };
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 11 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true, json: async () => ({
+        changes: [{ sequence: '12', entity_id: taskId, entity_type: 'task',
+          revision: 1, payload }],
+        nextCursor: 12, hasMore: false,
+      }),
+    }));
+    await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid remote task');
+    expect(await db.tasks.get(taskId)).toBeUndefined();
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(11);
+    db.close();
+    await db.open();
+    expect(await db.tasks.get(taskId)).toBeUndefined();
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(11);
+  });
+
   it('rolls back earlier remote tasks when a later change in the same pull is malformed', async () => {
     const secondTaskId = '55555555-5555-4555-8555-555555555555';
     const session = {
