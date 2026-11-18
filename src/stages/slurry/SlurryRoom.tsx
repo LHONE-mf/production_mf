@@ -15,8 +15,10 @@ import { RecipesDatabase } from './RecipesDatabase';
 import { ComponentsDatabase } from './ComponentsDatabase';
 import { MixBatchJournal } from './MixBatchJournal';
 import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import {RoomCustody} from '../_common/RoomCustody';
+import {SlurryMaterials} from './SlurryMaterials';
 
-type Tab = 'calc' | 'recipes' | 'components' | 'journal' | 'comments';
+type Tab = 'calc' | 'recipes' | 'components' | 'journal' | 'comments' | 'materials' | 'custody';
 
 export function SlurryModule(){const actor=useAuthStore(s=>s.currentUser?.id);return <SlurryContent key={actor}/>;}
 function SlurryContent() {
@@ -31,6 +33,8 @@ function SlurryContent() {
   );
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: 'custody', label: '🔁 Выпуск и передача' },
+    { id: 'materials', label: '📦 Остатки и расход' },
     { id: 'calc', label: '⚖️ Новый замес' },
     { id: 'recipes', label: '📚 Рецепты' },
     { id: 'components', label: '🧱 Материалы' },
@@ -73,6 +77,8 @@ function SlurryContent() {
       {tab === 'recipes' && <RecipesDatabase onUse={useRecipe} />}
       {tab === 'components' && <ComponentsDatabase />}
       {tab === 'journal' && <MixBatchJournal />}
+      {tab === 'custody' && <RoomCustody room="slurry"/>}
+      {tab === 'materials' && <SlurryMaterials/>}
       {tab === 'comments' && <CommentsSection stage={StageId.SLURRY} onAdd={addComment} />}
 
       {/* Задания этапа */}

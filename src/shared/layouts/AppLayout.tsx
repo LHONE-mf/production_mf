@@ -28,6 +28,22 @@ interface NavItem {
 export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) {
   const { currentUser, logout } = useAuthStore();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const openMenuRef = React.useRef<HTMLButtonElement>(null);
+  const closeMenuRef = React.useRef<HTMLButtonElement>(null);
+  const mobileMenuId = React.useId();
+
+  React.useEffect(() => {
+    if (!sidebarOpen) return;
+    closeMenuRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      openMenuRef.current?.focus();
+    };
+  }, [sidebarOpen]);
 
   async function signOut() {
     // A different local demo account must not inherit a live server session
@@ -40,6 +56,19 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       window.alert('Не удалось очистить разрешение на серверные задания. Повторите выход.');
     }
   }
+
+  // Комнаты этапов: worker видит только комнаты своих заданий, остальные роли — все этапы
+  const tasksByWorker = useLiveQuery<Task[]>(
+    async () => {
+      if (!currentUser) return [];
+      const [tasks, lease] = await Promise.all([
+        listVisibleTasks(), requireOfflineTaskEditLease().catch(() => null),
+      ]);
+      return tasks.filter(task => task.assignedTo === currentUser.id ||
+        (lease?.role === 'worker' && task.assignedTo === lease.actorId));
+    },
+    [currentUser?.id],
+  ) ?? [];
 
   if (!currentUser) return null;
 
@@ -104,18 +133,6 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
   const filteredNav = navItems.filter((item) => item.roles.includes(currentUser.role));
 
-  // Комнаты этапов: worker видит только комнаты своих заданий, остальные роли — все этапы
-  const tasksByWorker = useLiveQuery<Task[]>(
-    async () => {
-      if (!currentUser) return [];
-      const [tasks, lease] = await Promise.all([
-        listVisibleTasks(), requireOfflineTaskEditLease().catch(() => null),
-      ]);
-      return tasks.filter(task => task.assignedTo === currentUser.id ||
-        (lease?.role === 'worker' && task.assignedTo === lease.actorId));
-    },
-    [currentUser?.id],
-  ) ?? [];
   const visibleStages = (() => {
     if (currentUser.role !== UserRole.WORKER) return STAGES;
     const workerStages = new Set<string>();
@@ -125,7 +142,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   })();
 
   return (
-    <div className="h-full min-h-0 bg-slate-900 flex">
+    <div className="relative h-full min-h-0 bg-slate-900 flex">
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-slate-800/80 backdrop-blur border-r border-slate-700/50">
         {/* Logo */}
@@ -146,6 +163,8 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
           {filteredNav.map((item) => (
             <button
               key={item.id}
+              type="button"
+              aria-current={activeTab === item.id ? 'page' : undefined}
               onClick={() => onTabChange(item.id)}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                 activeTab === item.id
@@ -199,15 +218,15 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="lg:hidden absolute inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 bottom-0 w-72 bg-slate-800 p-4 flex flex-col">
+          <aside id={mobileMenuId} aria-label="Навигация" className="absolute left-0 top-0 bottom-0 w-72 max-w-full bg-slate-800 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <Battery className="w-6 h-6 text-green-400" />
                 <span className="text-white font-bold">Li-Ion</span>
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="text-slate-400 hover:text-white">
+              <button ref={closeMenuRef} type="button" aria-label="Закрыть меню" onClick={() => setSidebarOpen(false)} className="min-h-11 min-w-11 flex items-center justify-center text-slate-400 hover:text-white">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -215,6 +234,8 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
               {filteredNav.map((item) => (
                 <button
                   key={item.id}
+                  type="button"
+                  aria-current={activeTab === item.id ? 'page' : undefined}
                   onClick={() => { onTabChange(item.id); setSidebarOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
                     activeTab === item.id
@@ -246,18 +267,20 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Mobile header */}
-        <header className="lg:hidden flex shrink-0 items-center justify-between px-4 py-3 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
-          <button onClick={() => setSidebarOpen(true)} className="text-white">
+        <header className="lg:hidden flex shrink-0 items-center justify-between gap-2 px-2 sm:px-4 py-2 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
+          <button ref={openMenuRef} type="button" aria-label="Открыть меню" aria-expanded={sidebarOpen} aria-controls={sidebarOpen ? mobileMenuId : undefined} onClick={() => setSidebarOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center text-white">
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex items-center gap-2">
-            <Battery className="w-5 h-5 text-green-400" />
-            <span className="text-white font-bold text-sm">Li-Ion Production</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Battery aria-hidden="true" className="w-5 h-5 shrink-0 text-green-400" />
+            <span className="min-w-0 truncate text-white font-bold text-sm">Li-Ion Production</span>
           </div>
           <button
             onClick={() => void signOut()}
+            type="button"
             title="Выйти из профиля"
-            className={`w-8 h-8 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
+            aria-label="Выйти из профиля"
+            className={`w-11 h-11 shrink-0 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
           >
             <LogOut className="w-4 h-4" />
           </button>

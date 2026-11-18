@@ -7,7 +7,7 @@ export interface MaterialAlertStatus{
  lowStock:boolean;expiringPackages:string;
 }
 export interface MaterialBalanceRow{
- materialId:string;code:string;name:string;unit:'mg'|'ul'|'mm'|'pieces';
+ materialId:string;code:string;name:string;unit:'mg'|'ul'|'mm'|'pieces'|'rolls';
  category:'raw_material'|'component'|'electrode'|'cell';active:boolean;
  onHand:string;reserved:string;physicallyUnreserved:string;eligibleAvailable:string;
  quarantined:string;blocked:string;expired:string;
@@ -59,7 +59,7 @@ export async function loadMaterialBalances(
     integer.test((p as Record<string,unknown>).expiringPackages as string));
   if(!policyValid||typeof row.materialId!=='string'||!uuid.test(row.materialId)||row.materialId<=prior||
     typeof row.code!=='string'||typeof row.name!=='string'||
-    !['mg','ul','mm','pieces'].includes(String(row.unit))||
+    !['mg','ul','mm','pieces','rolls'].includes(String(row.unit))||
     !['raw_material','component','electrode','cell'].includes(String(row.category))||
     typeof row.active!=='boolean'||[
       'onHand','reserved','physicallyUnreserved','eligibleAvailable','quarantined',

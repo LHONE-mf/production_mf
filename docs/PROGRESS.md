@@ -1,3 +1,231 @@
+## 2026-11-17 — Actual Cutting use, counted output and partial Sorting custody
+
+- `feat/cutting-sorting-flow` stacks on unchanged draft #15 (`e86f010`), then
+  #14–#8. Main checked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CUTTING_SORTING_FLOW.md): explicit partial/multiple same-SKU
+  received-roll allocations record actual Cutting length; each original measured
+  calendered source retains its own remainder. Separately observed whole piece
+  counts create unsorted output lots with unknown rejects/trim kept null.
+- Actual-use claims belong once to the declaration, including multiple child lots.
+  No length-to-pieces estimate, accepted yield or automatic quality is created.
+  Explicit partial offers reserve only their count; only the assigned current
+  Sorting receiver confirms actual subset count and original lot label. A separate
+  discrepancy grants no custody. Sorting pieces cannot become mass/length capacity.
+- PostgreSQL 043–045 preserves populated history and extends existing custody.
+  Durable scoped forms/original-byte proposals survive offline reopen/lost ACKs;
+  exact ACK checks and late-reply protection preserve conflicts. Main Dexie 24,
+  outbox v7, archives, queues, journals, dependencies and lockfiles are unchanged.
+- New API/client and two actual UI browsers pass; populated 042→043→045 preserves
+  every pre-existing row. Actual pg_dump/two-fresh-restores compare 67 tables,
+  reconstruct 150 mm used/50 mm remaining, 9 ready plus 3 held counted pieces,
+  separate Sorting discrepancy/4-piece receipt and 5 available ready pieces,
+  original ACKs, immutable guards and history fencing with no warehouse effect.
+- Full frontend regression (136 files), 387 real-PostgreSQL server tests, all nine
+  material-flow browsers, locked installs, builds/types, Android harness types and
+  migration guards pass. Exact-source hosted CI/evidence are recorded in the draft PR.
+  Next: bind actual Sorting Visual→Thickness→Mass inspections and approved mode
+  to received custody, then Sorting output and Assembly pairing. Remnants,
+  corrections/returns/scrap, scientific reconciliation, factory tape measurement,
+  physical cell acceptance and signed Android/OnePlus/two-device acceptance remain.
+  Browser reopen does not prove Android process death or installed upgrade.
+  No production access, merge or deployment. Earlier entries are historical.
+
+## 2026-11-17 — Measured calendered output and direct Cutting custody
+
+- `feat/calendaring-cutting-custody` stacks on unchanged draft #14 (`c0d454c`),
+  then #13/#12/#11/#10/#9/#8. Main remains
+  `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CALENDERED_ROLL_CUSTODY.md): actual Calendaring-use events
+  from the same batch/step/input SKU are claimed once per output declaration.
+  Multiple physical rolls retain shared parent genealogy, independent measured
+  length/optional mass, explicit output SKU/label and ready/held disposition.
+  Unknown trim/scrap stays null; quality stays unreviewed and accounting unreconciled.
+- PostgreSQL 041–042 adds immutable output/claim records and extends existing room
+  lots and handoff/events. A whole-roll offer reserves the source; only the assigned
+  current Cutting receiver can confirm count/identity. Separate discrepancy creates
+  no custody. Cutting receipts cannot become new Calendaring sources. Existing
+  Slurry/coated-roll snapshots and actual use retain their original meaning.
+- Durable scoped forms/proposals retain original body/IDs/source/actor/role/device/
+  epoch offline and across unknown/lost replies. Exact ACK validation and late-reply
+  protection retain conflicts; async preparation disables prior form edits. Existing
+  physical-roll/request validators are reused. Main Dexie 24/outbox v7, original
+  queues, archives, journals, dependencies and lockfiles are unchanged.
+- Local **763 frontend / 376 server tests**, types/builds, Android harness types and
+  migration guards pass. All seven actual room browser workflows pass; the new two-
+  profile flow saves output/offer/receipt offline, reopens, loses committed output
+  and receipt replies, retries identical bytes, records discrepancy without custody
+  and checks 390/412/1365 layouts. Populated 040→042 preserves every old row. Actual
+  **63-table pg_dump/two-restores** preserves two measured calendered rolls (one held),
+  one shared actual-use claim, separate Cutting receipt, exact ACKs, original input
+  remainders and history fences. Final catalogue-label checks and current-source
+  hosted evidence belong to the next draft PR.
+- Next: actual Cutting length use, independently measured pieces/rejects/remnants
+  and direct Cutting→Sorting custody. Incorporation/loss reconciliation, physical
+  remnant splitting/corrections, factory foil/tape policy, subsequent room flows,
+  pairing/pouch/physical cell acceptance remain open. Browser reopen is not native
+  process-death/installed-upgrade proof; OnePlus/factory acceptance remains open.
+  No production connection, merge or deployment.
+
+## 2026-11-16 — Actual Calendaring use of received coated rolls
+
+- `feat/calendaring-roll-consumption` stacks on unchanged draft #13 (`f57d74d`),
+  then #12/#11/#10/#9/#8. Main remains
+  `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CALENDARING_ROLL_CONSUMPTION.md): independently measured
+  partial length from one or more actually received rolls of the same explicit
+  SKU/batch/Calendaring step, exact allocation totals and per-receipt remainder.
+  Capacity comes from each immutable Coating length measurement, with its basis
+  visible; one roll never becomes one metre and no mass conversion is inferred.
+- PostgreSQL 040 adds immutable use/allocation rows referencing existing custody.
+  Current source/route/device/tenant/QA/history checks, paired exact ACKs,
+  exclusive operation IDs and multi-row SQL overuse protection preserve old data.
+  Actual use creates no warehouse debit, QA release, output roll, Cutting transfer
+  or legacy CalenderRun. Main Dexie 24/outbox v7, old queues/journals, dependencies
+  and lockfiles are unchanged.
+- Scoped forms and frozen proposals preserve offline original body/IDs/sources,
+  role/device/actor/epoch, retain unknown replies/conflicts and reject changed or
+  late ACKs. Loading is separate from offline observation save and explicit send.
+- Full local **758 frontend / 370 server tests** pass, along with builds/types,
+  Android harness types and migration guards. Populated 039→040 preserves every
+  old row and creates no past use. Actual browser records 250 mm from a 400 mm
+  source, reopens and retries identical bytes after a committed lost reply,
+  retaining 150 mm with no warehouse effect at 390/412/1365. The actual **61-table
+  pg_dump/two-restores** reconstructs 250 mm used/50 mm remaining from its distinct
+  300 mm source, original ACKs, immutability and history fencing. All six actual
+  room browsers pass. Current-source hosted evidence belongs to the next draft PR.
+- Next: independently measured calendered-roll output and direct Calendaring→
+  Cutting custody; then actual Cutting→Sorting. Remnant identification/splitting,
+  cross-batch allocations, return/scrap/corrections, incorporation/loss balance,
+  factory foil/tape policy and later rooms/pairing/pouch/physical cell acceptance
+  remain open. Browser reopening is not native process-death/installed-upgrade
+  proof. Physical OnePlus/factory reconciliation remain gates. No merge/deployment.
+
+## 2026-11-16 — Measured coated rolls and direct Calendaring custody
+
+- `feat/coating-roll-custody` stacks on unchanged draft #12 (`b5a601f`), then
+  #11/#10/#9/#8. Latest main remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_ROLL_CUSTODY.md): explicit actual Slurry/foil
+  measurements are claimed once per declaration; multiple physical rolls retain
+  shared declaration genealogy. Each roll has independent length, optional mass,
+  explicit SKU/physical label and ready/held disposition. Unknown scrap stays null.
+  Tape remains explicitly not applicable or received-but-unmeasured, with typed
+  whole-roll issue references and no invented actual use.
+- PostgreSQL 038–039 extends existing room lots/handoff/events and adds immutable
+  output/claim rows. Direct whole-roll Coating→Calendaring offers reserve source;
+  only the assigned current receiver confirms actual count/identity. Separate
+  discrepancies create no custody. No warehouse effect, inferred conversion/yield,
+  QA release, legacy journal rewrite or schema/dependency reset.
+- Durable scoped forms/proposals preserve original offline bodies/IDs/epoch and
+  full actual source snapshots. Unknown/lost replies retry unchanged; exact ACK
+  validation and late-response checks preserve newer state. Async preparation
+  disables editing of the previous scoped form.
+- Local full regression: **755 frontend / 364 server tests** pass, including a
+  populated 037→039 comparison of all old rows and actual post-upgrade receipt.
+  The real 59-table pg_dump/two-restores drill preserves original ACKs, typed tape,
+  two output rolls, shared parent claims and one separately received Calendaring
+  roll; old Slurry balances reconstruct independently. Web/server types/builds,
+  Android harness types, migration guards and all five actual browsers pass.
+  Current-source hosted evidence belongs to the PR.
+- Next: actual Calendaring consumption/output→Cutting, partial-roll measurement/
+  splitting/corrections, output incorporation/loss reconciliation, actual foil/tape
+  policy and remaining room flows/pairing/pouch/physical cell acceptance. Browser
+  reopening does not establish Android process-death or installed-upgrade proof.
+  OnePlus/factory reconciliation remain open. No merge or deployment.
+
+## 2026-11-16 — Actual Coating collector-foil use
+
+- `feat/coating-foil-consumption` stacks on unchanged draft #11 (`b7c5635`),
+  then #10/#9/#8. Main checked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_FOIL_CONSUMPTION.md): independently measured
+  single-SKU mass/length consumption from received Coating issues, explicit
+  specification/operation reference, partial/multiple lots and shared
+  consume/return/scrap remainder. No second warehouse debit or roll conversion.
+- PostgreSQL 037 adds an immutable header and nullable parent link in existing
+  outcomes. Existing records/units/ACKs, Slurry/tape behavior, current authority,
+  device proof, QA/expiry and history fencing remain. Dexie 24/outbox v7,
+  dependencies and local journals are unchanged.
+- Local: 750 frontend / 358 PostgreSQL server tests, types/builds and Android
+  harness/migration guards pass. Real foil browser at 390/412/1365 saves offline,
+  reopens and repeats identical bytes after lost committed reply; 500 mm use from
+  800 mm leaves 300 mm, warehouse unchanged. Populated 036→037 compares all old
+  rows. Actual 57-table pg_dump/two restores reconstruct foil source snapshots,
+  consumption/remainder, original ACK and history fence. Final review also binds
+  issue identity/capacity to its immutable original receipt; the damaged-projection
+  regression and full server suite pass. Final committed-source
+  hosted results and all-browser evidence belong to the next draft PR.
+- Next: real roll-issued foil measurement policy, tape use/recoverable remainder,
+  measured coated output and Calendaring custody, other room flows/corrections,
+  pairing/pouch/physical cell acceptance. Factory/native OnePlus/installed upgrade
+  and physical reconciliation remain open. No merge or deployment.
+
+## 2026-11-16 — Whole-roll tape specifications and approved issues
+
+- `feat/tape-roll-specifications` stacks on unchanged draft #10 (`639702b`),
+  then #9/#8. Main rechecked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](TAPE_ROLL_SPECIFICATIONS.md): exact whole-roll unit,
+  immutable per-SKU width/thickness/application/reference, explicit operation
+  attribution through request/reserve/approval/dispatch/recipient receipt.
+  Separate Coating support, Assembly tab insulation and Assembly winding tape;
+  no invented dimensions, roll length, consumption or partial remainder.
+- PostgreSQL 036 adds nullable metadata without changing original units/rows/ACKs.
+  Current device/tenant/route/QA/history/approval checks remain. Existing offline
+  proposal storage, Dexie 24/outbox v7, dependencies and legacy journals remain.
+- Local full regression: 746 frontend / 349 server checks before the final exact
+  operation-reference regression; all six tape API cases then pass, including
+  exact whitespace preservation. Builds/types, Android harness types, disposable
+  migration guard, all three real browsers at 390/412/1365, populated 035→036
+  preservation and 56-table pg_dump/two restores pass. Final-source hosted results
+  and counts are recorded in the draft PR; earlier PR #10 evidence certifies its
+  dependency only.
+- Next: factory basis for actual partial-roll tape use/remainder; actual foil
+  use, measured Coating output and Calendaring custody, then remaining rooms,
+  corrections/pairing/pouch/physical cell acceptance. OnePlus/native upgrade and
+  physical factory reconciliation remain open. No merge or deployment.
+
+## 2026-11-16 — Actual Coating use of received Slurry
+
+- Source `5cc21220c9b20641f2bd5c9c8d130d2e74982b8b` on
+  `feat/coating-slurry-consumption`, stacked on unchanged draft #9 (`3f66812`).
+  Latest main checked remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](COATING_SLURRY_CONSUMPTION.md): independently measured
+  Slurry use, partial/multiple confirmed receipts, exact totals/current remainder,
+  immutable source-before/intent/ACK history and current scope/QA/history fencing.
+  No warehouse debit, automatic QA/roll output, or legacy-journal rewrite.
+- Coating controls freeze original scoped offline measurements separately from
+  send. Unknown replies, lost committed ACK, role/history changes and late ACK
+  preserve original evidence. Actual mass never comes from calculated pump flow.
+- Local: 742 frontend / 342 PostgreSQL server tests, builds/typechecks, both real
+  room browsers at 390/412/1365, two enrolled/authenticated test devices, populated
+  034→035 preservation, actual 56-table backup/two restores with 25 g consumed /
+  15 g remaining and exact original ACK. Hosted results belong to their named SHA
+  and are tracked in the draft PR; earlier #9 checks certify the dependency only.
+- Next: foil and operation-specific roll-issued tape use, actual roll output and
+  Calendaring custody, then other rooms/corrections/pairing/pouch/cell acceptance.
+  Native OnePlus/installed upgrade and physical factory reconciliation remain.
+  No merge/deploy without owner approval.
+
+## 2026-11-16 — Measured Slurry output and direct Coating custody
+
+- Implementation/test/CI source `630abb84669092a965661fa782acdb209714c7c3`, stacked
+  on unchanged draft PR #8; main remains `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](SLURRY_COATING_CUSTODY.md): complete independent measured
+  output/loss declaration, multiple lots, partial reserved transfer, assigned
+  Coating receiver's separate exact receipt or discrepancy, immutable genealogy.
+  No warehouse effect, automatic QA, local journal rewrite or production access.
+- Offline scoped forms/original proposals reuse Dexie 24/outbox v7. Current proof,
+  epoch, workshop/route, source holds, exact quantities, original-body replay and
+  late-ACK protection remain authoritative. Delayed form loading disables prior
+  edits; the real-browser regression catches deliberate removal of that guard.
+- Local regression: 737 frontend / 335 server tests, builds/typechecks, real
+  two-profile browser at 390/412/1365, populated 033→034 preservation, actual
+  54-table pg_dump/two-restores with exact output/offer/receipt ACKs and history
+  fence. Final committed-source/hosted results are tracked in the draft PR.
+- Next: Coating actual Slurry/foil/tape use and measured roll custody, other rooms,
+  immutable corrections, approved pairing/pouch, downstream physical cell receipt.
+  Tape remains issued by roll with distinct width/thickness per application.
+  Native OnePlus/installed-upgrade and physical factory acceptance remain open.
+  No merge/deploy without owner approval.
+
 ## 2026-11-12 — Slurry recipe selection preserves the working draft
 
 - Reproduced silent replacement of an occupied slurry draft on recipe selection,

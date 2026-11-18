@@ -7,7 +7,7 @@ export interface ReconciliationRow{
  stepNumber:number;workshopId:string;manufacturerLot:string;unit:string;
  materialCode:string;materialName:string;batchCode:string;recipientName:string;
  dispatchOperationId:string;receiptOperationId:string;
- issued:number;returned:number;scrapped:number;consumed:null;consumptionStatus:'not_recorded';outstanding:number;
+ issued:number;returned:number;scrapped:number;consumed:number|null;consumptionStatus:'not_recorded'|'recorded';outstanding:number;
 }
 export interface ReconciliationPage{
  epoch:string;throughIssueSequence:number;throughOutcomeSequence:number;
@@ -39,11 +39,11 @@ export async function loadIssueReconciliation(session:HybridSession,scope:Invent
   if(!record(row)||['issueId',...filterKeys,'dispatchOperationId','receiptOperationId'].some(key=>typeof row[key]!=='string'||!uuid.test(row[key] as string))||
    String(row.issueId)<=prior||!safe(row.stepNumber)||row.stepNumber<1||
    ['workshopId','manufacturerLot','materialCode','materialName','batchCode','recipientName'].some(key=>typeof row[key]!=='string'||(row[key] as string).length>2000)||
-   !['mg','ul','mm','pieces'].includes(String(row.unit))||
+   !['mg','ul','mm','pieces','rolls'].includes(String(row.unit))||
    ['issued','returned','scrapped','outstanding'].some(key=>!safe(row[key]))||row.issued===0||
-   row.consumed!==null||row.consumptionStatus!=='not_recorded')throw Error('Invalid reconciliation row');
+   !(row.consumed===null&&row.consumptionStatus==='not_recorded'||safe(row.consumed)&&row.consumed>0&&row.consumptionStatus==='recorded'))throw Error('Invalid reconciliation row');
   const item=row as unknown as ReconciliationRow;
-  if(BigInt(item.issued)!==BigInt(item.returned)+BigInt(item.scrapped)+BigInt(item.outstanding))throw Error('Invalid reconciliation balance');
+  if(BigInt(item.issued)!==BigInt(item.returned)+BigInt(item.scrapped)+BigInt(item.consumed??0)+BigInt(item.outstanding))throw Error('Invalid reconciliation balance');
   prior=item.issueId;items.push(item);
  }
  if(page.hasMore&&(!items.length||page.nextAfter!==prior))throw Error('Invalid reconciliation cursor');
@@ -71,6 +71,6 @@ export function issueReconciliationCsv(page:ReconciliationPage):string{
   'Issued and received','Returned','Issued scrap','Actual consumption','Unsettled (not measured unused)','Dispatch operation ID','Receipt operation ID'],
   ...page.items.map(r=>[page.epoch,page.throughIssueSequence,page.throughOutcomeSequence,r.issueId,r.productionBatchId,r.batchCode,
    r.stepNumber,r.workshopId,r.recipientId,r.recipientName,r.stockId,r.materialId,r.materialCode,r.materialName,r.manufacturerLot,r.unit,
-   r.issued,r.returned,r.scrapped,'NOT RECORDED',r.outstanding,r.dispatchOperationId,r.receiptOperationId])];
+   r.issued,r.returned,r.scrapped,r.consumed??'NOT RECORDED',r.outstanding,r.dispatchOperationId,r.receiptOperationId])];
  return '\uFEFF'+lines.map(row=>row.map(cell).join(',')).join('\r\n')+'\r\n';
 }

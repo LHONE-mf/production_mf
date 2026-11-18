@@ -1,3 +1,90 @@
+# Current Cutting→Sorting increment — 2026-11-17
+
+Actual Cutting input length, independently counted unsorted electrode output and
+partial direct Sorting custody are implemented on `feat/cutting-sorting-flow`,
+stacked on unchanged draft #15. Explicit same-SKU partial/multiple source use retains
+received-roll remainder; input claims belong once to a declaration. Piece counts
+are independent observations, unknown rejects/trim stay null, and explicit partial
+offers/assigned receiver count and source-label confirmation establish custody.
+Discrepancy does not grant custody. No inferred yield/QA or warehouse stock/debit.
+PostgreSQL 043–045 preserves earlier rows/snapshots; Dexie 24/outbox v7, archives,
+queues, journals and dependencies remain unchanged. [Contract](CUTTING_SORTING_FLOW.md).
+
+Full frontend regression (136 files), 387 real-PostgreSQL server tests, locked
+installs, builds/types, migration and Android harness checks, all nine browsers
+and populated 042→043→045 upgrade pass. Two new actual
+browsers cover original offline/reopen/lost-reply retry, independent measurements,
+partial count receipt and no automatically created Sorting workflow at
+390/412/1365. Real 67-table/two-restores retain 150 mm used/50 mm remaining,
+independent 9 ready plus 3 held pieces, 4 received/5 ready available, original ACKs
+and immutable history without warehouse effect. Exact-source full regression and
+hosted evidence are recorded in the draft PR. Binding manual Visual→Thickness→Mass
+inspections/approved mode to custody, Sorting output, Assembly pairing,
+reconciliation/remnants/corrections, factory tape measurement and native/physical
+acceptance remain open. No merge or deployment. Earlier entries are historical.
+
+# Current calendered-output and Cutting-custody increment — 2026-11-17
+
+Measured calendered-roll output and direct whole-roll Calendaring→Cutting custody
+are implemented on `feat/calendaring-cutting-custody`, stacked on unchanged draft
+#14. Actual input measurements are claimed once per declaration; multiple rolls
+retain shared genealogy and independent physical output measurements. Offers
+reserve source, assigned receiver count/label confirmation establishes custody,
+and discrepancy does not. Quality remains unreviewed, accounting unreconciled;
+no warehouse stock/debit, accepted yield, Cutting use or legacy journal is created.
+PostgreSQL 041–042 preserves earlier snapshots and guards, Dexie 24/outbox v7 and
+all old data/queues/dependencies. [Contract](CALENDERED_ROLL_CUSTODY.md).
+
+Local **763 frontend / 376 server tests**, builds/types, migration/Android harness
+checks, all seven actual room browsers, populated 040→042 preservation and real
+**63-table/two-restores** pass. New browser covers offline/reopen/original lost-reply
+retry in two profiles, async form-switch protection, separate discrepancy and
+physical receipt at 390/412/1365. Exact-source hosted checks and downloadable
+screenshots/JSON/logs are recorded in the draft PR. Actual Cutting→Sorting,
+reconciliation, remnants/corrections, factory foil/tape measurement, later rooms
+and native/OnePlus/physical acceptance remain open. No merge or deployment.
+Earlier entries below describe their historical sources.
+
+# Current Calendaring material-use increment — 2026-11-16
+
+Actual independently measured Calendaring input length is implemented on
+`feat/calendaring-roll-consumption`, stacked on unchanged draft #13. Explicit
+partial/multiple receipt allocations retain each same-SKU roll's remaining length
+and genealogy. Capacity uses the immutable measured Coating length acknowledged
+with the received physical roll; no nominal roll conversion, repeated warehouse
+debit, automatic output/QA or legacy CalenderRun is created. PostgreSQL 040 adds
+immutable use/allocation records; Dexie 24/outbox v7 and all old data/queues remain.
+[Contract and next gates](CALENDARING_ROLL_CONSUMPTION.md).
+
+Local **758 frontend / 370 server** tests, builds/types, Android harness types,
+migration guards, populated 039→040 preservation and actual **61-table/two-restores**
+pass. The new real browser verifies offline/reopen/lost-ACK original retry and
+150 mm remaining from 400 mm after 250 mm measured use at 390/412/1365. Exact-source
+hosted and all-browser evidence are recorded in the draft PR. Calendered output→
+Cutting, physical remnant splitting/corrections, reconciliation, factory foil/tape
+measurement, later room flows and native/OnePlus/physical acceptance remain open.
+Earlier entries describe their historical sources. No merge or deployment.
+
+# Current material-flow increment — 2026-11-16
+
+Measured coated-roll output and direct whole-roll Coating→Calendaring custody are
+implemented on `feat/coating-roll-custody`, stacked on draft #12. Actual Slurry/foil
+measurement claims belong once to a declaration; multiple physical rolls retain
+shared genealogy, independent measured length and optional mass. Assigned receiver
+count/identity confirmation establishes custody; discrepancy does not. Output stays
+unreviewed/unreconciled and creates no warehouse stock. Typed tape references retain
+whole-roll issue specifications without inventing consumption. PostgreSQL 038–039,
+main Dexie 24/outbox v7, existing journals/queues/dependencies preserved.
+[Contract, tests and remaining gates](COATING_ROLL_CUSTODY.md).
+
+Local **755 frontend / 364 server** regression tests and populated 037→039 upgrade
+pass. Real pg_dump/two-fresh-restores compare **59 tables**, original acknowledgements
+and measured roll/earlier Slurry custody separately. Current-source full verification
+and hosted artifacts are recorded in the draft PR. Native/OnePlus/physical factory
+acceptance, measured incorporation/loss reconciliation, partial-roll use/corrections,
+Calendaring output and subsequent room flows, physical cell acceptance and deployment
+remain open. Earlier entries below describe their historical sources.
+
 # Cell proposal/client/UI implemented — 2026-11-15
 
 Formation now saves durable original cell proposals offline, explicitly sends only the frozen request and atomically archives its exact ACK. Original identity/source/actor/role/device/scope/epoch/ID/body survive reopen, unknown replies and conflicts; no stock, physical receipt or QA is created. Main Dexie **24** adds cell claims and preserves all 37 previous main tables. Outbox **v7** / PostgreSQL **032** and old queues remain unchanged. Local-only v21/v22/v23 backups remain compatible; cell claims retain device-bound restore restrictions. [Cell contract](STORAGE_CELL_OUTPUT.md).
@@ -72,6 +159,29 @@ The S8 reconciliation increment is IMPLEMENTED / LOCAL TESTED: actual authentica
 The follow-up adds an immutable post-event location filter to movements, including page/full exports and actual PostgreSQL/browser/native harness checks. Reconciliation source `feaaedde9e1e917dca3c3e4760144d71ffae28a0` passed [push CI](https://github.com/LHONE-mf/production_mf/actions/runs/43645860642), [PR CI](https://github.com/LHONE-mf/production_mf/actions/runs/43645865248) and [Tests](https://github.com/LHONE-mf/production_mf/actions/runs/43645865177); [Route A](https://github.com/LHONE-mf/production_mf/actions/runs/43645860635) is still pending at this checkpoint. These links certify that reconciliation source, not changed follow-up code.
 
 Historical entries below describe their original checkpoints; use this section and the current feature rows for present scope.
+
+# Current Slurry increment — 2026-11-16
+
+[Room custody / actual-use contract](ROOM_MATERIAL_CUSTODY.md): received source
+remainder now accounts for measured Slurry use, returns and scrap; UI proposals
+remain durable and separate from posting. PostgreSQL 033; Dexie 24/outbox v7 unchanged.
+This supersedes older Slurry “NOT IMPLEMENTED” rows for this specific mass-use slice only.
+
+# Current Coating Slurry-use increment — 2026-11-16
+
+[Actual Coating Slurry use](COATING_SLURRY_CONSUMPTION.md) adds independent
+measured consumption, partial/multiple received-source allocations, current
+remainder and immutable history. PostgreSQL 035; Dexie 24/outbox v7 unchanged.
+This supersedes the earlier missing-Coating-consumption note for Slurry only.
+Foil/tape use, roll units/output, other rooms and native/physical acceptance remain.
+
+# Current Slurry output / Coating custody increment — 2026-11-16
+
+[Measured output and direct custody](SLURRY_COATING_CUSTODY.md) adds complete measured
+Slurry output, partial reserved offers and separately acknowledged Coating receipt
+or discrepancy without warehouse effect. PostgreSQL 034; Dexie 24/outbox v7 unchanged.
+This covers Slurry→Coating only; Coating consumption/roll output, roll-unit tape,
+other room handoffs and native/physical acceptance remain unfinished.
 
 # Storage feature matrix
 
@@ -170,3 +280,22 @@ S8 identification adds no stock schema or product dependency. It reuses the came
 ## S8 stock health first increment — 2026-11-14
 
 A read-only proof-bound PostgreSQL stock report and an explicitly refreshed mobile alert page with scoped CSV page export have been implemented. See [STORAGE_ALERTS.md](STORAGE_ALERTS.md). This covers ad hoc expiry and per-material available-quantity warnings only. Persistent thresholds, automated alerts, full ledger/audit reporting, all-pages export and S9/S10 remain pending. Verify exact-head CI before claiming acceptance.
+
+# Current tape specification / whole-roll issue increment — 2026-11-16
+
+[Polyimide tape](TAPE_ROLL_SPECIFICATIONS.md) adds whole-roll receiving and the
+existing approved issue path with immutable application/dimensions and explicit
+operation attribution. PostgreSQL 036; Dexie 24/outbox v7 unchanged. This
+supersedes earlier missing-roll-unit notes for catalogue/receiving/issues only.
+Actual tape use/partial-roll remainder, foil use, Coating output and other
+room/native/physical acceptance remain open. Historical entries retain their
+original source-specific scope.
+
+# Current Coating foil-use increment — 2026-11-16
+
+[Actual collector-foil use](COATING_FOIL_CONSUMPTION.md) adds independently
+measured single-SKU mass/length use, partial/multiple received lots and shared
+consume/return/scrap settlement. PostgreSQL 037; Dexie 24/outbox v7 unchanged.
+This covers issued mass/length only. Factory foil issue/use measurement, roll
+conversions, tape use/remainder, measured Coating output and Calendaring custody
+remain open; current evidence belongs to the candidate SHA recorded in the PR.

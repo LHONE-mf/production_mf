@@ -92,3 +92,10 @@ describe('authoritative inventory transition contract',()=>{
       .toMatchObject({ok:true,stock:{locationId:'cabinet-2',revision:2}});
   });
 });
+
+it('receives and issues whole rolls while retaining the roll unit',()=>{
+ const rolls={...released,unit:'rolls' as const,onHand:3,reserved:2};
+ expect(transitionInventory(undefined,{...receipt,unit:'rolls',quantity:3})).toMatchObject({ok:true,stock:{unit:'rolls',onHand:3}});
+ expect(transitionInventory(rolls,action('issue',{quantity:2,productionBatchId:'batch'}),{mayAdjust:false,mayIssue:true,ownedReservation:2})).toMatchObject({ok:true,stock:{unit:'rolls',onHand:1,reserved:0}});
+ expect(transitionInventory(undefined,{...receipt,unit:'rolls',quantity:0.5})).toMatchObject({ok:false,code:'invalid'});
+});

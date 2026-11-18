@@ -8,7 +8,7 @@
  * This pure function has no authority by itself. Authenticated routes enforce
  * current permissions, history, provenance and transactional ledger writes.
  */
-export type InventoryUnit = 'mg' | 'ul' | 'mm' | 'pieces';
+export type InventoryUnit = 'mg' | 'ul' | 'mm' | 'pieces' | 'rolls';
 export type InventoryQuality = 'quarantine' | 'released' | 'blocked';
 export type InventoryOperationKind =
   | 'receive' | 'reserve' | 'release_reservation' | 'issue'
@@ -65,7 +65,7 @@ const positiveInt = (n: unknown): n is number =>
 const nonnegativeInt = (n: unknown): n is number =>
   typeof n === 'number' && Number.isSafeInteger(n) && n >= 0;
 const validUnit = (u: unknown): u is InventoryUnit =>
-  u === 'mg' || u === 'ul' || u === 'mm' || u === 'pieces';
+  u === 'mg' || u === 'ul' || u === 'mm' || u === 'pieces' || u === 'rolls';
 const validQuality = (q: unknown): q is InventoryQuality =>
   q === 'quarantine' || q === 'released' || q === 'blocked';
 const fail = (code: Extract<InventoryResult, {ok:false}>['code'], message: string): InventoryResult =>

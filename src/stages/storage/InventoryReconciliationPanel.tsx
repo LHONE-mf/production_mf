@@ -45,7 +45,7 @@ export function InventoryReconciliationPanel({scope,session,epoch,materials}:{
  }
  return <details className="rounded border border-slate-600 p-3" aria-label="Сверка выданных материалов">
   <summary className="min-h-11 cursor-pointer py-2">Сверка выдач · возврат · списание · расход</summary>
-  <p>Только физически выданные и принятые получателем материалы. Фактический расход НЕ ЗАПИСАН: измерения Slurry ещё не связаны со складом. Неразнесённое количество = принято − возвращено − списано; оно не подтверждает, что материал остался неиспользованным.</p>
+  <p>Только физически выданные и принятые получателем материалы. При отсутствии навесок расход НЕ ЗАПИСАН. Расход показывается только по подтверждённым навескам. Неразнесённое количество = принято − возвращено − списано − подтверждённый расход; оно не подтверждает, что материал остался неиспользованным.</p>
   <div className="grid gap-2 sm:grid-cols-2">
    <label>Материал<select className={cls} aria-label="Материал сверки выдач" value={draft.materialId} onChange={e=>edit('materialId',e.target.value)}>
     <option value="">Все материалы</option>{materials.map(m=><option key={m.id} value={m.id}>{m.code} · {m.name}</option>)}
@@ -62,7 +62,7 @@ export function InventoryReconciliationPanel({scope,session,epoch,materials}:{
     <p>Партия {row.batchCode} ({row.productionBatchId}) · шаг {row.stepNumber} · получатель {row.recipientName} ({row.recipientId})</p>
     <p>Выдача {row.issueId} · исходный контейнер {row.stockId}</p>
     <p>Принято: {row.issued} · Возвращено: {row.returned} · Списано из выдачи: {row.scrapped} · Неразнесено: {row.outstanding} {row.unit}</p>
-    <p>Фактический расход: НЕ ЗАПИСАН. Выдача не является измерением расхода.</p>
+    <p>Фактический расход: {row.consumed===null?'НЕ ЗАПИСАН':row.consumed+' '+row.unit}. Выдача не является измерением расхода.</p>
    </div>)}
    {!page.items.length&&<p>Принятых выдач в выбранной области нет.</p>}
    <p>CSV содержит выбранную страницу или весь фиксированный срез до 10 000 выдач. При ошибке или превышении лимита полный файл не создаётся.</p>

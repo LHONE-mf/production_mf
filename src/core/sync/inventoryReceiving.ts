@@ -3,7 +3,7 @@ import type {HybridSession} from './hybridClient';
 
 /** Integer ratios within one physical dimension; reject loss instead of rounding. */
 export function toInventoryBaseUnits(quantity:string,unit:string,baseUnit:string):number{
- const units:Record<string,{base:string;factor:bigint}>={mg:{base:'mg',factor:1n},g:{base:'mg',factor:1000n},kg:{base:'mg',factor:1000000n},ul:{base:'ul',factor:1n},ml:{base:'ul',factor:1000n},L:{base:'ul',factor:1000000n},mm:{base:'mm',factor:1n},m:{base:'mm',factor:1000n},pieces:{base:'pieces',factor:1n}};
+ const units:Record<string,{base:string;factor:bigint}>={mg:{base:'mg',factor:1n},g:{base:'mg',factor:1000n},kg:{base:'mg',factor:1000000n},ul:{base:'ul',factor:1n},ml:{base:'ul',factor:1000n},L:{base:'ul',factor:1000000n},mm:{base:'mm',factor:1n},m:{base:'mm',factor:1000n},pieces:{base:'pieces',factor:1n},rolls:{base:'rolls',factor:1n}};
  const conversion=units[unit],value=quantity.trim().replace(',','.');
  if(!conversion||conversion.base!==baseUnit||!/^\d{1,16}(?:\.\d{1,9})?$/.test(value))throw Error('Введите точное положительное количество в единице материала');
  const [whole,fraction='']=value.split('.'),scale=10n**BigInt(fraction.length);

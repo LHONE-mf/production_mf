@@ -1,3 +1,4 @@
+import {validTapeSpecification, type TapeSpecification} from './inventoryTape';
 import type {HybridSession} from './hybridClient';
 import type {InventoryScope} from './inventoryOutbox';
 import {inventoryRequest} from './inventoryClient';
@@ -7,7 +8,8 @@ import {inventoryRequest} from './inventoryClient';
 export interface InventoryMaterial {
   id:string;code:string;name:string;revision?:number;active?:boolean;supplierReference?:string|null;
   category:'raw_material'|'component'|'electrode'|'cell';
-  baseUnit:'mg'|'ul'|'mm'|'pieces';
+  baseUnit:'mg'|'ul'|'mm'|'pieces'|'rolls';
+  tapeSpecification?:TapeSpecification;
 }
 export interface InventoryLocation {
   id:string;parentId:string|null;label:string;
@@ -35,8 +37,9 @@ export function material(x:unknown):x is InventoryMaterial{
   if(!isRecord(x))return false;
   return typeof x.id==='string'&&uuid.test(x.id)&&nonempty(x.code,100)&&
     nonempty(x.name,200)&&
+    (x.tapeSpecification===undefined||(x.category==='component'&&x.baseUnit==='rolls'&&validTapeSpecification(x.tapeSpecification)))&&
     ['raw_material','component','electrode','cell'].includes(String(x.category))&&
-    ['mg','ul','mm','pieces'].includes(String(x.baseUnit))&&
+    ['mg','ul','mm','pieces','rolls'].includes(String(x.baseUnit))&&
     (x.revision===undefined||(Number.isSafeInteger(x.revision)&&Number(x.revision)>0&&Number(x.revision)<=2147483647))&&
     (x.active===undefined||typeof x.active==='boolean')&&
     (x.supplierReference===undefined||x.supplierReference===null||nonempty(x.supplierReference,200));

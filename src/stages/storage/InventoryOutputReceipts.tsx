@@ -6,7 +6,7 @@ import {inventoryLocationPath,type InventoryLocation} from '../../core/sync/inve
 import {toInventoryBaseUnits} from '../../core/sync/inventoryReceiving';
 import {loadInventoryOutputs,type OfferedOutput} from '../../core/sync/inventoryOutputs';
 import {freezeOutputAcceptance,sendOutputAcceptance,outputAcceptanceProposals,type OutputAcceptanceRequest} from '../../core/sync/inventoryOutputAcceptance';
-import {useOutputDraft,outputButton as button,outputControl as control} from './useOutputDraft';
+import {useOutputDraft,outputButton as button,outputControl as control} from '../_common/useOutputDraft';
 interface Props {session:HybridSession;scope:InventoryScope;localActorId:string;epoch:string;locations:InventoryLocation[];onChanged:()=>void}
 const receiptStates:Record<string,string>={pending:'Ожидает отдельного подтверждения / точного повтора',accepted:'Складская приёмка записана',conflict:'Конфликт — исходный подсчёт удержан',rejected:'Отклонено — требуется сверка'};
 export function InventoryOutputReceipts(props:Props){return <OutputReceipts key={inventoryScopeKey(props.scope)+props.localActorId} {...props}/>;}

@@ -2,7 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {StageId} from '../types';
 import {
   APPROVED_ALLOCATION_POLICY, CELL_FORMAT_PLANS, DEFAULT_DIRECT_HANDOFFS, MATERIAL_FLOW_BLUEPRINT,
-  POLYIMIDE_APPLICATIONS, PROPOSED_MANUFACTURING_OPERATIONS,
+  POLYIMIDE_APPLICATIONS, PROPOSED_MANUFACTURING_OPERATIONS, WIP_RELEASE_HANDOFFS,
 } from './materialFlowBlueprint';
 
 describe('approved material flow blueprint (advisory only)',()=>{
@@ -12,7 +12,7 @@ describe('approved material flow blueprint (advisory only)',()=>{
 
   it('models direct handoffs without confusing Assembly WIP buffers with direct outputs',()=>{
     for(const link of DEFAULT_DIRECT_HANDOFFS){
-      const handling=link.from===StageId.ASSEMBLY?'room-wip':'direct';
+      const handling='direct';
       expect(MATERIAL_FLOW_BLUEPRINT[link.from].outputs.some(item=>item.material===link.material&&item.handling===handling)).toBe(true);
       expect(MATERIAL_FLOW_BLUEPRINT[link.to].upstreamInputs).toContain(link.material);
     }
@@ -35,7 +35,7 @@ describe('approved material flow blueprint (advisory only)',()=>{
   });
 
   it('models both existing Filling rooms and two distinct paths to Formation',()=>{
-    const links=DEFAULT_DIRECT_HANDOFFS;
+    const links=[...DEFAULT_DIRECT_HANDOFFS,...WIP_RELEASE_HANDOFFS];
     expect(links).toContainEqual({from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE,material:'assembled-dry-cells'});
     expect(links).toContainEqual({from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE_705,material:'assembled-dry-cells'});
     expect(links).toContainEqual({from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells'});

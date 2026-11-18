@@ -1,3 +1,4 @@
+import {validTapeSpecification, type TapeSpecification} from './inventoryTape';
 import type { HybridSession } from './hybridClient';
 import { inventoryRequest } from './inventoryClient';
 import { validateInventoryStock, type InventoryScope, type InventoryStockSnapshot } from './inventoryOutbox';
@@ -10,7 +11,7 @@ export async function loadInventoryIssueContext(session: HybridSession, scope: I
   return { ...scope, epoch: raw.epoch, postingEnabled: raw.postingEnabled, warehouseLevel: raw.warehouseLevel };
 }
 export interface IssueBatch { id: string; batchCode: string; stepNumber: number; name: string; stage: string; workshopId: string }
-export interface IssueOption { id: string; name: string; code?: string; unit?: InventoryStockSnapshot['unit'] }
+export interface IssueOption { id: string; name: string; code?: string; unit?: InventoryStockSnapshot['unit']; tapeSpecification?: TapeSpecification }
 export interface IssueLabels { materialName: string; materialCode: string; batchCode: string; recipientName: string }
 export interface IssueHistory { operationId: string; sequence: number; kind: string; actorId: string; deviceId: string; reason: string; evidence: string; expectedRevision: number; resultingRevision: number; recordedAt: string }
 async function page(session: HybridSession, scope: InventoryScope, context: InventoryIssueContext, path: string, extras: Record<string, string> = {}) {
@@ -27,7 +28,7 @@ export async function loadIssueBatches(session: HybridSession, scope: InventoryS
 export async function loadIssueOptions(session: HybridSession, scope: InventoryScope, context: InventoryIssueContext, batch: IssueBatch, resource: 'materials' | 'recipients', after?: string) {
   if (!issueIdValid(batch.id) || !Number.isSafeInteger(batch.stepNumber) || batch.stepNumber < 1 || after !== undefined && !issueIdValid(after)) throw Error('Invalid issue options scope');
   const raw = await page(session, scope, context, '/inventory/issue-options', { productionBatchId: batch.id, stepNumber: String(batch.stepNumber), resource, ...(after ? { after } : {}) }); let previous = after ?? '';
-  for (const value of raw.items) { const r = value as IssueOption; if (!r || !issueIdValid(r.id) || r.id <= previous || !issueTextValid(r.name) || (resource === 'materials' && (!issueTextValid(r.code) || !['mg', 'ul', 'mm', 'pieces'].includes(r.unit ?? '')))) throw Error('Invalid issue option'); previous = r.id; }
+  for (const value of raw.items) { const r = value as IssueOption; if (!r || !issueIdValid(r.id) || r.id <= previous || !issueTextValid(r.name) || (resource === 'materials' && (!issueTextValid(r.code) || !['mg', 'ul', 'mm', 'pieces', 'rolls'].includes(r.unit ?? '')))) throw Error('Invalid issue option'); if(r.tapeSpecification!==undefined&&(resource!=='materials'||r.unit!=='rolls'||!validTapeSpecification(r.tapeSpecification)))throw Error('Invalid tape issue option'); previous = r.id; }
   if (raw.hasMore && raw.nextAfter !== previous) throw Error('Invalid options continuation'); return { items: raw.items as IssueOption[], nextAfter: raw.hasMore ? previous : null };
 }
 export async function loadInventoryIssues(session: HybridSession, scope: InventoryScope, context: InventoryIssueContext, after?: string) {

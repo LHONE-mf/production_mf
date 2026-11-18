@@ -91,8 +91,33 @@ when every local record can be discarded.
   configured backend and authorized **server** login. They are separate from
   legacy local room data; automatic local→server manufacturing sync is not
   implemented.
-- **Inventory:** no verified real stock posting; quantity differences are
-  comparisons of declarations, not proof of material loss or accepted yield.
+- **Inventory:** authenticated warehouse receiving/QA/issues/returns and source
+  claims are implemented; [received room materials and actual Slurry use](docs/ROOM_MATERIAL_CUSTODY.md)
+  now track measured consumption separately from warehouse dispatch.
+  [Measured Slurry output and direct Coating custody](docs/SLURRY_COATING_CUSTODY.md)
+  add partial offers, explicit receipt/discrepancy and durable original retries.
+  [Actual Coating Slurry use](docs/COATING_SLURRY_CONSUMPTION.md) settles measured
+  partial allocations against those received sources.
+  [Roll-issued tape specifications](docs/TAPE_ROLL_SPECIFICATIONS.md) preserve
+  application-specific width/thickness and operation attribution through approved
+  whole-roll issues.
+  [Measured collector-foil use](docs/COATING_FOIL_CONSUMPTION.md) settles actual
+  mass/length from received issues against the shared return/scrap balance.
+  [Measured coated rolls and direct Calendaring custody](docs/COATING_ROLL_CUSTODY.md)
+  link actual inputs to physical rolls, reserve explicit offers and require the
+  assigned receiver to confirm count and identity.
+  [Actual Calendaring roll use](docs/CALENDARING_ROLL_CONSUMPTION.md) records
+  independently measured partial length against received physical rolls, retaining
+  each source remainder without another warehouse debit.
+  [Measured calendered output and Cutting custody](docs/CALENDERED_ROLL_CUSTODY.md)
+  add separately measured physical output rolls, explicit direct offers and
+  assigned Cutting receipt/discrepancy.
+  [Actual Cutting use and partial Sorting custody](docs/CUTTING_SORTING_FLOW.md)
+  records measured input length, independently counted unsorted electrode lots
+  and assigned partial piece receipts without automatic inspection or stock.
+  Roll-issued foil/tape use and output reconciliation remain open. Production
+  declarations do not automatically create stock or prove accepted yield. Physical
+  factory/device acceptance and deployment remain separate gates.
 
 For requirements and current acceptance gates consult
 [Product Specification](docs/PRODUCT_SPECIFICATION.md),
