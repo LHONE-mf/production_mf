@@ -115,6 +115,39 @@ describe("applyPacket security (Э1)", () => {
     expect(res.message).toMatch(/Общий ключ/);
   });
 
+  it("отклоняет административные изменения даже с подписью и заявленной ролью chief", async () => {
+    for (const type of ["user", "mix-component", "mix-recipe", "sort-spec"] as const) {
+      const packet = await sign(makePacket({
+        type: type as SyncPacket["type"],
+        role: UserRole.CHIEF,
+        payload: { id: "forged-admin-entry" },
+      }));
+      const result = await applyPacket(packet);
+      expect(result.ok, type).toBe(false);
+      expect(result.message, type).toMatch(/Общий ключ/);
+    }
+  });
+
+  it("отклоняет forced-запись независимо от заявленной роли", async () => {
+    for (const role of [UserRole.WORKER, UserRole.CHIEF]) {
+      const packet = await sign(makePacket({ role, forced: true }));
+      const result = await applyPacket(packet);
+      expect(result.ok).toBe(false);
+      expect(result.message).toMatch(/forced/);
+    }
+  });
+
+  it("отклоняет неподтверждённые параметры технолога в подписанном roll-spec", async () => {
+    const packet = await sign(makePacket({
+      type: "roll-spec",
+      role: UserRole.CHIEF,
+      payload: { calenderParams: { gapMm: 0.1 } },
+    }));
+    const result = await applyPacket(packet);
+    expect(result.ok).toBe(false);
+    expect(result.message).toMatch(/Общий ключ/);
+  });
+
   it("подписанный journal-пакет применяется", async () => {
     const j = { id: "j-1", stage: "slurry" as any, text: "запись", createdAt: new Date(), updatedAt: Date.now() };
     const p = await sign(makePacket({ type: "journal" as any, payload: j }));
