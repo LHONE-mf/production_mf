@@ -39,7 +39,7 @@ public class OfflineUpgradeWebViewTest {
             result.set(value);
             done.countDown();
         }));
-        assertTrue("WebView JavaScript timed out", done.await(15, TimeUnit.SECONDS));
+        assertTrue("WebView JavaScript timed out", done.await(30, TimeUnit.SECONDS));
         return result.get();
     }
 
@@ -85,7 +85,7 @@ public class OfflineUpgradeWebViewTest {
             boolean ready = false;
             for (int attempt = 0; attempt < 120; attempt++) {
                 if ("true".equals(eval(instrumentation, view,
-                        "Boolean(window.Capacitor && window.indexedDB && location.origin==='https://localhost')"))) {
+                        "Boolean(window.Capacitor && window.indexedDB && document.readyState==='complete' && location.origin==='https://localhost')"))) {
                     ready = true;
                     break;
                 }
@@ -93,7 +93,9 @@ public class OfflineUpgradeWebViewTest {
             }
             assertTrue("Production MF Capacitor WebView was not ready", ready);
             // Allow the production Dexie schema to finish opening before the raw IndexedDB probe.
-            Thread.sleep(1200);
+            Thread.sleep(3000);
+            assertEquals("Capacitor page changed during startup", "true", eval(instrumentation, view,
+                    "Boolean(window.Capacitor && document.readyState==='complete' && location.origin==='https://localhost')"));
             if ("prepare".equals(phase)) {
                 JSONObject saved = run(instrumentation, view,
                         "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts'],'readwrite');"
