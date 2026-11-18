@@ -5,6 +5,8 @@ import {
   copyCutOutputLot,
   copyCutOutputReceipt,
   copyCutOutputReceiptRequest,
+  copyCutOutputHandoff,
+  copyCutOutputHandoffRead,
 } from "./cuttingOutputTypes";
 const id = () => crypto.randomUUID(),
   scope = {
@@ -118,6 +120,46 @@ it("rejects non-string receipt kinds even when their string representation looks
       actorId: scope.actorId,
       recordedAt: new Date().toISOString(),
       custodyEffect: "none",
+      warehouseEffect: "none",
+    }),
+  ).toThrow();
+});
+
+it("rejects contradictory handoff ancestry referring to a held lot", () => {
+  const f = cuttingOutputTestData(scope);
+  const original = f.handoff.sourceSnapshot;
+  const held = { ...original.lot, disposition: "held" as const };
+  const snapshot = {
+    ...original,
+    lot: held,
+    declaration: {
+      ...original.declaration,
+      outputs: original.declaration.outputs.map((lot) =>
+        lot.id === held.id ? held : lot,
+      ),
+    },
+  };
+  // Both nested copies agree, but they cannot describe a valid handoff.
+  const malformed = { ...f.handoff, sourceSnapshot: snapshot };
+  expect(copyCutOutputHandoff(f.handoff)).toEqual(f.handoff);
+  expect(() => copyCutOutputHandoff(malformed)).toThrow();
+  expect(() =>
+    copyCutOutputHandoffRead({
+      operationId: malformed.operationId,
+      handoff: malformed,
+      eligible: false,
+      received: null,
+      eventCount: 0,
+    }),
+  ).toThrow();
+  if (f.receipt.kind !== "receipt") throw Error("Receipt required");
+  expect(() =>
+    copyCutOutputReceipt({
+      ...f.receipt.request,
+      sourceSnapshot: malformed,
+      actorId: scope.actorId,
+      recordedAt: new Date().toISOString(),
+      custodyEffect: "received",
       warehouseEffect: "none",
     }),
   ).toThrow();

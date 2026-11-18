@@ -382,6 +382,7 @@ export function copyCutOutputHandoff(value: unknown): CutOutputHandoff {
     request = copyCutOutputOfferRequest(pick(r, offerKeys)),
     sourceSnapshot = copyCutOutputSnapshot(r.sourceSnapshot);
   if (
+    sourceSnapshot.lot.disposition !== "ready" ||
     request.quantity > sourceSnapshot.quantity ||
     r.outputLotId !== sourceSnapshot.id ||
     r.productionBatchId !== sourceSnapshot.declaration.productionBatchId ||
