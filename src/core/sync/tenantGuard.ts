@@ -24,8 +24,8 @@ export async function assertSyncTenant(serverUrl: string, organizationId: string
     throw new Error('Invalid authenticated actor ID');
   }
   const actorKey = actor ? 'syncActor:' + origin + ':' + org + ':' + actor : null;
-  await db.transaction('rw', db.hybridSyncMetadata, db.hybridTaskOutbox, db.hybridTaskRevisions,
-    db.hybridTaskResolutions, db.hybridTaskDeferred, db.hybridTaskEditLeases, async () => {
+  await db.transaction('rw', [db.hybridSyncMetadata, db.hybridTaskOutbox, db.hybridTaskRevisions,
+    db.hybridTaskResolutions, db.hybridTaskDeferred, db.hybridTaskEditLeases], async () => {
     // Legacy records can retain server/user-specific state after the queue is empty.
     const hasUnownedTaskState = async () =>
       !!(await db.hybridTaskOutbox.count() || await db.hybridTaskRevisions.count() ||
