@@ -45,6 +45,10 @@ function date(value: Date, field: string) {
 }
 export function encodeTask(task: Task): TaskPayloadV1 {
   uuid(task.id, 'task.id'); uuid(task.createdBy, 'task.createdBy');
+  if (!Object.values(TaskStatus).includes(task.status)) throw new Error('Invalid task status');
+  const createdAt = date(task.createdAt, 'createdAt');
+  const updatedAt = date(task.updatedAt, 'updatedAt');
+  if (updatedAt < createdAt) throw new Error('Invalid task date order');
   optionalId(task.assignedTo, true);
   optionalId(task.techCardId, true);
   if (task.dueDate != null && !(task.dueDate instanceof Date))
@@ -62,8 +66,8 @@ export function encodeTask(task: Task): TaskPayloadV1 {
   return {
     schemaVersion: 1, title: task.title, description: task.description,
     status: task.status, priority: task.priority, assignedTo: task.assignedTo || null,
-    createdBy: task.createdBy, createdAt: date(task.createdAt,'createdAt'),
-    updatedAt: date(task.updatedAt,'updatedAt'), dueDate: task.dueDate ? date(task.dueDate,'dueDate') : null,
+    createdBy: task.createdBy, createdAt,
+    updatedAt, dueDate: task.dueDate ? date(task.dueDate,'dueDate') : null,
     techCardId: task.techCardId || null, stage: task.stage || null, workshopId: task.workshopId || null,
     comments: task.comments.map(c => ({...c, createdAt: date(c.createdAt,'comment.createdAt')})),
     attachments: task.attachments.map(a => ({...a, createdAt: date(a.createdAt,'attachment.createdAt')})),
