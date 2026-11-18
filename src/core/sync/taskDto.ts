@@ -17,10 +17,24 @@ function date(value: Date, field: string) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error('Invalid date: ' + field);
   return value.toISOString();
 }
+/** Match the existing server task-schema limits before offline edits are queued. */
+function validateTaskContentLimits(
+  comments: ReadonlyArray<{ text: string }>,
+  attachments: ReadonlyArray<{ fileName: string; fileType: string; data: string }>,
+) {
+  if (comments.length > 1000 || attachments.length > 30 ||
+      comments.some(c => typeof c?.text !== 'string' || c.text.length > 10_000) ||
+      attachments.some(a => typeof a?.fileName !== 'string' || a.fileName.length > 255 ||
+        typeof a.fileType !== 'string' || a.fileType.length > 120 ||
+        typeof a.data !== 'string' || a.data.length > 1_000_000)) {
+    throw new Error('Task content exceeds server limits');
+  }
+}
 export function encodeTask(task: Task): TaskPayloadV1 {
   uuid(task.id, 'task.id'); uuid(task.createdBy, 'task.createdBy');
   if (task.assignedTo) uuid(task.assignedTo, 'task.assignedTo');
   if (task.techCardId) uuid(task.techCardId, 'task.techCardId');
+  validateTaskContentLimits(task.comments, task.attachments);
   for (const comment of task.comments) {
     uuid(comment.id,'comment.id'); uuid(comment.taskId,'comment.taskId'); uuid(comment.authorId,'comment.authorId');
     if (comment.taskId !== task.id) throw new Error('Comment task mismatch');
@@ -53,6 +67,7 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
       !Array.isArray(payload.comments) || !Array.isArray(payload.attachments)) {
     throw new Error('Invalid remote task fields');
   }
+  validateTaskContentLimits(payload.comments, payload.attachments);
   const statuses = Object.values(TaskStatus);
   const priorities = Object.values(TaskPriority);
   if (!statuses.includes(payload.status) || !priorities.includes(payload.priority)) throw new Error('Invalid task status/priority');
