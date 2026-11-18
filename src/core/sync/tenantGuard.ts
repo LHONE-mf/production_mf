@@ -24,16 +24,20 @@ export async function assertSyncTenant(serverUrl: string, organizationId: string
     throw new Error('Invalid authenticated actor ID');
   }
   const actorKey = actor ? 'syncActor:' + origin + ':' + org + ':' + actor : null;
-  await db.transaction('rw', db.hybridSyncMetadata, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
+  await db.transaction('rw', db.hybridSyncMetadata, db.hybridTaskOutbox, db.hybridTaskRevisions,
+    db.hybridTaskResolutions, db.hybridTaskDeferred, db.hybridTaskEditLeases, async () => {
+    // Legacy records can retain server/user-specific state after the queue is empty.
+    const hasUnownedTaskState = async () =>
+      !!(await db.hybridTaskOutbox.count() || await db.hybridTaskRevisions.count() ||
+         await db.hybridTaskResolutions.count() || await db.hybridTaskDeferred.count() ||
+         await db.hybridTaskEditLeases.count());
     const bindings = await db.hybridSyncMetadata.where('key').startsWith('syncTenant:').toArray();
     if (bindings.length > 1 || bindings.some(binding => binding.key !== key)) {
       throw new Error('This device is linked to another organization or server. Use a separate app installation until tenant migration is supported.');
     }
     if (!bindings.length) {
       const legacyCursor = await db.hybridSyncMetadata.get('taskCursor');
-      const existingOperations = await db.hybridTaskOutbox.count();
-      const existingRevisions = await db.hybridTaskRevisions.count();
-      if (legacyCursor || existingOperations || existingRevisions) {
+      if (legacyCursor || await hasUnownedTaskState()) {
         throw new Error('Existing synchronization data has no verified organization. Back up and migrate it before connecting.');
       }
       await db.hybridSyncMetadata.put({ key, value: 1 });
@@ -47,7 +51,7 @@ export async function assertSyncTenant(serverUrl: string, organizationId: string
         // A pre-existing shared task database cannot safely be assigned to an
         // arbitrary newly logged-in user. Preserve it untouched for migration.
         const cursor = await db.hybridSyncMetadata.get('taskCursor');
-        if (cursor || await db.hybridTaskOutbox.count() || await db.hybridTaskRevisions.count()) {
+        if (cursor || await hasUnownedTaskState()) {
           throw new Error('Existing synchronized data has no verified user ownership. Back up and migrate it before reconnecting.');
         }
         await db.hybridSyncMetadata.put({ key: actorKey, value: 1 });
