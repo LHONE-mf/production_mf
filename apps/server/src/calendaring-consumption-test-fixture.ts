@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { expect } from "vitest";
 import { createCoatingRollFixture } from "./coating-roll-test-fixture.js";
-export async function createCalendaringFixture(searchPath?: string, withCutting=false) {
-  const f = await createCoatingRollFixture(searchPath, withCutting);
+export async function createCalendaringFixture(searchPath?: string, withCutting=false,withSorting=false) {
+  const f = await createCoatingRollFixture(searchPath, withCutting,withSorting);
   async function receivedRolls(count = 1) {
     const inputs = await f.inputs(),
       declaration = f.declaration(inputs);

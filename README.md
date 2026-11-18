@@ -112,6 +112,9 @@ when every local record can be discarded.
   [Measured calendered output and Cutting custody](docs/CALENDERED_ROLL_CUSTODY.md)
   add separately measured physical output rolls, explicit direct offers and
   assigned Cutting receipt/discrepancy.
+  [Actual Cutting use and partial Sorting custody](docs/CUTTING_SORTING_FLOW.md)
+  records measured input length, independently counted unsorted electrode lots
+  and assigned partial piece receipts without automatic inspection or stock.
   Roll-issued foil/tape use and output reconciliation remain open. Production
   declarations do not automatically create stock or prove accepted yield. Physical
   factory/device acceptance and deployment remain separate gates.

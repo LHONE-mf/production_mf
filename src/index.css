@@ -55,4 +55,16 @@ html, body {
 /* Respect Android cutouts, status bar and gesture navigation. */
 :root { color-scheme: dark; }
 body { background: #0f172a; }
-#root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+#root {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+}
+
+/* Keep keyboard focus visible even on controls with transparent tap highlights. */
+:where(button, a, summary):focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}

@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feat/hybrid-server-foundation, feat/storage-inventory-foundation]
   pull_request:
-    branches: [main, feat/hybrid-server-foundation, feat/material-flow-authoritative-wip, feat/slurry-coating-custody, feat/coating-slurry-consumption, feat/tape-roll-specifications, feat/coating-foil-consumption, feat/coating-roll-custody, feat/calendaring-roll-consumption]
+    branches: [main, feat/hybrid-server-foundation, feat/material-flow-authoritative-wip, feat/slurry-coating-custody, feat/coating-slurry-consumption, feat/tape-roll-specifications, feat/coating-foil-consumption, feat/coating-roll-custody, feat/calendaring-roll-consumption, feat/calendaring-cutting-custody, feat/cutting-sorting-flow]
   workflow_dispatch:
 
 permissions:
@@ -97,7 +97,7 @@ jobs:
         run: |
           mkdir -p /tmp/storage-artifacts
           export WIP_BROWSER_MODULE="$RUNNER_TEMP/storage-browser/node_modules/playwright/index.mjs"
-          npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts src/inventory-tape.browser.test.ts src/coating-foil.browser.test.ts src/coating-roll.browser.test.ts src/calendaring-consumption.browser.test.ts src/calendered-roll.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
+          npm test -- src/room-materials.browser.test.ts src/room-handoffs.browser.test.ts src/inventory-tape.browser.test.ts src/coating-foil.browser.test.ts src/coating-roll.browser.test.ts src/calendaring-consumption.browser.test.ts src/calendered-roll.browser.test.ts src/cutting-consumption.browser.test.ts src/cutting-output.browser.test.ts 2>&1 | tee /tmp/storage-artifacts/room-material-browser.log
       - name: Collect room browser evidence even on failure
         if: ${{ always() }}
         working-directory: .
@@ -111,6 +111,8 @@ jobs:
           if [ -d /tmp/production-mf-roll-browser ]; then cp -r /tmp/production-mf-roll-browser /tmp/storage-artifacts/coating-roll-browser; fi
           if [ -d /tmp/production-mf-calendaring-browser ]; then cp -r /tmp/production-mf-calendaring-browser /tmp/storage-artifacts/calendaring-browser; fi
           if [ -d /tmp/production-mf-calendered-browser ]; then cp -r /tmp/production-mf-calendered-browser /tmp/storage-artifacts/calendered-roll-browser; fi
+          if [ -d /tmp/production-mf-cutting-browser ]; then cp -r /tmp/production-mf-cutting-browser /tmp/storage-artifacts/cutting-use-browser; fi
+          if [ -d /tmp/production-mf-cut-piece-browser ]; then cp -r /tmp/production-mf-cut-piece-browser /tmp/storage-artifacts/cutting-piece-browser; fi
       - name: Storage two-profile operator and reviewed-recovery browser
         working-directory: .
         shell: bash

@@ -1,3 +1,5 @@
+import {CuttingOutputs} from './CuttingOutputs';
+import {CuttingMaterials} from './CuttingMaterials';
 import {CalenderedRolls} from '../calendaring/CalenderedRolls';
 // Комната «Нарезка электродов». Полностью офлайн.
 // Вкладки: 📥 Рулоны с каландра · ✂️ Нарезка (расчёт выхода + журнал) · 📒 Журнал · 💬 Комментарии
@@ -18,7 +20,7 @@ import { PacketOutModal } from '../_ui/PacketOutModal';
 import { estimateCuttingYield, prepareCuttingRun, readCuttingYield } from './cutMath';
 import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 
-type Tab = 'incoming' | 'cut' | 'journal' | 'comments' | 'custody';
+type Tab = 'incoming' | 'cut' | 'journal' | 'comments' | 'custody' | 'materials' | 'output';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -60,6 +62,8 @@ export function CuttingModule() {
     { id: 'incoming', label: `📥 Рулоны с каландра (${(incoming ?? []).length})` },
     { id: 'cut', label: '✂️ Нарезка' },
     { id: 'journal', label: `📒 Журнал нарезки (${(runs ?? []).length})` },
+    { id: 'output', label: '🧾 Выпуск и передача в сортировку' },
+    { id: 'materials', label: '📏 Фактический расход рулонов' },
     { id: 'custody', label: '🔁 Подтверждённая приёмка рулонов' },
     { id: 'comments', label: '💬 Комментарии' },
   ];
@@ -77,6 +81,8 @@ export function CuttingModule() {
         ))}
       </nav>
 
+      {tab === 'output' && <CuttingOutputs room="cutting"/>}
+      {tab === 'materials' && <CuttingMaterials/>}
       {tab === 'custody' && <CalenderedRolls room="cutting"/>}
       {tab === 'incoming' && (
         <IncomingTab items={incoming ?? []} onOpen={(id) => { setSelectedId(id); setTab('cut'); }} />
