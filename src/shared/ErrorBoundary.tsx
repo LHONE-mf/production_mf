@@ -35,15 +35,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="bg-slate-800 border border-red-700 rounded-xl p-6 max-w-lg mx-auto mt-10 space-y-4">
           <h2 className="text-white font-bold text-lg">⚠️ Экран отобразился с ошибкой</h2>
-          <p className="text-slate-300 text-sm break-words">
-            Данные остались целы. Текст ошибки: <span className="font-mono text-red-300">{String(this.state.error?.message ?? this.state.error)}</span>
+          <p role="alert" className="text-slate-300 text-sm break-words">
+            Не удалось отобразить экран. Повторите попытку или вернитесь на главную. Перед повторным вводом проверьте сохранённые данные.
           </p>
           <button
+            type="button"
             onClick={() => {
               this.setState({ error: null });
               this.props.onReset?.();
             }}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm font-medium"
+            className="min-h-11 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-white text-sm font-medium"
           >
             ⟳ Повторить / Назад
           </button>
