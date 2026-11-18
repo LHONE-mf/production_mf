@@ -88,6 +88,35 @@ integration('Storage controlled stock operations (disposable PostgreSQL)',()=>{
   const send=(body:object,token=warehouseToken,proof=workerProof)=>
     post('/inventory/stocks/'+stockId+'/operations',body,token,proof);
 
+  it('preserves distinct quarantined receipts sharing a manufacturer lot',async()=>{
+    const manufacturerLot='SHARED-LOT-'+randomUUID();
+    const firstId=randomUUID(),secondId=randomUUID();
+    const receipts=[{stockId:firstId,quantity:120},{stockId:secondId,quantity:80}];
+    for(const item of receipts){
+      const response=await post('/inventory/receipts',{
+        operationId:randomUUID(),stockId:item.stockId,deviceId:workerDevice,
+        materialId,locationId:shelfA,manufacturerLot,quantity:item.quantity,
+        expectedRevision:0,reason:'Separate sealed packages from one manufacturer lot',
+      },warehouseToken,workerProof);
+      expect(response.statusCode,response.body).toBe(201);
+    }
+    const response=await get('/inventory/stocks?deviceId='+workerDevice,
+      warehouseToken,workerProof);
+    expect(response.statusCode,response.body).toBe(200);
+    const matching=response.json().stocks.filter((s:{stockId:string})=>
+      s.stockId===firstId||s.stockId===secondId);
+    expect(matching).toHaveLength(2);
+    expect(matching.map((s:{stockId:string})=>s.stockId).sort())
+      .toEqual([firstId,secondId].sort());
+    expect(matching.map((s:{onHand:number})=>s.onHand).sort((a:number,b:number)=>a-b))
+      .toEqual([80,120]);
+    expect(matching.every((s:{quality:string})=>s.quality==='quarantine')).toBe(true);
+    const ledger=await pool.query(`SELECT stock_id,kind FROM inventory_operations
+      WHERE organization_id=$1 AND stock_id=ANY($2::uuid[])`,[org,[firstId,secondId]]);
+    expect(ledger.rows).toHaveLength(2);
+    expect(ledger.rows.every((row:{kind:string})=>row.kind==='receive')).toBe(true);
+  });
+
   it('serializes all stock changes, audits exact retries, and protects reservations',async()=>{
     const input={operationId:randomUUID(),stockId,deviceId:workerDevice,
       materialId,locationId:shelfA,manufacturerLot:'LOT-42',quantity:2000,
