@@ -164,3 +164,66 @@ it("rejects contradictory handoff ancestry referring to a held lot", () => {
     }),
   ).toThrow();
 });
+
+it("distinguishes a validated historical receipt from an outstanding or disputed record", () => {
+  const f = cuttingOutputTestData(scope);
+  if (f.receipt.kind !== "receipt") throw Error("Receipt required");
+  const row = {
+    operationId: f.handoff.operationId,
+    handoff: f.handoff,
+    eligible: true,
+    received: null,
+    eventCount: 0,
+  };
+  expect(copyCutOutputHandoffRead(row).received).toBeNull();
+  const receipt = {
+    ...f.receipt.request,
+    sourceSnapshot: f.handoff,
+    actorId: scope.actorId,
+    recordedAt: new Date().toISOString(),
+    custodyEffect: "received",
+    warehouseEffect: "none",
+  };
+  // Historical receipt remains valid when current eligibility changes.
+  for (const eligible of [true, false]) {
+    const history = copyCutOutputHandoffRead({
+      ...row,
+      eligible,
+      received: receipt,
+      eventCount: 1,
+    });
+    expect(history.received).toEqual(receipt);
+    expect(history.eligible).toBe(eligible);
+    if (!history.received) throw Error("Confirmed receipt required");
+    const count: number = history.received.observedQuantity;
+    const label: string = history.received.observedLotLabel;
+    expect(count).toBe(f.handoff.quantity);
+    expect(label).toBe(f.handoff.sourceSnapshot.lot.label);
+  }
+
+  const discrepancy = {
+    ...receipt,
+    kind: "discrepancy",
+    custodyEffect: "none",
+    observedQuantity: null,
+    observedLotLabel: null,
+  };
+  expect(copyCutOutputReceipt(discrepancy).custodyEffect).toBe("none");
+  expect(() =>
+    copyCutOutputHandoffRead({
+      ...row,
+      received: discrepancy,
+      eventCount: 1,
+    }),
+  ).toThrow();
+  expect(() =>
+    copyCutOutputHandoffRead({ ...row, received: receipt }),
+  ).toThrow();
+  expect(() =>
+    copyCutOutputHandoffRead({
+      ...row,
+      received: { ...receipt, handoffId: id() },
+      eventCount: 1,
+    }),
+  ).toThrow();
+});

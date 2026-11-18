@@ -110,11 +110,18 @@ export interface CutOutputReceipt extends CutOutputReceiptRequest {
   unit: "pieces";
   warehouseEffect: "none";
 }
+/** Validated historical receipt, not a statement of current eligibility. */
+export type ConfirmedCutOutputReceipt = CutOutputReceipt & {
+  kind: "receive";
+  custodyEffect: "received";
+  observedQuantity: number;
+  observedLotLabel: string;
+};
 export interface CutOutputHandoffRead {
   operationId: string;
   handoff: CutOutputHandoff;
   eligible: boolean;
-  received: CutOutputReceipt | null;
+  received: ConfirmedCutOutputReceipt | null;
   eventCount: number;
 }
 export interface CutOutputInput {
@@ -475,17 +482,29 @@ export function copyCutOutputReceipt(value: unknown): CutOutputReceipt {
     warehouseEffect: "none",
   };
 }
+/** Reuse the existing validation and narrow only a genuine receive event. */
+function copyConfirmedCutOutputReceipt(value: unknown): ConfirmedCutOutputReceipt {
+  const receipt = copyCutOutputReceipt(value);
+  const { kind, custodyEffect, observedQuantity, observedLotLabel } = receipt;
+  if (
+    kind !== "receive" ||
+    custodyEffect !== "received" ||
+    observedQuantity === null ||
+    observedLotLabel === null
+  )
+    return invalid();
+  return { ...receipt, kind, custodyEffect, observedQuantity, observedLotLabel };
+}
 export function copyCutOutputHandoffRead(value: unknown): CutOutputHandoffRead {
   const r = object(value),
     handoff = copyCutOutputHandoff(r.handoff),
-    received = r.received === null ? null : copyCutOutputReceipt(r.received);
+    received = r.received === null ? null : copyConfirmedCutOutputReceipt(r.received);
   if (
     r.operationId !== handoff.operationId ||
     typeof r.eligible !== "boolean" ||
     !integer(r.eventCount) ||
     (received &&
-      (received.kind !== "receive" ||
-        received.handoffId !== handoff.operationId ||
+      (received.handoffId !== handoff.operationId ||
         !same(received.sourceSnapshot, handoff) ||
         !integer(r.eventCount, 1)))
   )
