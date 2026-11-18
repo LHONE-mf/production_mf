@@ -87,6 +87,7 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.schemaVersion !== 1) throw new Error('Unsupported task payload version');
   // The typed network contract does not guarantee runtime JSON types.
   if (typeof payload.title !== 'string' || typeof payload.description !== 'string' ||
+      payload.title.length < 1 || payload.title.length > 300 || payload.description.length > 20_000 ||
       !Array.isArray(payload.comments) || !Array.isArray(payload.attachments)) {
     throw new Error('Invalid remote task fields');
   }
