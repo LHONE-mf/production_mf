@@ -108,6 +108,15 @@ describe('task JSON boundary', () => {
     expect(() => encodeTask({ ...fixture(), ...fields })).toThrow('Invalid task');
   });
 
+  it.each([
+    ['empty title', { title: '' }],
+    ['oversized title', { title: 'x'.repeat(301) }],
+    ['oversized description', { description: 'x'.repeat(20_001) }],
+    ['unknown priority', { priority: 'urgent' }],
+  ])('rejects %s at the outbound task JSON boundary', (_name, changes) => {
+    expect(() => encodeTask({ ...fixture(), ...changes } as Task)).toThrow('Invalid task');
+  });
+
   it('rejects malformed remote text and collections', () => {
     const payload = encodeTask(fixture());
     for (const changed of [
