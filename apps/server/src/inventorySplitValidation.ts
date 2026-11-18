@@ -15,7 +15,7 @@ export function validateInventorySplit(
      !Number.isSafeInteger(stock.reserved)||stock.reserved<0||
      stock.reserved>stock.onHand)return {ok:false,reason:'invalid_stock'};
   if(!Number.isSafeInteger(quantity)||quantity<=0)return {ok:false,reason:'invalid_quantity'};
-  if(!targetLocationId.trim()||targetLocationId===stock.locationId)
+  if(typeof targetLocationId!=='string'||!targetLocationId.trim()||targetLocationId===stock.locationId)
     return {ok:false,reason:'same_location'};
   if(!['released','quarantine','blocked'].includes(stock.quality))
     return {ok:false,reason:'invalid_stock'};
