@@ -41,11 +41,11 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authorized physical package spl
   await f.pool.query('UPDATE inventory_streams SET epoch=$2 WHERE organization_id=$1',[f.org,randomUUID()]);expect((await send(id,intent(id))).statusCode).toBe(409);
   await f.pool.query('UPDATE inventory_streams SET epoch=$2 WHERE organization_id=$1',[f.org,f.epoch]);await f.pool.query('UPDATE inventory_access SET active=false WHERE organization_id=$1 AND user_id=$2',[f.org,f.actors[1].id]);expect((await send(id,intent(id))).statusCode).toBe(403);
  });
- it('cannot commit an unpaired split debit directly and preserves held QA during an authorized repack',async()=>{
+ it('cannot commit an unpaired split debit and refuses a held package',async()=>{
   const id=await f.stock(),b=intent(id),client=await f.pool.connect();try{await client.query('BEGIN');await client.query("INSERT INTO inventory_operations(operation_id,organization_id,stock_id,actor_id,device_id,kind,quantity,expected_revision,resulting_revision,reason,request_payload,result_stock) SELECT $1,organization_id,stock_id,actor_id,device_id,'split_out',1,2,3,'Unpaired direct debit',$2,result_stock FROM inventory_operations WHERE stock_id=$3 AND resulting_revision=2",[b.operationId,JSON.stringify(b),id]);await expect(client.query('COMMIT')).rejects.toThrow('inventory_split_pair_required');}finally{await client.query('ROLLBACK');client.release();}
   expect((await f.pool.query('SELECT 1 FROM inventory_operations WHERE operation_id=$1',[b.operationId])).rowCount).toBe(0);
   expect((await f.post('/inventory/stocks/'+id+'/quality-dispositions',{operationId:randomUUID(),stockId:id,deviceId:f.actors[0].device,expectedRevision:2,disposition:'hold',reason:'Hold original before repack',evidence:'CI hold'})).statusCode).toBe(201);
-  const r=await send(id,intent(id,1,{expectedRevision:3}));expect(r.statusCode,r.body).toBe(201);expect(r.json().child).toMatchObject({quality:'blocked',disposition:'hold',onHand:300});expect(r.json().parent).toMatchObject({quality:'blocked',disposition:'hold',onHand:700});
+  const request=intent(id,1,{expectedRevision:3,quarantineAcknowledged:true});const r=await send(id,request);expect(r.statusCode,r.body).toBe(409);expect((await f.pool.query('SELECT on_hand,revision FROM inventory_stocks WHERE id=$1',[id])).rows[0]).toMatchObject({on_hand:'1000',revision:3});expect((await f.pool.query('SELECT 1 FROM inventory_stocks WHERE id=$1',[request.childStockId])).rowCount).toBe(0);
  });
 
  it('rejects blocked packages without altering original stock or creating a child',async()=>{
