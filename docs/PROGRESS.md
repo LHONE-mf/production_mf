@@ -1,3 +1,71 @@
+## 2026-11-17 — Actual Cutting use, counted output and partial Sorting custody
+
+- `feat/cutting-sorting-flow` stacks on unchanged draft #15 (`e86f010`), then
+  #14–#8. Main checked at `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CUTTING_SORTING_FLOW.md): explicit partial/multiple same-SKU
+  received-roll allocations record actual Cutting length; each original measured
+  calendered source retains its own remainder. Separately observed whole piece
+  counts create unsorted output lots with unknown rejects/trim kept null.
+- Actual-use claims belong once to the declaration, including multiple child lots.
+  No length-to-pieces estimate, accepted yield or automatic quality is created.
+  Explicit partial offers reserve only their count; only the assigned current
+  Sorting receiver confirms actual subset count and original lot label. A separate
+  discrepancy grants no custody. Sorting pieces cannot become mass/length capacity.
+- PostgreSQL 043–045 preserves populated history and extends existing custody.
+  Durable scoped forms/original-byte proposals survive offline reopen/lost ACKs;
+  exact ACK checks and late-reply protection preserve conflicts. Main Dexie 24,
+  outbox v7, archives, queues, journals, dependencies and lockfiles are unchanged.
+- New API/client and two actual UI browsers pass; populated 042→043→045 preserves
+  every pre-existing row. Actual pg_dump/two-fresh-restores compare 67 tables,
+  reconstruct 150 mm used/50 mm remaining, 9 ready plus 3 held counted pieces,
+  separate Sorting discrepancy/4-piece receipt and 5 available ready pieces,
+  original ACKs, immutable guards and history fencing with no warehouse effect.
+- Full frontend regression (136 files), 387 real-PostgreSQL server tests, all nine
+  material-flow browsers, locked installs, builds/types, Android harness types and
+  migration guards pass. Exact-source hosted CI/evidence are recorded in the draft PR.
+  Next: bind actual Sorting Visual→Thickness→Mass inspections and approved mode
+  to received custody, then Sorting output and Assembly pairing. Remnants,
+  corrections/returns/scrap, scientific reconciliation, factory tape measurement,
+  physical cell acceptance and signed Android/OnePlus/two-device acceptance remain.
+  Browser reopen does not prove Android process death or installed upgrade.
+  No production access, merge or deployment. Earlier entries are historical.
+
+## 2026-11-17 — Measured calendered output and direct Cutting custody
+
+- `feat/calendaring-cutting-custody` stacks on unchanged draft #14 (`c0d454c`),
+  then #13/#12/#11/#10/#9/#8. Main remains
+  `df1c7735f14f8ef268e382b4217f6a31dd2f33bc`.
+- [Contract and limits](CALENDERED_ROLL_CUSTODY.md): actual Calendaring-use events
+  from the same batch/step/input SKU are claimed once per output declaration.
+  Multiple physical rolls retain shared parent genealogy, independent measured
+  length/optional mass, explicit output SKU/label and ready/held disposition.
+  Unknown trim/scrap stays null; quality stays unreviewed and accounting unreconciled.
+- PostgreSQL 041–042 adds immutable output/claim records and extends existing room
+  lots and handoff/events. A whole-roll offer reserves the source; only the assigned
+  current Cutting receiver can confirm count/identity. Separate discrepancy creates
+  no custody. Cutting receipts cannot become new Calendaring sources. Existing
+  Slurry/coated-roll snapshots and actual use retain their original meaning.
+- Durable scoped forms/proposals retain original body/IDs/source/actor/role/device/
+  epoch offline and across unknown/lost replies. Exact ACK validation and late-reply
+  protection retain conflicts; async preparation disables prior form edits. Existing
+  physical-roll/request validators are reused. Main Dexie 24/outbox v7, original
+  queues, archives, journals, dependencies and lockfiles are unchanged.
+- Local **763 frontend / 376 server tests**, types/builds, Android harness types and
+  migration guards pass. All seven actual room browser workflows pass; the new two-
+  profile flow saves output/offer/receipt offline, reopens, loses committed output
+  and receipt replies, retries identical bytes, records discrepancy without custody
+  and checks 390/412/1365 layouts. Populated 040→042 preserves every old row. Actual
+  **63-table pg_dump/two-restores** preserves two measured calendered rolls (one held),
+  one shared actual-use claim, separate Cutting receipt, exact ACKs, original input
+  remainders and history fences. Final catalogue-label checks and current-source
+  hosted evidence belong to the next draft PR.
+- Next: actual Cutting length use, independently measured pieces/rejects/remnants
+  and direct Cutting→Sorting custody. Incorporation/loss reconciliation, physical
+  remnant splitting/corrections, factory foil/tape policy, subsequent room flows,
+  pairing/pouch/physical cell acceptance remain open. Browser reopen is not native
+  process-death/installed-upgrade proof; OnePlus/factory acceptance remains open.
+  No production connection, merge or deployment.
+
 ## 2026-11-16 — Actual Calendaring use of received coated rolls
 
 - `feat/calendaring-roll-consumption` stacks on unchanged draft #13 (`f57d74d`),

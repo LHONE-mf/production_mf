@@ -4,12 +4,12 @@ import {Pool} from 'pg';
 import {buildApp} from './app.js';
 import {tokenHash} from './auth.js';
 /** Synthetic fixtures; every stock/QA/handoff transition uses the actual API. */
-export async function createInventoryHandoffFixture(searchPath?:string,withCoating=false,withCalendaring=false){
+export async function createInventoryHandoffFixture(searchPath?:string,withCoating=false,withCalendaring=false,withCutting=false,withSorting=false){
   if(searchPath&&!/^room_upgrade_[a-f0-9]{32}$/.test(searchPath))throw Error('Invalid isolated test schema');
   const applicationName='inventory-outcome-'+randomUUID();
   const pool = new Pool({ connectionString: process.env.POSTGRES_TEST_URL,application_name:applicationName,...(searchPath?{options:'-c search_path='+searchPath}:{}) }), app = buildApp(pool);
   const org = randomUUID(), epoch = randomUUID(), material = randomUUID(), location = randomUUID(), batch = randomUUID(), workshop = 'issue-' + randomUUID();
-  const actors = ['chief', 'worker', 'worker', 'master', 'worker', 'worker', ...(withCalendaring?['worker']:[])].map(role => ({ id: randomUUID(), role, token: randomBytes(32).toString('base64url'), device: '', proof: '' }));
+  const actors = ['chief', 'worker', 'worker', 'master', 'worker', 'worker', ...(withCalendaring?['worker']:[]),...(withCutting?['worker']:[]),...(withSorting?['worker']:[])].map(role => ({ id: randomUUID(), role, token: randomBytes(32).toString('base64url'), device: '', proof: '' }));
   const headers = (i = 0) => ({ authorization: 'Bearer ' + actors[i].token, 'x-device-proof': actors[i].proof, 'x-inventory-epoch': epoch });
   const post = (url: string, payload: object, i = 0) => app.inject({ method: 'POST', url, headers: headers(i), payload });
   const get = (url: string, i = 0) => app.inject({ method: 'GET', url, headers: headers(i) });
@@ -57,6 +57,16 @@ export async function createInventoryHandoffFixture(searchPath?:string,withCoati
       await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop+'-calendaring']);
       await pool.query('INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,$3)',[org,actors[6].id,workshop+'-calendaring']);
       await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,3,'Calender','calendaring',$3,'cathode')",[org,route,workshop+'-calendaring']);
+    }
+    if(withCutting){
+      await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop+'-cutting']);
+      await pool.query('INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,$3)',[org,actors[7].id,workshop+'-cutting']);
+      await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,4,'Cut','cutting',$3,'cathode')",[org,route,workshop+'-cutting']);
+    }
+    if(withSorting){
+      await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop+'-sorting']);
+      await pool.query('INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,$3)',[org,actors[8].id,workshop+'-sorting']);
+      await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,5,'Sort','sorting',$3,'cathode')",[org,route,workshop+'-sorting']);
     }
     await pool.query("UPDATE process_route_versions SET state='approved',approved_at=now(),approved_by=$3 WHERE organization_id=$1 AND route_id=$2", [org, route, actors[0].id]);
     await pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'NMC',$3,1,'released',1,'kg',$4)", [org, order, route, actors[0].id]);

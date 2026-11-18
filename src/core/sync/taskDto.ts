@@ -11,7 +11,7 @@ export interface TaskPayloadV1 {
 }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function uuid(value: string, field: string) {
-  if (!uuidPattern.test(value)) throw new Error(field + ' must be a UUID');
+  if (typeof value !== 'string' || !uuidPattern.test(value)) throw new Error(field + ' must be a UUID');
 }
 function date(value: Date, field: string) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error('Invalid date: ' + field);
@@ -47,7 +47,12 @@ function parseRemoteDate(value: string, field: string): Date {
 }
 export function decodeTask(id: string, payload: TaskPayloadV1): Task {
   uuid(id, 'task.id');
-  if (payload.schemaVersion !== 1) throw new Error('Unsupported task payload version');
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.schemaVersion !== 1) throw new Error('Unsupported task payload version');
+  // The typed network contract does not guarantee runtime JSON types.
+  if (typeof payload.title !== 'string' || typeof payload.description !== 'string' ||
+      !Array.isArray(payload.comments) || !Array.isArray(payload.attachments)) {
+    throw new Error('Invalid remote task fields');
+  }
   const statuses = Object.values(TaskStatus);
   const priorities = Object.values(TaskPriority);
   if (!statuses.includes(payload.status) || !priorities.includes(payload.priority)) throw new Error('Invalid task status/priority');
@@ -59,12 +64,17 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
   if (payload.assignedTo) uuid(payload.assignedTo, 'task.assignedTo');
   if (payload.techCardId) uuid(payload.techCardId, 'task.techCardId');
   for (const comment of payload.comments) {
+    if (!comment || typeof comment !== 'object' || Array.isArray(comment) ||
+        typeof comment.text !== 'string') throw new Error('Invalid remote task comment');
     uuid(comment.id, 'comment.id');
     uuid(comment.taskId, 'comment.taskId');
     uuid(comment.authorId, 'comment.authorId');
     if (comment.taskId !== id) throw new Error('Remote comment task mismatch');
   }
   for (const attachment of payload.attachments) {
+    if (!attachment || typeof attachment !== 'object' || Array.isArray(attachment) ||
+        typeof attachment.fileName !== 'string' || typeof attachment.fileType !== 'string' ||
+        typeof attachment.data !== 'string') throw new Error('Invalid remote task attachment');
     uuid(attachment.id, 'attachment.id');
     uuid(attachment.taskId, 'attachment.taskId');
     if (attachment.taskId !== id) throw new Error('Remote attachment task mismatch');
@@ -77,7 +87,13 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
     ...(payload.techCardId ? {techCardId:payload.techCardId} : {}),
     ...(payload.stage ? {stage:payload.stage} : {}),
     ...(payload.workshopId ? {workshopId:payload.workshopId} : {}),
-    comments: payload.comments.map(c => ({...c,createdAt:parseRemoteDate(c.createdAt, 'comment.createdAt')})),
-    attachments: payload.attachments.map(a => ({...a,createdAt:parseRemoteDate(a.createdAt, 'attachment.createdAt')})),
+    comments: payload.comments.map(c => ({
+      id: c.id, taskId: c.taskId, authorId: c.authorId, text: c.text,
+      createdAt: parseRemoteDate(c.createdAt, 'comment.createdAt'),
+    })),
+    attachments: payload.attachments.map(a => ({
+      id: a.id, taskId: a.taskId, fileName: a.fileName, fileType: a.fileType, data: a.data,
+      createdAt: parseRemoteDate(a.createdAt, 'attachment.createdAt'),
+    })),
   };
 }

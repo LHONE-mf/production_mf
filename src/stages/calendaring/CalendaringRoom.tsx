@@ -1,3 +1,4 @@
+import {CalenderedRolls} from './CalenderedRolls';
 import {CalendaringMaterials} from './CalendaringMaterials';
 import {CoatedRolls} from '../coating/CoatedRolls';
 // Комната «Каландрирование» (prokatka). Полностью офлайн.
@@ -34,7 +35,7 @@ function loadLocalCalParams(): Record<string, CalenderParams> {
 }
 
 
-type Tab = 'rolls' | 'params' | 'journal' | 'comments' | 'cutting' | 'custody' | 'materials';
+type Tab = 'rolls' | 'params' | 'journal' | 'comments' | 'cutting' | 'custody' | 'materials' | 'output';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -83,6 +84,7 @@ export function CalendaringModule() {
     { id: 'journal', label: `📒 Журнал прокатки (${runs?.length ?? 0})` },
     ...(isTechManager?[{id:'cutting' as const,label:'✂️ Задание на нарезку'}]:[]),
     { id: 'comments', label: '💬 Комментарии' },
+    { id: 'output', label: '🧾 Выпуск и передача в нарезку' },
     { id: 'materials', label: '📏 Фактический расход рулонов' },
     { id: 'custody', label: '🔁 Подтверждённая приёмка рулонов' },
   ];
@@ -101,6 +103,7 @@ export function CalendaringModule() {
         ))}
       </nav>
 
+      {tab === 'output' && <CalenderedRolls room="calendaring"/>}
       {tab === 'materials' && <CalendaringMaterials/>}
       {tab === 'custody' && <CoatedRolls room="calendaring"/>}
       {tab === 'rolls' && (

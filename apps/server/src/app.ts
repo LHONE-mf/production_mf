@@ -1,3 +1,8 @@
+import {registerCuttingOutputRoutes} from './cutting-output-routes.js';
+import {registerCuttingOutputCustodyRoutes} from './cutting-output-custody-routes.js';
+import {registerCuttingConsumptionRoutes} from './cutting-consumption-routes.js';
+import {registerCalenderedRollRoutes} from './calendered-roll-routes.js';
+import {registerCalenderedRollCustodyRoutes} from './calendered-roll-custody-routes.js';
 import {registerCalendaringConsumptionRoutes} from './calendaring-consumption-routes.js';
 import {registerCoatingRollCustodyRoutes} from './coating-roll-custody-routes.js';
 import {registerCoatingRollRoutes} from './coating-roll-routes.js';
@@ -102,8 +107,13 @@ export function buildApp(pool: Pool) {
   registerRoomCustodyRoutes(app,pool);
   registerCoatingConsumptionRoutes(app,pool);
   registerCalendaringConsumptionRoutes(app,pool);
+  registerCuttingConsumptionRoutes(app,pool);
+  registerCuttingOutputRoutes(app,pool);
+  registerCuttingOutputCustodyRoutes(app,pool);
   registerCoatingFoilRoutes(app,pool);
   registerCoatingRollRoutes(app,pool);
+  registerCalenderedRollRoutes(app,pool);
+  registerCalenderedRollCustodyRoutes(app,pool);
   registerCoatingRollCustodyRoutes(app,pool);
   registerInventorySplitRoutes(app, pool);
   registerInventoryCountRoutes(app, pool);

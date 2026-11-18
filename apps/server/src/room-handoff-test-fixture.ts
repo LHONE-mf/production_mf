@@ -1,8 +1,8 @@
 import {randomUUID} from 'node:crypto';
 import {expect} from 'vitest';
 import {createInventoryHandoffFixture} from './inventory-test-fixture.js';
-export async function createRoomHandoffFixture(searchPath?: string, withCalendaring=false) {
-  const f = await createInventoryHandoffFixture(searchPath, true, withCalendaring);
+export async function createRoomHandoffFixture(searchPath?: string, withCalendaring=false,withCutting=false,withSorting=false) {
+  const f = await createInventoryHandoffFixture(searchPath, true, withCalendaring, withCutting, withSorting);
   async function consumed() {
     const {id: stockId, issue} = await f.reserved(1000);
     for (const [kind, rev, actor, extra] of [

@@ -177,7 +177,7 @@ function strict(r: Record<string, unknown>, keys: string[]) {
 function pick(r: Record<string, unknown>, keys: string[]) {
   return Object.fromEntries(keys.map((k) => [k, r[k]]));
 }
-function copyRoll(value: unknown): PhysicalRoll {
+export function copyPhysicalRoll(value: unknown): PhysicalRoll {
   const r = object(value);
   strict(r, [
     "id",
@@ -255,7 +255,7 @@ export function copyRollRequest(value: unknown): RollOutputRequest {
       issueIds: ids(t.issueIds),
     };
   } else return invalid();
-  const outputs = (r.outputs as unknown[]).map(copyRoll);
+  const outputs = (r.outputs as unknown[]).map(copyPhysicalRoll);
   if (!unique(outputs.map((o) => o.id))) invalid();
   return {
     ...c,
@@ -347,7 +347,7 @@ export function copyRollDeclaration(value: unknown): RollDeclaration {
 export function copyRollSnapshot(value: unknown): RollSnapshot {
   const r = object(value),
     declaration = copyRollDeclaration(r.declaration),
-    roll = copyRoll(r.roll);
+    roll = copyPhysicalRoll(r.roll);
   if (
     ![r.id, r.declarationId, r.materialId].every(id) ||
     r.quantity !== 1 ||
