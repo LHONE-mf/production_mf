@@ -30,7 +30,7 @@ it('never authorizes operators or binds an original split screen to a restored e
 
 it('rejects blocked stock and requires a persisted quarantine acknowledgement before proposal creation',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:URL)=>url.pathname.endsWith('/me')?response(access):response({...scope,epoch,postingEnabled:true,sequence:0})));
- const quarantined={...base,quality:'quarantine' as const,reserved:0,available:1000};
+ const quarantined={...base,quality:'quarantine' as const,disposition:undefined,reserved:0,available:1000};
  await expect(prepareInventorySplit(session,scope,'local',quarantined,epoch,300,base.locationId,'Quarantine repack','Counted',false))
   .rejects.toThrow('Требуется явное подтверждение карантина');
  expect(await inventorySplitProposals(scope,'local')).toHaveLength(0);
@@ -38,7 +38,7 @@ it('rejects blocked stock and requires a persisted quarantine acknowledgement be
  expect(JSON.parse(row.fields.request).quarantineAcknowledged).toBe(true);
  inventoryOutbox.close();await inventoryOutbox.open();
  expect((await inventorySplitProposals(scope,'local'))[0].fields.request).toBe(row.fields.request);
- await expect(prepareInventorySplit(session,scope,'local',{...quarantined,quality:'blocked'},epoch,300,base.locationId,'Blocked repack','Counted',true))
+ await expect(prepareInventorySplit(session,scope,'local',{...quarantined,quality:'blocked' as const,disposition:'hold' as const},epoch,300,base.locationId,'Blocked repack','Counted',true))
   .rejects.toThrow('Заблокированный материал нельзя разделять');
  expect(await inventorySplitProposals(scope,'local')).toHaveLength(1);
 });
