@@ -47,4 +47,37 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('authorized physical package spl
   expect((await f.post('/inventory/stocks/'+id+'/quality-dispositions',{operationId:randomUUID(),stockId:id,deviceId:f.actors[0].device,expectedRevision:2,disposition:'hold',reason:'Hold original before repack',evidence:'CI hold'})).statusCode).toBe(201);
   const r=await send(id,intent(id,1,{expectedRevision:3}));expect(r.statusCode,r.body).toBe(201);expect(r.json().child).toMatchObject({quality:'blocked',disposition:'hold',onHand:300});expect(r.json().parent).toMatchObject({quality:'blocked',disposition:'hold',onHand:700});
  });
+
+ it('rejects blocked packages without altering original stock or creating a child',async()=>{
+  const id=await f.stock();
+  const hold=await f.post('/inventory/stocks/'+id+'/quality-dispositions',{
+   operationId:randomUUID(),stockId:id,deviceId:f.actors[0].device,expectedRevision:2,
+   disposition:'hold',reason:'Synthetic QA hold',evidence:'Controlled QA decision'
+  });expect(hold.statusCode,hold.body).toBe(201);
+  const request=intent(id,1,{expectedRevision:3,quarantineAcknowledged:true});
+  const result=await send(id,request);
+  expect(result.statusCode,result.body).toBe(409);
+  expect((await f.pool.query('SELECT on_hand,revision FROM inventory_stocks WHERE id=$1',[id])).rows[0])
+   .toMatchObject({on_hand:'1000',revision:3});
+  expect((await f.pool.query('SELECT 1 FROM inventory_stocks WHERE id=$1',[request.childStockId])).rowCount).toBe(0);
+ });
+ it('requires explicit quarantine acknowledgement and stores it with inherited quality',async()=>{
+  const id=randomUUID();
+  const receipt=await f.post('/inventory/receipts',{
+   operationId:randomUUID(),stockId:id,deviceId:f.actors[2].device,
+   materialId:f.material,locationId:f.location,manufacturerLot:'QUARANTINE-LOT',
+   quantity:1000,expectedRevision:0,reason:'Synthetic physical receipt'
+  },2);expect(receipt.statusCode,receipt.body).toBe(201);
+  const unsigned=intent(id,1,{expectedRevision:1});
+  expect((await send(id,unsigned)).statusCode).toBe(409);
+  expect((await f.pool.query('SELECT on_hand,revision FROM inventory_stocks WHERE id=$1',[id])).rows[0])
+   .toMatchObject({on_hand:'1000',revision:1});
+  const approved=intent(id,1,{expectedRevision:1,quarantineAcknowledged:true});
+  const result=await send(id,approved);expect(result.statusCode,result.body).toBe(201);
+  expect(result.json().parent).toMatchObject({quality:'quarantine',onHand:700});
+  expect(result.json().child).toMatchObject({quality:'quarantine',onHand:300});
+  const stored=await f.pool.query('SELECT quarantine_acknowledged FROM inventory_splits WHERE operation_id=$1',[approved.operationId]);
+  expect(stored.rows[0]?.quarantine_acknowledged).toBe(true);
+  expect((await send(id,approved)).json()).toEqual({...result.json(),status:'duplicate'});
+ });
 });
