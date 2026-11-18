@@ -1,5 +1,5 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest';
-import {prepareInventorySplit,sendInventorySplit,inventorySplitProposals} from './inventorySplits';
+import {prepareInventorySplit,sendInventorySplit,inventorySplitProposals,loadInventorySplitHistory} from './inventorySplits';
 import {inventoryOutbox,inventoryScopeKey,type InventoryStockSnapshot} from './inventoryOutbox';
 const scope={serverUrl:'https://inventory.example',organizationId:'11111111-1111-4111-8111-111111111111',actorId:'22222222-2222-4222-8222-222222222222',deviceId:'33333333-3333-4333-8333-333333333333'};
 const session={serverUrl:scope.serverUrl,accessToken:'A'.repeat(43),deviceProofToken:'B'.repeat(43),deviceProofDeviceId:scope.deviceId,deviceProofExpiresAt:Date.now()+300000};
@@ -41,4 +41,17 @@ it('rejects blocked stock and requires a persisted quarantine acknowledgement be
  await expect(prepareInventorySplit(session,scope,'local',{...quarantined,quality:'blocked' as const,disposition:'hold' as const},epoch,300,base.locationId,'Blocked repack','Counted',true))
   .rejects.toThrow('Заблокированный материал нельзя разделять');
  expect(await inventorySplitProposals(scope,'local')).toHaveLength(1);
+});
+
+it('exposes only boolean quarantine acknowledgement in read-only stock genealogy',async()=>{
+ const item={kind:'split',sequence:1,operationId:crypto.randomUUID(),childOperationId:crypto.randomUUID(),
+  parentStockId:base.stockId,childStockId:crypto.randomUUID(),quantity:300,
+  actorId:scope.actorId,deviceId:scope.deviceId,reason:'Authorized repack',
+  evidence:'Counted package',recordedAt:'2026-11-18T09:00:00.000Z',quarantineAcknowledged:true};
+ let value:unknown=true;
+ vi.stubGlobal('fetch',vi.fn(async()=>response({epoch,items:[{...item,quarantineAcknowledged:value}],hasMore:false,nextAfter:null})));
+ const page=await loadInventorySplitHistory(session,scope,base.stockId,epoch);
+ expect(page.items).toEqual([item]);
+ value='true';
+ await expect(loadInventorySplitHistory(session,scope,base.stockId,epoch)).rejects.toThrow('Invalid split genealogy');
 });
