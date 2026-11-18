@@ -59,6 +59,23 @@ it('requires Visual, then Thickness, then Mass; no failed electrode reaches the 
  expect(await db.sortRuns.count()).toBe(0);
 });
 
+it('refuses new station decisions after the Cutting source changes or disappears, preserving prior decisions and retries',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await db.cuttingRuns.update(cut.id,{goodCount:101});
+ await expect(recordSortingStation(workflow.id,visual)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,visual);
+ await db.cuttingRuns.delete(cut.id);
+ // Exact acknowledged retries remain safe and do not mutate the existing station.
+ expect((await recordSortingStation(workflow.id,visual)).stages).toHaveLength(1);
+ await expect(recordSortingStation(workflow.id,thickness)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(1);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,thickness);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+});
+
 it('requires mass grades only at final Mass station in grading mode, not in pass/fail mode',async()=>{
  const graded=await startSortingWorkflow(cut,spec,'grading','planner');
  await recordSortingStation(graded.id,visual);
