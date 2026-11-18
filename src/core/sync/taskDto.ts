@@ -45,6 +45,9 @@ function date(value: Date, field: string) {
 }
 export function encodeTask(task: Task): TaskPayloadV1 {
   uuid(task.id, 'task.id'); uuid(task.createdBy, 'task.createdBy');
+  if (typeof task.title !== 'string' || task.title.length < 1 || task.title.length > 300 ||
+      typeof task.description !== 'string' || task.description.length > 20_000 ||
+      !Object.values(TaskPriority).includes(task.priority)) throw new Error('Invalid task text/priority');
   if (!Object.values(TaskStatus).includes(task.status)) throw new Error('Invalid task status');
   const createdAt = date(task.createdAt, 'createdAt');
   const updatedAt = date(task.updatedAt, 'updatedAt');
