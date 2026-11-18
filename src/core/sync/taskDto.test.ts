@@ -101,6 +101,13 @@ describe('task JSON boundary', () => {
     }
   });
 
+  it.each([
+    ['unsupported status', { status: 'on_hold' as TaskStatus }],
+    ['update earlier than creation', { updatedAt: new Date('2025-12-31T23:59:59Z') }],
+  ])('rejects %s at the shared outbound JSON boundary', (_case, fields) => {
+    expect(() => encodeTask({ ...fixture(), ...fields })).toThrow('Invalid task');
+  });
+
   it('rejects malformed remote text and collections', () => {
     const payload = encodeTask(fixture());
     for (const changed of [
