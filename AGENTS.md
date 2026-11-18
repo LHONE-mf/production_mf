@@ -32,7 +32,17 @@ Read the applicable `SKILL.md` before making significant changes. Some upstream 
 Frontend: `npm ci && npm run typecheck && npm test -- --reporter=default && npm run build`.
 Server: from `apps/server`, `npm install && npm run typecheck && npm test -- --reporter=default && npm run build`.
 
-Prefer small, reviewable commits on `feat/hybrid-server-foundation`; do not merge to `main` without explicit approval.
+## Branch and evidence policy
+
+`main` is the current integration baseline. Start each new change on a **fresh branch from the verified latest `main` SHA**; do not use `feat/hybrid-server-foundation` as a development base (it was integrated and is now historical). Compare existing PRs and branches before reimplementing functionality. Reuse the single authoritative `inventory_*` ledger rather than introducing parallel stock systems.
+
+Deliver one small, reviewable behavior change at a time. For **each iteration**, provide:
+1. The specific defect or user-visible improvement and evidence that the old behavior was wrong/incomplete (prefer a failing regression test).
+2. The changed files, commit SHA, and pull request link.
+3. Test, typecheck, build and database-migration results **for that exact SHA**; label running, skipped, and unperformed checks explicitly.
+4. Remaining limits and the next logically independent increment.
+
+Keep unfinished work in draft PRs. Do not merge to `main`, deploy a backend, migrate real PostgreSQL, reset local data, or delete branches without explicit approval. A merge to `main` automatically deploys the GitHub Pages web PWA, so treat it as a release-affecting change. Browser/emulator checks do not replace real-device acceptance.
 
 ## Attribution
 
