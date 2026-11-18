@@ -16,6 +16,20 @@ export type FlowMaterial =
   | 'walzed-cells' | 'formed-cells';
 
 export type DefaultHandling = 'direct' | 'room-wip';
+/** Additive semantics; does not change the existing warehouse catalogue categories. */
+export const FLOW_MATERIAL_KINDS = {
+  'active-powder':'raw-material','binder':'raw-material','conductive-additive':'raw-material',
+  'solvent':'raw-material','slurry-additive':'raw-material','lithium-feedstock':'raw-material',
+  'collector-foil':'component','polyimide-tape':'component','separator':'component',
+  'tabs':'component','cell-housings':'component','closures':'component','insulators':'component',
+  'pouch-film':'component','tab-seal-adhesive':'component','electrolyte':'raw-material',
+  'slurry':'work-in-process','coated-roll':'work-in-process','calendered-roll':'work-in-process',
+  'cut-electrodes':'work-in-process','sorted-electrodes':'work-in-process',
+  'lithium-electrodes':'work-in-process','electrode-stacks':'work-in-process','wound-blocks':'work-in-process',
+  'assembled-dry-cells':'work-in-process','filled-cells':'work-in-process',
+  'walzed-cells':'work-in-process','formed-cells':'work-in-process',
+} as const satisfies Readonly<Record<FlowMaterial,'raw-material'|'component'|'work-in-process'>>;
+export interface FlowHandoffPlan {from:StageId;to:StageId;material:FlowMaterial}
 export interface RoomFlowBlueprint {
   /** Eligible candidates only; an actual stock issue still needs authenticated approval. */
   warehouseIssueCandidates: readonly FlowMaterial[];
@@ -149,3 +163,35 @@ export const PROPOSED_MANUFACTURING_OPERATIONS = [
   {id:'final-capacity-resistance-and-safety-testing',candidateRoom:StageId.FORMATION,status:'proposed'},
   {id:'finished-cell-grading-and-packaging',candidateRoom:StageId.FORMATION,status:'proposed'},
 ] as const;
+
+/** Dry cells remain Assembly WIP until explicitly released to ONE Filling room. */
+export const WIP_RELEASE_HANDOFFS = [
+  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE,material:'assembled-dry-cells'},
+  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE_705,material:'assembled-dry-cells'},
+] as const satisfies readonly FlowHandoffPlan[];
+
+type HandoffRequirement = 'approved-calendaring-bypass' | 'cylindrical'
+  | 'complete-known-filled-output' | 'complete-known-processed-output' | 'exact-source-serials';
+
+/** Current protected source restrictions remain authoritative; this list cannot enable a route. */
+export const CONDITIONAL_HANDOFFS = [
+  {from:StageId.COATING,to:StageId.CUTTING,material:'coated-roll',requires:['approved-calendaring-bypass']},
+  {from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells',requires:['complete-known-filled-output','exact-source-serials']},
+  {from:StageId.ELECTROLYTE_705,to:StageId.WALZING,material:'filled-cells',requires:['cylindrical','complete-known-filled-output','exact-source-serials']},
+  {from:StageId.WALZING,to:StageId.FORMATION,material:'walzed-cells',requires:['complete-known-processed-output','exact-source-serials']},
+] as const satisfies readonly (FlowHandoffPlan & {requires:readonly HandoffRequirement[]})[];
+
+/** Candidates only. Most have no warehouse receipt implementation or approved catalogue yet. */
+export const OPTIONAL_STORAGE_OUTPUTS = Object.entries(MATERIAL_FLOW_BLUEPRINT).flatMap(([from,room])=>
+  room.outputs.map(output=>({
+    from:from as StageId,material:output.material,
+    requires:['approved-catalogue-mapping','independent-physical-count','quarantine','separate-chief-qa'] as const,
+  })),
+);
+
+/** Owner-approved physical policy; does not add roll support to the warehouse ledger. */
+export const POLYIMIDE_STOCK_POLICY = {
+  issueUnit:'roll',distinctSpecificationPerApplication:true,
+  requiredSpecificationFields:['width','thickness'],
+} as const;
+
