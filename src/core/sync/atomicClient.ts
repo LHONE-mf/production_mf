@@ -43,7 +43,7 @@ export async function pushAtomicTasks(session: HybridSession) {
   let accepted = 0, conflicts = 0, rejected = 0;
   // Validate the entire acknowledgement before changing any local queue or revision state.
   // A truncated, duplicated or malformed server reply must leave offline edits intact.
-  if (!Array.isArray(response.results) || response.results.length !== pending.length) throw new Error('Invalid sync response: incomplete results');
+  if (!Array.isArray(response?.results) || response.results.length !== pending.length) throw new Error('Invalid sync response: incomplete results');
   const pendingIds = new Set(pending.map(op => op.operationId));
   const seen = new Set<string>();
   for (const result of response.results) {
@@ -58,6 +58,8 @@ export async function pushAtomicTasks(session: HybridSession) {
     } else if (result.status === 'conflict') {
       if (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0) throw new Error('Invalid sync response: conflict revision');
     } else if (result.status === 'rejected') {
+      if (result.reason !== undefined && typeof result.reason !== 'string')
+        throw new Error('Invalid sync response: rejection reason');
       if (result.actualRevision !== undefined &&
           (!Number.isSafeInteger(result.actualRevision) || result.actualRevision < 0))
         throw new Error('Invalid sync response: rejection revision');
@@ -116,7 +118,7 @@ export async function pullAtomicTasks(session: HybridSession) {
   const response = await send(session, '/sync/pull?cursor=' + cursor + '&limit=100&deviceId=' + encodeURIComponent(proof.deviceId), {
     headers: { 'x-device-proof': proof.token },
   });
-  if (!Array.isArray(response.changes) || !Number.isSafeInteger(response.nextCursor) || response.nextCursor < cursor) {
+  if (!Array.isArray(response?.changes) || !Number.isSafeInteger(response.nextCursor) || response.nextCursor < cursor) {
     throw new Error('Invalid sync response: changes or cursor');
   }
   const changes = response.changes as RemoteTaskChange[];
@@ -138,6 +140,7 @@ export async function pullAtomicTasks(session: HybridSession) {
   for (const change of changes) {
     if (!(typeof change.sequence === 'string' && /^(0|[1-9][0-9]*)$/.test(change.sequence)) ||
         !Number.isSafeInteger(Number(change.sequence)) || Number(change.sequence) <= previousSequence ||
+        typeof change.entity_id !== 'string' ||
         !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(change.entity_id)) {
       throw new Error('Invalid sync response: unordered changes or task ID');
     }

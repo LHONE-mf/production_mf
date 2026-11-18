@@ -1033,6 +1033,46 @@ describe('server-managed task offline writes', () => {
     expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(15);
   });
 
+  it('retains the complete offline edit across restart after malformed push and pull envelopes', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const original = await db.hybridTaskOutbox.get(operationId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    await db.hybridSyncMetadata.put({ key: 'taskCursor', value: 7 });
+    for (const response of [null, false, [], { results: null }]) {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => response }));
+      await expect(pushAtomicTasks(session)).rejects.toThrow('Invalid sync response: incomplete results');
+      await expect(pullAtomicTasks(session)).rejects.toThrow('Invalid sync response: changes or cursor');
+      expect(await db.hybridTaskOutbox.get(operationId)).toEqual(original);
+    }
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.get(operationId)).toEqual(original);
+    expect((await db.tasks.get(taskId))?.title).toBe(task().title);
+    expect((await db.hybridSyncMetadata.get('taskCursor'))?.value).toBe(7);
+    expect(await db.hybridTaskRevisions.get(taskId)).toBeUndefined();
+  });
+
+  it('rejects a non-text rejection reason and preserves the pending edit', async () => {
+    const operationId = await saveServerManagedTask(task(), deviceId);
+    const original = await db.hybridTaskOutbox.get(operationId);
+    const session = {
+      serverUrl: 'https://sync.example.com', accessToken: 'A'.repeat(43),
+      deviceProofToken: 'B'.repeat(43), deviceProofDeviceId: deviceId,
+      deviceProofExpiresAt: Date.now() + 300_000,
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      results: [{ operationId, status: 'rejected', reason: { invalid: true } }],
+    }) }));
+    await expect(pushAtomicTasks(session)).rejects.toThrow('Invalid sync response: rejection reason');
+    db.close();
+    await db.open();
+    expect(await db.hybridTaskOutbox.get(operationId)).toEqual(original);
+  });
+
   it('rejects invalid device identity without persisting task', async () => {
     await expect(saveServerManagedTask(task(), 'not-a-uuid')).rejects.toThrow('deviceId must be a UUID');
     expect(await db.tasks.get(taskId)).toBeUndefined();
