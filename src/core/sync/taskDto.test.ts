@@ -15,6 +15,19 @@ function fixture(): Task {
       fileType: 'text/plain', data: 'example', createdAt: at }],
   };
 }
+interface MutableNested {
+  comments: Array<{ text: string }>;
+  attachments: Array<{ fileName: string; fileType: string; data: string }>;
+}
+const incompatibleChildren: Array<[string, (record: MutableNested) => void]> = [
+  ['more than 1000 comments', record => { record.comments = Array.from({ length: 1001 }, () => ({ ...record.comments[0] })); }],
+  ['more than 30 attachments', record => { record.attachments = Array.from({ length: 31 }, () => ({ ...record.attachments[0] })); }],
+  ['comment text longer than 10000 characters', record => { record.comments[0].text = 'x'.repeat(10_001); }],
+  ['attachment data longer than 1000000 characters', record => { record.attachments[0].data = 'x'.repeat(1_000_001); }],
+  ['attachment filename longer than 255 characters', record => { record.attachments[0].fileName = 'x'.repeat(256); }],
+  ['attachment media type longer than 120 characters', record => { record.attachments[0].fileType = 'x'.repeat(121); }],
+];
+
 describe('task JSON boundary', () => {
   it('round-trips valid notes and explicitly copies nested fields', () => {
     const original = fixture();
@@ -43,6 +56,18 @@ describe('task JSON boundary', () => {
     ]) {
       expect(() => decodeTask(id, { ...payload, ...changes } as TaskPayloadV1)).toThrow();
     }
+  });
+
+  it.each(incompatibleChildren)('rejects %s before offline serialization', (_name, corrupt) => {
+    const task = fixture();
+    corrupt(task);
+    expect(() => encodeTask(task)).toThrow();
+  });
+
+  it.each(incompatibleChildren)('rejects %s from a remote task snapshot', (_name, corrupt) => {
+    const payload = encodeTask(fixture());
+    corrupt(payload);
+    expect(() => decodeTask(id, payload)).toThrow();
   });
 
   it('rejects malformed remote text and collections', () => {
