@@ -17,6 +17,8 @@ export function validateInventorySplit(
   if(!Number.isSafeInteger(quantity)||quantity<=0)return {ok:false,reason:'invalid_quantity'};
   if(!targetLocationId.trim()||targetLocationId===stock.locationId)
     return {ok:false,reason:'same_location'};
+  if(!['released','quarantine','blocked'].includes(stock.quality))
+    return {ok:false,reason:'invalid_stock'};
   if(stock.quality==='blocked')return {ok:false,reason:'blocked_stock'};
   if(stock.quality==='quarantine'&&!quarantineAcknowledged)
     return {ok:false,reason:'quarantine_approval_required'};
