@@ -112,8 +112,6 @@ export const DEFAULT_DIRECT_HANDOFFS = [
   {from:StageId.CALENDARING,to:StageId.CUTTING,material:'calendered-roll'},
   {from:StageId.CUTTING,to:StageId.SORTING,material:'cut-electrodes'},
   {from:StageId.SORTING,to:StageId.ASSEMBLY,material:'sorted-electrodes'},
-  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE,material:'assembled-dry-cells'},
-  {from:StageId.ASSEMBLY,to:StageId.ELECTROLYTE_705,material:'assembled-dry-cells'},
   {from:StageId.ELECTROLYTE,to:StageId.FORMATION,material:'filled-cells'},
   {from:StageId.ELECTROLYTE_705,to:StageId.WALZING,material:'filled-cells'},
   {from:StageId.WALZING,to:StageId.FORMATION,material:'walzed-cells'},
