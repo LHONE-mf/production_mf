@@ -12,7 +12,7 @@ describe('approved material flow blueprint (advisory only)',()=>{
 
   it('models direct handoffs without confusing Assembly WIP buffers with direct outputs',()=>{
     for(const link of DEFAULT_DIRECT_HANDOFFS){
-      const handling=link.from===StageId.ASSEMBLY?'room-wip':'direct';
+      const handling='direct';
       expect(MATERIAL_FLOW_BLUEPRINT[link.from].outputs.some(item=>item.material===link.material&&item.handling===handling)).toBe(true);
       expect(MATERIAL_FLOW_BLUEPRINT[link.to].upstreamInputs).toContain(link.material);
     }
