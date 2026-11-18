@@ -17,6 +17,8 @@ test('migration discovery includes all branch migrations in dependency order', a
   assert(files.includes('020_storage_inventory.sql'));
   assert(files.includes('021_inventory_restore_fence.sql'));
   assert(files.includes('022_inventory_recovery_approvals.sql'));
+  assert(files.includes('046_inventory_split_quality_ack.sql'));
+  assert(files.indexOf('046_inventory_split_quality_ack.sql') > files.indexOf('045_cutting_sorting_custody.sql'));
   assert.deepEqual(files, [...files].sort());
   assert.equal(new Set(files.map(file => file.slice(0, 3))).size, files.length);
 });
