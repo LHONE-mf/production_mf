@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useAuthStore } from '../../../core/store/authStore';
 import { AuthService } from '../services/AuthService';
 import { clearLocalDatabase } from '../../../core/db';
@@ -6,6 +6,8 @@ import { clearServerConnection } from '../../../core/sync/serverConnection';
 import { Battery, Lock, User as UserIcon, AlertCircle, Loader2 } from 'lucide-react';
 
 export function LoginForm() {
+  const loginId = useId();
+  const passwordId = useId();
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -49,15 +51,15 @@ export function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+    <div className="relative min-h-full bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col items-center p-4">
       {/* Background pattern */}
-      <div className="absolute inset-0 opacity-10">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-10">
         <div className="absolute inset-0" style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }} />
       </div>
 
-      <div className="relative w-full max-w-md">
+      <div className="relative my-auto w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-400 to-blue-500 rounded-2xl shadow-2xl mb-4">
@@ -68,16 +70,20 @@ export function LoginForm() {
         </div>
 
         {/* Login Form */}
-        <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-8 shadow-2xl border border-white/20">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 sm:p-8 shadow-2xl border border-white/20">
+          <form onSubmit={handleSubmit} aria-busy={isLoading} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-blue-100 mb-1.5">
+              <label htmlFor={loginId} className="block text-sm font-medium text-blue-100 mb-1.5">
                 Логин
               </label>
               <div className="relative">
                 <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-300" />
                 <input
+                  id={loginId}
                   type="text"
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
                   value={login}
                   onChange={(e) => setLogin(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300/50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
@@ -88,13 +94,15 @@ export function LoginForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-blue-100 mb-1.5">
+              <label htmlFor={passwordId} className="block text-sm font-medium text-blue-100 mb-1.5">
                 Пароль
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-blue-300" />
                 <input
+                  id={passwordId}
                   type="password"
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-300/50 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent transition"
@@ -105,7 +113,7 @@ export function LoginForm() {
             </div>
 
             {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/20 border border-red-400/30 rounded-xl text-red-200 text-sm">
+              <div role="alert" className="flex items-center gap-2 p-3 bg-red-500/20 border border-red-400/30 rounded-xl text-red-200 text-sm">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 {error}
               </div>
@@ -117,7 +125,7 @@ export function LoginForm() {
               className="w-full py-3 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <><Loader2 aria-hidden="true" className="w-5 h-5 animate-spin motion-reduce:animate-none" /> Проверяем…</>
               ) : (
                 'Войти в систему'
               )}

@@ -142,7 +142,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
   })();
 
   return (
-    <div className="h-full min-h-0 bg-slate-900 flex">
+    <div className="relative h-full min-h-0 bg-slate-900 flex">
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 bg-slate-800/80 backdrop-blur border-r border-slate-700/50">
         {/* Logo */}
@@ -218,7 +218,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div className="lg:hidden fixed inset-0 z-50">
+        <div className="lg:hidden absolute inset-0 z-50">
           <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
           <aside id={mobileMenuId} aria-label="Навигация" className="absolute left-0 top-0 bottom-0 w-72 max-w-full bg-slate-800 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-6">
@@ -267,20 +267,20 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
         {/* Mobile header */}
-        <header className="lg:hidden flex shrink-0 items-center justify-between px-4 py-3 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
+        <header className="lg:hidden flex shrink-0 items-center justify-between gap-2 px-2 sm:px-4 py-2 min-h-14 bg-slate-800/80 backdrop-blur border-b border-slate-700/50">
           <button ref={openMenuRef} type="button" aria-label="Открыть меню" aria-expanded={sidebarOpen} aria-controls={sidebarOpen ? mobileMenuId : undefined} onClick={() => setSidebarOpen(true)} className="min-h-11 min-w-11 flex items-center justify-center text-white">
             <Menu className="w-6 h-6" />
           </button>
-          <div className="flex items-center gap-2">
-            <Battery className="w-5 h-5 text-green-400" />
-            <span className="text-white font-bold text-sm">Li-Ion Production</span>
+          <div className="flex min-w-0 items-center gap-2">
+            <Battery aria-hidden="true" className="w-5 h-5 shrink-0 text-green-400" />
+            <span className="min-w-0 truncate text-white font-bold text-sm">Li-Ion Production</span>
           </div>
           <button
             onClick={() => void signOut()}
             type="button"
             title="Выйти из профиля"
             aria-label="Выйти из профиля"
-            className={`w-11 h-11 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
+            className={`w-11 h-11 shrink-0 ${ROLE_COLORS[currentUser.role]} rounded-lg flex items-center justify-center text-white text-xs font-bold`}
           >
             <LogOut className="w-4 h-4" />
           </button>
