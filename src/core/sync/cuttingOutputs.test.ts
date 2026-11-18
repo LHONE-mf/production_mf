@@ -175,3 +175,42 @@ it("never lets a late valid receipt replace a newer local conflict", async () =>
     "conflict",
   );
 });
+
+it("preserves the complete original draft when a server reply cannot be parsed", async () => {
+  const f = fixture();
+  const row = await freezeCutOutputCommand(scope, actor, epoch, f.command);
+  vi.mocked(inventoryRequest).mockResolvedValueOnce(
+    new Response("{", {
+      status: 201,
+      headers: { "Content-Type": "application/json" },
+    }),
+  );
+
+  await expect(
+    sendCutOutputCommand({} as never, scope, actor, row.key),
+  ).rejects.toThrow();
+  expect(await inventoryOutbox.receivingDrafts.get(row.key)).toEqual(row);
+  inventoryOutbox.close();
+  await inventoryOutbox.open();
+  expect(await inventoryOutbox.receivingDrafts.get(row.key)).toEqual(row);
+});
+
+it("does not archive a response with a mismatched acknowledgement identity", async () => {
+  const f = fixture();
+  const row = await freezeCutOutputCommand(scope, actor, epoch, f.command);
+  vi.mocked(inventoryRequest).mockResolvedValueOnce(
+    new Response(
+      JSON.stringify({
+        status: "confirmed",
+        operationId: id(),
+        declaration: f.declaration,
+      }),
+      { status: 201 },
+    ),
+  );
+
+  await expect(
+    sendCutOutputCommand({} as never, scope, actor, row.key),
+  ).rejects.toThrow();
+  expect(await inventoryOutbox.receivingDrafts.get(row.key)).toEqual(row);
+});
