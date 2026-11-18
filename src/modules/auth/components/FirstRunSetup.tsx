@@ -38,8 +38,8 @@ export function FirstRunSetup(){
       setError(cause instanceof Error?cause.message:'Не удалось создать пользователя');
     }finally{setBusy(false);}
   };
-  return <main className="min-h-screen bg-slate-900 p-4 flex items-center justify-center">
-    <section className="w-full max-w-md space-y-4 rounded-xl border border-slate-700 bg-slate-800 p-5">
+  return <main className="min-h-full bg-slate-900 p-4 flex flex-col items-center">
+    <section className="my-auto w-full max-w-md space-y-4 rounded-xl border border-slate-700 bg-slate-800 p-5">
       <h1 className="text-xl font-semibold text-white">Первый запуск Production MF</h1>
       <p className="text-sm text-slate-300">
         Локальная база пуста. Создайте первого начальника производства.
