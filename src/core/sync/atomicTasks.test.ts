@@ -225,6 +225,24 @@ describe('server-managed task offline writes', () => {
     await db.open();
     expect(await db.hybridTaskOutbox.where('entityId').equals(taskId).count()).toBe(2);
   });
+  it.each([
+    ['unsupported status', { status: 'paused' as TaskStatus }],
+    ['update before creation', { updatedAt: new Date('2026-11-08T09:59:59Z') }],
+  ])('keeps %s out of the persistent task and upload queue', async (_name, fields) => {
+    const original = task();
+    await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
+    await db.tasks.put(original);
+    await expect(saveServerManagedTask({ ...original, ...fields }, deviceId))
+      .rejects.toThrow('Invalid task');
+    expect(await db.tasks.get(taskId)).toEqual(original);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+    expect((await db.hybridTaskRevisions.get(taskId))?.revision).toBe(3);
+    db.close();
+    await db.open();
+    expect(await db.tasks.get(taskId)).toEqual(original);
+    expect(await db.hybridTaskOutbox.count()).toBe(0);
+  });
+
   it('keeps the original task and outbox intact for mixed invalid server-field cases', async () => {
     await db.hybridTaskRevisions.put({ entityId: taskId, revision: 3 });
     const baseline = task();
