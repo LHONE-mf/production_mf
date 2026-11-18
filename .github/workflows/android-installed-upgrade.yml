@@ -45,14 +45,25 @@ jobs:
           git checkout --detach --force "$BASELINE_SHA"
           npm run build
           npx cap sync android
-          (cd android && chmod +x gradlew && ./gradlew :app:assembleDebug --no-daemon)
+          chmod +x android/gradlew
+          for attempt in 1 2 3; do
+            if (cd android && ./gradlew :app:assembleDebug --no-daemon --max-workers=2); then break; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            echo "::warning::Gradle fetch failed (attempt $attempt/3), retrying with bounded backoff"
+            sleep 25
+          done
           cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/production-mf-baseline.apk"
       - name: Build current APK and explicit test instrumentation
         run: |
           git checkout --detach --force "$GITHUB_SHA"
           npm run build
           npx cap sync android
-          (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon)
+          for attempt in 1 2 3; do
+            if (cd android && ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --max-workers=2); then break; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            echo "::warning::Gradle fetch failed (attempt $attempt/3), retrying with bounded backoff"
+            sleep 25
+          done
           cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/production-mf-updated.apk"
           cp android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk "$RUNNER_TEMP/production-mf-test.apk"
       # GitHub-hosted runners need explicit access to /dev/kvm; without it the
