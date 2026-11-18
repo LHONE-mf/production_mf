@@ -24,6 +24,36 @@ describe('task JSON boundary', () => {
     expect(decodeTask(id, payload)).toEqual(original);
   });
 
+  it('rejects offline task comments and attachments exceeding server limits before queueing', () => {
+    const base = fixture();
+    const invalid: Task[] = [
+      { ...base, comments: Array.from({ length: 1001 }, () => base.comments[0]) },
+      { ...base, comments: [{ ...base.comments[0], text: 'x'.repeat(10001) }] },
+      { ...base, attachments: Array.from({ length: 31 }, () => base.attachments[0]) },
+      { ...base, attachments: [{ ...base.attachments[0], fileName: 'x'.repeat(256) }] },
+      { ...base, attachments: [{ ...base.attachments[0], fileType: 'x'.repeat(121) }] },
+      { ...base, attachments: [{ ...base.attachments[0], data: 'x'.repeat(1000001) }] },
+    ];
+    for (const task of invalid) {
+      expect(() => encodeTask(task)).toThrow('Task content exceeds server limits');
+    }
+  });
+
+  it('rejects oversized remote task comments and attachments', () => {
+    const base = encodeTask(fixture());
+    const invalid: TaskPayloadV1[] = [
+      { ...base, comments: Array.from({ length: 1001 }, () => base.comments[0]) },
+      { ...base, comments: [{ ...base.comments[0], text: 'x'.repeat(10001) }] },
+      { ...base, attachments: Array.from({ length: 31 }, () => base.attachments[0]) },
+      { ...base, attachments: [{ ...base.attachments[0], fileName: 'x'.repeat(256) }] },
+      { ...base, attachments: [{ ...base.attachments[0], fileType: 'x'.repeat(121) }] },
+      { ...base, attachments: [{ ...base.attachments[0], data: 'x'.repeat(1000001) }] },
+    ];
+    for (const payload of invalid) {
+      expect(() => decodeTask(id, payload)).toThrow('Task content exceeds server limits');
+    }
+  });
+
   it('rejects malformed remote text and collections', () => {
     const payload = encodeTask(fixture());
     for (const changed of [
