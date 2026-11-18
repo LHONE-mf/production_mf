@@ -4,6 +4,7 @@ import {
   copyCutOutputRequest,
   copyCutOutputLot,
   copyCutOutputReceipt,
+  copyCutOutputReceiptRequest,
 } from "./cuttingOutputTypes";
 const id = () => crypto.randomUUID(),
   scope = {
@@ -63,5 +64,61 @@ it("validates partial counted capacity and exact observed quantity/lot for the o
   expect(() => copyCutOutputReceipt({ ...r, observedQuantity: 9 })).toThrow();
   expect(() =>
     copyCutOutputReceipt({ ...r, observedLotLabel: "OTHER" }),
+  ).toThrow();
+});
+
+it("rejects non-string disposition values rather than coercing untrusted data", () => {
+  const f = cuttingOutputTestData(scope);
+  if (f.command.kind !== "output") throw Error("Output required");
+  const request = f.command.request;
+  const lot = request.outputs[0];
+  for (const malformed of [["ready"], ["held"], null, 0, {}]) {
+    expect(() =>
+      copyCutOutputRequest({
+        ...request,
+        outputs: [{ ...lot, disposition: malformed }],
+      }),
+    ).toThrow();
+  }
+  for (const disposition of ["ready", "held"] as const) {
+    expect(
+      copyCutOutputRequest({
+        ...request,
+        outputs: [{ ...lot, disposition }],
+      }).outputs[0].disposition,
+    ).toBe(disposition);
+  }
+});
+
+it("rejects non-string receipt kinds even when their string representation looks valid", () => {
+  const f = cuttingOutputTestData(scope);
+  if (f.receipt.kind !== "receipt") throw Error("Receipt required");
+  const request = f.receipt.request;
+  for (const malformed of [["receive"], ["discrepancy"], null, 0, {}]) {
+    expect(() =>
+      copyCutOutputReceiptRequest({ ...request, kind: malformed }),
+    ).toThrow();
+  }
+  expect(copyCutOutputReceiptRequest(request).kind).toBe("receive");
+  expect(
+    copyCutOutputReceiptRequest({
+      ...request,
+      kind: "discrepancy",
+      observedQuantity: null,
+      observedLotLabel: null,
+    }).kind,
+  ).toBe("discrepancy");
+
+  // A malformed kind must not be silently accepted as a non-receiving event.
+  expect(() =>
+    copyCutOutputReceipt({
+      ...request,
+      kind: ["receive"],
+      sourceSnapshot: f.handoff,
+      actorId: scope.actorId,
+      recordedAt: new Date().toISOString(),
+      custodyEffect: "none",
+      warehouseEffect: "none",
+    }),
   ).toThrow();
 });

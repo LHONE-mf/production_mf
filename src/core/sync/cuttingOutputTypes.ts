@@ -177,7 +177,7 @@ function copyPieceLot(value: unknown): PieceOutputLot {
     !text(r.label) ||
     (r.label as string).length > 200 ||
     !integer(r.quantity, 1) ||
-    !["ready", "held"].includes(String(r.disposition))
+    (r.disposition !== "ready" && r.disposition !== "held")
   )
     return invalid();
   return {
@@ -427,7 +427,7 @@ export function copyCutOutputReceiptRequest(
   if (
     !id(r.handoffId) ||
     r.unit !== "pieces" ||
-    !["receive", "discrepancy"].includes(String(r.kind)) ||
+    (r.kind !== "receive" && r.kind !== "discrepancy") ||
     !optionalQuantity(r.observedQuantity) ||
     !(
       r.observedLotLabel === null ||
