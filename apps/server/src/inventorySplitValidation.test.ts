@@ -21,7 +21,11 @@ describe('inventory split preconditions (pure, no writes)',()=>{
     expect(validateInventorySplit({...stock,reserved:100},200,'cabinet-b'))
       .toEqual({ok:false,reason:'reserved_stock'});
     expect(validateInventorySplit({...stock,quality:'quarantine'},200,'cabinet-b'))
-      .toEqual({ok:false,reason:'unreleased_stock'});
+      .toEqual({ok:false,reason:'quarantine_approval_required'});
+    expect(validateInventorySplit({...stock,quality:'quarantine'},200,'cabinet-b',true))
+      .toEqual({ok:true,remaining:800,childQuantity:200});
+    expect(validateInventorySplit({...stock,quality:'blocked'},200,'cabinet-b',true))
+      .toEqual({ok:false,reason:'blocked_stock'});
     expect(validateInventorySplit(stock,200,'cabinet-a'))
       .toEqual({ok:false,reason:'same_location'});
     expect(validateInventorySplit(stock,200,'  ').ok).toBe(false);
