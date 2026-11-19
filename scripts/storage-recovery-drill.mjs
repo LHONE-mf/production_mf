@@ -128,8 +128,23 @@ try{
  await post(source,'/inventory/issues/'+issueId+'/outcomes',{operationId:randomUUID(),deviceId:device,kind:'scrap',issueId,productionBatchId:batch,sourceStockId:first.stockId,expectedSettlementRevision:2,quantity:100000,reason:'Damaged unused issued stock disposed under Chief authority',evidence:'CI witnessed disposal report'},epoch);
  const warehouseScrap=operation('scrap',1,1000,{evidence:'CI-WAREHOUSE-RESTORE-WASTE-42'}),warehouseScrapAck=await post(source,'/inventory/stocks/'+returned.stockId+'/operations',warehouseScrap,epoch);
  assert.equal(warehouseScrapAck.stock.onHand,199000);
+ // The current split endpoint requires migration 046. Seed older (pre-031)
+ // stock first, then apply this additive guard before using the current API.
+ // This is an isolated recovery fixture, never a live migration procedure.
+ const approvalMigration='046_inventory_split_quality_ack.sql';
+ assert(migrations.includes(approvalMigration),'Missing split approval migration');
+ const beforeApprovalUpgrade=await snapshot(source.pool);
+ await source.pool.query(await readFile(new URL('../apps/server/migrations/'+approvalMigration,import.meta.url),'utf8'));
+ const afterApprovalUpgrade=await snapshot(source.pool);
+ for(const name of Object.keys(beforeApprovalUpgrade)){
+  const rows=afterApprovalUpgrade[name].map(text=>{const row=JSON.parse(text);
+   if(name==='inventory_splits'){assert.equal(row.quarantine_acknowledged,false);delete row.quarantine_acknowledged;}
+   return JSON.stringify(row);
+  }).sort();
+  assert.deepEqual(rows,beforeApprovalUpgrade[name],'Split approval upgrade altered existing '+name);
+ }
  const split={operationId:randomUUID(),childOperationId:randomUUID(),deviceId:device,parentStockId:first.stockId,childStockId:randomUUID(),locationId:from,expectedRevision:8,quantity:125000,reason:'Chief authorized actual partial repack',evidence:'CI-RESTORE-CHILD-LABEL-42'},splitAck=await post(source,'/inventory/stocks/'+first.stockId+'/splits',split,epoch);
- assert.equal(splitAck.parent.reserved,600000);assert.equal(splitAck.child.reserved,0);assert.equal(splitAck.parent.onHand+splitAck.child.onHand,1500000);
+ assert.equal(splitAck.parent.reserved,600000);assert.equal(splitAck.child.reserved,0);assert.equal((await source.pool.query('SELECT quarantine_acknowledged FROM inventory_splits WHERE operation_id=$1',[split.operationId])).rows[0].quarantine_acknowledged,false);assert.equal(splitAck.parent.onHand+splitAck.child.onHand,1500000);
  const countId=randomUUID(),countAction=(kind,extra={})=>({operationId:randomUUID(),countId,deviceId:device,kind,reason:'Actual physical count with independent reconciliation',evidence:'CI-RESTORE-COUNT-42',...extra});
  await post(source,'/inventory/counts/operations',countAction('open'),epoch);const observation=countAction('observe',{stock:splitAck.child,quantity:124000});await post(source,'/inventory/counts/operations',observation,epoch);
  async function countHistory(db,until,a=identity){const response=await db.app.inject({method:'GET',url:'/inventory/counts/'+countId+'/events?'+new URLSearchParams({deviceId:a.device,...(until!==undefined?{until:String(until)}:{})}),headers:headers(a)});assert.equal(response.statusCode,200,response.body);return response.json();}
@@ -210,7 +225,7 @@ try{
  const afterCutting=await snapshot(source.pool);for(const name of Object.keys(beforeCutting))assert.deepEqual(afterCutting[name],beforeCutting[name],'Cutting use upgrade changed populated history '+name);assert.equal(afterCutting.inventory_cutting_consumptions.length,0);assert.equal(afterCutting.inventory_cutting_allocations.length,0);
  const cuttingUse={operationId:randomUUID(),deviceId:device,productionBatchId:batch,stepNumber:4,materialId:calenderedMaterial,observedAt:Date.now(),reference:'Synthetic independently measured Cutting use',actualLengthMm:150,allocations:[{operationId:randomUUID(),receiptId:cuttingReceipt.operationId,quantity:150,expectedRevision:1}],reason:'Actual measured length processed',evidence:'Independent 150 mm observation'},cuttingUseAck=await post(source,'/inventory/room-materials/cutting/consumptions',cuttingUse,epoch);
  const beforeCutPieces=await snapshot(source.pool);
- for(const name of migrations.filter(n=>n>='044'))await source.pool.query(await readFile(new URL('../apps/server/migrations/'+name,import.meta.url),'utf8'));
+ for(const name of migrations.filter(n=>n>='044'&&n!==approvalMigration))await source.pool.query(await readFile(new URL('../apps/server/migrations/'+name,import.meta.url),'utf8'));
  const afterCutPieces=await snapshot(source.pool);for(const name of Object.keys(beforeCutPieces)){const rows=afterCutPieces[name].map(text=>{const row=JSON.parse(text);if(name==='inventory_room_output_lots'){assert.equal(row.cutting_declaration_id,null);delete row.cutting_declaration_id;}return JSON.stringify(row);}).sort();assert.deepEqual(rows,beforeCutPieces[name],'Cutting piece upgrade changed populated history '+name);}assert.equal(afterCutPieces.inventory_cutting_outputs.length,0);assert.equal(afterCutPieces.inventory_cutting_output_claims.length,0);
  const cuttingPieceMaterial=randomUUID();await post(source,'/inventory/materials',{id:cuttingPieceMaterial,deviceId:device,code:'UNSORTED-CUT-PIECES',name:'Synthetic explicitly specified unsorted electrode pieces',category:'electrode',baseUnit:'pieces'},epoch);
  const cutPieceDeclaration={operationId:randomUUID(),deviceId:device,productionBatchId:batch,stepNumber:4,unit:'pieces',consumptionIds:[cuttingUse.operationId],outputs:[{id:randomUUID(),materialId:cuttingPieceMaterial,label:'SYNTHETIC-UNSORTED-A',quantity:9,disposition:'ready'},{id:randomUUID(),materialId:cuttingPieceMaterial,label:'SYNTHETIC-UNSORTED-B',quantity:3,disposition:'held'}],rejectedPieces:null,scrapLengthMm:null,scrapMassMg:null,accountingNote:'Actual piece counts observed independently; rejects and trim unknown, no inferred yield',observedAt:Date.now(),specificationReference:'Synthetic explicit counted output card',reference:'Synthetic counted Cutting output',reason:'Independent actual count of two physical lots',evidence:'Separate manual count; no length-to-piece conversion'},cutPieceDeclarationAck=await post(source,'/inventory/cutting-outputs',cutPieceDeclaration,epoch);
