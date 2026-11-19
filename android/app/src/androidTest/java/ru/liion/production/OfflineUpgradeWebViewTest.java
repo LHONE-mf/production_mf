@@ -29,6 +29,8 @@ public class OfflineUpgradeWebViewTest {
     private static final String RESULT = "window.__productionMfUpgradeProbe";
     private static final String ENTITY_ID = "99999999-9999-4999-8999-999999999999";
     private static final String ARCHIVE_ID = "ci-android-upgrade-archive";
+    private static final String OUTBOX_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    private static final String JOURNAL_ID = "ci-android-upgrade-journal";
     private static final String ACTOR = "ci-android-upgrade-actor";
     private static final String DRAFT_KEY = "[\"ci-android-upgrade-actor\",\"slurry\"]";
 
@@ -50,7 +52,7 @@ public class OfflineUpgradeWebViewTest {
                 + "request.onsuccess=()=>resolve(request.result);"
                 + "request.onerror=()=>reject(request.error);});"
                 + "try {"
-                + "for(const store of ['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts']) {"
+                + "for(const store of ['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal']) {"
                 + "if(!db.objectStoreNames.contains(store)) throw Error('Missing '+store);}"
                 + action
                 + "} finally { db.close(); }"
@@ -98,7 +100,7 @@ public class OfflineUpgradeWebViewTest {
                     "Boolean(window.Capacitor && document.readyState==='complete' && location.origin==='https://localhost')"));
             if ("prepare".equals(phase)) {
                 JSONObject saved = run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts'],'readwrite');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readwrite');"
                         + "tx.objectStore('hybridTaskResolutions').add({id:" + JSONObject.quote(ARCHIVE_ID)
                         + ",entityId:" + JSONObject.quote(ENTITY_ID)
                         + ",archivedAt:Date.now(),decision:'use_server',"
@@ -111,21 +113,33 @@ public class OfflineUpgradeWebViewTest {
                         + ",actorId:" + JSONObject.quote(ACTOR)
                         + ",scope:'slurry',version:1,revision:1,updatedAt:Date.now(),"
                         + "payload:{note:'TEST-APK-UPGRADE',mass:'12.5'}});"
+                        + "tx.objectStore('hybridTaskOutbox').add({operationId:" + JSONObject.quote(OUTBOX_ID)
+                        + ",entityId:" + JSONObject.quote(ENTITY_ID)
+                        + ",deviceId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',state:'pending',"
+                        + "expectedRevision:7,queuedAt:Date.now(),"
+                        + "payload:{title:'TEST-APK-UPGRADE queued write'}});"
+                        + "tx.objectStore('journal').add({id:" + JSONObject.quote(JOURNAL_ID)
+                        + ",stage:'slurry',workerId:" + JSONObject.quote(ACTOR)
+                        + ",taskId:" + JSONObject.quote(ENTITY_ID)
+                        + ",createdAt:new Date('2026-11-18T12:00:00Z'),"
+                        + "params:{batch:'TEST-APK-UPGRADE',mass:'12.5'}});"
                         + "return await new Promise((resolve,reject)=>{"
                         + "tx.oncomplete=()=>resolve('saved');"
                         + "tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});");
                 assertEquals("saved", saved.getString("value"));
             } else {
                 JSONObject rows = run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts'],'readonly');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readonly');"
                         + "const get=(store,key)=>new Promise((resolve,reject)=>{"
                         + "const request=tx.objectStore(store).get(key);"
                         + "request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});"
-                        + "const [archive,revision,draft]=await Promise.all(["
+                        + "const [archive,revision,draft,outbox,journal]=await Promise.all(["
                         + "get('hybridTaskResolutions'," + JSONObject.quote(ARCHIVE_ID) + "),"
                         + "get('hybridTaskRevisions'," + JSONObject.quote(ENTITY_ID) + "),"
-                        + "get('localFormDrafts'," + JSONObject.quote(DRAFT_KEY) + ")]);"
-                        + "return {archive,revision,draft};").getJSONObject("value");
+                        + "get('localFormDrafts'," + JSONObject.quote(DRAFT_KEY) + "),"
+                        + "get('hybridTaskOutbox'," + JSONObject.quote(OUTBOX_ID) + "),"
+                        + "get('journal'," + JSONObject.quote(JOURNAL_ID) + ")]);"
+                        + "return {archive,revision,draft,outbox,journal,journalDateIsDate:journal.createdAt instanceof Date};").getJSONObject("value");
                 assertEquals(ENTITY_ID, rows.getJSONObject("archive").getString("entityId"));
                 assertEquals("TEST-APK-UPGRADE offline edit",
                         rows.getJSONObject("archive").getJSONObject("localTask").getString("title"));
@@ -133,12 +147,21 @@ public class OfflineUpgradeWebViewTest {
                 assertEquals(7, rows.getJSONObject("revision").getInt("revision"));
                 assertEquals("slurry", rows.getJSONObject("draft").getString("scope"));
                 assertEquals("12.5", rows.getJSONObject("draft").getJSONObject("payload").getString("mass"));
+                assertEquals("pending", rows.getJSONObject("outbox").getString("state"));
+                assertEquals(7, rows.getJSONObject("outbox").getInt("expectedRevision"));
+                assertEquals("TEST-APK-UPGRADE queued write",
+                        rows.getJSONObject("outbox").getJSONObject("payload").getString("title"));
+                assertEquals("slurry", rows.getJSONObject("journal").getString("stage"));
+                assertEquals("12.5", rows.getJSONObject("journal").getJSONObject("params").getString("mass"));
+                assertTrue("Journal creation date lost its Date type", rows.getBoolean("journalDateIsDate"));
                 // Clean up only these disposable CI rows after proving they survived replacement.
                 assertEquals("cleaned", run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts'],'readwrite');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readwrite');"
                         + "tx.objectStore('hybridTaskResolutions').delete(" + JSONObject.quote(ARCHIVE_ID) + ");"
                         + "tx.objectStore('hybridTaskRevisions').delete(" + JSONObject.quote(ENTITY_ID) + ");"
                         + "tx.objectStore('localFormDrafts').delete(" + JSONObject.quote(DRAFT_KEY) + ");"
+                        + "tx.objectStore('hybridTaskOutbox').delete(" + JSONObject.quote(OUTBOX_ID) + ");"
+                        + "tx.objectStore('journal').delete(" + JSONObject.quote(JOURNAL_ID) + ");"
                         + "return await new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve('cleaned');"
                         + "tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});")
                         .getString("value"));
