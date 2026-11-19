@@ -5,6 +5,7 @@ import {outcomeInteger} from './inventoryOutcomeTypes';
 
 export interface ElectrodeOutputSource {
  runId:string;cutRunId:string;specId:string;mode:'pass-fail'|'grading';inputCount:number;
+ cuttingReceiptId?:string; // original server-confirmed Cutting receive operation; not a local cut-run ID
  categories:Pick<SortCategory,'name'|'minMass'|'maxMass'|'minUm'|'maxUm'>[];
  stages:SortingStationResult[];
 }
@@ -20,16 +21,16 @@ export type ElectrodeSubmissionInput=Omit<ElectrodeSubmissionRequest,'source'>;
 const label=(v:unknown):v is string=>typeof v==='string'&&!!v.trim()&&v===v.trim()&&v.length<=120;
 
 export function sourceFromSortRun(run:SortRun):ElectrodeOutputSource {
- if(run.cutRunSnapshot?.receivedCustody)
-  throw Error('Результат по подтверждённой приёмке пока не связан с серверным QA/выпуском; складское предложение запрещено');
  validateSortPartition(run);
  const w=run.sortingWorkflow;
  if(!w||w.finalizedSortRunId!==run.id||w.stages.length!==3)throw Error('Нужен сохранённый итог всех трёх станций сортировки');
- return outputSourceCopy({runId:run.id,cutRunId:w.cutRunId,specId:w.specSnapshot.id,mode:w.mode,inputCount:w.cutRunSnapshot.goodCount,categories:w.specSnapshot.categories,stages:w.stages});
+ return outputSourceCopy({runId:run.id,cutRunId:w.cutRunId,specId:w.specSnapshot.id,mode:w.mode,inputCount:w.cutRunSnapshot.goodCount,categories:w.specSnapshot.categories,stages:w.stages,
+  ...(w.cutRunSnapshot.receivedCustody?{cuttingReceiptId:w.cutRunSnapshot.receivedCustody.receiptId}:{})});
 }
 export function outputSourceCopy(source:ElectrodeOutputSource):ElectrodeOutputSource {
  validateOutputSource(source);
  return{runId:source.runId,cutRunId:source.cutRunId,specId:source.specId,mode:source.mode,inputCount:source.inputCount,
+  ...(source.cuttingReceiptId?{cuttingReceiptId:source.cuttingReceiptId}:{}),
   categories:source.categories.map(c=>({name:c.name,...Object.fromEntries(['minMass','maxMass','minUm','maxUm'].filter(k=>c[k as keyof typeof c]!==undefined).map(k=>[k,c[k as keyof typeof c]]))})),
   stages:source.stages.map(s=>({station:s.station,inputCount:s.inputCount,passedCount:s.passedCount,rejectedCount:s.rejectedCount,workerId:s.workerId,recordedAt:s.recordedAt,
    ...(s.rejectionReasons?{rejectionReasons:s.rejectionReasons.map(r=>({reason:r.reason,count:r.count}))}:{}),...(s.grades?{grades:s.grades.map(g=>({categoryName:g.categoryName,count:g.count}))}:{})}))};
@@ -40,6 +41,10 @@ export function validateOutputSource(raw:unknown):asserts raw is ElectrodeOutput
  const s=raw as ElectrodeOutputSource;
  if(!s||![s.runId,s.cutRunId,s.specId].every(label)||!['grading','pass-fail'].includes(s.mode)||!outcomeInteger(s.inputCount,1)||
   !Array.isArray(s.categories)||!s.categories.length||s.categories.length>100||!Array.isArray(s.stages)||s.stages.length!==3)throw Error('Invalid finished source');
+ // Receipt-backed sources have a single durable, unforgeable source identifier.
+ // The server rechecks the actual receipt; this shape check alone grants nothing.
+ if(s.cutRunId.startsWith('received:') ? !issueIdValid(s.cuttingReceiptId)||s.cutRunId!=='received:'+s.cuttingReceiptId : s.cuttingReceiptId!==undefined)
+  throw Error('Confirmed Cutting receipt ID must exactly match the Sorting source');
  const names=new Set<string>();
  for(const c of s.categories){if(!c||!label(c.name)||names.has(c.name))throw Error('Invalid finished specification');names.add(c.name);
   for(const v of [c.minMass,c.maxMass,c.minUm,c.maxUm])if(v!==undefined&&(typeof v!=='number'||!Number.isFinite(v)||v<0))throw Error('Invalid specification bound');

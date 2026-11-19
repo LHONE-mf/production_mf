@@ -39,6 +39,30 @@ export function registerInventoryOutputRoutes(app:FastifyInstance,pool:Pool){
       [actor.organization_id,data.completionId,data.productionBatchId,data.stepNumber])).rows[0];
     const quantity=data.source.stages[2].passedCount;
     if(!completion||completion.quantity_unit!=='pieces'||Number(completion.quantity)!==quantity)issueFail(409,'completed_sorting_quantity_required');
+    if(data.source.cuttingReceiptId){
+     // A client attestation alone cannot establish custody. Validate against the
+     // append-only server receipt, actual quantity, route and currently eligible lot.
+     // The parent inventory transaction lock serializes this with inventory mutations.
+     const source=(await client.query(`SELECT e.operation_id FROM inventory_room_handoff_events e
+      JOIN inventory_room_handoffs h ON h.organization_id=e.organization_id AND h.operation_id=e.handoff_id
+      JOIN inventory_room_output_lots l ON l.organization_id=h.organization_id AND l.id=h.output_lot_id
+      JOIN inventory_cutting_outputs c ON c.organization_id=l.organization_id AND c.operation_id=l.cutting_declaration_id
+      JOIN inventory_materials m ON m.organization_id=l.organization_id AND m.id=l.material_id
+      JOIN users receiver ON receiver.organization_id=h.organization_id AND receiver.id=h.recipient_id AND receiver.active
+      JOIN user_workshop_memberships membership ON membership.organization_id=h.organization_id
+       AND membership.user_id=h.recipient_id AND membership.workshop_id=h.recipient_workshop_id
+      WHERE e.organization_id=$1 AND e.operation_id=$2 AND e.kind='receive'
+       AND e.actor_id=h.recipient_id AND e.observed_quantity=h.quantity AND e.observed_quantity=$6
+       AND e.result_payload->>'custodyEffect'='received' AND e.result_payload->>'observedLotLabel'=h.output_snapshot->'lot'->>'label'
+       AND h.output_snapshot->>'unit'='pieces' AND h.output_snapshot->'lot'->>'disposition'='ready'
+       AND h.production_batch_id=$3 AND c.production_batch_id=$3
+       AND h.destination_step=$4 AND h.recipient_workshop_id=$5
+       AND m.active AND m.base_unit='pieces' AND m.category='electrode'
+       AND cutting_output_inputs_eligible(c.organization_id,c.request_payload)
+      FOR SHARE OF e,h,l,c,m,receiver,membership`,
+      [actor.organization_id,data.source.cuttingReceiptId,data.productionBatchId,data.stepNumber,step.workshop_id,data.source.inputCount])).rows[0];
+     if(!source)issueFail(409,'cutting_receipt_source_unavailable');
+    }
     for(const output of data.outputs){
      const material=await client.query("SELECT id FROM inventory_materials WHERE organization_id=$1 AND id=$2 AND active AND category='electrode' AND base_unit='pieces' FOR SHARE",[actor.organization_id,output.materialId]);
      if(!material.rowCount)issueFail(409,'electrode_material_required');

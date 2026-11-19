@@ -12,11 +12,12 @@ const station=z.object({station:z.enum(['visual','thickness','mass']),inputCount
 
 // A deliberate authenticated attestation of completed manual station counts.
 // This is neither an imported journal nor an equipment-verified measurement.
-export const electrodeOutputSource=z.object({runId:label,cutRunId:label,specId:label,
+export const electrodeOutputSource=z.object({runId:label,cutRunId:label,specId:label,cuttingReceiptId:id.optional(),
  mode:z.enum(['pass-fail','grading']),inputCount:count.refine(n=>n>0),
  categories:z.array(category).min(1).max(100),stages:z.array(station).length(3),
 }).strict().superRefine((source,ctx)=>{
  const reject=()=>ctx.addIssue({code:'custom',message:'invalid_completed_sorting_output'});
+ if(source.cutRunId.startsWith('received:') ? !source.cuttingReceiptId||source.cutRunId!=='received:'+source.cuttingReceiptId : source.cuttingReceiptId!==undefined)reject();
  const names=new Set(source.categories.map(c=>c.name));
  if(names.size!==source.categories.length)reject();
  for(const c of source.categories){
