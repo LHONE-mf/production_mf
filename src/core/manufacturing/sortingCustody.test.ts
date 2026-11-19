@@ -7,6 +7,7 @@ import {prepareReceivedCuttingSource,saveReceivedCuttingSource} from './sortingC
 import {startSortingWorkflow,recordSortingStation,completeSortingWorkflow} from './sortingWorkflow';
 import {sourceFromSortRun} from '../sync/inventoryOutputTypes';
 import {takeAssemblySource} from './assemblyIntake';
+import {freezeWarehouseOutput,warehouseOutputClaims} from './warehouseOutputClaims';
 
 const id=()=>crypto.randomUUID();
 const scope={serverUrl:'https://factory.test',organizationId:id(),actorId:id(),deviceId:id()};
@@ -68,7 +69,24 @@ it('binds Visual, Thickness and Mass to exactly the received count while blockin
  const mapped=sourceFromSortRun(final);
  expect(mapped).toMatchObject({cutRunId:source.id,cuttingReceiptId:h.received!.operationId,inputCount:4});
  expect(mapped.stages.map(s=>s.station)).toEqual(['visual','thickness','mass']);
- await expect(takeAssemblySource(final,actor,id())).rejects.toThrow(/подтвержд/i);
+ // A supervisor may offer the physically received lot only within the same server
+ // and organization, using their own enrolled server actor/device. The worker's
+ // original receipt remains immutable and does not become a warehouse receipt.
+ const manager='local-warehouse-offer-author';
+ await db.users.add({id:manager,login:manager,fullName:'TEST manager',password:'test',
+  role:UserRole.MASTER,isActive:true,createdAt:new Date()});
+ const managerScope={...scope,actorId:id(),deviceId:id()};
+ const input={operationId:id(),deviceId:managerScope.deviceId,productionBatchId:id(),
+  completionId:id(),stepNumber:5,outputs:[{grade:'PASS',quantity:2,materialId:id()}],
+  reason:'Recorded measured output',evidence:'Three physical inspection stations'};
+ const claim=await freezeWarehouseOutput(managerScope,manager,id(),final,input);
+ expect(claim).toMatchObject({cutRunId:source.id,state:'pending',
+  request:{source:{cuttingReceiptId:h.received!.operationId,inputCount:4}}});
+ expect(await warehouseOutputClaims(managerScope,manager)).toEqual([claim]);
+ await expect(freezeWarehouseOutput({...managerScope,organizationId:id()},manager,id(),final,input))
+  .rejects.toThrow(/организаци|сервер/i);
+ expect(await warehouseOutputClaims(managerScope,manager)).toEqual([claim]);
+ await expect(takeAssemblySource(final,actor,id())).rejects.toThrow();
  expect(await db.assemblyRuns.count()).toBe(0);
 });
 
