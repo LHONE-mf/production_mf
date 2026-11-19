@@ -1,3 +1,4 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 import { RoomTabs } from '../_common/RoomTabs';
 // Комната «Вальцовка» — обжим (вальцевание) залитых цилиндрических ячеек.
 // Расположена ПОСЛЕ заливки на 7 этаже (к.5): партии приходят пакетом
@@ -92,14 +93,7 @@ function WalzingRoomContent() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-2xl">🎡</span>
-        <h2 className="text-white font-semibold">Вальцовка (обжим залитых ячеек)</h2>
-      </div>
-      <p className="text-xs text-slate-400">
-        Пост после заливки на 7 этаже (к.5). Ячейки обжимаются на вальцовочном станке
-        до итогового диаметра и передаются на формирование.
-      </p>
+      <RoomWorkspaceHeader icon="🎡" title="Вальцовка (обжим залитых ячеек)" description="Пост после заливки на 7 этаже (к.5). Записывайте параметры обжима и передавайте результаты на формирование отдельным действием." />
 
       <RoomTabs label="Разделы вальцовки" tabs={tabs} activeTab={tab} onChange={setTab} />
       {error&&tab!=='new'&&<p role="alert" className="text-red-300 text-sm">{error}</p>}

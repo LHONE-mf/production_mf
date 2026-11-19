@@ -1,3 +1,4 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 import { RoomTabs } from '../_common/RoomTabs';
 import {CuttingOutputs} from '../cutting/CuttingOutputs';
 // Комната «Сортировка электродов». Полностью офлайн.
@@ -88,6 +89,7 @@ export function SortingModule() {
 
   return (
     <div className="space-y-4">
+      <RoomWorkspaceHeader icon="🗂️" title="Сортировка электродов" description="Партии с нарезки, спецификации КД и фактические результаты визуального контроля, толщины и массы. Передача годных электродов подтверждается отдельно." />
       <RoomTabs label="Разделы сортировки" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {tab==='outputs'&&<FinishedElectrodeOffers runs={runs??[]}/>}

@@ -1,3 +1,4 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 import { RoomTabs } from '../_common/RoomTabs';
 // ============================================================
 // КОМНАТА ФОРМИРОВАНИЯ (ЧЦЦ — формовка залитых ячеек).
@@ -108,11 +109,7 @@ function FormationContent() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-white">⚡ Формирование (ЧЦЦ)</h2>
-      <p className="text-xs text-slate-400">
-        Номера аккумуляторов приходят вместе с партией (миграция: сборка → заливка → формирование).
-        Новые записи — введённые наблюдения, без QA-допуска и назначения режима оборудования.
-      </p>
+      <RoomWorkspaceHeader icon="⚡" title="Формирование (ЧЦЦ)" description="Номера аккумуляторов переходят из сборки через заливку или вальцовку. Записывайте фактические наблюдения: они не назначают режим оборудования и не подтверждают QA-допуск." />
 
       <RoomTabs label="Разделы формирования" tabs={tabs} activeTab={tab} onChange={setTab} />
 

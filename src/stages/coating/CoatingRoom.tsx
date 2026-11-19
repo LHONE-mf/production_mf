@@ -1,3 +1,4 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 import { RoomTabs } from '../_common/RoomTabs';
 import {CoatedRolls} from './CoatedRolls';
 import {CoatingFoil} from './CoatingFoil';
@@ -86,10 +87,7 @@ export function CoatingModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">🖌️ Нанесение покрытия</h2>
-        <span className="text-xs text-slate-400">Офлайн · данные замесов по QR/тексту (позже Bluetooth)</span>
-      </div>
+      <RoomWorkspaceHeader icon="🖌️" title="Нанесение покрытия" description="Данные замесов, настройка линии, фактический расход материалов и журнал нанесения. Выпуск и приёмка рулонов подтверждаются отдельно." />
 
       <RoomTabs label="Разделы нанесения покрытия" tabs={tabs} activeTab={tab} onChange={setTab} />
 
