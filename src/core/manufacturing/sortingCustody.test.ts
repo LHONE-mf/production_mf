@@ -65,7 +65,9 @@ it('binds Visual, Thickness and Mass to exactly the received count while blockin
  await recordSortingStation(w.id,{station:'mass',passedCount:2,rejectedCount:0,workerId:actor});
  const final=await completeSortingWorkflow(w.id,id());
  expect(final).toMatchObject({goodCount:4,rejected:2,buckets:[{categoryName:'PASS',count:2}]});
- expect(()=>sourceFromSortRun(final)).toThrow(/QA|сервер/i);
+ const mapped=sourceFromSortRun(final);
+ expect(mapped).toMatchObject({cutRunId:source.id,cuttingReceiptId:h.received!.operationId,inputCount:4});
+ expect(mapped.stages.map(s=>s.station)).toEqual(['visual','thickness','mass']);
  await expect(takeAssemblySource(final,actor,id())).rejects.toThrow(/подтвержд/i);
  expect(await db.assemblyRuns.count()).toBe(0);
 });
