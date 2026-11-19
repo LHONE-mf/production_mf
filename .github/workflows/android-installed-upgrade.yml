@@ -3,7 +3,7 @@ name: Android installed-upgrade offline data proof
 # Dedicated, disposable emulator gate. Never targets a physical phone or production.
 on:
   push:
-    branches: [ci/task-sync-installed-upgrade-20261118, fix/task-sync-status-time-order-20261118]
+    branches: [ci/task-sync-installed-upgrade-20261118, fix/task-sync-status-time-order-20261118, integration/approved-five-20261119]
     paths:
       - '.github/workflows/android-installed-upgrade.yml'
       - 'android/app/src/androidTest/java/ru/liion/production/OfflineUpgradeWebViewTest.java'
