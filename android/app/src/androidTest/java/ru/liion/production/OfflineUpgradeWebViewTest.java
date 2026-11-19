@@ -100,10 +100,24 @@ public class OfflineUpgradeWebViewTest {
             // The prepare phase boots the older baseline APK intentionally. Only
             // the newly installed candidate is required to expose this UI fix.
             if ("verify".equals(phase)) {
-                assertEquals("Native Android must not apply WebView safe-area padding twice",
-                        "true", eval(instrumentation, view,
-                        "Boolean(document.documentElement.classList.contains('capacitor-native')"
-                        + " && parseFloat(getComputedStyle(document.getElementById('root')).paddingTop)===0)"));
+                // window.Capacitor is injected before the ES-module app bootstrap
+                // necessarily finishes. Do not mistake a half-loaded WebView for
+                // a double safe-area inset regression.
+                String safeAreaReady = "false";
+                for (int attempt = 0; attempt < 120; attempt++) {
+                    safeAreaReady = eval(instrumentation, view,
+                            "Boolean(document.documentElement.classList.contains('capacitor-native')"
+                            + " && parseFloat(getComputedStyle(document.getElementById('root')).paddingTop)===0)");
+                    if ("true".equals(safeAreaReady)) break;
+                    Thread.sleep(250);
+                }
+                String details = eval(instrumentation, view,
+                        "JSON.stringify({platform:window.Capacitor?.getPlatform?.(),"
+                        + "nativeClass:document.documentElement.classList.contains('capacitor-native'),"
+                        + "rootPadding:getComputedStyle(document.getElementById('root')).paddingTop,"
+                        + "rendered:document.getElementById('root').children.length})");
+                assertEquals("Candidate WebView must not apply safe-area padding twice: " + details,
+                        "true", safeAreaReady);
             }
             // Allow the production Dexie schema to finish opening before the raw IndexedDB probe.
             Thread.sleep(3000);
