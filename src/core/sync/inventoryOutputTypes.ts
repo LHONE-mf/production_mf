@@ -20,6 +20,8 @@ export type ElectrodeSubmissionInput=Omit<ElectrodeSubmissionRequest,'source'>;
 const label=(v:unknown):v is string=>typeof v==='string'&&!!v.trim()&&v===v.trim()&&v.length<=120;
 
 export function sourceFromSortRun(run:SortRun):ElectrodeOutputSource {
+ if(run.cutRunSnapshot?.receivedCustody)
+  throw Error('Результат по подтверждённой приёмке пока не связан с серверным QA/выпуском; складское предложение запрещено');
  validateSortPartition(run);
  const w=run.sortingWorkflow;
  if(!w||w.finalizedSortRunId!==run.id||w.stages.length!==3)throw Error('Нужен сохранённый итог всех трёх станций сортировки');

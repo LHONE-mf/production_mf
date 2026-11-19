@@ -10,6 +10,8 @@ const nonempty=(v:string)=>typeof v==='string'&&v.trim().length>0;
 /** Locks the selected mode, physical cutting source, and specification version. */
 export async function startSortingWorkflow(source:CutRun,spec:SortSpec,mode:SortingMode,createdBy:string):Promise<SortingWorkflow>{
   if(!nonempty(createdBy))throw new Error('Укажите оператора/автора');
+  if(source.receivedCustody&&source.receivedCustody.localActorId!==createdBy)
+    throw new Error('Подтверждённая приёмка принадлежит другому локальному профилю');
   const now=Date.now();
   const draft:SortingWorkflow={id:source.id,cutRunId:source.id,cutRunSnapshot:source,
     specSnapshot:spec,mode,stages:[],createdBy,createdAt:now,updatedAt:now};

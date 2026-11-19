@@ -1,4 +1,5 @@
 import type {SortRun, SortingWorkflow} from '../types';
+import {validateReceivedCuttingSource} from './sortingCustody';
 
 const whole = (value:unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -25,6 +26,7 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
       spec.categories.length > 100)
     throw new Error('Спецификация и партия нарезки должны совпадать');
 
+  if(source.receivedCustody)validateReceivedCuttingSource(source);
   const names=new Set<string>();
   for (const category of spec.categories) {
     if (!category || !label(category.name) || category.name !== category.name.trim() ||

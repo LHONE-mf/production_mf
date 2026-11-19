@@ -23,6 +23,8 @@ import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { SortingWorkflowTab } from './SortingWorkflowTab';
 import {FinishedElectrodeOffers} from './FinishedElectrodeOffers';
+import {useServerConnection} from '../../core/sync/serverConnection';
+import {inventoryScopeKey} from '../../core/sync/inventoryOutbox';
 
 type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'outputs' | 'custody';
 
@@ -35,6 +37,8 @@ const shapeLabel = (s: ElectrodeShape) =>
 
 export function SortingModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
+  const connection = useServerConnection();
+  const currentScopeKey = connection ? inventoryScopeKey({serverUrl:connection.serverUrl,organizationId:connection.organizationId,actorId:connection.serverActorId,deviceId:connection.selectedDeviceId}) : null;
   const isTechManager = !!currentUser &&
     [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('batches');
@@ -43,8 +47,11 @@ export function SortingModule() {
 
   const batches = useLiveQuery(async () => {
     const all = await db.cuttingRuns.toArray();
-    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, []);
+    return all.filter(row=>!row.receivedCustody ||
+      (row.receivedCustody.localActorId===currentUser?.id &&
+       (!currentScopeKey || row.receivedCustody.scopeKey===currentScopeKey)))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }, [currentUser?.id,currentScopeKey]);
 
   const specs = useLiveQuery(async () => {
     const all = await db.sortSpecs.toArray();
@@ -242,9 +249,10 @@ function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
                   <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200">{shapeLabel(cr.electrodeType)}</span>
                   {cr.coatingType && <span>Покрытие: <b className="text-white">{cr.coatingType}</b></span>}
                   {cr.electrodeLengthMm ? <span>L: <b className="text-white">{cr.electrodeLengthMm} мм</b></span> : null}
-                  <span>Годных: <b className="text-emerald-300">{cr.goodCount}</b> шт</span>
-                  <span>Дефектных: <b className="text-rose-300">{cr.defectCount}</b> шт</span>
+                  <span>{cr.receivedCustody?'Принято по серверной передаче':'Годных'}: <b className="text-emerald-300">{cr.goodCount}</b> шт</span>
+                  <span>Дефектных на Cutting: <b className="text-rose-300">{cr.defectCount===null?'не измерено':cr.defectCount}</b></span>
                 </div>
+                {cr.receivedCustody&&<p className="mt-2 text-xs text-amber-200 break-all">Вход Sorting по серверной приёмке {cr.receivedCustody.receiptId}. Наблюдение локальное, не QA-допуск и не складское движение; серверный выпуск заблокирован до отдельного подтверждения.</p>}
                 {cr.defects && <div className="mt-1 text-xs text-amber-300">⚠ {cr.defects}</div>}
                 <div className="mt-1 text-xs">
                   {spec

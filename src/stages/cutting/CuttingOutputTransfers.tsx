@@ -1,4 +1,5 @@
 import { toInventoryBaseUnits } from "../../core/sync/inventoryReceiving";
+import {saveReceivedCuttingSource} from "../../core/manufacturing/sortingCustody";
 import React, { useEffect, useRef, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
@@ -59,6 +60,8 @@ export function CuttingOutputTransfers(
             .toArray(),
         [key, localActorId, room],
       ) ?? [];
+  const [shapes,setShapes]=useState<Record<string,''|'strip'|'prismatic'>>({});
+  const [intakeMessage,setIntakeMessage]=useState('');
   const [lots, setLots] = useState<CustodyPage<CutOutputLot>>(),
     [handoffs, setHandoffs] = useState<CustodyPage<CutOutputHandoffRead>>(),
     [history, setHistory] = useState<{
@@ -201,6 +204,7 @@ export function CuttingOutputTransfers(
           Следующие выпущенные лоты
         </button>
       )}
+      {intakeMessage&&<p role="status" className="text-emerald-200 text-sm">{intakeMessage}</p>}
       {handoffs?.items.map((h) => (
         <article key={h.operationId} className={rollFrame}>
           <p>
@@ -271,6 +275,29 @@ export function CuttingOutputTransfers(
                 </button>
               </>
             )}
+          {room==='sorting' && h.received && h.handoff.recipientId===scope.actorId && (
+            <div className="mt-3 rounded-lg border border-blue-700/60 p-3 space-y-2">
+              <p className="text-sm">Привязать подтверждённую приёмку ({h.received.observedQuantity} шт) к локальному контролю Visual → Thickness → Mass.</p>
+              <label className="block text-sm">Форма электрода (установите по технологической карте)
+                <select aria-label={"Форма электрода для приёмки "+h.operationId} className="mt-1 block min-h-11 w-full rounded border border-slate-600 bg-slate-900 text-white p-2"
+                  value={shapes[h.operationId]??''} disabled={busy}
+                  onChange={e=>setShapes(old=>({...old,[h.operationId]:e.target.value as ''|'strip'|'prismatic'}))}>
+                  <option value="">— не выбрана —</option>
+                  <option value="strip">Полоса (цилиндрический формат)</option>
+                  <option value="prismatic">Пластина (призматический формат)</option>
+                </select>
+              </label>
+              <button className={button} disabled={busy||!h.eligible||!shapes[h.operationId]}
+                onClick={()=>void work(async()=>{
+                  const source=await saveReceivedCuttingSource(h,scope,localActorId,shapes[h.operationId] as 'strip'|'prismatic');
+                  if(alive.current)setIntakeMessage('Источник '+source.id+' сохранён. Откройте вкладку «Сортировка», создайте КД для этой партии и запишите три станции. Складское движение и QA не созданы.');
+                })}>
+                Сохранить источник для трёхстанционного контроля
+              </button>
+              {!h.eligible&&<p className="text-amber-200 text-xs">Источник удержан на сервере; новый контроль пока не начинайте.</p>}
+              <p className="text-xs text-slate-400">Исходная приёмка и количество сохраняются без замены. Брак до сортировки неизвестен, не равен нулю.</p>
+            </div>
+          )}
           <button
             className={button}
             disabled={busy}

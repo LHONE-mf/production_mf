@@ -145,7 +145,8 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
       </div>
       {!batch && <p className="text-slate-400 text-sm">Выберите партию с нарезки, чтобы начать или продолжить сортировку.</p>}
       {batch && <>
-        <p className="text-sm text-slate-300">Поступило с нарезки: <strong className="text-white">{batch.goodCount} шт</strong></p>
+        <p className="text-sm text-slate-300">{batch.receivedCustody?'Сервером подтверждена приёмка':'Поступило с нарезки'}: <strong className="text-white">{batch.goodCount} шт</strong></p>
+        {batch.receivedCustody&&<p className="text-xs text-amber-200">Сортировка ведётся по сохранённой приёмке. Текущую доступность источника сверяйте с сервером; QA и складской выпуск не создаются автоматически.</p>}
         {workflow ? <div className="rounded-lg bg-slate-900 p-3 text-sm space-y-1">
           <p className="text-emerald-300">Партия создана · {workflow.mode==='grading'?'градация по массе':'годен / брак'}</p>
           <p className="text-slate-300">КД: {workflow.specSnapshot.parameterName} · {workflow.specSnapshot.id}</p>

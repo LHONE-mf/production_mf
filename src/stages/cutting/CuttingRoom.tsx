@@ -43,7 +43,8 @@ export function CuttingModule() {
 
   const runs = useLiveQuery(async () => {
     const all = await db.cuttingRuns.toArray();
-    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    // Server receipt projections belong to Sorting, never to Cutting measurements/export.
+    return all.filter(row=>!row.receivedCustody).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
 
   const tasks = useLiveQuery(async () => {
