@@ -97,6 +97,10 @@ public class OfflineUpgradeWebViewTest {
                 Thread.sleep(250);
             }
             assertTrue("Production MF Capacitor WebView was not ready", ready);
+            assertEquals("Native Android must not apply WebView safe-area padding twice",
+                    "true", eval(instrumentation, view,
+                    "Boolean(document.documentElement.classList.contains('capacitor-native')"
+                    + " && parseFloat(getComputedStyle(document.getElementById('root')).paddingTop)===0)"));
             // Allow the production Dexie schema to finish opening before the raw IndexedDB probe.
             Thread.sleep(3000);
             assertEquals("Capacitor page changed during startup", "true", eval(instrumentation, view,

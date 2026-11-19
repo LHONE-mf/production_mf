@@ -88,3 +88,11 @@ body { background: #0f172a; }
 @media (prefers-reduced-motion: reduce) {
   .production-room :where(button, input, select, textarea) { transition-duration: 0ms; }
 }
+
+/* Capacitor's native Android content root already accounts for system bars.
+   Applying WebView safe-area padding again produces a blank strip above the
+   app header on Android 15+ and can reduce usable screen height. Browser/PWA
+   builds retain the existing env() paddings above. */
+html.capacitor-native #root {
+  padding: 0;
+}
