@@ -53,6 +53,6 @@ jobs:
       - name: Apply all migrations only to CI database
         run: node ../../scripts/migrate-disposable-postgres.mjs
       - name: Entire backend test suite
-        run: npm test -- --reporter=default
+        run: npm test -- --reporter=default --maxWorkers=2
       - name: Build backend
         run: npm run build
