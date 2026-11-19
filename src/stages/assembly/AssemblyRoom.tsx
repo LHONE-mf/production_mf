@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 import {AssemblyCellOutputForm} from './AssemblyCellOutputForm';
 import {appendAssemblyOperation} from '../../core/manufacturing/assemblyOperations';
 import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
@@ -136,14 +137,7 @@ export function AssemblyModule() {
         </div>
       )}
 
-      <div className="flex gap-1 flex-wrap border-b border-slate-800 pb-2">
-        {stationTabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-t text-xs ${tab === t.id ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы сборки" tabs={stationTabs} activeTab={tab} onChange={setTab} />
 
       {tab === 'incoming' && (
         <div className="space-y-2">

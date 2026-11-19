@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 // Комната «Замесы» (slurry). Полностью офлайн: данные на устройстве,
 // передача результатов — QR / текст (позже Bluetooth-mesh тем же форматом LIP:).
 // Вкладки: Расчёт граммовок · База замесов · База компонентов · Журнал замеса · Комментарии · Задания.
@@ -58,20 +59,7 @@ function SlurryContent() {
     <div className="space-y-4">
       <RoomWorkspaceHeader icon="🧪" title="Комната замесов" description="Выберите сохранённый рецепт или создайте явный ручной план, внесите фактические навески, проверьте данные и сохраните замес. Плановые массы и оценки не являются измеренными результатами."/>
 
-      <nav aria-label="Разделы комнаты замесов" className="flex flex-wrap gap-2 rounded-lg bg-slate-800 p-2 min-w-0">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button" aria-pressed={tab===t.id}
-            onClick={() => setTab(t.id)}
-            className={`min-h-11 px-3 py-2 rounded-md text-sm font-medium transition ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <RoomTabs label="Разделы комнаты замесов" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       <div hidden={tab!=='calc'}><GrammageCalculator presetRecipe={preset} onPresetConsumed={() => setPreset(null)}/></div>
       {tab === 'recipes' && <RecipesDatabase onUse={useRecipe} />}

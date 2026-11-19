@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 import {CuttingOutputs} from '../cutting/CuttingOutputs';
 // Комната «Сортировка электродов». Полностью офлайн.
 // Вкладки: 📥 Партии с нарезки · 📐 Спецификации технолога (КД) · 🔀 Сортировка ·
@@ -87,19 +88,7 @@ export function SortingModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы сортировки" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {tab==='outputs'&&<FinishedElectrodeOffers runs={runs??[]}/>}
       {tab === 'custody' && <CuttingOutputs room="sorting"/>}

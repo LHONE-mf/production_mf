@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 import {CoatedRolls} from './CoatedRolls';
 import {CoatingFoil} from './CoatingFoil';
 import {hasSlurryHandover} from '../../core/manufacturing/slurryBatch';
@@ -90,19 +91,7 @@ export function CoatingModule() {
         <span className="text-xs text-slate-400">Офлайн · данные замесов по QR/тексту (позже Bluetooth)</span>
       </div>
 
-      <div className="flex gap-1 bg-slate-800 rounded-lg p-1 w-fit flex-wrap">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`min-h-11 px-3 py-1.5 rounded-md text-sm transition ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы нанесения покрытия" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {handoverError && <p role="alert" className="text-sm text-red-200">{handoverError}</p>}
       {handoverBusy && <p role="status" className="text-sm text-slate-300">Сохраняем данные рулона…</p>}
