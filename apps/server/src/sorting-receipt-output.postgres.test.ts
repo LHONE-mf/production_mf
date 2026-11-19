@@ -1,15 +1,15 @@
 import {randomUUID} from 'node:crypto';
-import {afterAll,beforeAll,describe,expect,it} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it} from 'vitest';
 import {createCuttingOutputFixture} from './cutting-output-test-fixture.js';
 
 const outputs='/inventory/cutting-outputs';
 describe.skipIf(!process.env.POSTGRES_TEST_URL)('receipt-bound Sorting to warehouse output',()=>{
  let f:Awaited<ReturnType<typeof createCuttingOutputFixture>>;
- beforeAll(async()=>{
+ beforeEach(async()=>{
   f=await createCuttingOutputFixture();
   await f.pool.query("UPDATE production_batches SET status='in_progress' WHERE organization_id=$1 AND id=$2",[f.org,f.batch]);
  });
- afterAll(async()=>{await f?.app.close();await f?.pool.end();});
+ afterEach(async()=>{await f?.app.close();await f?.pool.end();});
  async function sourceReceipt(){
   const inputs=await f.inputs(),declaration=f.declaration(inputs);
   const declared=await f.post(outputs,declaration,7);
