@@ -17,7 +17,7 @@ const received=()=>{
  const receipt={...f.receipt.request,sourceSnapshot:f.handoff,actorId:scope.actorId,
   recordedAt:new Date().toISOString(),custodyEffect:'received',unit:'pieces',warehouseEffect:'none'};
  return copyCutOutputHandoffRead({operationId:f.handoff.operationId,handoff:f.handoff,
-  eligible:true,received,eventCount:1});
+  eligible:true,received:receipt,eventCount:1});
 };
 beforeEach(async()=>{
  await db.open();
