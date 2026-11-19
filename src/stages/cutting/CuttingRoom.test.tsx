@@ -96,7 +96,7 @@ it('resets the draft when selecting another source roll',async()=>{
 
 it('keeps an unfinished cutting record across room tabs and protects source changes',async()=>{
   const page=await mount();
-  expect(page.textContent).toContain('Локальная запись · офлайн');
+  expect(page.textContent).toContain('Этап производства');
   const nav=page.querySelector('nav[aria-label="Разделы нарезки"]')!;
   expect(nav).not.toBeNull();
   expect([...nav.querySelectorAll('button')].every(b=>b.className.includes('min-h-11'))).toBe(true);
