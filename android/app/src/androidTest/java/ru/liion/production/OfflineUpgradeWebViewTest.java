@@ -32,6 +32,9 @@ public class OfflineUpgradeWebViewTest {
     private static final String OUTBOX_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     private static final String JOURNAL_ID = "ci-android-upgrade-journal";
     private static final String ACTOR = "ci-android-upgrade-actor";
+    private static final String SORT_RECEIPT_ID = "88888888-8888-4888-8888-888888888888";
+    private static final String SORT_SOURCE_ID = "received:" + SORT_RECEIPT_ID;
+    private static final String SORT_RUN_ID = "ci-android-upgrade-sorted";
     private static final String DRAFT_KEY = "[\"ci-android-upgrade-actor\",\"slurry\"]";
 
     private static String eval(Instrumentation instrumentation, WebView view, String script) throws Exception {
@@ -52,7 +55,7 @@ public class OfflineUpgradeWebViewTest {
                 + "request.onsuccess=()=>resolve(request.result);"
                 + "request.onerror=()=>reject(request.error);});"
                 + "try {"
-                + "for(const store of ['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal']) {"
+                + "for(const store of ['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal','cuttingRuns','sortingWorkflows','sortRuns','warehouseOutputClaims']) {"
                 + "if(!db.objectStoreNames.contains(store)) throw Error('Missing '+store);}"
                 + action
                 + "} finally { db.close(); }"
@@ -100,7 +103,7 @@ public class OfflineUpgradeWebViewTest {
                     "Boolean(window.Capacitor && document.readyState==='complete' && location.origin==='https://localhost')"));
             if ("prepare".equals(phase)) {
                 JSONObject saved = run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readwrite');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal','cuttingRuns','sortingWorkflows','sortRuns','warehouseOutputClaims'],'readwrite');"
                         + "tx.objectStore('hybridTaskResolutions').add({id:" + JSONObject.quote(ARCHIVE_ID)
                         + ",entityId:" + JSONObject.quote(ENTITY_ID)
                         + ",archivedAt:Date.now(),decision:'use_server',"
@@ -123,23 +126,41 @@ public class OfflineUpgradeWebViewTest {
                         + ",taskId:" + JSONObject.quote(ENTITY_ID)
                         + ",createdAt:new Date('2026-11-18T12:00:00Z'),"
                         + "params:{batch:'TEST-APK-UPGRADE',mass:'12.5'}});"
+                        + "tx.objectStore('cuttingRuns').add({id:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",incomingId:'TEST-RECEIVED-CUTTING-LOT',electrodeType:'strip',goodCount:4,defectCount:null,"
+                        + "workerId:" + JSONObject.quote(ACTOR)
+                        + ",receivedCustody:{kind:'server-confirmed-cutting-receipt',receiptId:" + JSONObject.quote(SORT_RECEIPT_ID) + "}});"
+                        + "tx.objectStore('sortingWorkflows').add({id:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",cutRunId:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",stages:[{station:'visual',passedCount:3,rejectedCount:1}]});"
+                        + "tx.objectStore('sortRuns').add({id:" + JSONObject.quote(SORT_RUN_ID)
+                        + ",cutRunId:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",goodCount:4,rejected:1,buckets:[{categoryName:'PASS',count:3}]});"
+                        + "tx.objectStore('warehouseOutputClaims').add({cutRunId:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",runId:" + JSONObject.quote(SORT_RUN_ID)
+                        + ",state:'pending',request:{source:{cutRunId:" + JSONObject.quote(SORT_SOURCE_ID)
+                        + ",cuttingReceiptId:" + JSONObject.quote(SORT_RECEIPT_ID) + "}}});"
                         + "return await new Promise((resolve,reject)=>{"
                         + "tx.oncomplete=()=>resolve('saved');"
                         + "tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});");
                 assertEquals("saved", saved.getString("value"));
             } else {
                 JSONObject rows = run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readonly');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal','cuttingRuns','sortingWorkflows','sortRuns','warehouseOutputClaims'],'readonly');"
                         + "const get=(store,key)=>new Promise((resolve,reject)=>{"
                         + "const request=tx.objectStore(store).get(key);"
                         + "request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});"
-                        + "const [archive,revision,draft,outbox,journal]=await Promise.all(["
+                        + "const [archive,revision,draft,outbox,journal,cutting,workflow,sorted,claim]=await Promise.all(["
                         + "get('hybridTaskResolutions'," + JSONObject.quote(ARCHIVE_ID) + "),"
                         + "get('hybridTaskRevisions'," + JSONObject.quote(ENTITY_ID) + "),"
                         + "get('localFormDrafts'," + JSONObject.quote(DRAFT_KEY) + "),"
                         + "get('hybridTaskOutbox'," + JSONObject.quote(OUTBOX_ID) + "),"
-                        + "get('journal'," + JSONObject.quote(JOURNAL_ID) + ")]);"
-                        + "return {archive,revision,draft,outbox,journal,journalDateIsDate:journal.createdAt instanceof Date};").getJSONObject("value");
+                        + "get('journal'," + JSONObject.quote(JOURNAL_ID) + "),"
+                        + "get('cuttingRuns'," + JSONObject.quote(SORT_SOURCE_ID) + "),"
+                        + "get('sortingWorkflows'," + JSONObject.quote(SORT_SOURCE_ID) + "),"
+                        + "get('sortRuns'," + JSONObject.quote(SORT_RUN_ID) + "),"
+                        + "get('warehouseOutputClaims'," + JSONObject.quote(SORT_SOURCE_ID) + ")]);"
+                        + "return {archive,revision,draft,outbox,journal,cutting,workflow,sorted,claim,journalDateIsDate:journal.createdAt instanceof Date};").getJSONObject("value");
                 assertEquals(ENTITY_ID, rows.getJSONObject("archive").getString("entityId"));
                 assertEquals("TEST-APK-UPGRADE offline edit",
                         rows.getJSONObject("archive").getJSONObject("localTask").getString("title"));
@@ -154,14 +175,28 @@ public class OfflineUpgradeWebViewTest {
                 assertEquals("slurry", rows.getJSONObject("journal").getString("stage"));
                 assertEquals("12.5", rows.getJSONObject("journal").getJSONObject("params").getString("mass"));
                 assertTrue("Journal creation date lost its Date type", rows.getBoolean("journalDateIsDate"));
+                assertEquals(4, rows.getJSONObject("cutting").getInt("goodCount"));
+                assertTrue("Unknown Cutting rejects must remain unknown",
+                        rows.getJSONObject("cutting").isNull("defectCount"));
+                assertEquals(SORT_RECEIPT_ID, rows.getJSONObject("cutting")
+                        .getJSONObject("receivedCustody").getString("receiptId"));
+                assertEquals(SORT_SOURCE_ID, rows.getJSONObject("workflow").getString("cutRunId"));
+                assertEquals(3, rows.getJSONObject("sorted").getJSONArray("buckets").getJSONObject(0).getInt("count"));
+                assertEquals("pending", rows.getJSONObject("claim").getString("state"));
+                assertEquals(SORT_RECEIPT_ID, rows.getJSONObject("claim")
+                        .getJSONObject("request").getJSONObject("source").getString("cuttingReceiptId"));
                 // Clean up only these disposable CI rows after proving they survived replacement.
                 assertEquals("cleaned", run(instrumentation, view,
-                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal'],'readwrite');"
+                        "const tx=db.transaction(['hybridTaskResolutions','hybridTaskRevisions','localFormDrafts','hybridTaskOutbox','journal','cuttingRuns','sortingWorkflows','sortRuns','warehouseOutputClaims'],'readwrite');"
                         + "tx.objectStore('hybridTaskResolutions').delete(" + JSONObject.quote(ARCHIVE_ID) + ");"
                         + "tx.objectStore('hybridTaskRevisions').delete(" + JSONObject.quote(ENTITY_ID) + ");"
                         + "tx.objectStore('localFormDrafts').delete(" + JSONObject.quote(DRAFT_KEY) + ");"
                         + "tx.objectStore('hybridTaskOutbox').delete(" + JSONObject.quote(OUTBOX_ID) + ");"
                         + "tx.objectStore('journal').delete(" + JSONObject.quote(JOURNAL_ID) + ");"
+                        + "tx.objectStore('cuttingRuns').delete(" + JSONObject.quote(SORT_SOURCE_ID) + ");"
+                        + "tx.objectStore('sortingWorkflows').delete(" + JSONObject.quote(SORT_SOURCE_ID) + ");"
+                        + "tx.objectStore('sortRuns').delete(" + JSONObject.quote(SORT_RUN_ID) + ");"
+                        + "tx.objectStore('warehouseOutputClaims').delete(" + JSONObject.quote(SORT_SOURCE_ID) + ");"
                         + "return await new Promise((resolve,reject)=>{tx.oncomplete=()=>resolve('cleaned');"
                         + "tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error);});")
                         .getString("value"));
