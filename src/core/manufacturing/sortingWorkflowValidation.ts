@@ -3,9 +3,9 @@ import type {SortRun, SortingWorkflow} from '../types';
 const whole = (value:unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const label = (value:unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
+  typeof value === 'string' && value.length <= 120 && value.trim().length > 0 && value === value.trim();
 const time = (value:unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0;
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 8640000000000000;
 const order = ['visual', 'thickness', 'mass'] as const;
 
 /** Only completed station decisions are stored here. Unsaved operator forms remain separate. */
@@ -21,7 +21,8 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
       source.goodCount === 0 || spec.cutRunId !== source.id ||
       spec.batchName !== source.incomingId || spec.electrodeType !== source.electrodeType ||
       !['strip','prismatic'].includes(source.electrodeType) ||
-      !label(spec.id) || !Array.isArray(spec.categories) || spec.categories.length === 0)
+      !label(spec.id) || !Array.isArray(spec.categories) || spec.categories.length === 0 ||
+      spec.categories.length > 100)
     throw new Error('Спецификация и партия нарезки должны совпадать');
 
   const names=new Set<string>();
@@ -52,7 +53,8 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
         stage.passedCount+stage.rejectedCount !== input)
       throw new Error('Станции проходят строго по порядку: визуальный контроль → толщина → масса; баланс должен сходиться');
     if (stage.rejectionReasons !== undefined) {
-      if (!Array.isArray(stage.rejectionReasons)) throw new Error('Некорректные причины брака');
+      if (!Array.isArray(stage.rejectionReasons) || stage.rejectionReasons.length > 100)
+        throw new Error('Некорректные причины брака');
       const reasons=new Set<string>();
       let sum=0;
       for (const reason of stage.rejectionReasons) {

@@ -149,3 +149,45 @@ it('passes station-bound summaries through packet validation without inventing m
  await expect(receiveSortingAllocation({...saved,buckets:[{categoryName:'A',count:63},{categoryName:'B',count:29}]})).rejects.toThrow();
  expect(await receiveSortingAllocation(saved)).toEqual(saved);
 });
+
+it('refuses new station decisions after the Cutting source changes or disappears, preserving prior decisions and retries',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await db.cuttingRuns.update(cut.id,{goodCount:101});
+ await expect(recordSortingStation(workflow.id,visual)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,visual);
+ await db.cuttingRuns.delete(cut.id);
+ // Exact acknowledged retries remain safe and do not mutate the existing station.
+ expect((await recordSortingStation(workflow.id,visual)).stages).toHaveLength(1);
+ await expect(recordSortingStation(workflow.id,thickness)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(1);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,thickness);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+});
+
+it.each(['long category', 'more than 100 categories'] as const)(
+ 'rejects %s before freezing a Sorting specification that the warehouse cannot accept',async problem=>{
+  const categories=problem==='long category'
+   ? [{...spec.categories[0],name:'G'.repeat(121)}]
+   : Array.from({length:101},(_,i)=>({name:'G'+i,criteria:'Mass grade',minMass:1}));
+  const candidate:SortSpec={...spec,categories};
+  await db.sortSpecs.put(candidate);
+  await expect(startSortingWorkflow(cut,candidate,'grading','planner')).rejects.toThrow();
+  expect(await db.sortingWorkflows.count()).toBe(0);
+ },
+);
+
+it.each(['long rejection reason','more than 100 reasons','untrimmed inspector','long inspector'] as const)(
+ 'rejects %s before saving an irreversible station decision',async problem=>{
+  const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+  const decision={...visual};
+  if(problem==='long rejection reason')decision.rejectionReasons=[{reason:'R'.repeat(121),count:3}];
+  if(problem==='more than 100 reasons')decision.rejectionReasons=Array.from({length:101},(_,i)=>({reason:'reason-'+i,count:i===0?3:0}));
+  if(problem==='untrimmed inspector')decision.workerId=' inspector-1 ';
+  if(problem==='long inspector')decision.workerId='W'.repeat(121);
+  await expect(recordSortingStation(workflow.id,decision)).rejects.toThrow();
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
+ },
+);
