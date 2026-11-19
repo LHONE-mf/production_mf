@@ -34,12 +34,12 @@ function SlurryContent() {
   );
 
   const tabs: { id: Tab; label: string }[] = [
+    { id: 'calc', label: '⚖️ Новый замес' },
+    { id: 'journal', label: '📒 Сохранённые замесы' },
     { id: 'custody', label: '🔁 Выпуск и передача' },
     { id: 'materials', label: '📦 Остатки и расход' },
-    { id: 'calc', label: '⚖️ Новый замес' },
     { id: 'recipes', label: '📚 Рецепты' },
     { id: 'components', label: '🧱 Материалы' },
-    { id: 'journal', label: '📒 Сохранённые замесы' },
     { id: 'comments', label: '💬 Комментарии' },
   ];
 

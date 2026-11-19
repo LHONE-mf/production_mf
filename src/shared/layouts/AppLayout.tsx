@@ -287,7 +287,7 @@ export function AppLayout({ children, activeTab, onTabChange }: AppLayoutProps) 
         </header>
 
         {/* Page content */}
-        <main className="flex-1 min-h-0 p-4 lg:p-6 overflow-y-auto overscroll-contain">
+        <main className="flex-1 min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-3 sm:p-4 lg:p-6">
           {children}
         </main>
       </div>
