@@ -74,6 +74,10 @@ export async function completeSortingWorkflow(workflowId:string,resultId:string)
       const saved=await db.sortRuns.get(resultId);
       if(!saved)throw new Error('Итоговая запись отсутствует; нужна проверка журнала');
       validateSortPartition(saved);
+      // A valid report may still contradict the separately frozen local station journal.
+      // Never acknowledge such a replay as successful or alter either historical row.
+      if (!saved.sortingWorkflow || !same(saved.sortingWorkflow,current))
+        throw new Error('Итог сортировки расходится с сохранённым журналом станций; нужна проверка');
       return saved;
     }
     if(current.stages.length!==3)throw new Error('Все три станции должны быть завершены');

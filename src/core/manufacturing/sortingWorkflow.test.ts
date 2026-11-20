@@ -249,3 +249,29 @@ it('accepts explicit under/over mass rejection counts and rejects mismatched or 
  const other=await db.sortingWorkflows.get(workflow.id);
  expect(other?.stages[2].massOutOfRange).toEqual({belowMin:2,aboveMax:1});
 });
+
+
+it('refuses a completed Sorting retry when a valid-looking result disagrees with the saved station journal',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await recordSortingStation(workflow.id,visual);
+ await recordSortingStation(workflow.id,thickness);
+ await recordSortingStation(workflow.id,gradedMass);
+ const original=await completeSortingWorkflow(workflow.id,'final-retry-consistency');
+ const frozen=original.sortingWorkflow!;
+ const alteredMass={...frozen.stages[2],workerId:'different-inspector'};
+ const inconsistent={
+   ...original,workerId:'different-inspector',
+   sortingWorkflow:{...frozen,stages:[...frozen.stages.slice(0,2),alteredMass]},
+ };
+ // The altered report is internally valid but contradicts the independently stored journal.
+ const {validateSortPartition}=await import('./sortingAllocation');
+ expect(()=>validateSortPartition(inconsistent)).not.toThrow();
+ await db.sortRuns.put(inconsistent);
+ await expect(completeSortingWorkflow(workflow.id,original.id))
+   .rejects.toThrow(/журналом станций/);
+ expect(await db.sortRuns.get(original.id)).toEqual(inconsistent);
+ expect(await db.sortingWorkflows.get(workflow.id)).toEqual(frozen);
+ await db.sortRuns.put(original);
+ expect(await completeSortingWorkflow(workflow.id,original.id)).toEqual(original);
+});
+
