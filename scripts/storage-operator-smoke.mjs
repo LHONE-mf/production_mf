@@ -44,6 +44,8 @@ try{
  const refresh=async p=>{await p.getByRole('button',{name:'Обновить подтверждённые данные',exact:true}).click();await p.getByRole('button',{name:'Обновить подтверждённые данные',exact:true}).waitFor();await p.getByText('Последняя успешная синхронизация:',{exact:false}).waitFor();};
  async function mount(index){const p=pages[index];await p.goto('http://127.0.0.1:5173/storage-operator-smoke.html');await p.waitForFunction(()=>!!window.mount);await p.evaluate(c=>window.mount(c),connection(actors[index]));await refresh(p);}
  await mount(0);await mount(1);const p=pages[0];
+ // Independent operator profile must explicitly expand its inventory tools too.
+ await pages[1].getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true}).click();
  // Real administration UI: durable exact retries, scoped user discovery and Chief grants.
  // The operator inventory screen keeps Chief administration behind an advanced accordion.
  await p.getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true}).click();
