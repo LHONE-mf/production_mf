@@ -342,6 +342,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   return (
     <div className="space-y-3">
       {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
+      {error&&!editing&&<p role="alert" className="text-sm text-rose-200">{error}</p>}
       {canEdit && (
         <button
           onClick={() => {setError('');setSuccess('');setIsNew(true); setEditing(blank()); }}
@@ -359,7 +360,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
             <div>
               <div className="text-white font-semibold">📐 «{s.batchName}» · {s.parameterName} ({s.unit})</div>
               <div className="mt-1 text-xs text-slate-400">
-                {shapeLabel(s.electrodeType)}{s.coatingType ? ` · покрытие: ${s.coatingType}` : ''} ·
+                {s.cutRunId?'Привязана к партии нарезки':'Шаблон КД: ещё не привязан к физической партии'} · {shapeLabel(s.electrodeType)}{s.coatingType ? ` · покрытие: ${s.coatingType}` : ''} ·
                 обновлена {new Date(s.updatedAt).toLocaleString('ru-RU')}
               </div>
               <div className="mt-2 space-y-1">
@@ -377,6 +378,17 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
                 ))}
               </div>
               {s.techNotes && <div className="mt-1 text-xs text-emerald-300">📝 {s.techNotes}</div>}
+              {canEdit&&!s.cutRunId&&batches.filter(b=>b.incomingId===s.batchName&&b.electrodeType===s.electrodeType&&
+                !specs.some(bound=>bound.cutRunId===b.id)).map(b=><button key={b.id} type="button"
+                className="mt-2 min-h-11 rounded border border-emerald-600 px-3 text-sm text-emerald-200 disabled:opacity-40"
+                disabled={busy} onClick={()=>{void (async()=>{setBusy(true);setError('');try{
+                  const now=Date.now();
+                  await onSave({...s,id:uuidv4(),cutRunId:b.id,batchName:b.incomingId,
+                    electrodeType:b.electrodeType,coatingType:b.coatingType,authorId:userId,createdAt:now,updatedAt:now});
+                  setSuccess('Создана отдельная привязанная копия КД для партии '+b.incomingId+'. Исходный шаблон сохранён.');
+                }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}})();}}>
+                Привязать копию КД к партии {b.incomingId}
+              </button>)}
             </div>
             {canEdit && (
               <button
@@ -425,6 +437,14 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
             {batches.map((b) => <option key={b.id} value={b.id}>{b.incomingId} (годных {b.goodCount})</option>)}
           </select>
         </div>
+        {!spec.cutRunId && <div>
+          <label className={labelCls} htmlFor="sort-spec-batch-name">Обозначение партии / заказа по КД</label>
+          <input id="sort-spec-batch-name" aria-label="Обозначение партии КД" className={inputCls}
+            value={spec.batchName} disabled={!canEdit}
+            onChange={e=>set({batchName:e.target.value})}
+            placeholder="Введите номер партии или заказа для КД"/>
+          <p className="text-xs text-slate-400">КД можно подготовить до поступления электродов. После приёмки используйте действие «Привязать копию КД к партии».</p>
+        </div>}
         <div>
           <label className={labelCls}>Тип электрода</label>
           <select className={inputCls} value={spec.electrodeType} disabled={!canEdit}
@@ -517,7 +537,8 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
       <p className="text-xs text-amber-200">Спецификации сохраняются только на этом устройстве. Общий ключ передачи не подтверждает права технолога.</p>
       <div className="flex flex-wrap gap-2">
         <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-          disabled={busy||!canEdit || !spec.batchName.trim()}
+          disabled={busy||!canEdit || !spec.batchName.trim() || !spec.parameterName.trim() || !spec.unit.trim() ||
+            spec.categories.length===0||spec.categories.some(c=>!c.name.trim())}
           onClick={onSave}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
         <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white disabled:opacity-40" onClick={onCancel}>Отмена</button>
       </div>
