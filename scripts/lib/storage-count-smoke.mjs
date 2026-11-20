@@ -13,7 +13,12 @@ export async function storageCountSmoke({pool,org,pages,actors,connection,qualit
  await panel(operator).getByLabel('Сессия пересчёта',{exact:true}).selectOption(countId);await panel(operator).getByLabel('Контейнер пересчёта',{exact:true}).selectOption(qualityStock);
  const before=(await pool.query('SELECT on_hand::int,revision FROM inventory_stocks WHERE id=$1',[qualityStock])).rows[0],quantity=before.on_hand-1000;await panel(operator).getByLabel('Фактически посчитано',{exact:true}).fill(String(quantity));
  await operator.context().route('http://127.0.0.1:3002/**',r=>r.abort());await panel(operator).getByRole('button',{name:'Сохранить наблюдение без изменения остатка',exact:true}).click();const observed=await latest(operator,'observe');await operator.context().unroute('http://127.0.0.1:3002/**');assert.deepEqual((await pool.query('SELECT on_hand::int,revision FROM inventory_stocks WHERE id=$1',[qualityStock])).rows[0],before);
- await operator.reload();await operator.waitForFunction(()=>!!window.mount);await operator.evaluate(c=>window.mount(c),connection(actors[1]));await refresh(operator);assert.equal((await proposals(operator)).find(r=>r.operationId===observed.operationId).fields.request,observed.fields.request);
+ await operator.reload();await operator.waitForFunction(()=>!!window.mount);await operator.evaluate(c=>window.mount(c),connection(actors[1]));
+ // A reload returns the redesigned operator warehouse to the Receiving tab.
+ // Reenter Inventory and explicitly reopen its advanced physical-count controls.
+ await operator.getByRole('button',{name:'Тест: Инвентарь',exact:true}).click();
+ await refresh(operator);
+ await operator.getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true}).click();assert.equal((await proposals(operator)).find(r=>r.operationId===observed.operationId).fields.request,observed.fields.request);
  let lost=false;await operator.context().route('**/inventory/counts/operations',async route=>{if(route.request().method()==='POST'&&!lost){await route.fetch();lost=true;await route.abort();}else await route.continue();});await panel(operator).getByRole('button',{name:'Подтвердить пересчёт '+observed.operationId.slice(0,8),exact:true}).click();await panel(operator).getByRole('alert').waitFor();await operator.context().unroute('**/inventory/counts/operations');await send(operator,observed);assert.deepEqual((await pool.query('SELECT on_hand::int,revision FROM inventory_stocks WHERE id=$1',[qualityStock])).rows[0],before);
  assert.equal(await panel(operator).getByRole('button',{name:/Проверить коррекцию по наблюдению/}).count(),0);
  await panel(operator).getByRole('button',{name:'Наблюдения и решения пересчёта',exact:true}).click();
