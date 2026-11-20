@@ -5,7 +5,7 @@ import {db} from '../../core/db';
 import {StageId,UserRole,type User} from '../../core/types';
 import {saveStorageEvent,type StorageReceipt} from '../../core/manufacturing/storageReceipts';
 import {useAuthStore} from '../../core/store/authStore';
-import {StorageModule} from './StorageModule';
+import {StorageRegister} from './StorageRegister';
 
 let node:HTMLDivElement|undefined,root:Root|undefined;
 afterEach(async()=>{
@@ -22,7 +22,7 @@ async function mount() {
  await db.users.add(user);useAuthStore.setState({currentUser:user});
  node=document.createElement('div');document.body.appendChild(node);
  root=createRoot(node);
- await act(async()=>root!.render(<StorageModule/>));
+ await act(async()=>root!.render(<StorageRegister/>));
  await vi.waitFor(()=>expect(node!.querySelector<HTMLInputElement>('[aria-label="Материал"]')).toBeTruthy());
  return node!;
 }
