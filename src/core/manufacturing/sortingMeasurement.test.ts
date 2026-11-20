@@ -26,3 +26,17 @@ it('derives grade and reject quantities only from unambiguous measured masses',(
   expect(()=>summarizeMassReadings([0],categories,'grading')).toThrow();
   expect(()=>summarizeMassReadings([1.2],[{name:'A',criteria:'no mass KD'}],'grading')).toThrow(/отсутствуют/);
 });
+
+
+it('checks one thickness measurement per incoming electrode against KD without assigning a grade',async()=>{
+  const {parseThicknessReadings,summarizeThicknessReadings}=await import('./sortingMeasurement');
+  const limits:SortCategory[]=[
+    {name:'A',criteria:'thin',minUm:70,maxUm:80},
+    {name:'B',criteria:'thick',minUm:75,maxUm:85},
+  ];
+  expect(parseThicknessReadings('72,5\n78\n90',3)).toEqual([72.5,78,90]);
+  expect(summarizeThicknessReadings([72.5,78,90],limits)).toEqual({passedCount:2,rejectedCount:1});
+  expect(()=>parseThicknessReadings('72\n',2)).toThrow();
+  expect(()=>summarizeThicknessReadings([0],limits)).toThrow();
+  expect(()=>summarizeThicknessReadings([72],[{name:'A',criteria:'no thickness bounds'}])).toThrow();
+});
