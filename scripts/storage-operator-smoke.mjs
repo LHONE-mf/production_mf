@@ -197,6 +197,10 @@ try{
  const issueResult=await storageIssueSmoke({pool,org,actors,pages,browser,connection,qualityStock,material,artifact});
  // Issue regression intentionally cold-reloads the operator profile, collapsing
  // advanced inventory controls; reopen them before return/count/repack checks.
+ // A cold reload clears the confirmed stock view; InventoryIssues refresh alone
+ // does not hydrate ConfirmedStorage. Explicitly reload the operator stock first.
+ await pages[1].getByRole('button',{name:'Тест: Инвентарь',exact:true}).click();
+ await refresh(pages[1]);
  const operatorAdvanced=pages[1].getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true});
  await operatorAdvanced.click();
  const issueScenarios=[...issueResult.scenarios,...await storageReturnSmoke({pool,org,pages,actors,connection,issueId:issueResult.issueId,qualityStock,locationId:locations[3],artifact})];
