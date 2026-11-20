@@ -158,6 +158,7 @@ export interface SortingStationResult {
   rejectionReasons?: { reason: string; count: number }[];
   massReadingsG?: number[]; // Mass station only; one measured gram value per incoming piece
   thicknessReadingsUm?: number[]; // Thickness station only; one µm value per incoming piece
+  massOutOfRange?: { belowMin: number; aboveMax: number }; // Mass station only: manual under/over rejects, no inferred measurements
   notes?: string;
 }
 export interface SortingWorkflow {
