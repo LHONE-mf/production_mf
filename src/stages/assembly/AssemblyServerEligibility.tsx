@@ -101,7 +101,7 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
    <p className="text-amber-200">Предварительная проверка: сервер перепроверит маршрут и источник при передаче.</p>
    {drafts.some(d=>{try{const r=JSON.parse(d.fields.request);return r.submissionId===item.submissionId&&r.grade===item.grade;}catch{return false;}})?
     <p>Исходная заявка этого сорта сохранена ниже; используйте только её ID.</p>:
-    <AssemblyGradeOfferForm key={item.submissionId+item.grade} disabled={busy} onSend={(reason,evidence)=>void sendGrade(item,reason,evidence)}/>
+    <AssemblyGradeOfferForm key={item.submissionId+item.grade} disabled={busy} onSend={(reason,evidence)=>void sendGrade(item,reason,evidence)}/>}
   </article>)}
   {loaded&&after&&<button type="button" className={button} disabled={busy} onClick={()=>void refresh(true)}>Проверить следующие предложения</button>}
   <h5 className="font-semibold">Исходные операции передачи (сохраняются на устройстве)</h5>
