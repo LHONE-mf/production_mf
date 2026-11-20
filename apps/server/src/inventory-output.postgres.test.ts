@@ -48,6 +48,81 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('finished electrode submission a
   await f.pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'cell','in_progress',$4)",[f.org,assemblyBatchId,order,f.actors[0].id]);
   return assemblyBatchId;
  }
+ it('replays two concurrent identical Assembly offers with one original acknowledgement',async()=>{
+  const body=await proposal();expect((await submit(body)).statusCode).toBe(201);
+  const assemblyBatchId=await assemblyTarget();
+  const offer={operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+   grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
+   reason:'Concurrent same request',evidence:'Same physical packet'};
+  const replies=await Promise.all([
+   f.post('/inventory/assembly-electrodes/handoffs',offer,3),
+   f.post('/inventory/assembly-electrodes/handoffs',offer,3),
+  ]);
+  expect(replies.map(r=>r.statusCode).sort()).toEqual([200,201]);
+  expect(replies[0].json().handoff).toEqual(replies[1].json().handoff);
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',
+   {...offer,evidence:'Changed after original submission'},3)).statusCode).toBe(409);
+  const rows=await f.pool.query('SELECT operation_id,request_payload FROM inventory_assembly_electrode_handoffs WHERE organization_id=$1 AND submission_id=$2 AND grade=$3',
+   [f.org,body.operationId,'A']);
+  expect(rows.rowCount).toBe(1);
+  expect(rows.rows[0].operation_id).toBe(offer.operationId);
+  expect(rows.rows[0].request_payload).toEqual(offer);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_assembly_electrode_receipts WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
+
+ it('serializes different operation IDs competing for the same grade, but leaves another grade independent',async()=>{
+  const body=await proposal();expect((await submit(body)).statusCode).toBe(201);
+  const assemblyBatchId=await assemblyTarget();
+  const first={operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+   grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
+   reason:'Competing grade offer',evidence:'Independent physical count'};
+  const second={...first,operationId:randomUUID()};
+  const replies=await Promise.all([
+   f.post('/inventory/assembly-electrodes/handoffs',first,3),
+   f.post('/inventory/assembly-electrodes/handoffs',second,3),
+  ]);
+  expect(replies.map(r=>r.statusCode).sort()).toEqual([201,409]);
+  const winner=replies[0].statusCode===201?first:second;
+  const loser=winner===first?second:first;
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',winner,3)).statusCode).toBe(200);
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',loser,3)).statusCode).toBe(409);
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',
+   {...first,operationId:randomUUID(),grade:'B',quantity:3},3)).statusCode).toBe(201);
+  const rows=await f.pool.query('SELECT grade,operation_id FROM inventory_assembly_electrode_handoffs WHERE organization_id=$1 AND submission_id=$2 ORDER BY grade',
+   [f.org,body.operationId]);
+  expect(rows.rows.map(r=>r.grade)).toEqual(['A','B']);
+  expect(rows.rows[0].operation_id).toBe(winner.operationId);
+  expect((await accept(acceptance(body.operationId,'A',4))).statusCode).toBe(409);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
+
+ it('makes a simultaneous Storage acceptance and Assembly offer choose exactly one custody channel',async()=>{
+  const body=await proposal();expect((await submit(body)).statusCode).toBe(201);
+  const assemblyBatchId=await assemblyTarget();
+  const offer={operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+   grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
+   reason:'Direct assembly channel',evidence:'Observed sorted lot'};
+  const stock=acceptance(body.operationId,'A',4);
+  const [assembly,warehouse]=await Promise.all([
+   f.post('/inventory/assembly-electrodes/handoffs',offer,3),
+   accept(stock),
+  ]);
+  expect([assembly.statusCode,warehouse.statusCode].sort()).toEqual([201,409]);
+  const assemblyRows=await f.pool.query('SELECT count(*)::int AS n FROM inventory_assembly_electrode_handoffs WHERE organization_id=$1 AND submission_id=$2 AND grade=$3',[f.org,body.operationId,'A']);
+  const warehouseRows=await f.pool.query('SELECT count(*)::int AS n FROM inventory_output_acceptances WHERE organization_id=$1 AND submission_id=$2 AND grade=$3',[f.org,body.operationId,'A']);
+  expect(assemblyRows.rows[0].n+warehouseRows.rows[0].n).toBe(1);
+  if(assembly.statusCode===201){
+   expect(assemblyRows.rows[0].n).toBe(1);
+   expect((await f.post('/inventory/assembly-electrodes/handoffs',offer,3)).statusCode).toBe(200);
+   expect((await accept(stock)).statusCode).toBe(409);
+  }else{
+   expect(warehouseRows.rows[0].n).toBe(1);
+   expect((await accept(stock)).statusCode).toBe(200);
+   expect((await f.post('/inventory/assembly-electrodes/handoffs',offer,3)).statusCode).toBe(409);
+  }
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1 AND receipt_reference=$2',[f.org,body.operationId])).rows[0].n).toBe(warehouseRows.rows[0].n);
+ });
+
  it('transfers a full named Sorting grade directly to an assigned Assembly receiver, with independent exact physical receipt and no stock',async()=>{
   const body=await proposal(),source=await submit(body);
   expect(source.statusCode,source.body).toBe(201);
