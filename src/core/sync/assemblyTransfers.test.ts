@@ -18,7 +18,7 @@ const session={serverUrl:scope.serverUrl,accessToken:'A'.repeat(43),deviceProofT
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status});
 function handoff(request:Record<string,unknown>):AssemblyHandoff{
  return{...request as unknown as AssemblyHandoff,sourceBatchId:grade.sourceBatchId,materialId:grade.materialId,
-  recipientWorkshopId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',actorId:scope.actorId,
+  recipientWorkshopId:'assembly-line-main',actorId:scope.actorId,
   recordedAt:'2026-11-20T09:00:00Z',warehouseEffect:'none',qualityStatus:'unreviewed'};
 }
 beforeEach(async()=>{

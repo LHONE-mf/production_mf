@@ -1,5 +1,6 @@
 import type {HybridSession} from './hybridClient';
 import {inventoryRequest} from './inventoryClient';
+import {withInventorySync} from './inventorySyncLock';
 import {inventoryOutbox,inventoryScopeKey,type InventoryScope,type ReceivingDraft} from './inventoryOutbox';
 import {issueIdValid,issueTextValid} from './inventoryIssueTypes';
 import {loadInventoryOutputs} from './inventoryOutputs';
@@ -35,7 +36,8 @@ const fields=(row:ReceivingDraft,kind:Kind)=>{
 function validHandoff(raw:unknown):AssemblyHandoff {
  const r=raw as AssemblyHandoff;
  if(!r||![r.operationId,r.deviceId,r.submissionId,r.assemblyBatchId,r.recipientId,
-  r.sourceBatchId,r.materialId,r.recipientWorkshopId,r.actorId].every(issueIdValid)||
+  r.sourceBatchId,r.materialId,r.actorId].every(issueIdValid)||
+  !label(r.recipientWorkshopId,120)||
   !label(r.grade,120)||!positive(r.quantity)||!positive(r.assemblyStepNumber)||
   !label(r.reason)||!label(r.evidence)||!Number.isFinite(Date.parse(r.recordedAt))||
   r.warehouseEffect!=='none'||r.qualityStatus!=='unreviewed')throw Error('Некорректная серверная передача электродов');
@@ -130,7 +132,8 @@ export async function freezeAssemblyReceipt(scope:InventoryScope,epoch:string,ha
   await inventoryOutbox.receivingDrafts.add(row);return row;
  });
 }
-export async function sendAssemblyDraft(session:HybridSession,scope:InventoryScope,key:string){
+export function sendAssemblyDraft(session:HybridSession,scope:InventoryScope,key:string){
+ return withInventorySync(scope,async()=>{
  const row=await inventoryOutbox.receivingDrafts.get(key);
  if(!row||row.fields.state!=='pending'||row.operationId===undefined)
   throw Error('Нет ожидающей исходной передачи');
@@ -186,4 +189,5 @@ export async function sendAssemblyDraft(session:HybridSession,scope:InventorySco
    fields:{...original,state:'accepted',acknowledgement:JSON.stringify(acknowledgement)}});
  });
  return acknowledgement;
+ });
 }
