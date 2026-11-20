@@ -117,6 +117,11 @@ describe.skipIf(
       await page
         .getByLabel("Партия производителя", { exact: true })
         .fill("BROWSER-TAPE-LOT");
+      // Documented incoming control is mandatory for new operator warehouse receipts.
+      // Validate whole-roll preflight only after the provenance field is filled.
+      await page
+        .getByLabel("Документ / номер и дата входного контроля", { exact: true })
+        .fill("TAPE-QC-2026-11-20");
       await page.getByLabel("Количество приёмки", { exact: true }).fill("0.5");
       await page
         .getByLabel("Основание приёмки / свидетельство", { exact: true })
