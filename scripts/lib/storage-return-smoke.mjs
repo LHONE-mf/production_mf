@@ -3,7 +3,17 @@ export async function storageReturnSmoke({ pool, org, pages, actors, connection,
   const chief = pages[0], operator = pages[1];
   const until = async check => { const end = Date.now() + 20000; while (!await check()) { assert(Date.now() < end, 'Return UI/ledger timeout'); await new Promise(r => setTimeout(r, 30)); } };
   const refreshConfirmed = async page => { const button = page.getByRole('button', { name: 'Обновить подтверждённые данные', exact: true }); await button.click(); await until(() => button.isEnabled()); };
-  const refresh = async page => { await refreshConfirmed(page); await page.getByRole('button', { name: 'Загрузить источники возврата', exact: true }).click(); await page.getByLabel('Полученная выдача для возврата', { exact: true }).selectOption(issueId); };
+  const refresh = async page => {
+    // Cold reload (part of this regression) discards the previously opened
+    // inventory disclosure. Reload server stock first, then open advanced
+    // controls explicitly rather than pretending an Issue refresh restored them.
+    await page.getByRole('button', { name: 'Тест: Инвентарь', exact: true }).click();
+    await refreshConfirmed(page);
+    const advanced=page.getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true});
+    if(await advanced.count() && await advanced.evaluate(el=>!el.closest('details')?.open)) await advanced.click();
+    await page.getByRole('button', { name: 'Загрузить источники возврата', exact: true }).click();
+    await page.getByLabel('Полученная выдача для возврата', { exact: true }).selectOption(issueId);
+  };
   const proposals = page => page.evaluate(async () => { const { inventoryOutbox } = await import('/src/core/sync/inventoryOutbox.ts'); return (await inventoryOutbox.receivingDrafts.toArray()).filter(r => JSON.parse(r.key)[2] === 'outcome'); });
   async function prepare(page, quantity, condition = 'untouched_unused', kind = 'return') {
     const before = new Set((await proposals(page)).map(r => r.operationId));
