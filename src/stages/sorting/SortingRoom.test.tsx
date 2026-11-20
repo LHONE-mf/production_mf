@@ -459,3 +459,29 @@ it('does not lose rapid taps before React re-renders the displayed counter',asyn
  await clickRoomButton('Сохранить 1.');
  await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages[0].passedCount).toBe(10));
 });
+
+
+it('lets an active Chief save a standalone KD without any Cutting transfer',async()=>{
+ vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);await db.open();
+ const chief={id:'chief-kd',login:'chief-kd',fullName:'Production Chief',password:'test-only',
+   role:UserRole.CHIEF,isActive:true,createdAt:new Date()};
+ await db.users.add(chief);useAuthStore.setState({currentUser:chief});
+ node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
+ await act(async()=>{root!.render(<SortingModule/>);});
+ await act(async()=>{[...node!.querySelectorAll('button')].find(x=>x.textContent?.includes('Спецификации КД'))!.click();});
+ await act(async()=>{[...node!.querySelectorAll('button')].find(x=>x.textContent?.includes('Новая спецификация'))!.click();});
+ const name=node!.querySelector<HTMLInputElement>('[aria-label="Название КД / код изделия / партии"]');
+ expect(name).toBeTruthy();
+ const save=[...node!.querySelectorAll('button')].find(x=>x.textContent?.includes('Сохранить локально'))!;
+ expect(save.disabled).toBe(true);
+ await act(async()=>{
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(name,'LFP-18650-KD-01');
+  name!.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+ expect(save.disabled).toBe(false);
+ await act(async()=>{save.click();});
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(1));
+ const saved=(await db.sortSpecs.toArray())[0];
+ expect(saved).toMatchObject({batchName:'LFP-18650-KD-01',authorId:'chief-kd'});
+ expect(saved.cutRunId).toBeUndefined();
+});
