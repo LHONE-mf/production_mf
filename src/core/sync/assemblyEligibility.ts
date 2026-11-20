@@ -45,8 +45,9 @@ export async function loadAvailableAssemblyGrades(
 ){
  if(!validTarget(target))throw Error('Укажите серверную партию Assembly, номер шага и назначенного получателя');
  const page=await loadInventoryOutputs(session,scope,epoch,after,limit);
- const candidates=page.items.flatMap(source=>
-  source.outputs.filter(line=>line.stockId===null).map(line=>({source,line})));
+ const candidates:( {source:OfferedOutput;line:OfferedOutput['outputs'][number]} )[]=
+  (page.items as OfferedOutput[]).flatMap(source=>
+   source.outputs.filter(line=>line.stockId===null).map(line=>({source,line})));
  const items:AvailableAssemblyGrade[]=[];
  // Keep the network bounded even for multi-grade Sorting submissions.
  for(let i=0;i<candidates.length;i+=4){
