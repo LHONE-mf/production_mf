@@ -191,3 +191,21 @@ it.each(['long rejection reason','more than 100 reasons','untrimmed inspector','
   expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
  },
 );
+
+
+it('keeps measured masses on the frozen Mass station and rejects mismatched grade counts atomically',async()=>{
+  const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+  await recordSortingStation(workflow.id,visual);
+  await recordSortingStation(workflow.id,thickness);
+  const masses=[...Array(62).fill(1.2),...Array(30).fill(1.8),...Array(3).fill(2.5)];
+  await expect(recordSortingStation(workflow.id,{
+    ...gradedMass,massReadingsG:masses,
+    grades:[{categoryName:'A',count:61},{categoryName:'B',count:31}],
+  })).rejects.toThrow(/измерениям/);
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+  const saved=await recordSortingStation(workflow.id,{...gradedMass,massReadingsG:masses});
+  expect(saved.stages[2].massReadingsG).toEqual(masses);
+  const result=await completeSortingWorkflow(workflow.id,'measured-final');
+  expect(result.sortingWorkflow?.stages[2].massReadingsG).toEqual(masses);
+  expect(result.buckets).toEqual([{categoryName:'A',count:62},{categoryName:'B',count:30}]);
+});
