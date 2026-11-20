@@ -48,49 +48,17 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('finished electrode submission a
   await f.pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'cell','in_progress',$4)",[f.org,assemblyBatchId,order,f.actors[0].id]);
   return assemblyBatchId;
  }
- it('transfers a full named Sorting grade directly to an assigned Assembly receiver, with independent exact physical receipt and no stock',async()=>{
-  const body=await proposal(),source=await submit(body);
-  expect(source.statusCode,source.body).toBe(201);
-  const assemblyBatchId=await assemblyTarget(),offer={
-   operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+ it('rejects legacy Sorting offers without original confirmed Cutting custody or a shared approved route',async()=>{
+  const body=await proposal();
+  expect((await submit(body)).statusCode).toBe(201);
+  const assemblyBatchId=await assemblyTarget();
+  const offer={operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
    grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
-   reason:'Direct actual Sorting output handoff',evidence:'Independently counted grade A packet',
-  };
-  const sent=await f.post('/inventory/assembly-electrodes/handoffs',offer,3);
-  expect(sent.statusCode,sent.body).toBe(201);
-  expect(sent.json().handoff).toMatchObject({...offer,sourceBatchId:batch,
-   materialId:body.outputs[0].materialId,qualityStatus:'unreviewed',warehouseEffect:'none'});
-  const same=await f.post('/inventory/assembly-electrodes/handoffs',offer,3);
-  expect(same.statusCode,same.body).toBe(200);
-  expect(same.json().handoff).toEqual(sent.json().handoff);
-  const list=await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[4].device,4);
-  expect(list.statusCode,list.body).toBe(200);
-  expect(list.json().items).toMatchObject([{handoff:{operationId:offer.operationId,grade:'A',quantity:4},received:null}]);
-  expect((await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[5].device,5)).json().items).toEqual([]);
-  const receipt={
-   operationId:randomUUID(),deviceId:f.actors[4].device,handoffId:offer.operationId,
-   observedQuantity:4,observedGrade:'A',observedLabel:'production:'+body.operationId+':A',
-   reason:'Physical Assembly WIP acceptance',evidence:'Independent count and batch/grade label verification',
-  };
-  for(const mismatch of [{...receipt,observedQuantity:3},{...receipt,observedGrade:'B'},
-   {...receipt,observedLabel:'unknown-lot'}]){
-   expect((await f.post('/inventory/assembly-electrodes/acknowledgements',mismatch,4)).statusCode).toBe(409);
-  }
-  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',{...receipt,deviceId:f.actors[5].device},5)).statusCode).toBe(403);
-  const accepted=await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4);
-  expect(accepted.statusCode,accepted.body).toBe(201);
-  expect(accepted.json().receipt).toMatchObject({...receipt,
-   sourceSnapshot:sent.json().handoff,custodyEffect:'received',qualityStatus:'unreviewed',warehouseEffect:'none'});
-  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4)).statusCode).toBe(200);
-  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',
-   {...receipt,operationId:randomUUID()},4)).statusCode).toBe(409);
-  const after=await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[4].device,4);
-  expect(after.json().items[0].received.operationId).toBe(receipt.operationId);
-  const channel=await accept(acceptance(body.operationId,'A',4));
-  expect(channel.statusCode,channel.body).toBe(409);
-  expect((await f.pool.query('SELECT count(*)::int AS count FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].count).toBe(0);
-  const untouchedGrade=await accept(acceptance(body.operationId,'B',3));
-  expect(untouchedGrade.statusCode,untouchedGrade.body).toBe(201);
+   reason:'Legacy direct Sorting handoff',evidence:'Missing original Cutting physical receipt'};
+  const result=await f.post('/inventory/assembly-electrodes/handoffs',offer,3);
+  expect(result.statusCode,result.body).toBe(409);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_assembly_electrode_handoffs WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
  });
  it('requires authentic Sorting grade, current sender, assigned Assembly route and rejects warehouse-owned output',async()=>{
   const body=await proposal();
