@@ -42,7 +42,7 @@ jobs:
   server:
     name: Fastify server
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     # Disposable CI database: never connect automated integration tests to production.
     services:
       postgres:

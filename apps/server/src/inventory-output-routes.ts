@@ -11,7 +11,7 @@ async function productionAccess(client:PoolClient,actor:IssueActor,batch:string,
  return issueBatchStep(client,actor,batch,step,actor.role==='chief',false);
 }
 function failure(error:unknown){
- if((error as {code?:string}).code==='P0001'&&['finished_output_source_required','finished_output_pair_required','finished_output_line_mismatch','finished_output_authority_required','finished_output_history_required'].includes((error as Error).message))
+ if((error as {code?:string}).code==='P0001'&&['finished_output_source_required','finished_output_pair_required','finished_output_line_mismatch','finished_output_authority_required','finished_output_history_required','electrode_output_already_sent_to_assembly'].includes((error as Error).message))
   return{status:409,body:{error:(error as Error).message}};
  return issueHttpError(error);
 }
