@@ -406,9 +406,9 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             <p className="text-xs text-slate-400">Быстрые кнопки только заполняют поля по вашему явному действию. Решение о качестве остаётся за оператором.</p>
             <details className="rounded-lg border border-slate-700 p-3">
               <summary className="min-h-11 cursor-pointer text-xs text-slate-400">
-                Для будущей интеграции измерительных приборов · необязательные поштучные данные
+                Дополнительный поштучный ввод · не требуется оператору
               </summary>
-              <p className="mt-2 text-xs text-amber-200">В текущем рабочем процессе вводить индивидуальные значения не нужно. Счётчики и суммарный журнал работают без них.</p>
+              <p className="mt-2 text-xs text-amber-200">В рабочем процессе достаточно счётчиков. Поштучная масса оставлена как задел для возможного подключения весов; толщина снимается аналоговой головкой и учитывается суммарно.</p>
             {station==='thickness' && <div className="rounded-lg border border-slate-600 bg-slate-900 p-3 space-y-2">
               <label htmlFor="sort-thickness-readings" className={labelCls}>Индивидуальные измерения толщины, мкм (по одному на строку)</label>
               <textarea id="sort-thickness-readings" aria-label="Измеренные толщины электродов" className={inputCls}
