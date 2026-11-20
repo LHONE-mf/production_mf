@@ -24,7 +24,7 @@ it('retains receipt fields and failed identity, saves once, and searches recorde
   expect(localControl?.getAttribute('aria-expanded')).toBe('true');
   expect(node.querySelector<HTMLElement>('#local-storage-receipt-register')?.hidden).toBe(false);
   expect(node.textContent).toContain('После входа на сервер');
-  await click('Старый исторический журнал');await fill('Материал','Recorded powder');await fill('Код партии материала','LOT-1');await fill('Место получения','Shelf 1');await fill('Основание поступления','Weighed against document 17');await click('Записать поступление');await wait(()=>expect(node.textContent).toContain('пустое значение неизвестно'));expect(await db.journal.count()).toBe(0);
+  await act(async()=>{[...node.querySelectorAll('summary')].find(el=>el.textContent?.includes('Старый исторический журнал'))!.click();});await fill('Материал','Recorded powder');await fill('Код партии материала','LOT-1');await fill('Место получения','Shelf 1');await fill('Основание поступления','Weighed against document 17');await click('Записать поступление');await wait(()=>expect(node.textContent).toContain('пустое значение неизвестно'));expect(await db.journal.count()).toBe(0);
   await click('Журнал работ');await click('Инструмент');expect(node.querySelector<HTMLInputElement>('input[aria-label="Материал"]')!.value).toBe('Recorded powder');
   await fill('Количество поступления','2,125');await act(async()=>{const select=node.querySelector<HTMLSelectElement>('select[aria-label="Единица количества"]')!;select.value='kg';select.dispatchEvent(new Event('change',{bubbles:true}));});
   let failedId='';const fail=(_key:unknown,row:{id:string})=>{failedId=row.id;throw Error('Storage journal failed');};db.journal.hook('creating',fail);
