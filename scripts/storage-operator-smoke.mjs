@@ -195,6 +195,10 @@ try{
  await p.screenshot({path:artifact+'/chief-quality-mobile.png',fullPage:true});
  for(const [i,page]of pages.entries()){assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:artifact+'/operator-'+i+'.png',fullPage:true});}
  const issueResult=await storageIssueSmoke({pool,org,actors,pages,browser,connection,qualityStock,material,artifact});
+ // Issue regression intentionally cold-reloads the operator profile, collapsing
+ // advanced inventory controls; reopen them before return/count/repack checks.
+ const operatorAdvanced=pages[1].getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true});
+ await operatorAdvanced.click();
  const issueScenarios=[...issueResult.scenarios,...await storageReturnSmoke({pool,org,pages,actors,connection,issueId:issueResult.issueId,qualityStock,locationId:locations[3],artifact})];
  issueScenarios.push(...await storageReconciliationSmoke({pool,org,pages,issueId:issueResult.issueId,artifact}));
  issueScenarios.push(...await storageSplitSmoke({pool,org,pages,actors,connection,qualityStock,locationId:locations[3],artifact}));
