@@ -91,9 +91,11 @@ async function catalogue<T>(
 }
 function selectMaterial(receipt:LocalUnboundReceipt,materials:InventoryMaterial[]){
  const key=normalized(receipt.matchMaterialCode??receipt.materialCode);
- const matches=materials.filter(material=>material.active!==false&&
-  ['raw_material','component','cell'].includes(material.category)&&
-  (normalized(material.code)===key||normalized(material.name)===key));
+ const eligible=materials.filter(material=>material.active!==false&&
+  ['raw_material','component','cell'].includes(material.category));
+ const codes=eligible.filter(material=>normalized(material.code)===key);
+ // Exact manufacturer/server code has precedence over a coincidental name.
+ const matches=codes.length?codes:eligible.filter(material=>normalized(material.name)===key);
  if(matches.length!==1)throw Error(matches.length
   ?'Найдено несколько материалов. Нужна ручная сверка с серверным справочником.'
   :'Материал не найден в серверном справочнике. Уточните код или создайте материал.');
