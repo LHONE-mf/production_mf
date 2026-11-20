@@ -27,13 +27,14 @@ interface CountTapProps {
   disabled:boolean;
   canAdd:boolean;
   onChange:(value:string)=>void;
+  onDelta:(delta:-1|1)=>void;
 }
 
 /** One-tap counted observations. Text entry remains available for correction. */
-function CountTap({id,label,ariaLabel,value,disabled,canAdd,onChange}:CountTapProps){
+function CountTap({id,label,ariaLabel,value,disabled,canAdd,onChange,onDelta}:CountTapProps){
   const valid=count(value),numeric=valid?Number(value):0;
-  const decrement=()=>{if(valid&&numeric>0)onChange(String(numeric-1));};
-  const increment=()=>{if((valid||value==='')&&canAdd&&numeric<Number.MAX_SAFE_INTEGER)onChange(String(numeric+1));};
+  const decrement=()=>{if(valid&&numeric>0)onDelta(-1);};
+  const increment=()=>{if((valid||value==='')&&canAdd&&numeric<Number.MAX_SAFE_INTEGER)onDelta(1);};
   return <div className="min-w-0">
     <label htmlFor={id} className={labelCls}>{label}</label>
     <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-2">
@@ -109,6 +110,43 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const balanced=!!active && count(rejected) && (gradedMass?!!validGrades:count(passed)) &&
     Number.isSafeInteger(accepted+Number(rejected)) && accepted+Number(rejected)===inputCount && validReasons && validMassSplit;
   const canAdd=balanceTotal<inputCount;
+  // Read and commit the latest draft snapshot for every tap. Rapid successive
+  // taps must not derive the next count from a stale React-rendered value.
+  function tapCounter(target:'passed'|'rejected'|'grade'|'below'|'above',delta:-1|1,gradeName?:string){
+    if(!formKey||!draft.ready||busy)return;
+    if((target==='below'||target==='above')&&active!=='mass')return;
+    if(target==='grade'&&(!gradedMass||!gradeName))return;
+    draft.edit(old=>{
+      const previous=old.entries[formKey]??emptyStationDraft();
+      const raw=target==='grade'?previous.grades[gradeName!]??'':
+        target==='below'?previous.massBelow??'':target==='above'?previous.massAbove??'':
+        target==='passed'?previous.passed:previous.rejected;
+      if(raw!==''&&!count(raw))return old;
+      const oldCount=Number(raw||0);
+      if(delta<0&&oldCount===0)return old;
+      const nextCount=oldCount+delta;
+      if(!Number.isSafeInteger(nextCount)||nextCount<0)return old;
+      const asNumber=(v:string|undefined)=>!v?0:count(v)?Number(v):NaN;
+      const passedTotal=gradedMass
+        ?gradeSpecs.reduce((total,c)=>total+asNumber(previous.grades[c.name]),0)
+        :asNumber(previous.passed);
+      const used=passedTotal+asNumber(previous.rejected);
+      if(delta>0&&(!Number.isSafeInteger(used)||used>=inputCount))return old;
+      let next:SortingStationDraft;
+      if(target==='grade')next={...previous,grades:{...previous.grades,[gradeName!]:String(nextCount)}};
+      else if(target==='below'||target==='above'){
+        const below=target==='below'?String(nextCount):previous.massBelow||'0';
+        const above=target==='above'?String(nextCount):previous.massAbove||'0';
+        if(!count(below)||!count(above)||!Number.isSafeInteger(Number(below)+Number(above)))return old;
+        next={...previous,massBelow:below,massAbove:above,
+          rejected:String(Number(below)+Number(above))};
+      }else if(target==='rejected'){
+        next={...previous,rejected:String(nextCount),
+          ...(active==='mass'?{massBelow:'',massAbove:''}:{})};
+      }else next={...previous,passed:String(nextCount)};
+      return {...old,entries:{...old.entries,[formKey]:next}};
+    });
+  }
   function editMassSplit(kind:'below'|'above',value:string){
     const below=kind==='below'?value:massBelow||'0';
     const above=kind==='above'?value:massAbove||'0';
@@ -320,28 +358,33 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
             </div>}
             <div className="space-y-3">
               {!gradedMass && <CountTap id="sort-passed" label="Прошло контроль, шт" ariaLabel="Прошло контроль"
-                value={passed} disabled={busy||!draft.ready} canAdd={canAdd} onChange={v=>editForm({passed:v})}/>}
+                value={passed} disabled={busy||!draft.ready} canAdd={canAdd} onChange={v=>editForm({passed:v})}
+                onDelta={delta=>tapCounter('passed',delta)}/>}
               {gradedMass && gradeSpecs.map(c=><CountTap key={c.name} id={'grade-'+c.name}
                 label={c.name+', шт · '+(c.minMass??'—')+'–'+(c.maxMass??'—')+' г'}
                 ariaLabel={'Количество сорта '+c.name} value={grades[c.name]??''}
                 disabled={busy||!draft.ready} canAdd={canAdd}
-                onChange={v=>editForm({grades:{...grades,[c.name]:v}})}/>)}
+                onChange={v=>editForm({grades:{...grades,[c.name]:v}})}
+                onDelta={delta=>tapCounter('grade',delta,c.name)}/>)}
               {station==='mass' && <>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <CountTap id="mass-below" label="Масса ниже нижнего допуска, шт"
                     ariaLabel="Масса ниже допуска" value={massBelow}
                     disabled={busy||!draft.ready} canAdd={canAdd}
-                    onChange={v=>editMassSplit('below',v)}/>
+                    onChange={v=>editMassSplit('below',v)}
+                    onDelta={delta=>tapCounter('below',delta)}/>
                   <CountTap id="mass-above" label="Масса выше верхнего допуска, шт"
                     ariaLabel="Масса выше допуска" value={massAbove}
                     disabled={busy||!draft.ready} canAdd={canAdd}
-                    onChange={v=>editMassSplit('above',v)}/>
+                    onChange={v=>editMassSplit('above',v)}
+                    onDelta={delta=>tapCounter('above',delta)}/>
                 </div>
                 <p className="text-xs text-slate-400">Считайте электроды, не соответствующие массовым допускам КД. Кнопки ниже/выше автоматически обновляют общий брак; при ручной правке общего брака разбивка очищается.</p>
               </>}
               <CountTap id="sort-rejected" label="Отбраковано на станции, шт (включая 0)" ariaLabel="Отбраковано на станции"
                 value={rejected} disabled={busy||!draft.ready} canAdd={canAdd}
-                onChange={v=>editForm({rejected:v,...(active==='mass'?{massBelow:'',massAbove:''}:{})})}/>
+                onChange={v=>editForm({rejected:v,...(active==='mass'?{massBelow:'',massAbove:''}:{})})}
+                onDelta={delta=>tapCounter('rejected',delta)}/>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-white disabled:opacity-40"
