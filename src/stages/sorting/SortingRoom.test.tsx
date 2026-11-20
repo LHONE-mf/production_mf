@@ -383,7 +383,7 @@ it('counts Thickness via large tap targets and Mass by grade plus below/above bu
  await typeCount('Прошло контроль','9');
  await typeCount('Отбраковано на станции','1');
  await clickRoomButton('Сохранить 1.');
- await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true);
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
  for(let i=0;i<8;i++)await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!.click();});
  await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Отбраковано на станции"]')!.click();});
  expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('8');
@@ -422,7 +422,7 @@ it('replacing the mass reject total clears draft under/over counts instead of pe
  await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
  await typeCount('Прошло контроль','10');await typeCount('Отбраковано на станции','0');
  await clickRoomButton('Сохранить 1.');
- await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true);
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
  await typeCount('Прошло контроль','10');await typeCount('Отбраковано на станции','0');
  await clickRoomButton('Сохранить 2.');
  await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Масса ниже допуска"]')).toBeTruthy());
