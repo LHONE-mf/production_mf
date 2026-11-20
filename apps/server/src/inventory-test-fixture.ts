@@ -67,6 +67,8 @@ export async function createInventoryHandoffFixture(searchPath?:string,withCoati
       await pool.query('INSERT INTO workshops(organization_id,id,name) VALUES($1,$2,$2)',[org,workshop+'-sorting']);
       await pool.query('INSERT INTO user_workshop_memberships(organization_id,user_id,workshop_id) VALUES($1,$2,$3)',[org,actors[8].id,workshop+'-sorting']);
       await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,5,'Sort','sorting',$3,'cathode')",[org,route,workshop+'-sorting']);
+      // Include the downstream common-cell stage before approval; approved routes cannot be edited.
+      await pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,6,'Assembly custody','assembly',$3,'common')",[org,route,workshop]);
     }
     await pool.query("UPDATE process_route_versions SET state='approved',approved_at=now(),approved_by=$3 WHERE organization_id=$1 AND route_id=$2", [org, route, actors[0].id]);
     await pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'NMC',$3,1,'released',1,'kg',$4)", [org, order, route, actors[0].id]);
