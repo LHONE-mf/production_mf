@@ -20,3 +20,17 @@ This is **not** an individual three-station QA release: Visual defects and Thick
 The **Thickness** station now has a separate optional, draft-preserved list of physical electrode thickness values in **µm** (dot/comma decimal, one per incoming piece). An explicit operator action derives only pass/reject counts using the union of allowed thickness ranges across frozen KD categories; it never assigns mass grades and does not assume a missing bound is an observed measurement. If the specification has no thickness tolerances, classification refuses to guess. The canonical station validator checks every measured value against the saved pass/reject counts in the same transaction, and displays saved readings in the collapsed historical station record.
 
 This incremental feature still does **not** establish permanent electrode IDs, serial linkage across stations, independently recorded Visual decisions for each item, measured-vs-calibration instrument proof, or server-certified QA. Legacy records and operators' summary-count workflow remain supported; no server migrations, automatic QA release, reset, stock write, merge or deployment are part of it.
+
+
+## Operator-first correction — tap counters instead of per-electrode typing
+
+Operator feedback on 20 November 2026 makes the default workflow **aggregate**, not individual-electrode data entry.
+
+- **Visual / Thickness:** the operator enters or taps the count that passes and the count that fails. Thickness uses an analog measuring head; no automatic thickness capture is expected.
+- **Mass, grading:** each approved mass grade has its own large +/- counter; two additional counters distinguish electrodes **below the lower approved mass limit** from those **above the upper approved mass limit**. Together they set the Mass rejection total. In ordinary pass/fail mode the operator can also count pass/fail instead of grading.
+- Every tap changes only the local *draft*. The original numeric inputs remain for manual correction, and save is an independent explicit action that enforces conservation against the input count. Increment is disabled once the known input has been fully allocated; decrement never goes below zero.
+- The under/over breakdown is optional for legacy/manual totals, and is saved atomically only when its sum equals Mass rejection count. Changing the total manually clears the draft breakdown instead of inventing a matching split. Old station records without a breakdown are still valid.
+- The previous **per-electrode Mass and Thickness inputs** are moved inside a collapsed future-technology section; they are not required in the normal operation. Existing unsaved drafts and frozen readings are retained unchanged. Scale-to-phone capture may be considered later, *not* claimed as implemented. No future analog thickness integration is assumed.
+- No data migration, server-side QA determination, direct stock accounting, automatic sync or packet side effect is introduced. The frozen Mass reject breakdown remains local station history; existing server finished-output proposals still use aggregate approved-grade quantities.
+
+No new factory release authorization is implied; always verify old vs new Android signatures and preserve offline data. Changes remain in a separate draft PR.
