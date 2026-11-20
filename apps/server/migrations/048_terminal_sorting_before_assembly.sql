@@ -11,7 +11,13 @@ BEGIN
   OR e.quantity_unit IS DISTINCT FROM 'pieces' OR e.quantity IS DISTINCT FROM NEW.quantity::numeric OR total IS DISTINCT FROM NEW.quantity::numeric
   OR (SELECT count(*) FROM inventory_output_lines WHERE organization_id=NEW.organization_id AND submission_id=NEW.operation_id)<>jsonb_array_length(NEW.request_payload->'outputs')
   OR NOT EXISTS(SELECT 1 FROM process_route_steps s WHERE s.organization_id=e.organization_id AND s.route_id=e.route_id AND s.route_version=e.route_version AND s.step_number=e.step_number AND s.workshop_id=e.workshop_id AND s.stage='sorting' AND s.electrode_line IN ('cathode','anode'))
-  OR EXISTS(SELECT 1 FROM process_route_steps s WHERE s.organization_id=e.organization_id AND s.route_id=e.route_id AND s.route_version=e.route_version AND s.step_number>e.step_number AND s.electrode_line=(SELECT material_line FROM production_batches WHERE organization_id=e.organization_id AND id=e.batch_id))
+  OR EXISTS(SELECT 1 FROM process_route_steps s WHERE s.organization_id=e.organization_id AND s.route_id=e.route_id AND s.route_version=e.route_version AND s.step_number>e.step_number AND
+     (s.electrode_line=(SELECT material_line FROM production_batches WHERE organization_id=e.organization_id AND id=e.batch_id)
+       OR (s.electrode_line='common' AND NOT EXISTS(
+         SELECT 1 FROM process_route_steps a WHERE a.organization_id=s.organization_id
+          AND a.route_id=s.route_id AND a.route_version=s.route_version
+          AND a.electrode_line='common' AND a.stage='assembly'
+          AND a.step_number>e.step_number AND a.step_number<=s.step_number))))
   OR EXISTS(SELECT 1 FROM inventory_output_lines l JOIN inventory_materials m ON m.organization_id=l.organization_id AND m.id=l.material_id WHERE l.organization_id=NEW.organization_id AND l.submission_id=NEW.operation_id AND (m.category<>'electrode' OR m.base_unit<>'pieces'))
  THEN RAISE EXCEPTION 'finished_output_source_required'; END IF;
  RETURN NEW;
