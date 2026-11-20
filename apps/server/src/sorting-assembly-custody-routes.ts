@@ -54,7 +54,15 @@ export function registerSortingAssemblyCustodyRoutes(app:FastifyInstance,pool:Po
         earlier.device_id!==data.deviceId||!earlier.identical)issueFail(409,'operation_id_reused');
      return{status:'duplicate',operationId:data.operationId,handoff:earlier.result_payload};
     }
-    if(Number(line.quantity)!==data.quantity)issueFail(409,'sorting_grade_quantity_mismatch');
+    // Do not trust an earlier phone preflight. Re-check the physical Cutting
+    // receipt, approved production route, recipient and competing custody
+    // channel inside this serialized write transaction.
+    const eligible=await checkSortingAssemblySource(client,actor,{
+     submissionId:data.submissionId,grade:data.grade,assemblyBatchId:data.assemblyBatchId,
+     assemblyStepNumber:data.assemblyStepNumber,recipientId:data.recipientId,
+    });
+    if(eligible.quantity!==data.quantity)issueFail(409,'sorting_grade_quantity_mismatch');
+
     const target=await issueBatchStep(client,actor,data.assemblyBatchId,data.assemblyStepNumber,true,false);
     if(target.stage!=='assembly'||!['created','in_progress'].includes(target.status)||
        !['released','in_progress'].includes(target.order_status)||
