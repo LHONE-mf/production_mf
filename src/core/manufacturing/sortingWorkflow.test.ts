@@ -228,3 +228,24 @@ it('freezes measured thickness only when the readings agree with station conserv
   expect(output.sortingWorkflow?.stages[1].thicknessReadingsUm).toEqual(readings);
   expect(output.rejected).toBe(8);
 });
+
+
+it('accepts explicit under/over mass rejection counts and rejects mismatched or misplaced evidence',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await recordSortingStation(workflow.id,visual);
+ await recordSortingStation(workflow.id,thickness);
+ await expect(recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:2,aboveMax:2},
+ })).rejects.toThrow(/ниже\/выше/);
+ await expect(recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:-1,aboveMax:4},
+ })).rejects.toThrow();
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+ const saved=await recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:2,aboveMax:1},
+ });
+ expect(saved.stages[2].massOutOfRange).toEqual({belowMin:2,aboveMax:1});
+ expect((await completeSortingWorkflow(workflow.id,'mass-out-of-range')).rejected).toBe(8);
+ const other=await db.sortingWorkflows.get(workflow.id);
+ expect(other?.stages[2].massOutOfRange).toEqual({belowMin:2,aboveMax:1});
+});
