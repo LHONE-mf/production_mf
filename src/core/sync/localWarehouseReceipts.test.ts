@@ -1,6 +1,6 @@
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {inventoryOutbox} from './inventoryOutbox';
-import {autoSyncLocalReceipts,localReceiptsForUser,saveUnboundReceipt} from './localWarehouseReceipts';
+import {autoSyncLocalReceipts,localReceiptsForUser,saveUnboundReceipt,correctUnboundReceiptMatch} from './localWarehouseReceipts';
 import {setServerConnection,type ServerConnection} from './serverConnection';
 import {useAuthStore} from '../store/authStore';
 import {UserRole,type User} from '../types';
@@ -40,7 +40,8 @@ function mockApi(options:{ambiguous?:boolean;lostAck?:boolean}={}){
    canCorrectStock:false,correctionRoleEligible:false,
   });
   if(path==='/inventory/materials')return response({
-   materials:options.ambiguous?[goodMaterial,{...goodMaterial,id:'99999999-9999-4999-8999-999999999999',code:'OTHER',name:'PVDF'}]:[goodMaterial],
+   materials:options.ambiguous?[{...goodMaterial,code:'P1',name:'PVDF'},
+    {...goodMaterial,id:'99999999-9999-4999-8999-999999999999',code:'P2',name:'PVDF'}]:[goodMaterial],
    hasMore:false,nextAfter:null,
   });
   if(path==='/inventory/locations')return response({
@@ -121,6 +122,12 @@ it('never guesses duplicate material and retains unmatched receipt locally witho
  expect(await inventoryOutbox.operations.count()).toBe(0);
  expect(api.posts).toHaveLength(0);
  expect(await inventoryOutbox.stocks.count()).toBe(0);
+ await correctUnboundReceiptMatch(user.id,record.operationId,'P1','Склад / Полка 2');
+ await autoSyncLocalReceipts(connection,user.id);
+ expect(api.posts).toHaveLength(1);
+ expect((await inventoryOutbox.localReceipts.get(record.operationId))?.state).toBe('confirmed');
+ expect((await inventoryOutbox.localReceipts.get(record.operationId))?.materialCode).toBe('PVDF');
+ expect((await inventoryOutbox.localReceipts.get(record.operationId))?.matchMaterialCode).toBe('P1');
 });
 
 it('never lets another local user auto-post a previous user\'s saved physical receipt',async()=>{
