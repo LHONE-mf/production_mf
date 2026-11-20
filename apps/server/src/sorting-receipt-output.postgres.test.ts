@@ -85,4 +85,45 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('receipt-bound Sorting to wareho
   const result=await f.post('/inventory/outputs/electrodes',raw,0);
   expect(result.statusCode).toBe(409);
  });
+ it('validates original Cutting custody and approved same-order Assembly route on the transfer POST',async()=>{
+  const source=await sourceReceipt(),completionId=await completed(),input=submission(source.receipt.operationId,completionId);
+  input.outputs[0].materialId=source.inputs.materialId;
+  expect((await f.post('/inventory/outputs/electrodes',input,0)).statusCode).toBe(201);
+  const context=(await f.pool.query(`SELECT b.order_id,o.route_id,o.route_version,s.workshop_id
+    FROM production_batches b JOIN production_orders o ON o.organization_id=b.organization_id AND o.id=b.order_id
+    JOIN process_route_steps s ON s.organization_id=o.organization_id AND s.route_id=o.route_id
+      AND s.route_version=o.route_version AND s.step_number=1
+    WHERE b.organization_id=$1 AND b.id=$2`,[f.org,f.batch])).rows[0];
+  await f.pool.query(`INSERT INTO process_route_steps
+    (organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line)
+    VALUES($1,$2,$3,6,'Assembly custody','assembly',$4,'common')`,
+   [f.org,context.route_id,context.route_version,context.workshop_id]);
+  const cellBatch=randomUUID();
+  await f.pool.query(`INSERT INTO production_batches
+    (organization_id,id,order_id,batch_code,material_line,status,created_by)
+    VALUES($1,$2,$3,$2::uuid::text,'cell','in_progress',$4)`,
+    [f.org,cellBatch,context.order_id,f.actors[0].id]);
+  const offer={operationId:randomUUID(),deviceId:f.actors[0].device,submissionId:input.operationId,
+   grade:'PASS',quantity:2,assemblyBatchId:cellBatch,assemblyStepNumber:6,recipientId:f.actors[4].id,
+   reason:'Signed actual Sorting grade transfer',evidence:'Independent Cutting and Sorting counts'};
+  const preflight=await f.get('/inventory/assembly-electrodes/eligibility?'+new URLSearchParams({
+   deviceId:f.actors[0].device,submissionId:input.operationId,grade:'PASS',
+   assemblyBatchId:cellBatch,assemblyStepNumber:'6',recipientId:f.actors[4].id}),0);
+  expect(preflight.statusCode,preflight.body).toBe(200);
+  const transfer=await f.post('/inventory/assembly-electrodes/handoffs',offer,0);
+  expect(transfer.statusCode,transfer.body).toBe(201);
+  expect(transfer.json().handoff).toMatchObject({...offer,warehouseEffect:'none',qualityStatus:'unreviewed'});
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',offer,0)).statusCode).toBe(200);
+  const receipt={operationId:randomUUID(),deviceId:f.actors[4].device,handoffId:offer.operationId,
+   observedQuantity:2,observedGrade:'PASS',observedLabel:'production:'+input.operationId+':PASS',
+   reason:'Independent physical receipt',evidence:'Two observed electrodes'};
+  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',
+   {...receipt,observedQuantity:3},4)).statusCode).toBe(409);
+  const accepted=await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4);
+  expect(accepted.statusCode,accepted.body).toBe(201);
+  expect(accepted.json().receipt).toMatchObject({...receipt,custodyEffect:'received',warehouseEffect:'none'});
+  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4)).statusCode).toBe(200);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
+
 });
