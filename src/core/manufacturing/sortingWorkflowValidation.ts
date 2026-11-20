@@ -1,6 +1,6 @@
 import type {SortRun, SortingWorkflow} from '../types';
 import {validateReceivedCuttingSource} from './sortingCustody';
-import {summarizeMassReadings} from './sortingMeasurement';
+import {summarizeMassReadings,summarizeThicknessReadings} from './sortingMeasurement';
 
 const whole = (value:unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -81,6 +81,14 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
         throw new Error('Количество по сортам не совпадает с годными после взвешивания');
     } else if (stage.grades !== undefined) {
       throw new Error('Сорта назначаются только на массовой станции в режиме градации');
+    }
+    if(stage.thicknessReadingsUm!==undefined){
+      if(stage.station!=='thickness'||!Array.isArray(stage.thicknessReadingsUm)||
+         stage.thicknessReadingsUm.length!==stage.inputCount)
+        throw new Error('Измеренные толщины должны соответствовать входу станции Thickness');
+      const calculated=summarizeThicknessReadings(stage.thicknessReadingsUm,spec.categories);
+      if(calculated.passedCount!==stage.passedCount||calculated.rejectedCount!==stage.rejectedCount)
+        throw new Error('Суммарный контроль толщины не соответствует индивидуальным измерениям');
     }
     if(stage.massReadingsG!==undefined){
       if(stage.station!=='mass' || !Array.isArray(stage.massReadingsG) ||
