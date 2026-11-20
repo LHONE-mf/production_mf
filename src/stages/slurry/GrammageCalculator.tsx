@@ -40,6 +40,7 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
  const [saved,setSaved]=useState<MixBatch|null>(null),[packet,setPacket]=useState<SyncPacket|null>(null);const lock=useRef(false);
  const [pendingRecipe,setPendingRecipe]=useState<MixRecipe|null>(null);
  const [confirmReset,setConfirmReset]=useState(false);
+ const [confirmEditAttempt,setConfirmEditAttempt]=useState(false);
  const [invalidField,setInvalidField]=useState<string|null>(null);const fieldInputs=useRef<Record<string,HTMLInputElement|null>>({});
  useEffect(()=>{
   if(!recovery.ready||!attempt){setSaved(null);return;}let active=true;setChecking(true);
@@ -109,7 +110,30 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
    if(cause instanceof SlurryFieldError){const key=cause.field==='measurementNote'?'note':cause.field;setInvalidField(key);fieldInputs.current[key]?.focus();}
   }finally{lock.current=false;setBusy(false);}
  };
- const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setPendingRecipe(null);setConfirmReset(false);setError('');setInvalidField(null);}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
+ const editUncommittedAttempt=async()=>{
+  if(!actor||!attempt||saved||lock.current||checking||recovery.saving||recovery.error||!recovery.ready)return;
+  lock.current=true;setBusy(true);setError('');
+  try{
+   // The form's frozen ID might have committed in another view or after an
+   // acknowledgement was lost. Never turn a recorded snapshot into a draft.
+   const recorded=await db.mixBatches.get(attempt.id);
+   if(recorded){
+    if(JSON.stringify(recorded)!==JSON.stringify(attempt))
+     throw Error('ID уже записан с другими данными. Откройте журнал; черновик сохранён.');
+    setSaved(recorded);setConfirmEditAttempt(false);
+    setError('Замес уже записан в журнал. Изменение сохранённых навесок запрещено.');
+    return;
+   }
+   await recovery.checkpoint(form=>{
+    if(!form.attempt||JSON.stringify(form.attempt)!==JSON.stringify(attempt))
+     throw Error('Попытка записи изменилась. Перезагрузите черновик.');
+    return {...form,attempt:null};
+   });
+   setConfirmEditAttempt(false);setInvalidField(null);
+  }catch(e){setError(e instanceof Error?e.message:String(e));}
+  finally{lock.current=false;setBusy(false);}
+ };
+ const reset=async()=>{if(lock.current)return;lock.current=true;setBusy(true);try{await recovery.reset();setSaved(null);setPacket(null);setPendingRecipe(null);setConfirmReset(false);setConfirmEditAttempt(false);setError('');setInvalidField(null);}catch(e){setError(String(e));}finally{lock.current=false;setBusy(false);}};
  const requestReset=()=>{
   if(lock.current||checking)return;
   // A new mixing operation must not erase raw weighings through a single mis-tap.
@@ -139,6 +163,18 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
         onClick={()=>setConfirmReset(false)}>Оставить незавершённый замес</button>
     </div>
   </section>}
+  {confirmEditAttempt&&attempt&&!saved&&<section role="alertdialog" aria-label="Подтверждение редактирования попытки"
+    className="rounded-lg border-2 border-amber-600 bg-slate-900 p-4 space-y-3">
+    <h4 className="text-amber-200 font-semibold">Вернуться к незаписанному замесу?</h4>
+    <p className="text-sm text-slate-200">Фактические навески и поля черновика сохранятся. Если этот ID уже есть в журнале, редактирование будет запрещено. При следующей записи незавершённого замеса будет создан новый ID.</p>
+    <div className="flex flex-wrap gap-2">
+     <button type="button" disabled={busy||checking||recovery.saving||!!recovery.error}
+      className="min-h-11 rounded bg-amber-700 px-3 text-white disabled:opacity-40"
+      onClick={()=>void editUncommittedAttempt()}>Подтвердить редактирование незаписанного замеса</button>
+     <button type="button" className="min-h-11 rounded bg-slate-700 px-3 text-white"
+      onClick={()=>setConfirmEditAttempt(false)}>Отмена редактирования</button>
+    </div>
+   </section>}
   {pendingRecipe&&<section role="alertdialog" aria-label="Подтверждение замены рецепта"
     className="rounded-lg border-2 border-amber-600 bg-slate-900 p-4 space-y-3">
     <h4 className="text-amber-200 font-semibold">Заменить текущий черновик?</h4>
@@ -203,8 +239,8 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
   <p className="text-xs text-slate-300">Сохранённая запись фиксирует введённые данные и их источники. Она не означает расход со склада, выполнение оборудования или QA-допуск.</p>
   <div className="flex flex-wrap gap-2">
    <button disabled={busy||checking||!!saved||!!recovery.error} className="min-h-11 rounded bg-emerald-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>void save()}>Записать измеренный замес</button>
-   {error&&attempt&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null}));setError('');}}>Изменить незаписанный черновик</button>}
-   {!saved&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,attempt:null,draft:{...form.draft,lines:form.draft.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
+   {attempt&&!saved&&<button disabled={busy||checking||recovery.saving||!!recovery.error} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white disabled:opacity-40" onClick={()=>setConfirmEditAttempt(true)}>Вернуться к редактированию незаписанного замеса</button>}
+   {!saved&&!attempt&&<button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={()=>{recovery.edit(form=>({...form,draft:{...form.draft,lines:form.draft.lines.map(line=>({...line,component:catalog?.find(c=>c.id===line.componentId)}))}}));setError('Версии обновлены явно. Проверьте сохранённые в форме навески перед записью.');}}>Обновить версии материалов; проверить навески</button>}
    <button disabled={busy||checking} className="min-h-11 rounded bg-slate-700 px-3 text-sm text-white" onClick={requestReset}>Очистить форму для нового замеса</button>
   </div>
   {packet&&<PacketOutModal packet={packet} onClose={()=>setPacket(null)}/>}
