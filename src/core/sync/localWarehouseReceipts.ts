@@ -172,11 +172,19 @@ async function syncOnce(connection:ServerConnection,scope:InventoryScope,scopeKe
  checkIdentity(localActorId,connection);
  const bound=(await localReceiptsForUser(localActorId)).filter(row=>row.boundScopeKey===scopeKey&&row.state==='queued');
  if(!bound.length)return;
- // Do not silently post another local user's or legacy manual queue entries.
- const pending=(await inventoryQueueForScope(scope)).filter(item=>item.state==='pending');
- const ourIds=new Set(bound.map(row=>row.operationId));
- if(pending.some(row=>!ourIds.has(row.operationId)))throw Error('Есть другие ожидающие складские операции: автоматическая отправка отложена до ручной сверки');
- if(pending.length)await pushInventoryReceipts(connection.session,scope,20);
+ // Automatic replay is limited to this local user's explicitly saved IDs;
+ // other manual inventory operations remain untouched.
+ const ourIds=bound.map(row=>row.operationId);
+ for(let start=0;start<ourIds.length;start+=500){
+  const subset=ourIds.slice(start,start+500),set=new Set(subset);
+  for(let page=0;page<25;page++){
+   checkIdentity(localActorId,connection);
+   const pending=(await inventoryQueueForScope(scope))
+    .filter(item=>item.state==='pending'&&set.has(item.operationId));
+   if(!pending.length)break;
+   await pushInventoryReceipts(connection.session,scope,20,subset);
+  }
+ }
  checkIdentity(localActorId,connection);
  for(const row of bound){
   const ack=await inventoryOutbox.acknowledgements.get(row.operationId);
