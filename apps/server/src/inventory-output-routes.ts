@@ -35,7 +35,7 @@ export function registerInventoryOutputRoutes(app:FastifyInstance,pool:Pool){
       WHERE e.organization_id=$1 AND e.id=$2 AND e.batch_id=$3 AND e.step_number=$4 AND e.kind='completed'
        AND b.material_line IN ('cathode','anode') AND NOT EXISTS(SELECT 1 FROM process_route_steps s
         WHERE s.organization_id=e.organization_id AND s.route_id=e.route_id AND s.route_version=e.route_version
-         AND s.step_number>e.step_number AND s.electrode_line IN ('common',b.material_line))`,
+         AND s.step_number>e.step_number AND s.electrode_line=b.material_line)`,
       [actor.organization_id,data.completionId,data.productionBatchId,data.stepNumber])).rows[0];
     const quantity=data.source.stages[2].passedCount;
     if(!completion||completion.quantity_unit!=='pieces'||Number(completion.quantity)!==quantity)issueFail(409,'completed_sorting_quantity_required');
