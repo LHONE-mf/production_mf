@@ -52,8 +52,18 @@ export function AssemblyModule() {
 
   // Партии, готовые принять в сборку: результаты сортировки ещё не взятые в работу
   const sortRuns = useLiveQuery(async()=>{
-    const claimed=new Set(await db.warehouseOutputClaims.toCollection().primaryKeys());
-    return(await db.sortRuns.toArray()).filter(row=>!claimed.has(row.cutRunId??'')&&row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0));
+    const [claims,assemblies,sorted]=await Promise.all([
+      db.warehouseOutputClaims.toArray(),db.assemblyRuns.toArray(),db.sortRuns.toArray(),
+    ]);
+    const claimed=new Set(claims.map(c=>c.cutRunId));
+    const takenRuns=new Set(assemblies.flatMap(a=>[a.intake?.sortRunId,a.sourceSort?.id].filter((id):id is string=>!!id)));
+    const takenCuts=new Set(assemblies.map(a=>a.sourceSort?.cutRunId).filter((id):id is string=>!!id));
+    const ambiguousBatches=new Set(assemblies.filter(a=>!a.intake).map(a=>a.batchName));
+    return sorted.filter(row=>
+      !row.cutRunSnapshot?.receivedCustody && // Server-bound receipts need a separate acknowledged Assembly handoff.
+      !claimed.has(row.cutRunId??'') && !takenRuns.has(row.id) &&
+      !takenCuts.has(row.cutRunId??'') && !ambiguousBatches.has(row.batchName) &&
+      row.buckets?.some(bucket=>Number.isSafeInteger(bucket.count)&&bucket.count>0));
   }, []);
 
   const selected = useMemo(
@@ -138,7 +148,7 @@ export function AssemblyModule() {
 
       {tab === 'incoming' && (
         <div className="space-y-2">
-          <p className="text-xs text-slate-400">Результаты сортировки (партии годных электродов). Нажмите «Взять в сборку».</p>
+          <p className="text-xs text-slate-400">Доступные локальные партии сортировки, ещё не переданные на склад или в сборку. Подтверждённые серверные партии требуют отдельной приёмки Assembly.</p>
           {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Нет партий с электродами для сборки. Полностью отбракованные результаты остаются в журнале сортировки.</p>}
           {(sortRuns ?? []).map((sr) => (
             <div key={sr.id} className="bg-slate-900 border border-slate-800 rounded p-3 flex items-center justify-between gap-3 flex-wrap">
@@ -146,6 +156,7 @@ export function AssemblyModule() {
                 <span className="text-white font-semibold">{sr.batchName}</span>
                 {' '}· годных с нарезки: {sr.goodCount}, отсортировано:{' '}
                 {sr.buckets.reduce((s, b) => s + b.count, 0)}, отбраковано: {sr.rejected}
+                <br /><span className="text-slate-300">Сорта: {sr.buckets.filter(b=>b.count>0).map(b=>`${b.categoryName}: ${b.count} шт.`).join(' · ')}</span>
                 <br /><span className="text-slate-500">{new Date(sr.createdAt).toLocaleString()}</span>
               </div>
               <p className="text-xs text-slate-400 break-all">Источник: {sr.id}</p>

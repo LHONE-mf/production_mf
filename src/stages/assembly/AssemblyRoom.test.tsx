@@ -21,11 +21,14 @@ it('resumes a saved intake rather than taking the same sorted source twice',asyn
    await vi.waitFor(()=>expect(node.querySelector('[role="alert"]')?.textContent).toContain('Journal unavailable'));
    expect(await db.assemblyRuns.count()).toBe(0);
   }finally{db.journal.hook('creating').unsubscribe(fail);}
-  for(let i=0;i<2;i++){
-   await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Взять в сборку'))!.click();});
-   await vi.waitFor(async()=>expect(await db.assemblyRuns.count()).toBeGreaterThan(0));
-   await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Партии с сортировки'))!.click();});
-  }
+  await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Взять в сборку'))!.click();});
+  await vi.waitFor(async()=>expect(await db.assemblyRuns.count()).toBe(1));
+  await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('Партии с сортировки'))!.click();});
+  // Once accepted, the source is no longer available for a second intake.
+  await vi.waitFor(()=>{
+   expect([...node.querySelectorAll('button')].some(b=>b.textContent?.includes('Взять в сборку'))).toBe(false);
+   expect(node.textContent).toContain('Нет партий с электродами');
+  });
   expect(await db.assemblyRuns.count()).toBe(1);
   await act(async()=>{[...node.querySelectorAll('button')].find(b=>b.textContent?.includes('B-с1'))!.click();});
   await vi.waitFor(()=>expect(node.querySelector('select[aria-label="Источник операции"]')).not.toBeNull());
