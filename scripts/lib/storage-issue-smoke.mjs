@@ -23,6 +23,11 @@ export async function storageIssueSmoke({ pool, org, actors, pages, browser, con
     const card = chief.locator('[aria-label="Выдача ' + issueId + '"]'); await card.getByRole('button', { name: 'Загрузить контейнеры материала', exact: true }).click();
     if (kind === 'reserve') await card.getByLabel('Исходный контейнер', { exact: true }).selectOption(qualityStock);
     await card.getByLabel('Действие выдачи', { exact: true }).selectOption(kind); await card.getByLabel('Основание выдачи', { exact: true }).fill('Chief checked actual handoff: ' + kind); await card.getByLabel('Свидетельство передачи / одобрения', { exact: true }).fill('CI signed physical record: ' + kind);
+    if (kind === 'dispatch') {
+      // Physical stock dispatch requires explicit incoming inspection witness.
+      await card.getByLabel('Номер входного контроля', { exact: true }).fill('CI-INCOMING-42');
+      await card.getByLabel('Дата входного контроля', { exact: true }).fill('2026-11-20');
+    }
     await card.getByRole('button', { name: 'Сохранить действие для отдельного подтверждения', exact: true }).click(); await until(async () => (await proposals(chief, kind, issueId)).length === 1); return (await proposals(chief, kind, issueId))[0];
   }
   await send(chief, await prepare('reserve')); assert.equal((await pool.query('SELECT on_hand::int FROM inventory_stocks WHERE id=$1', [qualityStock])).rows[0].on_hand, before);
