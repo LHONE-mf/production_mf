@@ -1,4 +1,4 @@
-import {inventoryOutbox,inventoryScopeKey,inventoryQueueForScope,type InventoryScope,
+import {inventoryOutbox,inventoryScopeKey,inventoryQueueForScope,validInventoryDate,type InventoryScope,
  type InventoryReceiptRequest,type LocalUnboundReceipt} from './inventoryOutbox';
 import {loadWarehouseAccess,loadInventoryMaterials,loadInventoryLocations,inventoryLocationPath,
  type InventoryMaterial,type InventoryLocation} from './inventoryCatalogClient';
@@ -11,6 +11,7 @@ import {useAuthStore,currentLocalSession} from '../store/authStore';
 export interface LocalReceiptFields {
  materialCode:string;locationPath:string;manufacturerLot:string;
  quantity:string;unit:string;reason:string;receiptReference:string;supplier:string;
+ manufacturedOn?:string;expiresOn?:string;
 }
 const nonempty=(s:string,max:number)=>!!s.trim()&&s.length<=max;
 const normalized=(s:string)=>s.trim().replace(/\s+/g,' ').toLocaleLowerCase('ru-RU');
@@ -34,13 +35,21 @@ export async function saveUnboundReceipt(localActorId:string,fields:LocalReceipt
     !Number.isFinite(Number(fields.quantity.replace(',','.')))||
     Number(fields.quantity.replace(',','.'))<=0)
   throw Error('Количество должно быть положительным числом');
+ const manufacturedOn=fields.manufacturedOn?.trim()||undefined;
+ const expiresOn=fields.expiresOn?.trim()||undefined;
+ if((manufacturedOn&&!validInventoryDate(manufacturedOn))||
+    (expiresOn&&!validInventoryDate(expiresOn))||
+    (manufacturedOn&&expiresOn&&manufacturedOn>expiresOn))
+  throw Error('Проверьте даты изготовления и срока годности');
  const row:LocalUnboundReceipt={
   operationId:crypto.randomUUID(),stockId:crypto.randomUUID(),
   localActorId,recordedAt:Date.now(),
   materialCode:fields.materialCode.trim(),locationPath:fields.locationPath.trim(),
   manufacturerLot:fields.manufacturerLot.trim(),quantity:fields.quantity.trim(),unit:fields.unit,
   reason:fields.reason.trim(),receiptReference:fields.receiptReference.trim(),
-  supplier:fields.supplier.trim(),state:'pending',
+  supplier:fields.supplier.trim(),
+  ...(manufacturedOn?{manufacturedOn}:{}),...(expiresOn?{expiresOn}:{}),
+  state:'pending',
  };
  await inventoryOutbox.localReceipts.add(row);
  return row;
@@ -151,6 +160,8 @@ async function syncOnce(connection:ServerConnection,scope:InventoryScope,scopeKe
     manufacturerLot:row.manufacturerLot,quantity,expectedRevision:0,
     reason:row.reason,receiptReference:row.receiptReference,
     ...(row.supplier?{supplier:row.supplier}:{}),
+    ...(row.manufacturedOn?{manufacturedOn:row.manufacturedOn}:{}),
+    ...(row.expiresOn?{expiresOn:row.expiresOn}:{}),
    };
    checkIdentity(localActorId,connection);
    await inventoryOutbox.transaction('rw',inventoryOutbox.localReceipts,inventoryOutbox.operations,async()=>{

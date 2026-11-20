@@ -57,7 +57,9 @@ function mockApi(options:{ambiguous?:boolean;lostAck?:boolean}={}){
    if(!stored)stored={stockId:request.stockId,materialId:request.materialId,
     locationId:request.locationId,manufacturerLot:request.manufacturerLot,
     unit:'mg',quality:'quarantine',onHand:request.quantity,reserved:0,revision:1,
-    available:request.quantity};
+    available:request.quantity,
+    ...(request.expiresOn?{expiresAt:new Date(Date.parse(request.expiresOn+'T00:00:00.000Z')+86400000).toISOString()}:{}),
+    ...(request.manufacturedOn?{manufacturedOn:request.manufacturedOn}:{})};
    if(options.lostAck&&!replyLost){replyLost=true;throw Error('Network dropped after PostgreSQL commit');}
    return response({status:status===200?'duplicate':'confirmed',
     operationId:request.operationId,stock:stored},status);
@@ -139,4 +141,27 @@ it('never lets another local user auto-post a previous user\'s saved physical re
  expect(api.fetch).not.toHaveBeenCalled();
  expect((await inventoryOutbox.localReceipts.get(row.operationId))?.state).toBe('pending');
  expect(await inventoryOutbox.operations.count()).toBe(0);
+});
+
+it('preserves optional manufacture and expiry dates offline and replays both fields to the server',async()=>{
+ const row=await saveUnboundReceipt(user.id,{...draft,
+  manufacturedOn:'2026-10-03',expiresOn:'2027-10-03'});
+ expect(row).toMatchObject({manufacturedOn:'2026-10-03',expiresOn:'2027-10-03',state:'pending'});
+ const api=mockApi();setServerConnection(connection);
+ await autoSyncLocalReceipts(connection,user.id);
+ expect(api.posts).toHaveLength(1);
+ expect(JSON.parse(api.posts[0])).toMatchObject({operationId:row.operationId,
+  manufacturedOn:'2026-10-03',expiresOn:'2027-10-03'});
+ expect((await inventoryOutbox.localReceipts.get(row.operationId))?.state).toBe('confirmed');
+ expect((await inventoryOutbox.stocks.toArray())[0]).toMatchObject({
+  manufacturedOn:'2026-10-03',expiresAt:'2027-10-04T00:00:00.000Z'});
+});
+
+it('rejects invalid or contradictory receipt dates before persisting any stock intent',async()=>{
+ await expect(saveUnboundReceipt(user.id,{...draft,expiresOn:'2026-02-30'}))
+  .rejects.toThrow('Проверьте даты');
+ await expect(saveUnboundReceipt(user.id,{...draft,
+  manufacturedOn:'2027-01-01',expiresOn:'2026-12-31'}))
+  .rejects.toThrow('Проверьте даты');
+ expect(await inventoryOutbox.localReceipts.count()).toBe(0);
 });

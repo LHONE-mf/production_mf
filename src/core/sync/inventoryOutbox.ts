@@ -56,6 +56,7 @@ export interface LocalUnboundReceipt {
   operationId:string;stockId:string;localActorId:string;recordedAt:number;
   materialCode:string;locationPath:string;manufacturerLot:string;quantity:string;unit:string;
   reason:string;receiptReference:string;supplier:string;
+  manufacturedOn?:string;expiresOn?:string;
   /** Explicit catalog-match correction: original observed labels remain unchanged. */
   matchMaterialCode?:string;matchLocationPath?:string;matchReviewedAt?:number;
   state:'pending'|'needs_review'|'queued'|'confirmed';
