@@ -24,6 +24,7 @@ import {registerInventoryMaterialSummaryRoutes} from './inventory-material-summa
 import {registerInventoryAlertPolicyRoutes} from './inventory-alert-policy-routes.js';
 import {registerInventoryReconciliationRoutes} from './inventory-reconciliation-routes.js';
 import {registerInventoryOutputRoutes} from './inventory-output-routes.js';
+import {registerSortingAssemblyCustodyRoutes} from './sorting-assembly-custody-routes.js';
 import {registerInventoryOutputDiscovery} from './inventory-output-discovery.js';
 import { registerInventoryCatalogChanges } from './inventory-catalog-changes.js';
 import { registerInventoryAdministrationRoutes } from './inventory-administration-routes.js';
@@ -124,6 +125,7 @@ export function buildApp(pool: Pool) {
   registerInventoryAlertPolicyRoutes(app, pool);
   registerInventoryReconciliationRoutes(app, pool);
   registerInventoryOutputRoutes(app, pool);
+  registerSortingAssemblyCustodyRoutes(app,pool);
   registerInventoryCellOutputRoutes(app,pool);
   registerInventoryCellOutputDiscovery(app,pool);
   registerInventoryOutputDiscovery(app, pool);
