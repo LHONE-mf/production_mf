@@ -30,6 +30,7 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
  const [loaded,setLoaded]=useState(false);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState('');
+ const [notice,setNotice]=useState('');
  const drafts=useLiveQuery(()=>assemblyDrafts(scope,'offer'),[inventoryScopeKey(scope)])??[];
  const running=useRef(false),alive=useRef(true);
  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
@@ -56,14 +57,18 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
    }
   }finally{running.current=false;if(alive.current)setBusy(false);}
  }
- async function sendGrade(item:AvailableAssemblyGrade,reason:string,evidence:string){
+ async function sendGrade(item:AvailableAssemblyGrade,reason:string,evidence:string,sendNow:boolean){
   if(running.current)return;
   running.current=true;setBusy(true);setError('');
   try{
    const frozen=await freezeAssemblyOffer(scope,epoch!,item,{
     assemblyBatchId:batch.trim(),assemblyStepNumber:Number(step),recipientId:recipient.trim(),
    },reason,evidence);
-   await sendAssemblyDraft(connection.session,scope,frozen.key);
+   if(alive.current)setNotice('Передача '+frozen.operationId+' сохранена локально; её можно вручную повторить после восстановления связи.');
+   if(sendNow){
+    await sendAssemblyDraft(connection.session,scope,frozen.key);
+    if(alive.current)setNotice('Сервер подтвердил передачу '+frozen.operationId+'. Физическая приёмка выполняется отдельно.');
+   }
    if(alive.current){setItems(current=>current.filter(r=>r.submissionId!==item.submissionId||r.grade!==item.grade));setLoaded(false);setEpoch(undefined);setAfter(null);}
   }catch(cause){if(alive.current)setError(cause instanceof Error?cause.message:String(cause));}
   finally{running.current=false;if(alive.current)setBusy(false);}
@@ -101,7 +106,7 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
    <p className="text-amber-200">Предварительная проверка: сервер перепроверит маршрут и источник при передаче.</p>
    {drafts.some(d=>{try{const r=JSON.parse(d.fields.request);return r.submissionId===item.submissionId&&r.grade===item.grade;}catch{return false;}})?
     <p>Исходная заявка этого сорта сохранена ниже; используйте только её ID.</p>:
-    <AssemblyGradeOfferForm key={item.submissionId+item.grade} disabled={busy} onSend={(reason,evidence)=>void sendGrade(item,reason,evidence)}/>}
+    <AssemblyGradeOfferForm key={item.submissionId+item.grade} disabled={busy} onSave={(reason,evidence,sendNow)=>void sendGrade(item,reason,evidence,sendNow)}/>}
   </article>)}
   {loaded&&after&&<button type="button" className={button} disabled={busy} onClick={()=>void refresh(true)}>Проверить следующие предложения</button>}
   <h5 className="font-semibold">Исходные операции передачи (сохраняются на устройстве)</h5>
@@ -110,17 +115,21 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
    {d.fields.state==='pending'&&<button className={button} disabled={busy} onClick={()=>void retryDraft(d.key)}>Повторить исходный ID</button>}
    <details><summary>Исходная заявка и подтверждение</summary><pre className="whitespace-pre-wrap break-all text-xs">{d.fields.request}{'\n'}{d.fields.acknowledgement}</pre></details>
   </article>)}
+  {notice&&<p role="status" className="text-blue-200">{notice}</p>}
   {error&&<p role="alert" className="text-red-300">{error}</p>}
  </section>;
 }
 
-function AssemblyGradeOfferForm({disabled,onSend}:{disabled:boolean;onSend:(reason:string,evidence:string)=>void}){
+function AssemblyGradeOfferForm({disabled,onSave}:{disabled:boolean;onSave:(reason:string,evidence:string,sendNow:boolean)=>void}){
  const [reason,setReason]=useState(''),[evidence,setEvidence]=useState('');
- return <form className="space-y-2" onSubmit={event=>{event.preventDefault();onSend(reason,evidence);}}>
+ return <form className="space-y-2" onSubmit={event=>{event.preventDefault();onSave(reason,evidence,true);}}>
   <label className="block">Основание передачи<input required maxLength={2000} className={input}
    value={reason} onChange={event=>setReason(event.target.value)}/></label>
   <label className="block">Физическое свидетельство передачи<input required maxLength={2000} className={input}
    value={evidence} onChange={event=>setEvidence(event.target.value)}/></label>
-  <button className={button} disabled={disabled}>Сохранить и отправить этот сорт</button>
+  <div className="flex flex-wrap gap-2">
+   <button type="button" className={button} disabled={disabled||!reason.trim()||!evidence.trim()} onClick={()=>onSave(reason,evidence,false)}>Сохранить локально (без отправки)</button>
+   <button className={button} disabled={disabled||!reason.trim()||!evidence.trim()}>Сохранить и отправить этот сорт</button>
+  </div>
  </form>;
 }
