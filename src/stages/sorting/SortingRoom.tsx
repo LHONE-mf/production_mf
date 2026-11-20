@@ -310,8 +310,8 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
 
   const blank = (): SortSpec => ({
     id: uuidv4(),
-    batchName: batches[0]?.incomingId ?? '',
-    cutRunId: batches[0]?.id,
+    batchName: '',
+    cutRunId: undefined,
     electrodeType: batches[0]?.electrodeType ?? 'strip',
     coatingType: batches[0]?.coatingType,
     parameterName: 'Толщина электрода',
@@ -411,7 +411,7 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Партия (название пришло с нарезки)</label>
+          <label className={labelCls}>Связанная партия нарезки (необязательно)</label>
           <select
             className={inputCls} value={spec.cutRunId ?? ''}
             disabled={!canEdit}
@@ -424,6 +424,14 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
             <option value="">— выберите партию —</option>
             {batches.map((b) => <option key={b.id} value={b.id}>{b.incomingId} (годных {b.goodCount})</option>)}
           </select>
+        </div>
+        <div>
+          <label className={labelCls}>Название КД / код изделия / партии</label>
+          <input aria-label="Название КД / код изделия / партии" className={inputCls}
+            value={spec.batchName} disabled={!canEdit} maxLength={200}
+            onChange={e=>set({batchName:e.target.value,cutRunId:undefined})}
+            placeholder="Например, LFP-18650-КД-01"/>
+          <p className="mt-1 text-xs text-slate-400">КД можно создать заранее без нарезки. Для конкретной партии выберите её в поле связи.</p>
         </div>
         <div>
           <label className={labelCls}>Тип электрода</label>
