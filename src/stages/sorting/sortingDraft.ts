@@ -6,6 +6,8 @@ export interface SortingStationDraft {
   reasonCounts:Record<string,string>;
   massReadings?:string; // optional for drafts created before this change
   thicknessReadings?:string; // optional for older drafts
+  massBelow?:string; // optional under-bound rejects
+  massAbove?:string; // optional over-bound rejects
   notes:string;
 }
 export interface SortingFormDraft {
@@ -13,7 +15,7 @@ export interface SortingFormDraft {
   entries:Record<string,SortingStationDraft>;
 }
 export const emptyStationDraft=():SortingStationDraft=>({
-  passed:'',rejected:'',grades:{},reasonCounts:{},massReadings:'',thicknessReadings:'',notes:'',
+  passed:'',rejected:'',grades:{},reasonCounts:{},massReadings:'',thicknessReadings:'',massBelow:'',massAbove:'',notes:'',
 });
 export const emptySortingDraft=():SortingFormDraft=>({version:1,entries:{}});
 export const sortingDraftKey=(workflowId:string,stageIndex:number)=>
@@ -33,7 +35,9 @@ export function parseSortingDraft(value:unknown):SortingFormDraft{
       typeof entry.rejected!=='string' || typeof entry.notes!=='string' ||
       !stringMap(entry.grades) || !stringMap(entry.reasonCounts) ||
       (entry.massReadings!==undefined && typeof entry.massReadings!=='string') ||
-      (entry.thicknessReadings!==undefined && typeof entry.thicknessReadings!=='string'))
+      (entry.thicknessReadings!==undefined && typeof entry.thicknessReadings!=='string') ||
+      (entry.massBelow!==undefined && typeof entry.massBelow!=='string') ||
+      (entry.massAbove!==undefined && typeof entry.massAbove!=='string'))
       throw new Error('Черновик сортировки содержит неверные поля');
   }
   return row as SortingFormDraft;
