@@ -209,3 +209,22 @@ it('keeps measured masses on the frozen Mass station and rejects mismatched grad
   expect(result.sortingWorkflow?.stages[2].massReadingsG).toEqual(masses);
   expect(result.buckets).toEqual([{categoryName:'A',count:62},{categoryName:'B',count:30}]);
 });
+
+
+it('freezes measured thickness only when the readings agree with station conservation',async()=>{
+  const withThickness:SortSpec={...spec,categories:spec.categories.map(c=>({...c,minUm:70,maxUm:80}))};
+  await db.sortSpecs.put(withThickness);
+  const workflow=await startSortingWorkflow(cut,withThickness,'grading','planner');
+  await recordSortingStation(workflow.id,visual);
+  const readings=[...Array(95).fill(74),90,92];
+  await expect(recordSortingStation(workflow.id,{
+    ...thickness,thicknessReadingsUm:readings,passedCount:96,rejectedCount:1,
+  })).rejects.toThrow(/толщины/);
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(1);
+  const saved=await recordSortingStation(workflow.id,{...thickness,thicknessReadingsUm:readings});
+  expect(saved.stages[1].thicknessReadingsUm).toEqual(readings);
+  await recordSortingStation(workflow.id,gradedMass);
+  const output=await completeSortingWorkflow(workflow.id,'measured-thickness-final');
+  expect(output.sortingWorkflow?.stages[1].thicknessReadingsUm).toEqual(readings);
+  expect(output.rejected).toBe(8);
+});
