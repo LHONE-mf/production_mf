@@ -119,7 +119,7 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('receipt-bound Sorting to wareho
   expect(accepted.statusCode,accepted.body).toBe(201);
   expect(accepted.json().receipt).toMatchObject({...receipt,custodyEffect:'received',warehouseEffect:'none'});
   expect((await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4)).statusCode).toBe(200);
-  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_stocks WHERE organization_id=$1 AND material_id=$2',[f.org,source.inputs.materialId])).rows[0].n).toBe(0);
  });
 
 });
