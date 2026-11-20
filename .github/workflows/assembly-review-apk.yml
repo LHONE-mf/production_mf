@@ -1,0 +1,110 @@
+name: Review-only Production MF Assembly APK
+
+# One-off candidate for unmerged B2.3–B2.6 changes.
+# This file lives ONLY in a stacked review PR, not on main.
+# Artifact upload is not a release, distribution or production deployment.
+on:
+  pull_request:
+    branches: [test/assembly-integrated-b26-20261120]
+    paths: ['.github/workflows/assembly-review-apk.yml']
+permissions:
+  contents: read
+jobs:
+  review-apk:
+    if: ${{ github.head_ref == 'ci/assembly-review-apk-20261120' }}
+    name: Build, sign and verify isolated APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Verify TypeScript, tests and Android web build
+        run: |
+          npm run typecheck
+          npm test -- --run
+          npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Sync actual Capacitor Android project
+        run: npx cap sync android
+      - name: Use explicit public DEVELOPMENT keystore only
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d scripts/dev-signing/keystore.b64 > "$RUNNER_TEMP/assembly-review.keystore"
+          {
+            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/assembly-review.keystore"
+            echo "RELEASE_STORE_PASSWORD=productionmfdev"
+            echo "RELEASE_KEY_ALIAS=production-mf-dev"
+            echo "RELEASE_KEY_PASSWORD=productionmfdev"
+          } >> android/gradle.properties
+          (cd android && python3 ../scripts/configure_signing.py)
+      - name: Cache Android Gradle wrapper
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/wrapper/dists
+          key: gradle-wrapper-linux-8.11.1-bin-v1
+      - name: Generate production UI icons
+        run: |
+          python3 -m pip install --quiet cairosvg Pillow
+          python3 scripts/generate_android_icons.py
+      - name: Build signed development-certificate release-mode APK
+        shell: bash
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          for attempt in 1 2 3; do
+            if ./gradlew assembleRelease --no-daemon --max-workers=2; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::Android APK candidate build failed"
+              exit 1
+            fi
+            sleep 15
+          done
+      - name: Verify APK certificate and record exact APK/PR provenance
+        shell: bash
+        env:
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          apk="android/app/build/outputs/apk/release/app-release.apk"
+          report="android/app/build/outputs/apk/release/assembly-review-provenance.txt"
+          test -s "$apk"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          signer="$(find "$sdk_root/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -n 1)"
+          test -x "$signer"
+          {
+            echo 'Production MF B2.3–B2.6 UNMERGED review candidate'
+            echo 'NOT a production release. Signed with PUBLIC development certificate.'
+            echo "requested_pr_head=$PR_HEAD"
+            echo "requested_pr_base=$PR_BASE"
+            echo "checked_out_commit=$(git rev-parse HEAD)"
+            echo "github_run_id=$GITHUB_RUN_ID"
+            echo "android_package=ru.liion.production"
+            echo "source_version_code=2"
+            echo "signing_mode=public-development"
+            echo 'Only install in-place if installed APK certificate matches. Never uninstall or clear data to force installation.'
+            sha256sum "$apk"
+            echo '--- APK signature and signer certificate ---'
+            "$signer" verify --verbose --print-certs "$apk"
+          } | tee "$report"
+      - name: Retain APK and certificate evidence as GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-mf-b26-unmerged-review-apk
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/apk/release/assembly-review-provenance.txt
