@@ -414,6 +414,12 @@ it('counts Thickness via large tap targets and Mass by grade plus below/above bu
  });
  expect(wf?.stages[1].thicknessReadingsUm).toBeUndefined();
  expect(wf?.stages[2].massReadingsG).toBeUndefined();
+ await clickRoomButton('Завершить сортировку');
+ await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
+ await clickRoomButton('Партии с нарезки');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Сортировка завершена'));
+ await clickRoomButton('Смотреть журнал');
+ expect(page.textContent).toContain('ниже допуска 1 шт · выше допуска 1 шт');
 });
 
 it('replacing the mass reject total clears draft under/over counts instead of persisting a false breakdown',async()=>{
