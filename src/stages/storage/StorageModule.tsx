@@ -7,7 +7,7 @@ import { StageId } from '../../core/types';
 type WarehouseTab='receiving'|'issues'|'inventory';
 const sections:{id:WarehouseTab;label:string}[]=[
  {id:'receiving',label:'📥 Поступление'},
- {id:'issues',label:'📤 Расход'},
+ {id:'issues',label:'📤 Выдача / расход'},
  {id:'inventory',label:'📋 Инвентарь'},
 ];
 export function StorageModule(){
@@ -22,7 +22,7 @@ export function StorageModule(){
          onClick={()=>setTab(section.id)}>{section.label}</button>)}
      </nav>
      {tab==='receiving'&&<ConfirmedStorage mode="receiving"/>}
-     {tab==='issues'&&<InventoryIssues/>}
+     {tab==='issues'&&<><p className="rounded border border-amber-700 p-3 text-sm text-amber-200">Выдача со склада и фактический расход в замесе — разные операции. Здесь оформляется передача материала в конкретную производственную партию; фактический расход фиксируется в замесе. Не списывайте одно и то же дважды.</p><InventoryIssues/></>}
      {tab==='inventory'&&<ConfirmedStorage mode="inventory"/>}
    </div>} preserveToolDraft/>;
 }
