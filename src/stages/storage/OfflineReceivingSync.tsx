@@ -8,7 +8,7 @@ import {autoSyncLocalReceipts,localReceiptsForUser,saveUnboundReceipt,correctUnb
 
 const empty=():LocalReceiptFields=>({
  materialCode:'',locationPath:'',manufacturerLot:'',quantity:'',unit:'kg',
- reason:'',receiptReference:'',supplier:'',
+ reason:'',receiptReference:'',supplier:'',manufacturedOn:'',expiresOn:'',
 });
 const inputClass='min-h-11 w-full min-w-0 rounded border border-slate-600 bg-slate-900 p-2 text-sm text-white';
 
@@ -57,7 +57,7 @@ export function OfflineReceivingSync(){
  }
  function field(key:keyof LocalReceiptFields,title:string,placeholder?:string){
   return <label className="block space-y-1 text-sm text-slate-200">{title}
-   <input className={inputClass} aria-label={title} value={fields[key]} maxLength={key==='reason'?2000:key==='locationPath'?300:200}
+   <input className={inputClass} type={key==='manufacturedOn'||key==='expiresOn'?'date':'text'} aria-label={title} value={fields[key]??''} maxLength={key==='reason'?2000:key==='locationPath'?300:200}
     placeholder={placeholder} onChange={e=>edit(key,e.target.value)}/>
   </label>;
  }
@@ -77,6 +77,10 @@ export function OfflineReceivingSync(){
      </select>
     </label>
    </div>
+   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    {field('manufacturedOn','Дата изготовления (необязательно)')}
+    {field('expiresOn','Годен до (необязательно)')}
+   </div>
    {field('supplier','Поставщик (необязательно)')}
    {field('receiptReference','Документ поступления')}
    {field('reason','Основание фактической приёмки')}
@@ -88,6 +92,7 @@ export function OfflineReceivingSync(){
   <h5 className="font-semibold text-white">Локальная очередь ({records.filter(r=>r.state!=='confirmed').length})</h5>
   {records.map(row=><article key={row.operationId} className="space-y-1 rounded border border-slate-600 p-2 text-sm">
    <p className="font-semibold">{row.materialCode} · {row.manufacturerLot} · {row.quantity} {row.unit}</p>
+   {(row.manufacturedOn||row.expiresOn)&&<p className="text-xs text-slate-300">{row.manufacturedOn?'Изготовлено: '+row.manufacturedOn+' · ':''}{row.expiresOn?'Годен до: '+row.expiresOn:''}</p>}
    <p className="break-all text-xs text-slate-400">Операция: {row.operationId}</p>
    <p>{row.state==='confirmed'?'Подтверждено сервером (карантин)':row.state==='needs_review'?'Требуется сверка':
     row.queueState==='conflict'?'Конфликт сервера — не отправлять повторно':
