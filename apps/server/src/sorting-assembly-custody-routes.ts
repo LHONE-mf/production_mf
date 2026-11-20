@@ -2,6 +2,7 @@ import type {FastifyInstance} from 'fastify';
 import type {Pool} from 'pg';
 import {z} from 'zod';
 import {issueBatchStep,issueFail,issueHttpError,issueMembership,issueTransaction} from './inventory-issue-scope.js';
+import {checkSortingAssemblySource} from './sorting-assembly-source-check.js';
 
 const id=z.guid();
 const description=z.string().trim().min(1).max(2000);
@@ -130,6 +131,24 @@ export function registerSortingAssemblyCustodyRoutes(app:FastifyInstance,pool:Po
     return{status:'confirmed',operationId:data.operationId,receipt:accepted};
    });
    return reply.code(result.status==='duplicate'?200:201).send(result);
+  }catch(error){const e=failure(error);return reply.code(e.status).send(e.body);}
+ });
+
+ // Read-only B2.1 preflight. Neither an offer nor a reservation.
+ app.get('/inventory/assembly-electrodes/eligibility',async(request,reply)=>{
+  const parsed=z.object({
+   deviceId:id,submissionId:id,grade,assemblyBatchId:id,
+   assemblyStepNumber:z.coerce.number().int().min(1).max(2147483647),
+   recipientId:id,
+  }).strict().safeParse(request.query);
+  if(!parsed.success)return reply.code(400).send({error:'invalid_assembly_source_check'});
+  const {deviceId,...query}=parsed.data;
+  try{
+   return await issueTransaction(pool,request.headers.authorization,request.headers['x-device-proof'],
+    deviceId,false,undefined,async(client,actor,_level,epoch)=>({
+     ...await checkSortingAssemblySource(client,actor,query),
+     organizationId:actor.organization_id,actorId:actor.id,deviceId,epoch,
+    }));
   }catch(error){const e=failure(error);return reply.code(e.status).send(e.body);}
  });
 
