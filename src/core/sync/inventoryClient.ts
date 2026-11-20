@@ -70,14 +70,15 @@ async function acknowledgeReceipt(
 
 /** Submit frozen provisional receipts one by one. Unknown network status is retryable. */
 async function pushInventoryReceiptsUnlocked(
-  session:HybridSession,scope:InventoryScope,limit=20,
+  session:HybridSession,scope:InventoryScope,limit=20,onlyOperationIds?:ReadonlySet<string>,
 ):Promise<{accepted:number;conflicts:number;rejected:number}>{
   if(!Number.isSafeInteger(limit)||limit<1||limit>50)
     throw new Error('Invalid inventory push limit');
-  const proposals=(await inventoryQueueForScope(scope)).filter(row=>row.state==='pending');
+  const allPending=(await inventoryQueueForScope(scope)).filter(row=>row.state==='pending');
+  const proposals=onlyOperationIds?allPending.filter(row=>onlyOperationIds.has(row.operationId)):allPending;
   const pending=proposals.slice(0,limit);
   const epoch=await preflightInventoryStream(session,scope);
-  if(proposals.some(row=>row.requiresStreamReview))throw Error('В очереди есть намерение старой версии с неизвестным ответом. Требуется сверка администратора; исходные ID и данные сохранены.');
+  if(allPending.some(row=>row.requiresStreamReview))throw Error('В очереди есть намерение старой версии с неизвестным ответом. Требуется сверка администратора; исходные ID и данные сохранены.');
   let accepted=0,conflicts=0,rejected=0;
   for(const queued of pending){
     const response=await inventoryRequest(session,scope,'/inventory/receipts',{
@@ -179,8 +180,15 @@ async function pullInventoryChangesUnlocked(
   return {received:changes.length,hasMore:payload.hasMore as boolean,cursor:payload.nextCursor as number};
 }
 
-export function pushInventoryReceipts(session:HybridSession,scope:InventoryScope,limit=20){
- return withInventorySync(scope,()=>pushInventoryReceiptsUnlocked(session,scope,limit));
+export function pushInventoryReceipts(
+ session:HybridSession,scope:InventoryScope,limit=20,onlyOperationIds?:readonly string[],
+){
+ if(onlyOperationIds&&(onlyOperationIds.length<1||onlyOperationIds.length>500||
+   new Set(onlyOperationIds).size!==onlyOperationIds.length||
+   onlyOperationIds.some(id=>!validId.test(id))))throw Error('Invalid targeted receipt IDs');
+ return withInventorySync(scope,()=>pushInventoryReceiptsUnlocked(
+  session,scope,limit,onlyOperationIds?new Set(onlyOperationIds):undefined,
+ ));
 }
 export function pullInventoryChanges(session:HybridSession,scope:InventoryScope,limit=50){
  return withInventorySync(scope,()=>pullInventoryChangesUnlocked(session,scope,limit));
