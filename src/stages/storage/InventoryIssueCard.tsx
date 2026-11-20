@@ -9,6 +9,7 @@ export function InventoryIssueCard({ session, scope, context, localActorId, issu
   const [sources, setSources] = useState<(InventoryStockSnapshot & {eligible?:boolean})[]>([]), [after, setAfter] = useState<string | null>(null), [stockId, setStockId] = useState('');
   const [kind, setKind] = useState<Exclude<InventoryIssueKind, 'request'>>('reserve'), [reason, setReason] = useState(''), [evidence, setEvidence] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [history, setHistory] = useState<IssueHistory[]>([]), [historyAfter, setHistoryAfter] = useState<number | null>(null);
+  const [incomingControlNumber,setIncomingControlNumber]=useState(''),[incomingControlDate,setIncomingControlDate]=useState('');
   const manager = issueManager(context), stock = sources.find(s => s.stockId === (issue.stockId ?? stockId));
   const allowed: Exclude<InventoryIssueKind, 'request'>[] = [];
   if (manager) { if (issue.state === 'requested') allowed.push('reserve'); if (issue.state === 'reserved' || issue.state === 'approved') allowed.push('approve'); if (issue.state === 'approved') allowed.push('dispatch'); }
@@ -22,7 +23,8 @@ export function InventoryIssueCard({ session, scope, context, localActorId, issu
     {issue.tapeSpecification && <p>{tapeDescription(issue.tapeSpecification)} · Операция: {issue.operationReference}</p>}
     <p>Запрос: {issue.id} · Версия {issue.revision}</p><p>Материал: {labels ? `${labels.materialName} (${labels.materialCode})` : issue.materialId} · Производственная партия: {labels?.batchCode ?? issue.productionBatchId} · Шаг {issue.stepNumber} · Цех: {issue.workshopId}</p>
     <p>Заявитель: {issue.requestedBy} · Назначенный получатель: {labels?.recipientName ?? issue.recipientId} ({issue.recipientId})</p>
-    {issue.source && <p>Контейнер: {issue.source.stockId} · Партия производителя: {issue.source.manufacturerLot} · Место: {issue.source.locationId} {issue.source.expiresAt && <>· Годность до (UTC): {issue.source.expiresAt}</>}</p>}
+    {issue.source && <p>Контейнер: {issue.source.stockId} · Партия производителя: {issue.source.manufacturerLot} · Место: {issue.source.locationId} · Изготовлено: {issue.source.manufacturedOn??'не указано'} · Срок годности: {issue.source.expiresAt??'не указан'} </p>}
+    {issue.source&&<p className="text-xs text-slate-400">Исходный лот связан с выдачей, производственной партией и шагом. Номер и дата входного контроля в текущем серверном снимке лота не передаются; при физической выдаче укажите их по первичному документу.</p>}
     {issue.approvalOperationId && <p>Одобрение: {issue.approvalOperationId} · Chief / Manager: {issue.approvedBy} · Версия контейнера {issue.approvedStockRevision}. Изменение контейнера требует повторного одобрения.</p>}
     {manager && !['dispatched', 'received', 'cancelled'].includes(issue.state) && <><button type="button" className={issueButton} disabled={busy} onClick={() => void work(() => loadSources())}>Загрузить контейнеры материала</button>{after && <button type="button" className={issueButton} disabled={busy} onClick={() => void work(() => loadSources(after))}>Следующие контейнеры</button>}
       {issue.state === 'requested' && <label>Исходный контейнер<select aria-label="Исходный контейнер" className={issueControl} value={stockId} onChange={e => setStockId(e.target.value)}><option value="">Выберите отдельный контейнер</option>{sources.map(s => <option key={s.stockId} value={s.stockId} disabled={s.eligible===false || s.quality !== 'released' || s.available < issue.quantity || !!s.expiresAt && Date.parse(s.expiresAt) <= Date.now()}>{s.stockId} · {s.manufacturerLot} · {s.locationId} · {s.quality} · свободно {s.available} {s.unit}</option>)}</select></label>}
@@ -30,7 +32,13 @@ export function InventoryIssueCard({ session, scope, context, localActorId, issu
     </>}
     {!!allowed.length && <form aria-label={'Действие выдачи ' + issue.id} className="space-y-2" onSubmit={e => { e.preventDefault(); void work(async () => {
       if (!selected) return;
-      const common = { operationId: crypto.randomUUID(), deviceId: scope.deviceId, issueId: issue.id, expectedIssueRevision: issue.revision, reason: reason.trim(), evidence: evidence.trim() };
+      if(selected==='dispatch'&&(!incomingControlNumber.trim()||!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(incomingControlDate)||
+        !Number.isFinite(Date.parse(incomingControlDate+'T00:00:00Z'))))throw Error('Укажите номер и дату входного контроля для физической выдачи');
+      const evidenceText=selected==='dispatch'
+        ?'Номер входного контроля: '+incomingControlNumber.trim()+'; дата: '+incomingControlDate+'; документ выдачи: '+evidence.trim()
+        :evidence.trim();
+      if(evidenceText.length>2000)throw Error('Свидетельство выдачи слишком длинное');
+      const common = { operationId: crypto.randomUUID(), deviceId: scope.deviceId, issueId: issue.id, expectedIssueRevision: issue.revision, reason: reason.trim(), evidence:evidenceText };
       let intent: InventoryIssueIntent;
       if (selected === 'reserve') { if (!stock) throw Error('Загрузите и выберите разрешённый контейнер'); intent = { ...common, kind: 'reserve', stockId: stock.stockId, expectedStockRevision: stock.revision }; }
       else if (selected === 'approve' || selected === 'dispatch') { if (!stock) throw Error('Загрузите актуальный контейнер перед одобрением / выдачей'); intent = { ...common, kind: selected, expectedStockRevision: stock.revision }; }
@@ -43,6 +51,11 @@ export function InventoryIssueCard({ session, scope, context, localActorId, issu
     }); }}>
       <fieldset disabled={busy} className="space-y-2"><label>Действие выдачи<select aria-label="Действие выдачи" className={issueControl} value={selected} onChange={e => setKind(e.target.value as typeof kind)}>{allowed.map(k => <option key={k} value={k}>{issueActions[k]}</option>)}</select></label>
         <p>Резервирование и одобрение не выдают материал. Физическую передачу подтверждает Chief / Manager. Получение подтверждает назначенный сотрудник. Ни один шаг не записывает расход.</p>
+        {selected==='dispatch'&&<div className="space-y-2 rounded border border-amber-700 p-2">
+          <p className="text-xs text-amber-200">Сверьте эти поля с документом входного контроля исходного лота перед физической выдачей. Введённые данные сохраняются как свидетельство операции, не как подтверждённое сервером измерение.</p>
+          <label>Номер входного контроля<input aria-label="Номер входного контроля" required maxLength={100} className={issueControl} value={incomingControlNumber} onChange={e=>setIncomingControlNumber(e.target.value)}/></label>
+          <label>Дата входного контроля<input aria-label="Дата входного контроля" required type="date" className={issueControl} value={incomingControlDate} onChange={e=>setIncomingControlDate(e.target.value)}/></label>
+        </div>}
         <label>Основание выдачи<input aria-label="Основание выдачи" required maxLength={2000} className={issueControl} value={reason} onChange={e => setReason(e.target.value)} /></label>
         <label>Свидетельство передачи / одобрения<input aria-label="Свидетельство передачи / одобрения" required maxLength={2000} className={issueControl} value={evidence} onChange={e => setEvidence(e.target.value)} /></label>
         <button className={issueButton}>Сохранить действие для отдельного подтверждения</button>
