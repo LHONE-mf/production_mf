@@ -1,5 +1,6 @@
 import type {SortRun, SortingWorkflow} from '../types';
 import {validateReceivedCuttingSource} from './sortingCustody';
+import {summarizeMassReadings} from './sortingMeasurement';
 
 const whole = (value:unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
@@ -80,6 +81,16 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
         throw new Error('Количество по сортам не совпадает с годными после взвешивания');
     } else if (stage.grades !== undefined) {
       throw new Error('Сорта назначаются только на массовой станции в режиме градации');
+    }
+    if(stage.massReadingsG!==undefined){
+      if(stage.station!=='mass' || !Array.isArray(stage.massReadingsG) ||
+         stage.massReadingsG.length!==stage.inputCount)
+        throw new Error('Измеренные массы должны соответствовать входу станции Mass');
+      const calculated=summarizeMassReadings(stage.massReadingsG,spec.categories,w.mode);
+      if(calculated.passedCount!==stage.passedCount || calculated.rejectedCount!==stage.rejectedCount ||
+         (w.mode==='grading' && (stage.grades?.length!==calculated.grades.length ||
+           calculated.grades.some(g=>stage.grades?.find(saved=>saved.categoryName===g.categoryName)?.count!==g.count))))
+        throw new Error('Суммарное распределение не соответствует индивидуальным измерениям массы');
     }
     input=stage.passedCount; // Failed electrodes never move to the next station.
   }
