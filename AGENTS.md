@@ -32,7 +32,15 @@ Read the applicable `SKILL.md` before making significant changes. Some upstream 
 Frontend: `npm ci && npm run typecheck && npm test -- --reporter=default && npm run build`.
 Server: from `apps/server`, `npm install && npm run typecheck && npm test -- --reporter=default && npm run build`.
 
-Prefer small, reviewable commits on `feat/hybrid-server-foundation`; do not merge to `main` without explicit approval.
+## Branch, review and evidence policy
+
+`main` is the source integration baseline. The historical `feat/hybrid-server-foundation` branch is NOT a development base. Start each change from the verified latest `main` SHA on a fresh branch. Check existing PRs and the current code before reimplementing a feature; never remerge old stacked PRs or replay their database migrations. Reuse the authoritative `inventory_*` records, not a second warehouse ledger.
+
+For each change, identify the behavior and affected files, record the exact commit and PR, and distinguish passing, failed, running and unperformed checks on that exact commit. Keep failures as merge blockers. Use unit, integration, disposable PostgreSQL, browser and Android installed-upgrade checks as relevant; browser CI is not equivalent to physical multi-device acceptance.
+
+Only merge after explicit user approval and successful required CI. Merging source into `main` is NOT permission to release: `.github/workflows/deploy-web.yml` publishes PWA by manual `workflow_dispatch` only. Never deploy the production server, migrate the factory database, install APKs, or change release-signing identity without separate authorization and verification.
+
+Protect existing offline journals, drafts, pending outboxes, attachments, local users and confirmed manufacturing history. Never uninstall or clear an Android app containing user data for testing. Use a disposable test database and emulator; require backup/restore and signature-compatible installed-upgrade evidence before replacing a data-bearing APK.
 
 ## Attribution
 
