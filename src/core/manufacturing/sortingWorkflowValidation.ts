@@ -82,6 +82,13 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
     } else if (stage.grades !== undefined) {
       throw new Error('Сорта назначаются только на массовой станции в режиме градации');
     }
+    if(stage.massOutOfRange!==undefined){
+      const split=stage.massOutOfRange;
+      if(stage.station!=='mass'||!split||typeof split!=='object'||Array.isArray(split)||
+         !whole(split.belowMin)||!whole(split.aboveMax)||
+         !whole(split.belowMin+split.aboveMax)||split.belowMin+split.aboveMax!==stage.rejectedCount)
+        throw new Error('Брак по массе ниже/выше допуска должен совпадать с общим браком Mass');
+    }
     if(stage.thicknessReadingsUm!==undefined){
       if(stage.station!=='thickness'||!Array.isArray(stage.thicknessReadingsUm)||
          stage.thicknessReadingsUm.length!==stage.inputCount)
