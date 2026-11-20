@@ -302,3 +302,32 @@ it('refuses stale local specification edits without replacing the newer record',
  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toMatch(/изменен|изменена|обновлен|обновлена/i));
  expect((await db.sortSpecs.get('TEST-spec'))?.parameterName).toBe('Newer spec');
 });
+
+
+it('calculates and freezes individual Mass readings without overwriting the prior station history',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 2.');
+ const input=()=>page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные массы электродов"]');
+ await vi.waitFor(()=>expect(input()).toBeTruthy());
+ const values=['1,2','1,3','1,4','1,7','1,8','1,9','1,6','2,3'];
+ await act(async()=>{
+   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input(),values.join('\n'));
+   input()!.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+ await clickRoomButton('Рассчитать количество и сорта по массам');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('3');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]')?.value).toBe('4');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(2);
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ expect((await db.sortingWorkflows.get('cut'))?.stages[2].massReadingsG).toEqual([1.2,1.3,1.4,1.7,1.8,1.9,1.6,2.3]);
+});
