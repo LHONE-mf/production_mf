@@ -78,6 +78,6 @@ it('keeps continuation and server history scoped across pages',async()=>{
  vi.stubGlobal('fetch',vi.fn(async(url:URL)=>reply(ok(new URL(url).searchParams.get('grade')!))));
  const first=await loadAvailableAssemblyGrades(session,scope,target);
  expect(first.nextAfter).toBe(source.operationId);
- await loadAvailableAssemblyGrades(session,scope,target,first.epoch,first.nextAfter);
+ await loadAvailableAssemblyGrades(session,scope,target,first.epoch,first.nextAfter??undefined);
  expect(loadInventoryOutputs).toHaveBeenLastCalledWith(session,scope,epoch,source.operationId,20);
 });
