@@ -108,3 +108,27 @@ it('protects unfinished location fields on Back and Refresh without editing save
  expect(page.textContent).toContain('Последнее место: A-01');
  expect(await db.journal.count()).toBe(1);
 });
+
+
+it('shows exactly three warehouse workstreams and keeps an unfinished receipt across tab switches',async()=>{
+ const page=await mount();
+ const nav=page.querySelector<HTMLSelectElement>('select[aria-label="Разделы склада"]')!;
+ expect(nav).toBeTruthy();
+ expect([...nav.options].map(o=>o.textContent)).toEqual(['📥 Поступление','📤 Расход','📦 Остатки']);
+ await fill('Материал','PVDF');
+ await fill('Код партии материала','LOT-UNSAVED');
+ async function move(tab:string){
+  await act(async()=>{
+   Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value')!.set!.call(nav,tab);
+   nav.dispatchEvent(new Event('change',{bubbles:true}));
+  });
+ }
+ await move('issues');
+ expect(page.textContent).toContain('Запросы и выдача');
+ await move('inventory');
+ expect(page.textContent).toContain('Текущие остатки склада');
+ await move('receipts');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Материал"]')?.value).toBe('PVDF');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Код партии материала"]')?.value).toBe('LOT-UNSAVED');
+ expect(await db.journal.count()).toBe(0);
+});
