@@ -436,3 +436,20 @@ it('replacing the mass reject total clears draft under/over counts instead of pe
  await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
  expect((await db.sortingWorkflows.get('cut'))?.stages[2].massOutOfRange).toBeUndefined();
 });
+
+
+it('does not lose rapid taps before React re-renders the displayed counter',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')).toBeTruthy());
+ const plus=page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!;
+ await act(async()=>{for(let i=0;i<7;i++)plus.click();});
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('7'));
+ const after=page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!;
+ await act(async()=>{for(let i=0;i<10;i++)after.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('10');
+ expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')?.disabled).toBe(true);
+ await typeCount('Отбраковано на станции','0');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages[0].passedCount).toBe(10));
+});
