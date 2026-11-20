@@ -8,7 +8,7 @@ import {StageId} from '../../core/types';
 
 type WarehouseTab='receipts'|'issues'|'inventory';
 
-/** Three operator-facing workstreams; all historical data and advanced controls survive. */
+/** Keep operator forms mounted when tabs change: unfinished drafts must survive. */
 export function StorageModule(){
  const [tab,setTab]=useState<WarehouseTab>('receipts');
  return <StageRoom stage={StageId.STORAGE} title="Склад" icon="📦"
@@ -19,18 +19,15 @@ export function StorageModule(){
        {id:'issues',label:'📤 Расход'},
        {id:'inventory',label:'📦 Остатки'},
      ]}/>
-     {tab==='receipts'&&<>
-       <p className="text-sm text-slate-300">Сырьё и компоненты поступают на склад с партией изготовителя, документами и сроком годности. Готовой продукцией считаются только аккумуляторы и батарейки. Электроды переходят непосредственно на следующий производственный этап.</p>
-       <ConfirmedStorage mode="receipts"/>
+     {tab==='receipts'&&<p className="text-sm text-slate-300">Сырьё и компоненты поступают на склад с партией изготовителя, документами и сроком годности. Готовой продукцией считаются только аккумуляторы и батарейки. Электроды переходят непосредственно на следующий производственный этап.</p>}
+     {tab==='issues'&&<p className="text-sm text-slate-300">Выдавайте материалы конкретной производственной партии. Это не окончательный расход: фактический расход фиксируется в «Замесы → Остатки и расход» по сохранённым навескам и полученным лотам.</p>}
+     <div hidden={tab==='issues'}><ConfirmedStorage mode={tab==='inventory'?'inventory':'receipts'}/></div>
+     <div hidden={tab!=='issues'}><InventoryIssues/></div>
+     <div hidden={tab!=='receipts'}>
        <details className="rounded-lg border border-slate-700 p-3">
          <summary className="min-h-11 cursor-pointer py-2 text-sm">Исторический локальный журнал поступлений (без подтверждения остатка)</summary>
          <StorageRegister/>
        </details>
-     </>}
-     {tab==='issues'&&<>
-       <p className="text-sm text-slate-300">Выдавайте материалы конкретной производственной партии. Это не окончательный расход: фактический расход фиксируется в «Замесы → Остатки и расход» по сохранённым навескам и полученным лотам.</p>
-       <InventoryIssues/>
-     </>}
-     {tab==='inventory'&&<ConfirmedStorage mode="inventory"/>}
+     </div>
    </div>} preserveToolDraft/>;
 }
