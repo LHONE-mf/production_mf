@@ -13,3 +13,10 @@ When individual readings are present, the immutable Mass station decision must c
 ## Scope and release gates
 
 This is **not** an individual three-station QA release: Visual defects and Thickness measurements are still aggregate, the station-position index does not establish a durable electrode ID, and server finished-electrode proposals currently carry **aggregate** source counts only. Individual mass readings stay in the locally frozen Sorting run and optional local packet, and are **not** silently presented as independently server-verified measurements. Large reading arrays may exceed the QR payload capacity. Source receipt, stock/QA acceptance and release remain separate operations. Do not interpret this feature as permission to merge, install over existing production data, or deploy.
+
+
+## Follow-on increment — individual Thickness readings (2026-11-20)
+
+The **Thickness** station now has a separate optional, draft-preserved list of physical electrode thickness values in **µm** (dot/comma decimal, one per incoming piece). An explicit operator action derives only pass/reject counts using the union of allowed thickness ranges across frozen KD categories; it never assigns mass grades and does not assume a missing bound is an observed measurement. If the specification has no thickness tolerances, classification refuses to guess. The canonical station validator checks every measured value against the saved pass/reject counts in the same transaction, and displays saved readings in the collapsed historical station record.
+
+This incremental feature still does **not** establish permanent electrode IDs, serial linkage across stations, independently recorded Visual decisions for each item, measured-vs-calibration instrument proof, or server-certified QA. Legacy records and operators' summary-count workflow remain supported; no server migrations, automatic QA release, reset, stock write, merge or deployment are part of it.
