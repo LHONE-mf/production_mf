@@ -16,6 +16,7 @@ import { PlanningModule } from './modules/planning/PlanningModule';
 import { ReportsModule } from './modules/reports/ReportsModule';
 import { renderStageIfActive } from './stages/StageRouter';
 import { ErrorBoundary } from './shared/ErrorBoundary';
+import { InventoryReceiptReconnect } from './core/sync/InventoryReceiptReconnect';
 
 function App() {
   const {isAuthenticated,session,sessionChecked,sessionError,verifyLocalSession}=useAuthStore();
@@ -115,6 +116,7 @@ function App() {
 
   return (
     <AppLayout activeTab={activeTab} onTabChange={setActiveTab}>
+      <InventoryReceiptReconnect/>
       <ErrorBoundary key={activeTab} onReset={() => setActiveTab('dashboard')}>
         {renderContent()}
       </ErrorBoundary>

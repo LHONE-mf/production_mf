@@ -154,7 +154,13 @@ function CalculatorContent({presetRecipe,onPresetConsumed}:Props){
     </div>
   </section>}
   {attempt&&!saved&&!recovery.saving&&!recovery.error&&<p className="text-sm text-amber-200">Попытка записи закреплена на устройстве. Повтор проверит тот же ID; новая запись без вашего действия не создаётся.</p>}
-  {saved&&<p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>}
+  {saved&&<section aria-label="Завершённый замес" className="space-y-2 rounded-lg border border-emerald-700 bg-slate-800 p-3">
+   <p role="status" className="text-emerald-300 text-sm">Сохранён измеренный замес {saved.batchCode}. Исходные версии и навески закреплены; передача на намазку доступна в журнале.</p>
+   <p className="text-sm text-slate-200">Это уже записанный результат: его нельзя менять как черновик. Чтобы ввести другой замес, откройте чистую форму. Сохранённый замес и его навески останутся в журнале.</p>
+   <button type="button" disabled={busy||checking||!!recovery.error}
+     className="min-h-11 w-full rounded bg-blue-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-40"
+     onClick={requestReset}>Создать новый замес — сохранить предыдущий в журнале</button>
+  </section>}
   <fieldset disabled={busy||checking||!!attempt||!!saved} className="space-y-3 min-w-0">
    <h4 className="text-sm font-semibold text-white border-b border-slate-700 pb-2">1. Источник состава и план</h4>
    {!!tasks?.length&&<label className="block text-xs text-slate-300">Ссылка на видимое задание (без изменения статуса)<select aria-label="Задание замеса" className={input} value={draft.taskId} onChange={e=>setDraft({...draft,taskId:e.target.value})}><option value="">Без задания</option>{tasks.map(task=><option key={task.id} value={task.id}>{task.title}</option>)}</select></label>}
