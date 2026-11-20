@@ -101,15 +101,15 @@ it('unfreezes only an uncommitted slurry attempt after confirmation, retaining m
  expect(failed).toHaveBeenCalledTimes(1);
  const frozen=(await db.localFormDrafts.toArray())[0].payload as {attempt:MixBatch|null};
  expect(frozen.attempt?.id).toBeTruthy();
- expect(field('Фактическая масса 1, г').disabled).toBe(true);
+ expect(field('Фактическая масса 1, г').closest('fieldset')?.disabled).toBe(true);
  await click('Вернуться к редактированию незаписанного замеса');
  expect(node.querySelector('[aria-label="Подтверждение редактирования попытки"]')).not.toBeNull();
  await click('Отмена редактирования');
- expect(field('Фактическая масса 1, г').disabled).toBe(true);
+ expect(field('Фактическая масса 1, г').closest('fieldset')?.disabled).toBe(true);
  expect(((await db.localFormDrafts.toArray())[0].payload as {attempt:MixBatch}).attempt.id).toBe(frozen.attempt!.id);
  await click('Вернуться к редактированию незаписанного замеса');
  await click('Подтвердить редактирование незаписанного замеса');
- await wait(()=>expect(field('Фактическая масса 1, г').disabled).toBe(false));
+ await wait(()=>expect(field('Фактическая масса 1, г').closest('fieldset')?.disabled).toBe(false));
  expect(field('Фактическая масса 1, г').value).toBe('1000');
  expect(((await db.localFormDrafts.toArray())[0].payload as {attempt:null}).attempt).toBeNull();
  await fill('Фактическая масса 1, г','1100');
@@ -139,7 +139,7 @@ it('refuses to edit an attempt committed after a lost local acknowledgement',asy
  await click('Вернуться к редактированию незаписанного замеса');
  await click('Подтвердить редактирование незаписанного замеса');
  await wait(()=>expect(node.textContent).toContain('Замес уже записан в журнал'));
- expect(field('Фактическая масса 1, г').disabled).toBe(true);
+ expect(field('Фактическая масса 1, г').closest('fieldset')?.disabled).toBe(true);
  expect((await db.mixBatches.get(committed.id))).toEqual(committed);
  expect(((await db.localFormDrafts.toArray())[0].payload as {attempt:MixBatch}).attempt).toEqual(committed);
  expect(await db.mixBatches.count()).toBe(1);
