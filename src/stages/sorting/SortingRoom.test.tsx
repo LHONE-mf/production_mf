@@ -331,3 +331,44 @@ it('calculates and freezes individual Mass readings without overwriting the prio
  await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
  expect((await db.sortingWorkflows.get('cut'))?.stages[2].massReadingsG).toEqual([1.2,1.3,1.4,1.7,1.8,1.9,1.6,2.3]);
 });
+
+
+it('supports measured Thickness and Mass in one operator flow while keeping Visual history',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные толщины электродов"]')).toBeTruthy());
+ const typeReadings=async(label:string,value:string)=>{
+   const el=()=>page.querySelector<HTMLTextAreaElement>('[aria-label="'+label+'"]');
+   await act(async()=>{
+     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(el(),value);
+     el()!.dispatchEvent(new Event('input',{bubbles:true}));
+   });
+ };
+ const thickness=[72,73,74,75,76,77,78,79,90];
+ await typeReadings('Измеренные толщины электродов',thickness.join('\n'));
+ await clickRoomButton('Рассчитать годные и брак по толщине');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('8');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные массы электродов"]')).toBeTruthy());
+ await typeReadings('Измеренные массы электродов',['1.2','1.3','1.4','1.7','1.8','1.9','1.6','2.3'].join('\n'));
+ await clickRoomButton('Рассчитать количество и сорта по массам');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('3');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]')?.value).toBe('4');
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ const stored=await db.sortingWorkflows.get('cut');
+ expect(stored?.stages[0].passedCount).toBe(9);
+ expect(stored?.stages[1].thicknessReadingsUm).toEqual(thickness);
+ expect(stored?.stages[2].massReadingsG).toEqual([1.2,1.3,1.4,1.7,1.8,1.9,1.6,2.3]);
+ await clickRoomButton('Завершить сортировку');
+ await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
+ const [result]=await db.sortRuns.toArray();
+ expect(result.rejected).toBe(3);
+ expect(result.buckets).toEqual([{categoryName:'A',count:3},{categoryName:'B',count:4}]);
+});
