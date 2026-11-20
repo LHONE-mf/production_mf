@@ -110,7 +110,7 @@ function VerifiedAssemblyGrades({connection,scope}:{connection:ServerConnection;
    {d.fields.state==='pending'&&<button className={button} disabled={busy} onClick={()=>void retryDraft(d.key)}>Повторить исходный ID</button>}
    <details><summary>Исходная заявка и подтверждение</summary><pre className="whitespace-pre-wrap break-all text-xs">{d.fields.request}{'\n'}{d.fields.acknowledgement}</pre></details>
   </article>)}
-  {error&&<p role="alert" className="text-red-300">{error}</p>
+  {error&&<p role="alert" className="text-red-300">{error}</p>}
  </section>;
 }
 
