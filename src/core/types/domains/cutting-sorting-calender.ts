@@ -157,6 +157,7 @@ export interface SortingStationResult {
   grades?: { categoryName: string; count: number }[]; // Mass only, grading mode
   rejectionReasons?: { reason: string; count: number }[];
   massReadingsG?: number[]; // Mass station only; one measured gram value per incoming piece
+  thicknessReadingsUm?: number[]; // Thickness station only; one µm value per incoming piece
   notes?: string;
 }
 export interface SortingWorkflow {
