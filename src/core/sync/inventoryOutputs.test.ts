@@ -15,7 +15,7 @@ const request=()=>({operationId:crypto.randomUUID(),deviceId:scope.deviceId,prod
 const response=(body:unknown,status=200)=>new Response(JSON.stringify(body),{status,headers:{'content-type':'application/json'}});
 const page=(extra:object={})=>({organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId,epoch,postingEnabled:true,items:[],hasMore:false,nextAfter:null,...extra});
 const accepted=<T extends object>(r:T)=>({...r,revision:1,actorId:scope.actorId,recordedAt:'2026-11-15T08:00:00.000Z'});
-beforeEach(async()=>{await db.open();await inventoryOutbox.open();await db.users.add({id:'master',login:'master',fullName:'Master',password:'test-only',role:UserRole.MASTER,isActive:true,createdAt:new Date()});await db.sortRuns.add(source);});
+beforeEach(async()=>{await db.open();await inventoryOutbox.open();await db.users.add({id:'master',login:'master',fullName:'Master',password:'test-only',role:UserRole.MASTER,isActive:true,createdAt:new Date()});await db.sortRuns.add(source);await db.sortingWorkflows.add(source.sortingWorkflow!);});
 afterEach(async()=>{vi.unstubAllGlobals();db.close();await db.delete();inventoryOutbox.close();await inventoryOutbox.delete();});
 
 it('retains the original source/body across reopen and unknown reply, then archives only its own original ACK without warehouse stock',async()=>{
