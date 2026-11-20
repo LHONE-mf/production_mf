@@ -661,6 +661,7 @@ function JournalTab({ runs, onSend }: {
                     <p className="text-white font-medium">{['1. Визуальный контроль','2. Контроль толщины','3. Контроль массы'][i]}</p>
                     <p>На входе: {stage.inputCount} · годных: <b className="text-emerald-300">{stage.passedCount}</b> · брак: <b className="text-rose-300">{stage.rejectedCount}</b></p>
                     {stage.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+                    {stage.massOutOfRange && <p>Брак по массе: ниже допуска {stage.massOutOfRange.belowMin} шт · выше допуска {stage.massOutOfRange.aboveMax} шт</p>}
                     {stage.rejectionReasons?.map(reason=><p key={reason.reason}>Причина брака: {reason.reason} · {reason.count} шт</p>)}
                     <p className="text-slate-400">Оператор: {stage.workerId} · {new Date(stage.recordedAt).toLocaleString('ru-RU')}</p>
                     {stage.notes&&<p className="text-slate-400">Примечание: {stage.notes}</p>}
