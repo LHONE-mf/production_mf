@@ -50,6 +50,24 @@ export async function localReceiptsForUser(localActorId:string){
  return (await inventoryOutbox.localReceipts.where('localActorId').equals(localActorId).toArray())
   .sort((a,b)=>b.recordedAt-a.recordedAt||a.operationId.localeCompare(b.operationId));
 }
+/** Only correct SERVER CATALOG MATCHING, never the physical quantity or original evidence. */
+export async function correctUnboundReceiptMatch(
+ localActorId:string,operationId:string,materialCode:string,locationPath:string,
+):Promise<void>{
+ const actor=useAuthStore.getState();
+ if(actor.currentUser?.id!==localActorId||!actor.currentUser.isActive||
+    !currentLocalSession(actor.session)||actor.session?.userId!==localActorId)
+  throw Error('Требуется локальный профиль автора');
+ if(!nonempty(materialCode,200)||!nonempty(locationPath,300))
+  throw Error('Укажите точный серверный код материала и путь места хранения');
+ await inventoryOutbox.transaction('rw',inventoryOutbox.localReceipts,async()=>{
+  const row=await inventoryOutbox.localReceipts.get(operationId);
+  if(!row||row.localActorId!==localActorId||row.boundScopeKey||
+      !pendingStates.includes(row.state))throw Error('Операция уже привязана к серверу или не принадлежит пользователю');
+  await inventoryOutbox.localReceipts.put({...row,matchMaterialCode:materialCode.trim(),
+   matchLocationPath:locationPath.trim(),matchReviewedAt:Date.now(),state:'pending',error:undefined});
+ });
+}
 function checkIdentity(localActorId:string,connection:ServerConnection){
  const state=useAuthStore.getState();
  if(state.currentUser?.id!==localActorId||!state.currentUser.isActive||
@@ -72,7 +90,7 @@ async function catalogue<T>(
  throw Error('Справочник слишком большой; автоматическая привязка отложена');
 }
 function selectMaterial(receipt:LocalUnboundReceipt,materials:InventoryMaterial[]){
- const key=normalized(receipt.materialCode);
+ const key=normalized(receipt.matchMaterialCode??receipt.materialCode);
  const matches=materials.filter(material=>material.active!==false&&
   ['raw_material','component','cell'].includes(material.category)&&
   (normalized(material.code)===key||normalized(material.name)===key));
@@ -82,7 +100,7 @@ function selectMaterial(receipt:LocalUnboundReceipt,materials:InventoryMaterial[
  return matches[0];
 }
 function selectLocation(receipt:LocalUnboundReceipt,locations:InventoryLocation[]){
- const key=normalized(receipt.locationPath);
+ const key=normalized(receipt.matchLocationPath??receipt.locationPath);
  const matches=locations.filter(place=>place.active&&
   (normalized(inventoryLocationPath(locations,place.id))===key||
    normalized(place.label)===key));
