@@ -9,6 +9,16 @@ export async function storageCountSmoke({pool,org,pages,actors,connection,qualit
  const latest=async(p,kind)=>{await until(async()=>(await proposals(p)).some(r=>r.fields.kind===kind));return(await proposals(p)).filter(r=>r.fields.kind===kind).at(-1);};
  const send=async(p,row)=>{await panel(p).getByRole('button',{name:'Подтвердить пересчёт '+row.operationId.slice(0,8),exact:true}).click();await until(async()=>(await proposals(p)).some(r=>r.operationId===row.operationId&&r.fields.state==='accepted'));};
  const exportCsv=async(p,name)=>{const downloaded=p.waitForEvent('download');await panel(p).getByRole('button',{name:'Скачать полный срез пересчёта CSV',exact:true}).click();const file=await downloaded,path=artifact+'/'+name;await file.saveAs(path);return readFile(path,'utf8');};
+ // An earlier split regression reloads the Chief profile, closing its native
+ // inventory disclosure. Restore the public operator navigation on both pages
+ // instead of relying on UI expansion left over from another smoke test.
+ const openCounts=async p=>{
+  await p.getByRole('button',{name:'Тест: Инвентарь',exact:true}).click();
+  const advanced=p.getByText('Дополнительные операции, инвентаризация и администрирование',{exact:true});
+  if(!await advanced.evaluate(el=>el.closest('details')?.open??false))await advanced.click();
+  await panel(p).getByRole('button',{name:'Загрузить пересчёты',exact:true}).waitFor({state:'visible'});
+ };
+ await openCounts(chief);await openCounts(operator);
  await refresh(operator);await panel(operator).getByRole('button',{name:'Загрузить пересчёты',exact:true}).click();await fill(operator,'Physical any-time operator count');await panel(operator).getByRole('button',{name:'Начать пересчёт — сохранить предложение',exact:true}).click();const opening=await latest(operator,'open');await send(operator,opening);const countId=JSON.parse(opening.fields.request).countId;
  await panel(operator).getByLabel('Сессия пересчёта',{exact:true}).selectOption(countId);await panel(operator).getByLabel('Контейнер пересчёта',{exact:true}).selectOption(qualityStock);
  const before=(await pool.query('SELECT on_hand::int,revision FROM inventory_stocks WHERE id=$1',[qualityStock])).rows[0],quantity=before.on_hand-1000;await panel(operator).getByLabel('Фактически посчитано',{exact:true}).fill(String(quantity));
