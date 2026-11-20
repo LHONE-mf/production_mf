@@ -6,7 +6,7 @@ import {completeSortingWorkflow, recordSortingStation, startSortingWorkflow} fro
 import type {CutRun, DefectEntry, SortRun, SortSpec, SortingMode, SortingStation, SortingWorkflow} from '../../core/types';
 import {LocalDraftStatus, useLocalFormDraft} from '../_common/useLocalFormDraft';
 import {emptySortingDraft, emptyStationDraft, parseSortingDraft, sortingDraftKey, type SortingStationDraft} from './sortingDraft';
-import {parseMassReadings,summarizeMassReadings} from '../../core/manufacturing/sortingMeasurement';
+import {parseMassReadings,parseThicknessReadings,summarizeMassReadings,summarizeThicknessReadings} from '../../core/manufacturing/sortingMeasurement';
 
 const stationOrder: SortingStation[] = ['visual', 'thickness', 'mass'];
 const stationName: Record<SortingStation, string> = {
@@ -50,7 +50,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const active=workflow && !workflow.finalizedSortRunId ? stationOrder[workflow.stages.length] : undefined;
   const formKey=workflow&&active ? sortingDraftKey(workflow.id,workflow.stages.length) : null;
   const form=formKey ? draft.value.entries[formKey]??emptyStationDraft() : emptyStationDraft();
-  const {passed,rejected,grades,reasonCounts,notes,massReadings=''}=form;
+  const {passed,rejected,grades,reasonCounts,notes,massReadings='',thicknessReadings=''}=form;
   function editForm(patch:Partial<SortingStationDraft>){
     if(!formKey||!draft.ready)return;
     draft.edit(old=>({
@@ -108,11 +108,14 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
     // A failed local checkpoint must not turn an unsaved form into a station record.
     const measured=active==='mass'&&massReadings.trim()!==''
       ? parseMassReadings(massReadings,inputCount) : undefined;
+    const measuredThickness=active==='thickness'&&thicknessReadings.trim()!==''
+      ? parseThicknessReadings(thicknessReadings,inputCount) : undefined;
     await draft.checkpoint(current=>current);
     await recordSortingStation(workflow.id,{
       station:active,passedCount:accepted,rejectedCount:Number(rejected),workerId,
       grades:decisions,
       ...(measured?{massReadingsG:measured}:{}),
+      ...(measuredThickness?{thicknessReadingsUm:measuredThickness}:{}),
       rejectionReasons:typedReasons.length
         ? typedReasons.map(([id,value])=>({reason:id,count:Number(value)}))
         : undefined,
@@ -207,6 +210,12 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
           {saved ? <div className="mt-2 space-y-1 text-sm text-slate-300">
             <p>На входе: {saved.inputCount} · прошло: <b className="text-emerald-300">{saved.passedCount}</b> · брак: <b className="text-rose-300">{saved.rejectedCount}</b></p>
             {saved.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+            {saved.thicknessReadingsUm && <details className="rounded border border-slate-600 p-2">
+              <summary className="cursor-pointer">Измеренные толщины: {saved.thicknessReadingsUm.length} шт · мкм</summary>
+              <ol className="max-h-48 overflow-y-auto text-xs text-slate-300">
+                {saved.thicknessReadingsUm.map((value,i)=><li key={i}>Электрод №{i+1}: {value} мкм</li>)}
+              </ol>
+            </details>}
             {saved.massReadingsG && <details className="rounded border border-slate-600 p-2">
               <summary className="cursor-pointer">Измеренные массы: {saved.massReadingsG.length} шт · г</summary>
               <ol className="max-h-48 overflow-y-auto text-xs text-slate-300">
@@ -261,6 +270,21 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
                 {c.name}: {c.minMass??'—'}–{c.maxMass??'—'}
               </p>)}
               <p className="text-xs text-amber-200">{gradedMass?'Распределите электроды по сортам вручную.':'Определите годные и брак вручную.'}</p>
+            </div>}
+            {station==='thickness' && <div className="rounded-lg border border-slate-600 bg-slate-900 p-3 space-y-2">
+              <label htmlFor="sort-thickness-readings" className={labelCls}>Индивидуальные измерения толщины, мкм (по одному на строку)</label>
+              <textarea id="sort-thickness-readings" aria-label="Измеренные толщины электродов" className={inputCls}
+                rows={5} placeholder="73,5 / новая строка / 74" value={thicknessReadings} disabled={busy}
+                onChange={e=>editForm({thicknessReadings:e.target.value})}/>
+              <p className="text-xs text-slate-400">Необязательно для исторических суммарных записей. При заполнении измерьте каждый электрод на входе Thickness. Положительные значения проверяются по границам КД без назначения сорта.</p>
+              <button type="button" className="min-h-11 rounded-lg border border-blue-600 px-3 text-sm font-medium text-white disabled:opacity-40"
+                disabled={busy||!draft.ready} onClick={()=>{
+                  try{
+                    const calculated=summarizeThicknessReadings(parseThicknessReadings(thicknessReadings,inputCount),gradeSpecs);
+                    editForm({passed:String(calculated.passedCount),rejected:String(calculated.rejectedCount)});
+                    setError('');
+                  }catch(cause){setError(message(cause));}
+                }}>Рассчитать годные и брак по толщине</button>
             </div>}
             {station==='mass' && <div className="rounded-lg border border-slate-600 bg-slate-900 p-3 space-y-2">
               <label htmlFor="sort-mass-readings" className={labelCls}>Индивидуальные измерения массы, г (по одному на строку)</label>
