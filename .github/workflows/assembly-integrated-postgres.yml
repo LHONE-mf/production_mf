@@ -1,0 +1,58 @@
+name: Assembly Android client to PostgreSQL integration (B2.6)
+
+# Tests Capacitor's shared Android TypeScript/IndexedDB code against the real
+# authenticated Fastify API and a disposable migrated PostgreSQL database.
+# This is deliberately not an APK, an emulator or a deployment job.
+on:
+  pull_request:
+    paths:
+      - 'src/core/sync/assemblyIntegrated.postgres.test.ts'
+      - 'src/core/sync/assemblyTransfers.ts'
+      - 'src/core/sync/assemblyEligibility.ts'
+      - 'apps/server/src/**'
+      - 'apps/server/migrations/**'
+      - '.github/workflows/assembly-integrated-postgres.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-server-replay:
+    name: Android client / real PostgreSQL / offline replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked Android app dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install locked server dependencies
+        working-directory: apps/server
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck Android and server
+        run: |
+          npm run typecheck
+          npm run typecheck --prefix apps/server
+      - name: Migrate disposable PostgreSQL only
+        run: node scripts/migrate-disposable-postgres.mjs
+      - name: Verify Android handoff, offline recovery and physical receipt against actual server
+        run: npm test -- --run src/core/sync/assemblyIntegrated.postgres.test.ts
