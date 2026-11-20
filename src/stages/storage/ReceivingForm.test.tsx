@@ -14,10 +14,10 @@ it('freezes a received package without network or confirmed stock changes and re
  async function field(label:string,value:string){const input=node.querySelector<HTMLInputElement|HTMLSelectElement>('[aria-label="'+label+'"]')!;await act(async()=>{Object.getOwnPropertyDescriptor(input.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value')!.set!.call(input,value);input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true}));});await vi.waitFor(()=>expect(node.textContent).toContain('Черновик сохранён'));}
  try{
   await act(async()=>root.render(<ReceivingForm {...props}/>));await vi.waitFor(()=>expect(node.querySelector('input')).toBeTruthy());
-  await field('Материал приёмки',materialId);await field('Место приёмки',locationId);await field('Партия производителя','LOT-A');await field('Количество приёмки','2.125');await field('Единица приёмки','kg');await field('Основание приёмки / свидетельство','Physical receipt sheet');
+  await field('Материал приёмки',materialId);await field('Место приёмки',locationId);await field('Партия производителя','LOT-A');await field('Количество приёмки','2.125');await field('Единица приёмки','kg');await field('Документ / номер и дата входного контроля','IC-24 / 2026-11-20');await field('Основание приёмки / свидетельство','Physical receipt sheet');
   await click('Проверить приёмку');expect(node.querySelector('[role="alertdialog"]')?.textContent).toContain('Карантин');
   await click('Сохранить приёмку в очередь');await vi.waitFor(()=>expect(props.onQueued).toHaveBeenCalledTimes(1));
-  const queued=(await inventoryOutbox.operations.toArray())[0];expect(queued.request.quantity).toBe(2125000);expect(await inventoryOutbox.stocks.count()).toBe(0);expect(fetch).not.toHaveBeenCalled();
+  const queued=(await inventoryOutbox.operations.toArray())[0];expect(queued.request.quantity).toBe(2125000);expect(queued.request.receiptReference).toBe('IC-24 / 2026-11-20');expect(await inventoryOutbox.stocks.count()).toBe(0);expect(fetch).not.toHaveBeenCalled();
   await act(async()=>root.unmount());inventoryOutbox.close();await inventoryOutbox.open();root=createRoot(node);await act(async()=>root.render(<ReceivingForm {...props}/>));await vi.waitFor(()=>expect(node.textContent).toContain(queued.operationId));
   expect(await inventoryOutbox.operations.count()).toBe(1);
  }finally{await act(async()=>root.unmount());node.remove();inventoryOutbox.close();await inventoryOutbox.delete();vi.unstubAllGlobals();}
