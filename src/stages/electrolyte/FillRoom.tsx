@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 import {prepareFillingHandover,hasFillingHandover,fillingStage} from '../../core/manufacturing/fillingHandover';
 import {FillingResultForm} from './FillingResultForm';
 import {hasFillingResult} from '../../core/manufacturing/fillingResults';
@@ -102,20 +104,10 @@ function FillRoomContent({ box }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-2xl">{meta.icon}</span>
-        <h2 className="text-white font-semibold">{meta.title}</h2>
-      </div>
+      <RoomWorkspaceHeader icon={meta.icon} title={meta.title} description="Назначение партий в выбранный бокс, фактическая запись заливки и передача результатов отдельными действиями. Полученный пакет не означает принятую партию." />
 
       {transferError&&tab!=='incoming'&&<p role="alert" className="text-red-300 text-sm">{transferError}</p>}
-      <div className="flex flex-wrap gap-1 overflow-x-auto">
-        {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm whitespace-nowrap ${tab === t.id ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы заливки электролита" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {tab === 'incoming' && (
         <div className="space-y-3">

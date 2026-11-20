@@ -1,10 +1,10 @@
-name: Deploy Web (PWA) to GitHub Pages
+name: Deploy Web (PWA) to GitHub Pages (manual only)
 
 # Публикуем браузерную версию на GitHub Pages — её можно открыть с iOS/ПК,
 # установить как PWA и использовать офлайн.
+# A merge to main is NOT a publication approval.
+# GitHub Pages is published only on an explicitly requested workflow_dispatch.
 on:
-  push:
-    branches: [main]
   workflow_dispatch: {}
 
 permissions:

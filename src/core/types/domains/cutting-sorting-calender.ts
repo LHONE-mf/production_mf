@@ -1,5 +1,6 @@
 // ============================================================
 import { StageId, SerialRange, CellType } from '../index';
+import type {CutOutputHandoffRead} from '../../sync/cuttingOutputTypes';
 // ЭТАПЫ ПРОИЗВОДСТВА («комнаты» цеха). Каждый этап — отдельный
 // модуль в src/stages/<id>. Полный офлайн: данные хранятся
 // локально, передача только через Bluetooth / QR / текст.
@@ -50,6 +51,21 @@ export interface CuttingYield extends CuttingGeometry {
   perMeter:number;
 }
 
+/** Original acknowledged server handoff, retained as a local Sorting input only.
+ * No warehouse quantity, QA release or new Cutting measurements are inferred. */
+export interface ReceivedCuttingCustody {
+  kind: 'server-confirmed-cutting-receipt';
+  scopeKey: string;
+  localActorId: string;
+  receiptId: string;
+  handoffId: string;
+  sourceLotId: string;
+  count: number;
+  label: string;
+  receivedAt: string;
+  snapshot: CutOutputHandoffRead;
+}
+
 // Запись журнала нарезки (результат оператора) → далее на сортировку
 export interface CutRun {
   id: string;
@@ -60,7 +76,8 @@ export interface CutRun {
   electrodeLengthMm?: number;  // фактическая длина, мм
   yieldCalculation?: CuttingYield; // saved advisory geometry and estimate, never a physical yield sign-off
   goodCount: number;           // количество нарезанных годных электродов
-  defectCount: number;         // количество с дефектами
+  defectCount: number | null;  // null for an imported server receipt: Cutting rejects were not measured here
+  receivedCustody?: ReceivedCuttingCustody; // distinct from a local physical Cutting run
   defects?: string;            // виды дефектов / обрывы
   breaks?: number;             // число обрывов ленты
   notes?: string;
@@ -139,6 +156,9 @@ export interface SortingStationResult {
   recordedAt: number;
   grades?: { categoryName: string; count: number }[]; // Mass only, grading mode
   rejectionReasons?: { reason: string; count: number }[];
+  massReadingsG?: number[]; // Mass station only; one measured gram value per incoming piece
+  thicknessReadingsUm?: number[]; // Thickness station only; one µm value per incoming piece
+  massOutOfRange?: { belowMin: number; aboveMax: number }; // Mass station only: manual under/over rejects, no inferred measurements
   notes?: string;
 }
 export interface SortingWorkflow {

@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 // ============================================================
 // КОМНАТА ФОРМИРОВАНИЯ (ЧЦЦ — формовка залитых ячеек).
 // Вход: партии из ЗАЛИВКИ В СУХОЙ КОМНАТЕ и с ВАЛЬЦОВКИ (пакет formation-in),
@@ -107,20 +109,9 @@ function FormationContent() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-bold text-white">⚡ Формирование (ЧЦЦ)</h2>
-      <p className="text-xs text-slate-400">
-        Номера аккумуляторов приходят вместе с партией (миграция: сборка → заливка → формирование).
-        Новые записи — введённые наблюдения, без QA-допуска и назначения режима оборудования.
-      </p>
+      <RoomWorkspaceHeader icon="⚡" title="Формирование (ЧЦЦ)" description="Номера аккумуляторов переходят из сборки через заливку или вальцовку. Записывайте фактические наблюдения: они не назначают режим оборудования и не подтверждают QA-допуск." />
 
-      <div className="flex gap-1 flex-wrap border-b border-slate-800 pb-2">
-        {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-t text-xs ${tab === t.id ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы формирования" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {/* ---- ВХОДЯЩИЕ ПАРТИИ ---- */}
       {tab === 'incoming' && (

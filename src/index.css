@@ -68,3 +68,31 @@ body { background: #0f172a; }
   outline: 2px solid #93c5fd;
   outline-offset: 2px;
 }
+
+/* Keep manufacturing-room controls usable without horizontal page scrolling. */
+.production-room { min-width: 0; max-width: 100%; }
+.production-room :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  min-width: 0;
+  max-width: 100%;
+}
+.production-room :where(h2, h3, h4, p, label) { overflow-wrap: anywhere; }
+.production-room :where(button, input, select, textarea):focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  .production-room :where(button, input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    min-height: 2.75rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .production-room :where(button, input, select, textarea) { transition-duration: 0ms; }
+}
+
+/* Capacitor's native Android content root already accounts for system bars.
+   Applying WebView safe-area padding again produces a blank strip above the
+   app header on Android 15+ and can reduce usable screen height. Browser/PWA
+   builds retain the existing env() paddings above. */
+html.capacitor-native #root {
+  padding: 0;
+}

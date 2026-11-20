@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 import {CuttingOutputs} from '../cutting/CuttingOutputs';
 // Комната «Сортировка электродов». Полностью офлайн.
 // Вкладки: 📥 Партии с нарезки · 📐 Спецификации технолога (КД) · 🔀 Сортировка ·
@@ -20,9 +22,10 @@ import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { SortingWorkflowTab } from './SortingWorkflowTab';
-import {FinishedElectrodeOffers} from './FinishedElectrodeOffers';
+import {useServerConnection} from '../../core/sync/serverConnection';
+import {inventoryScopeKey} from '../../core/sync/inventoryOutbox';
 
-type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'outputs' | 'custody';
+type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'custody';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -33,6 +36,8 @@ const shapeLabel = (s: ElectrodeShape) =>
 
 export function SortingModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
+  const connection = useServerConnection();
+  const currentScopeKey = connection ? inventoryScopeKey({serverUrl:connection.serverUrl,organizationId:connection.organizationId,actorId:connection.serverActorId,deviceId:connection.selectedDeviceId}) : null;
   const isTechManager = !!currentUser &&
     [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('batches');
@@ -41,8 +46,11 @@ export function SortingModule() {
 
   const batches = useLiveQuery(async () => {
     const all = await db.cuttingRuns.toArray();
-    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, []);
+    return all.filter(row=>!row.receivedCustody ||
+      (row.receivedCustody.localActorId===currentUser?.id &&
+       (!currentScopeKey || row.receivedCustody.scopeKey===currentScopeKey)))
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }, [currentUser?.id,currentScopeKey]);
 
   const specs = useLiveQuery(async () => {
     const all = await db.sortSpecs.toArray();
@@ -82,26 +90,13 @@ export function SortingModule() {
     { id: 'journal', label: `📒 Журнал (${(runs ?? []).length})` },
     { id: 'custody', label: '🔁 Подтверждённая приёмка электродов' },
     { id: 'comments', label: '💬 Комментарии' },
-    ...(isTechManager?[{id:'outputs' as const,label:'Выход на склад'}]:[]),
   ];
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomWorkspaceHeader icon="🗂️" title="Сортировка электродов" description="Партии с нарезки, спецификации КД и результаты визуального контроля, толщины и массы. Годные электроды передаются непосредственно на следующий производственный этап, минуя склад." />
+      <RoomTabs label="Разделы сортировки" tabs={tabs} activeTab={tab} onChange={setTab} />
 
-      {tab==='outputs'&&<FinishedElectrodeOffers runs={runs??[]}/>}
       {tab === 'custody' && <CuttingOutputs room="sorting"/>}
       {tab === 'batches' && (
         <BatchesTab
@@ -251,9 +246,10 @@ function BatchesTab({ items, specs, workflows, runs, onSort, onOpenJournal }: {
                   <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200">{shapeLabel(cr.electrodeType)}</span>
                   {cr.coatingType && <span>Покрытие: <b className="text-white">{cr.coatingType}</b></span>}
                   {cr.electrodeLengthMm ? <span>L: <b className="text-white">{cr.electrodeLengthMm} мм</b></span> : null}
-                  <span>Годных: <b className="text-emerald-300">{cr.goodCount}</b> шт</span>
-                  <span>Дефектных: <b className="text-rose-300">{cr.defectCount}</b> шт</span>
+                  <span>{cr.receivedCustody?'Принято по серверной передаче':'Годных'}: <b className="text-emerald-300">{cr.goodCount}</b> шт</span>
+                  <span>Дефектных на Cutting: <b className="text-rose-300">{cr.defectCount===null?'не измерено':cr.defectCount}</b></span>
                 </div>
+                {cr.receivedCustody&&<p className="mt-2 text-xs text-amber-200 break-all">Вход Sorting по серверной приёмке {cr.receivedCustody.receiptId}. Наблюдение локальное, не QA-допуск и не складское движение; серверный выпуск заблокирован до отдельного подтверждения.</p>}
                 {cr.defects && <div className="mt-1 text-xs text-amber-300">⚠ {cr.defects}</div>}
                 <div className="mt-1 text-xs">
                   {spec
@@ -343,6 +339,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
   return (
     <div className="space-y-3">
       {success&&<p role="status" className="text-sm text-emerald-200">{success}</p>}
+      {error&&!editing&&<p role="alert" className="text-sm text-rose-200">{error}</p>}
       {canEdit && (
         <button
           onClick={() => {setError('');setSuccess('');setIsNew(true); setEditing(blank()); }}
@@ -360,7 +357,7 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
             <div>
               <div className="text-white font-semibold">📐 «{s.batchName}» · {s.parameterName} ({s.unit})</div>
               <div className="mt-1 text-xs text-slate-400">
-                {shapeLabel(s.electrodeType)}{s.coatingType ? ` · покрытие: ${s.coatingType}` : ''} ·
+                {s.cutRunId?'Привязана к партии нарезки':'Шаблон КД: ещё не привязан к физической партии'} · {shapeLabel(s.electrodeType)}{s.coatingType ? ` · покрытие: ${s.coatingType}` : ''} ·
                 обновлена {new Date(s.updatedAt).toLocaleString('ru-RU')}
               </div>
               <div className="mt-2 space-y-1">
@@ -378,6 +375,17 @@ function SpecsTab({ specs, batches, defects, canEdit, userId, onSave }: {
                 ))}
               </div>
               {s.techNotes && <div className="mt-1 text-xs text-emerald-300">📝 {s.techNotes}</div>}
+              {canEdit&&!s.cutRunId&&batches.filter(b=>b.incomingId===s.batchName&&b.electrodeType===s.electrodeType&&
+                !specs.some(bound=>bound.cutRunId===b.id)).map(b=><button key={b.id} type="button"
+                className="mt-2 min-h-11 rounded border border-emerald-600 px-3 text-sm text-emerald-200 disabled:opacity-40"
+                disabled={busy} onClick={()=>{void (async()=>{setBusy(true);setError('');try{
+                  const now=Date.now();
+                  await onSave({...s,id:uuidv4(),cutRunId:b.id,batchName:b.incomingId,
+                    electrodeType:b.electrodeType,coatingType:b.coatingType,authorId:userId,createdAt:now,updatedAt:now});
+                  setSuccess('Создана отдельная привязанная копия КД для партии '+b.incomingId+'. Исходный шаблон сохранён.');
+                }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}})();}}>
+                Привязать копию КД к партии {b.incomingId}
+              </button>)}
             </div>
             {canEdit && (
               <button
@@ -426,6 +434,14 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
             {batches.map((b) => <option key={b.id} value={b.id}>{b.incomingId} (годных {b.goodCount})</option>)}
           </select>
         </div>
+        {!spec.cutRunId && <div>
+          <label className={labelCls} htmlFor="sort-spec-batch-name">Обозначение партии / заказа по КД</label>
+          <input id="sort-spec-batch-name" aria-label="Обозначение партии КД" className={inputCls}
+            value={spec.batchName} disabled={!canEdit}
+            onChange={e=>set({batchName:e.target.value})}
+            placeholder="Введите номер партии или заказа для КД"/>
+          <p className="text-xs text-slate-400">КД можно подготовить до поступления электродов. После приёмки используйте действие «Привязать копию КД к партии».</p>
+        </div>}
         <div>
           <label className={labelCls}>Тип электрода</label>
           <select className={inputCls} value={spec.electrodeType} disabled={!canEdit}
@@ -518,7 +534,8 @@ function SpecEditor({ spec, isNew, batches, defects, canEdit, busy, error, onCan
       <p className="text-xs text-amber-200">Спецификации сохраняются только на этом устройстве. Общий ключ передачи не подтверждает права технолога.</p>
       <div className="flex flex-wrap gap-2">
         <button className="min-h-11 px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm text-white disabled:opacity-40"
-          disabled={busy||!canEdit || !spec.batchName.trim()}
+          disabled={busy||!canEdit || !spec.batchName.trim() || !spec.parameterName.trim() || !spec.unit.trim() ||
+            spec.categories.length===0||spec.categories.some(c=>!c.name.trim())}
           onClick={onSave}>{busy?'Сохранение…':'💾 Сохранить локально'}</button>
         <button disabled={busy} className="min-h-11 px-3 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white disabled:opacity-40" onClick={onCancel}>Отмена</button>
       </div>
@@ -662,6 +679,7 @@ function JournalTab({ runs, onSend }: {
                     <p className="text-white font-medium">{['1. Визуальный контроль','2. Контроль толщины','3. Контроль массы'][i]}</p>
                     <p>На входе: {stage.inputCount} · годных: <b className="text-emerald-300">{stage.passedCount}</b> · брак: <b className="text-rose-300">{stage.rejectedCount}</b></p>
                     {stage.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+                    {stage.massOutOfRange && <p>Брак по массе: ниже допуска {stage.massOutOfRange.belowMin} шт · выше допуска {stage.massOutOfRange.aboveMax} шт</p>}
                     {stage.rejectionReasons?.map(reason=><p key={reason.reason}>Причина брака: {reason.reason} · {reason.count} шт</p>)}
                     <p className="text-slate-400">Оператор: {stage.workerId} · {new Date(stage.recordedAt).toLocaleString('ru-RU')}</p>
                     {stage.notes&&<p className="text-slate-400">Примечание: {stage.notes}</p>}

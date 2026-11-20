@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 // Комната «Вальцовка» — обжим (вальцевание) залитых цилиндрических ячеек.
 // Расположена ПОСЛЕ заливки на 7 этаже (к.5): партии приходят пакетом
 // walzing-in, результат уходит на формирование/master пакетом walz-run.
@@ -91,23 +93,9 @@ function WalzingRoomContent() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-2xl">🎡</span>
-        <h2 className="text-white font-semibold">Вальцовка (обжим залитых ячеек)</h2>
-      </div>
-      <p className="text-xs text-slate-400">
-        Пост после заливки на 7 этаже (к.5). Ячейки обжимаются на вальцовочном станке
-        до итогового диаметра и передаются на формирование.
-      </p>
+      <RoomWorkspaceHeader icon="🎡" title="Вальцовка (обжим залитых ячеек)" description="Пост после заливки на 7 этаже (к.5). Записывайте параметры обжима и передавайте результаты на формирование отдельным действием." />
 
-      <div className="flex flex-wrap gap-1">
-        {tabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`text-xs rounded-lg px-3 py-1.5 ${tab === t.id ? 'bg-cyan-700 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы вальцовки" tabs={tabs} activeTab={tab} onChange={setTab} />
       {error&&tab!=='new'&&<p role="alert" className="text-red-300 text-sm">{error}</p>}
 
       {tab === 'incoming' && (

@@ -35,5 +35,5 @@ export function renderStageIfActive(activeTab: string): React.ReactNode | null {
   const id = activeTab.slice('stage:'.length) as StageId;
   const Comp = STAGE_COMPONENTS[id];
   if (!Comp) return <p className="text-slate-400">Этап «{id}» не найден.</p>;
-  return <Comp />;
+  return <div className="production-room min-w-0 w-full max-w-full"><Comp /></div>;
 }

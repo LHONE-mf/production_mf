@@ -149,3 +149,103 @@ it('passes station-bound summaries through packet validation without inventing m
  await expect(receiveSortingAllocation({...saved,buckets:[{categoryName:'A',count:63},{categoryName:'B',count:29}]})).rejects.toThrow();
  expect(await receiveSortingAllocation(saved)).toEqual(saved);
 });
+
+it('refuses new station decisions after the Cutting source changes or disappears, preserving prior decisions and retries',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await db.cuttingRuns.update(cut.id,{goodCount:101});
+ await expect(recordSortingStation(workflow.id,visual)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,visual);
+ await db.cuttingRuns.delete(cut.id);
+ // Exact acknowledged retries remain safe and do not mutate the existing station.
+ expect((await recordSortingStation(workflow.id,visual)).stages).toHaveLength(1);
+ await expect(recordSortingStation(workflow.id,thickness)).rejects.toThrow(/Источник|измен|нарезк/i);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(1);
+ await db.cuttingRuns.put(cut);
+ await recordSortingStation(workflow.id,thickness);
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+});
+
+it.each(['long category', 'more than 100 categories'] as const)(
+ 'rejects %s before freezing a Sorting specification that the warehouse cannot accept',async problem=>{
+  const categories=problem==='long category'
+   ? [{...spec.categories[0],name:'G'.repeat(121)}]
+   : Array.from({length:101},(_,i)=>({name:'G'+i,criteria:'Mass grade',minMass:1}));
+  const candidate:SortSpec={...spec,categories};
+  await db.sortSpecs.put(candidate);
+  await expect(startSortingWorkflow(cut,candidate,'grading','planner')).rejects.toThrow();
+  expect(await db.sortingWorkflows.count()).toBe(0);
+ },
+);
+
+it.each(['long rejection reason','more than 100 reasons','untrimmed inspector','long inspector'] as const)(
+ 'rejects %s before saving an irreversible station decision',async problem=>{
+  const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+  const decision={...visual};
+  if(problem==='long rejection reason')decision.rejectionReasons=[{reason:'R'.repeat(121),count:3}];
+  if(problem==='more than 100 reasons')decision.rejectionReasons=Array.from({length:101},(_,i)=>({reason:'reason-'+i,count:i===0?3:0}));
+  if(problem==='untrimmed inspector')decision.workerId=' inspector-1 ';
+  if(problem==='long inspector')decision.workerId='W'.repeat(121);
+  await expect(recordSortingStation(workflow.id,decision)).rejects.toThrow();
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toEqual([]);
+ },
+);
+
+
+it('keeps measured masses on the frozen Mass station and rejects mismatched grade counts atomically',async()=>{
+  const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+  await recordSortingStation(workflow.id,visual);
+  await recordSortingStation(workflow.id,thickness);
+  const masses=[...Array(62).fill(1.2),...Array(30).fill(1.8),...Array(3).fill(2.5)];
+  await expect(recordSortingStation(workflow.id,{
+    ...gradedMass,massReadingsG:masses,
+    grades:[{categoryName:'A',count:61},{categoryName:'B',count:31}],
+  })).rejects.toThrow(/измерениям/);
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+  const saved=await recordSortingStation(workflow.id,{...gradedMass,massReadingsG:masses});
+  expect(saved.stages[2].massReadingsG).toEqual(masses);
+  const result=await completeSortingWorkflow(workflow.id,'measured-final');
+  expect(result.sortingWorkflow?.stages[2].massReadingsG).toEqual(masses);
+  expect(result.buckets).toEqual([{categoryName:'A',count:62},{categoryName:'B',count:30}]);
+});
+
+
+it('freezes measured thickness only when the readings agree with station conservation',async()=>{
+  const withThickness:SortSpec={...spec,categories:spec.categories.map(c=>({...c,minUm:70,maxUm:80}))};
+  await db.sortSpecs.put(withThickness);
+  const workflow=await startSortingWorkflow(cut,withThickness,'grading','planner');
+  await recordSortingStation(workflow.id,visual);
+  const readings=[...Array(95).fill(74),90,92];
+  await expect(recordSortingStation(workflow.id,{
+    ...thickness,thicknessReadingsUm:readings,passedCount:96,rejectedCount:1,
+  })).rejects.toThrow(/толщины/);
+  expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(1);
+  const saved=await recordSortingStation(workflow.id,{...thickness,thicknessReadingsUm:readings});
+  expect(saved.stages[1].thicknessReadingsUm).toEqual(readings);
+  await recordSortingStation(workflow.id,gradedMass);
+  const output=await completeSortingWorkflow(workflow.id,'measured-thickness-final');
+  expect(output.sortingWorkflow?.stages[1].thicknessReadingsUm).toEqual(readings);
+  expect(output.rejected).toBe(8);
+});
+
+
+it('accepts explicit under/over mass rejection counts and rejects mismatched or misplaced evidence',async()=>{
+ const workflow=await startSortingWorkflow(cut,spec,'grading','planner');
+ await recordSortingStation(workflow.id,visual);
+ await recordSortingStation(workflow.id,thickness);
+ await expect(recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:2,aboveMax:2},
+ })).rejects.toThrow(/ниже\/выше/);
+ await expect(recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:-1,aboveMax:4},
+ })).rejects.toThrow();
+ expect((await db.sortingWorkflows.get(workflow.id))?.stages).toHaveLength(2);
+ const saved=await recordSortingStation(workflow.id,{
+   ...gradedMass,massOutOfRange:{belowMin:2,aboveMax:1},
+ });
+ expect(saved.stages[2].massOutOfRange).toEqual({belowMin:2,aboveMax:1});
+ expect((await completeSortingWorkflow(workflow.id,'mass-out-of-range')).rejected).toBe(8);
+ const other=await db.sortingWorkflows.get(workflow.id);
+ expect(other?.stages[2].massOutOfRange).toEqual({belowMin:2,aboveMax:1});
+});

@@ -1,0 +1,58 @@
+name: Fast server regression (disposable PostgreSQL)
+
+# Compact backend verification while the heavier browser/restore CI runs separately.
+# The original full CI remains required for final merge approval.
+on:
+  push:
+    branches: [integration/approved-five-20261119]
+    paths:
+      - 'apps/server/src/**'
+      - 'apps/server/migrations/**'
+      - '.github/workflows/server-postgres-regression.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/server/src/**'
+      - 'apps/server/migrations/**'
+      - '.github/workflows/server-postgres-regression.yml'
+permissions:
+  contents: read
+jobs:
+  postgres:
+    name: All backend tests with isolated PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_ci
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Apply all migrations only to CI database
+        run: node ../../scripts/migrate-disposable-postgres.mjs
+      - name: Entire backend test suite
+        run: npm test -- --reporter=default --maxWorkers=2
+      - name: Build backend
+        run: npm run build

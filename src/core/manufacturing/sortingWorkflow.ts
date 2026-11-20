@@ -10,6 +10,8 @@ const nonempty=(v:string)=>typeof v==='string'&&v.trim().length>0;
 /** Locks the selected mode, physical cutting source, and specification version. */
 export async function startSortingWorkflow(source:CutRun,spec:SortSpec,mode:SortingMode,createdBy:string):Promise<SortingWorkflow>{
   if(!nonempty(createdBy))throw new Error('Укажите оператора/автора');
+  if(source.receivedCustody&&source.receivedCustody.localActorId!==createdBy)
+    throw new Error('Подтверждённая приёмка принадлежит другому локальному профилю');
   const now=Date.now();
   const draft:SortingWorkflow={id:source.id,cutRunId:source.id,cutRunSnapshot:source,
     specSnapshot:spec,mode,stages:[],createdBy,createdAt:now,updatedAt:now};
@@ -34,7 +36,7 @@ export async function startSortingWorkflow(source:CutRun,spec:SortSpec,mode:Sort
 
 /** Saves an operator's completed station result; incoming count comes only from predecessor. */
 export async function recordSortingStation(workflowId:string,decision:StationDecision):Promise<SortingWorkflow>{
-  return db.transaction('rw',db.sortingWorkflows,async()=>{
+  return db.transaction('rw',db.sortingWorkflows,db.cuttingRuns,async()=>{
     const current=await db.sortingWorkflows.get(workflowId);
     if(!current)throw new Error('Партия сортировки не найдена');
     validateSortingWorkflow(current);
@@ -45,6 +47,9 @@ export async function recordSortingStation(workflowId:string,decision:StationDec
       throw new Error('Сохранённое решение станции нельзя незаметно изменить');
     }
     if(current.finalizedSortRunId)throw new Error('Партия уже завершена');
+    const source=await db.cuttingRuns.get(current.cutRunId);
+    if(!same(source,current.cutRunSnapshot))
+      throw new Error('Источник нарезки изменён; остановите запись станции для сверки');
     const index=current.stages.length;
     if(decision.station !== (['visual','thickness','mass'] as const)[index])
       throw new Error('Нельзя пропустить станцию или поменять порядок контроля');

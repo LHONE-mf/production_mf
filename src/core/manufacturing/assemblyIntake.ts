@@ -16,6 +16,7 @@ async function existingIntake(run:AssemblyRun):Promise<AssemblyRun|undefined>{
  }
 }
 export async function takeAssemblySource(source:SortRun,workerId:string,id:string):Promise<AssemblyRun>{
+ if(source.cutRunSnapshot?.receivedCustody)throw Error('Приёмка со складским/серверным источником требует отдельного подтверждённого перехода в Assembly');
  if(!workerId)throw new Error('Войдите в профиль');
  const count=source.buckets.reduce((n,b)=>n+b.count,0),now=new Date().toISOString();
  const spec=source.specSnapshot;

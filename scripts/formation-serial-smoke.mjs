@@ -22,7 +22,9 @@ await db.open();if(await db.users.get('serial-worker'))await window.mount();wind
  const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage(),errors=[],inventoryRequests=[];
  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/inventory/'))inventoryRequests.push(r.url());});
  const go=async()=>{await page.goto('http://127.0.0.1:5173/formation-serial-smoke.html');await page.waitForFunction(()=>window.ready);};
- const open=async()=>{await page.getByRole('button',{name:'Номера обработанных',exact:true}).click();await page.getByRole('status').filter({hasText:/Автосохранение|Черновик формы/}).waitFor();};
+ // The mobile room now exposes section navigation as a native select,
+ // while the desktop-only buttons are hidden below the sm breakpoint.
+ const open=async()=>{const tabs=page.getByRole('combobox',{name:'Разделы формирования',exact:true});await tabs.selectOption('serials');await page.getByRole('status').filter({hasText:/Автосохранение|Черновик формы/}).waitFor();};
  const until=async(check,label)=>{const end=Date.now()+20000;while(!await check()){assert(Date.now()<end,'Timed out: '+label);await new Promise(r=>setTimeout(r,30));}};
  await go();const source=await page.evaluate(()=>window.seed());await page.evaluate(()=>window.mount());await open();
  await page.getByLabel('Источник номеров формирования',{exact:true}).selectOption(source.id);await page.getByLabel('Явные номера обработанных ячеек',{exact:true}).fill('10; 10');await page.getByLabel('Основание номеров формирования',{exact:true}).fill('SYNTHETIC explicit processed channel sheet');

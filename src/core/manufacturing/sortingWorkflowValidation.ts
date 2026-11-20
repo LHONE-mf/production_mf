@@ -1,11 +1,13 @@
 import type {SortRun, SortingWorkflow} from '../types';
+import {validateReceivedCuttingSource} from './sortingCustody';
+import {summarizeMassReadings,summarizeThicknessReadings} from './sortingMeasurement';
 
 const whole = (value:unknown): value is number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 const label = (value:unknown): value is string =>
-  typeof value === 'string' && value.trim().length > 0;
+  typeof value === 'string' && value.length <= 120 && value.trim().length > 0 && value === value.trim();
 const time = (value:unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0;
+  typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 8640000000000000;
 const order = ['visual', 'thickness', 'mass'] as const;
 
 /** Only completed station decisions are stored here. Unsaved operator forms remain separate. */
@@ -21,9 +23,11 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
       source.goodCount === 0 || spec.cutRunId !== source.id ||
       spec.batchName !== source.incomingId || spec.electrodeType !== source.electrodeType ||
       !['strip','prismatic'].includes(source.electrodeType) ||
-      !label(spec.id) || !Array.isArray(spec.categories) || spec.categories.length === 0)
+      !label(spec.id) || !Array.isArray(spec.categories) || spec.categories.length === 0 ||
+      spec.categories.length > 100)
     throw new Error('Спецификация и партия нарезки должны совпадать');
 
+  if(source.receivedCustody)validateReceivedCuttingSource(source);
   const names=new Set<string>();
   for (const category of spec.categories) {
     if (!category || !label(category.name) || category.name !== category.name.trim() ||
@@ -52,7 +56,8 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
         stage.passedCount+stage.rejectedCount !== input)
       throw new Error('Станции проходят строго по порядку: визуальный контроль → толщина → масса; баланс должен сходиться');
     if (stage.rejectionReasons !== undefined) {
-      if (!Array.isArray(stage.rejectionReasons)) throw new Error('Некорректные причины брака');
+      if (!Array.isArray(stage.rejectionReasons) || stage.rejectionReasons.length > 100)
+        throw new Error('Некорректные причины брака');
       const reasons=new Set<string>();
       let sum=0;
       for (const reason of stage.rejectionReasons) {
@@ -76,6 +81,31 @@ export function validateSortingWorkflow(w:SortingWorkflow):void {
         throw new Error('Количество по сортам не совпадает с годными после взвешивания');
     } else if (stage.grades !== undefined) {
       throw new Error('Сорта назначаются только на массовой станции в режиме градации');
+    }
+    if(stage.massOutOfRange!==undefined){
+      const split=stage.massOutOfRange;
+      if(stage.station!=='mass'||!split||typeof split!=='object'||Array.isArray(split)||
+         !whole(split.belowMin)||!whole(split.aboveMax)||
+         !whole(split.belowMin+split.aboveMax)||split.belowMin+split.aboveMax!==stage.rejectedCount)
+        throw new Error('Брак по массе ниже/выше допуска должен совпадать с общим браком Mass');
+    }
+    if(stage.thicknessReadingsUm!==undefined){
+      if(stage.station!=='thickness'||!Array.isArray(stage.thicknessReadingsUm)||
+         stage.thicknessReadingsUm.length!==stage.inputCount)
+        throw new Error('Измеренные толщины должны соответствовать входу станции Thickness');
+      const calculated=summarizeThicknessReadings(stage.thicknessReadingsUm,spec.categories);
+      if(calculated.passedCount!==stage.passedCount||calculated.rejectedCount!==stage.rejectedCount)
+        throw new Error('Суммарный контроль толщины не соответствует индивидуальным измерениям');
+    }
+    if(stage.massReadingsG!==undefined){
+      if(stage.station!=='mass' || !Array.isArray(stage.massReadingsG) ||
+         stage.massReadingsG.length!==stage.inputCount)
+        throw new Error('Измеренные массы должны соответствовать входу станции Mass');
+      const calculated=summarizeMassReadings(stage.massReadingsG,spec.categories,w.mode);
+      if(calculated.passedCount!==stage.passedCount || calculated.rejectedCount!==stage.rejectedCount ||
+         (w.mode==='grading' && (stage.grades?.length!==calculated.grades.length ||
+           calculated.grades.some(g=>stage.grades?.find(saved=>saved.categoryName===g.categoryName)?.count!==g.count))))
+        throw new Error('Суммарное распределение не соответствует индивидуальным измерениям массы');
     }
     input=stage.passedCount; // Failed electrodes never move to the next station.
   }

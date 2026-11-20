@@ -1,0 +1,57 @@
+name: Receipt-bound Sorting PostgreSQL proof
+
+# Focused, disposable PostgreSQL gate for the new Cutting custody → Sorting output link.
+# No production database, Android device, or deployment is accessed.
+on:
+  push:
+    branches: [integration/approved-five-20261119]
+    paths:
+      - 'apps/server/src/sorting-receipt-output.postgres.test.ts'
+      - 'apps/server/src/inventory-output-contract.ts'
+      - 'apps/server/src/inventory-output-routes.ts'
+      - '.github/workflows/receipt-sorting-postgres.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/server/src/sorting-receipt-output.postgres.test.ts'
+      - 'apps/server/src/inventory-output-contract.ts'
+      - 'apps/server/src/inventory-output-routes.ts'
+      - '.github/workflows/receipt-sorting-postgres.yml'
+permissions:
+  contents: read
+jobs:
+  authoritative-receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: production_mf_ci
+          POSTGRES_PASSWORD: ci_test_password_only
+          POSTGRES_DB: production_mf_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U production_mf_ci -d production_mf_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 8
+    env:
+      POSTGRES_TEST_URL: postgres://production_mf_ci:ci_test_password_only@localhost:5432/production_mf_ci
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install locked backend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check server types
+        run: npm run typecheck
+      - name: Migrate disposable PostgreSQL only
+        run: node ../../scripts/migrate-disposable-postgres.mjs
+      - name: Verify real Cutting receipt and Sorting output
+        run: npm test -- --run src/sorting-receipt-output.postgres.test.ts

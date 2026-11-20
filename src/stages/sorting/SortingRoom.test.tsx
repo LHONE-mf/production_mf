@@ -302,3 +302,190 @@ it('refuses stale local specification edits without replacing the newer record',
  await vi.waitFor(()=>expect(page.querySelector('[role="alert"]')?.textContent).toMatch(/изменен|изменена|обновлен|обновлена/i));
  expect((await db.sortSpecs.get('TEST-spec'))?.parameterName).toBe('Newer spec');
 });
+
+
+it('calculates and freezes individual Mass readings without overwriting the prior station history',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ await typeCount('Прошло контроль','8');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 2.');
+ const input=()=>page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные массы электродов"]');
+ await vi.waitFor(()=>expect(input()).toBeTruthy());
+ const values=['1,2','1,3','1,4','1,7','1,8','1,9','1,6','2,3'];
+ await act(async()=>{
+   Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(input(),values.join('\n'));
+   input()!.dispatchEvent(new Event('input',{bubbles:true}));
+ });
+ await clickRoomButton('Рассчитать количество и сорта по массам');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('3');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]')?.value).toBe('4');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(2);
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ expect((await db.sortingWorkflows.get('cut'))?.stages[2].massReadingsG).toEqual([1.2,1.3,1.4,1.7,1.8,1.9,1.6,2.3]);
+});
+
+
+it('supports measured Thickness and Mass in one operator flow while keeping Visual history',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные толщины электродов"]')).toBeTruthy());
+ const typeReadings=async(label:string,value:string)=>{
+   const el=()=>page.querySelector<HTMLTextAreaElement>('[aria-label="'+label+'"]');
+   await act(async()=>{
+     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(el(),value);
+     el()!.dispatchEvent(new Event('input',{bubbles:true}));
+   });
+ };
+ const thickness=[72,73,74,75,76,77,78,79,90];
+ await typeReadings('Измеренные толщины электродов',thickness.join('\n'));
+ await clickRoomButton('Рассчитать годные и брак по толщине');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('8');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLTextAreaElement>('[aria-label="Измеренные массы электродов"]')).toBeTruthy());
+ await typeReadings('Измеренные массы электродов',['1.2','1.3','1.4','1.7','1.8','1.9','1.6','2.3'].join('\n'));
+ await clickRoomButton('Рассчитать количество и сорта по массам');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('3');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]')?.value).toBe('4');
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ const stored=await db.sortingWorkflows.get('cut');
+ expect(stored?.stages[0].passedCount).toBe(9);
+ expect(stored?.stages[1].thicknessReadingsUm).toEqual(thickness);
+ expect(stored?.stages[2].massReadingsG).toEqual([1.2,1.3,1.4,1.7,1.8,1.9,1.6,2.3]);
+ await clickRoomButton('Завершить сортировку');
+ await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
+ const [result]=await db.sortRuns.toArray();
+ expect(result.rejected).toBe(3);
+ expect(result.buckets).toEqual([{categoryName:'A',count:3},{categoryName:'B',count:4}]);
+});
+
+
+it('counts Thickness via large tap targets and Mass by grade plus below/above buckets',async()=>{
+ const page=await mount();
+ const grading=page.querySelector<HTMLInputElement>('input[name="sort-mode"][value="grading"]')!;
+ await act(async()=>{grading.click();});
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','9');
+ await typeCount('Отбраковано на станции','1');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ for(let i=0;i<8;i++)await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!.click();});
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Отбраковано на станции"]')!.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('8');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')?.disabled).toBe(true);
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')).toBeTruthy());
+ for(let i=0;i<5;i++)await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Количество сорта A"]')!.click();});
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Количество сорта B"]')!.click();});
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Масса ниже допуска"]')!.click();});
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Масса выше допуска"]')!.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('5');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта B"]')?.value).toBe('1');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Масса ниже допуска"]')?.value).toBe('1');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Масса выше допуска"]')?.value).toBe('1');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('2');
+ expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Масса выше допуска"]')?.disabled).toBe(true);
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Уменьшить Количество сорта A"]')!.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Количество сорта A"]')?.value).toBe('4');
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Количество сорта A"]')!.click();});
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ const wf=await db.sortingWorkflows.get('cut');
+ expect(wf?.stages[1]).toMatchObject({station:'thickness',inputCount:9,passedCount:8,rejectedCount:1});
+ expect(wf?.stages[2]).toMatchObject({station:'mass',inputCount:8,passedCount:6,rejectedCount:2,
+   grades:[{categoryName:'A',count:5},{categoryName:'B',count:1}],
+   massOutOfRange:{belowMin:1,aboveMax:1},
+ });
+ expect(wf?.stages[1].thicknessReadingsUm).toBeUndefined();
+ expect(wf?.stages[2].massReadingsG).toBeUndefined();
+ await clickRoomButton('Завершить сортировку');
+ await vi.waitFor(async()=>expect(await db.sortRuns.count()).toBe(1));
+ await clickRoomButton('Партии с нарезки');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Сортировка завершена'));
+ await clickRoomButton('Смотреть журнал');
+ expect(page.textContent).toContain('ниже допуска 1 шт · выше допуска 1 шт');
+});
+
+it('replacing the mass reject total clears draft under/over counts instead of persisting a false breakdown',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')).toBeTruthy());
+ await typeCount('Прошло контроль','10');await typeCount('Отбраковано на станции','0');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(()=>expect([...page.querySelectorAll('button')].some(b=>b.textContent?.includes('Сохранить 2.'))).toBe(true));
+ await typeCount('Прошло контроль','10');await typeCount('Отбраковано на станции','0');
+ await clickRoomButton('Сохранить 2.');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Масса ниже допуска"]')).toBeTruthy());
+ await act(async()=>{page.querySelector<HTMLButtonElement>('[aria-label="Добавить Масса ниже допуска"]')!.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Отбраковано на станции"]')?.value).toBe('1');
+ await typeCount('Отбраковано на станции','2');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Масса ниже допуска"]')?.value).toBe('');
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Масса выше допуска"]')?.value).toBe('');
+ await typeCount('Прошло контроль','8');
+ await clickRoomButton('Сохранить 3.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages).toHaveLength(3));
+ expect((await db.sortingWorkflows.get('cut'))?.stages[2].massOutOfRange).toBeUndefined();
+});
+
+
+it('does not lose rapid taps before React re-renders the displayed counter',async()=>{
+ const page=await mount();
+ await clickRoomButton('Начать сортировку');
+ await vi.waitFor(()=>expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')).toBeTruthy());
+ const plus=page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!;
+ await act(async()=>{for(let i=0;i<7;i++)plus.click();});
+ await vi.waitFor(()=>expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('7'));
+ const after=page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')!;
+ await act(async()=>{for(let i=0;i<10;i++)after.click();});
+ expect(page.querySelector<HTMLInputElement>('[aria-label="Прошло контроль"]')?.value).toBe('10');
+ expect(page.querySelector<HTMLButtonElement>('[aria-label="Добавить Прошло контроль"]')?.disabled).toBe(true);
+ await typeCount('Отбраковано на станции','0');
+ await clickRoomButton('Сохранить 1.');
+ await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages[0].passedCount).toBe(10));
+});
+
+
+it('Chief prepares KD before Cutting exists and explicitly binds an independent copy after arrival',async()=>{
+ const page=await referenceRoom();
+ await db.cuttingRuns.delete('TEST-cut');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Партии с нарезки (0)'));
+ await clickText('Спецификации КД');
+ await clickText('Новая спецификация');
+ const name=page.querySelector<HTMLInputElement>('[aria-label="Обозначение партии КД"]')!;
+ expect(name).toBeTruthy();
+ const save=()=>[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить локально'))!;
+ expect(save().disabled).toBe(true);
+ await act(async()=>enterText(name,'LOT-TECH-42'));
+ expect(save().disabled).toBe(false);
+ await clickText('Сохранить локально');
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(1));
+ const template=(await db.sortSpecs.toArray())[0];
+ expect(template.batchName).toBe('LOT-TECH-42');
+ expect(template.cutRunId).toBeUndefined();
+ await db.cuttingRuns.add({id:'TEST-bound',incomingId:'LOT-TECH-42',electrodeType:'strip',
+   goodCount:8,defectCount:0,workerId:'cutter',createdAt:100,updatedAt:100});
+ await vi.waitFor(()=>expect(page.textContent).toContain('Привязать копию КД к партии LOT-TECH-42'));
+ await clickText('Привязать копию КД к партии LOT-TECH-42');
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(2));
+ const specs=await db.sortSpecs.toArray();
+ expect(specs.find(x=>x.id===template.id)?.cutRunId).toBeUndefined();
+ const bound=specs.find(x=>x.cutRunId==='TEST-bound');
+ expect(bound).toMatchObject({batchName:'LOT-TECH-42',electrodeType:'strip',authorId:'chief'});
+ expect(bound?.id).not.toBe(template.id);
+});

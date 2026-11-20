@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { TaskStatus, type Task } from '../types';
+import { TaskPriority, TaskStatus, type Task } from '../types';
 import { encodeTask } from './taskDto';
 import type { PendingTaskOperation } from './hybridOutbox';
 import { requireOfflineTaskEditLease } from './offlineTaskLease';
@@ -21,6 +21,11 @@ export async function saveServerManagedTask(task: Task, deviceId: string): Promi
   requireUuid(task.id, 'task.id');
   requireUuid(deviceId, 'deviceId');
   if (task.assignedTo) requireUuid(task.assignedTo, 'task.assignedTo');
+  // Reject unsyncable edits before touching the local task or immutable outbox.
+  if (typeof task.title !== 'string' || !task.title.trim() || task.title.length > 300 ||
+      typeof task.description !== 'string' || task.description.length > 20_000 ||
+      !Object.values(TaskPriority).includes(task.priority))
+    throw new Error('Invalid server task fields');
   const payload = encodeTask(task);
   return db.transaction('rw', db.tasks, db.hybridTaskOutbox, db.hybridTaskRevisions, async () => {
     const outstanding = await db.hybridTaskOutbox.where('entityId').equals(task.id).toArray();

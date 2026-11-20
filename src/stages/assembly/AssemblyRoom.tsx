@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 import {AssemblyCellOutputForm} from './AssemblyCellOutputForm';
 import {appendAssemblyOperation} from '../../core/manufacturing/assemblyOperations';
 import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
@@ -110,12 +112,8 @@ export function AssemblyModule() {
   ];
 
   return (
-    <div className="p-4 space-y-4">
-      <h2 className="text-lg font-bold text-white">🔋 Сборка элементов и батареек</h2>
-      <p className="text-xs text-slate-400">
-        Принимается весь годный выход одной записи сортировки без разделения. Электроды не пересчитываются в ячейки.
-        Для каждой операции явно укажите полный источник или предшественника. Выход ячеек и номера задаются отдельным заявлением; это не QA-допуск.
-      </p>
+    <div className="min-w-0 space-y-4">
+      <RoomWorkspaceHeader icon="🔋" title="Сборка элементов и батареек" description="Принимайте годный выход сортировки без пересчёта электродов в ячейки. Для каждой операции укажите источник или предшественника. Выход ячеек и номера оформляются отдельно и не означают QA-допуск." />
 
       {intakeError && <p role="alert" className="text-red-300 text-sm">{intakeError}</p>}
 
@@ -136,14 +134,7 @@ export function AssemblyModule() {
         </div>
       )}
 
-      <div className="flex gap-1 flex-wrap border-b border-slate-800 pb-2">
-        {stationTabs.map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-3 py-1.5 rounded-t text-xs ${tab === t.id ? 'bg-slate-800 text-white font-semibold' : 'text-slate-400 hover:text-white'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы сборки" tabs={stationTabs} activeTab={tab} onChange={setTab} />
 
       {tab === 'incoming' && (
         <div className="space-y-2">

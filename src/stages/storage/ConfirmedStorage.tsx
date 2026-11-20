@@ -4,7 +4,6 @@ import {InventoryMovementsPanel} from './InventoryMovementsPanel';
 import {InventoryAlertsPanel} from './InventoryAlertsPanel';
 import {InventorySplitPanel} from './InventorySplitPanel';
 import {InventoryCounts} from './InventoryCounts';
-import {InventoryOutputReceipts} from './InventoryOutputReceipts';
 import {InventoryIdentificationPanel} from './InventoryIdentificationPanel';
 import {InventoryPackageLabel} from './InventoryPackageLabel';
 import {InventoryQualityPanel} from './InventoryQualityPanel';
@@ -28,7 +27,7 @@ import {confirmedInventoryForScope,inventoryQueueForScope,inventoryScopeKey,type
 import {inventoryStockQueueForScope,reviewInventoryConflict} from '../../core/sync/inventoryStockOutbox';
 
 const actionLabel=(kind:string)=>({receive:'Приёмка',split_out:'Разделение — исходный контейнер',split_in:'Разделение — новая дочерняя упаковка',scrap:'Списание складского остатка (не расход)',return:'Возврат неиспользованного из подтверждённой выдачи',transfer:'Перемещение',adjust:'Коррекция',reserve:'Резерв',release_reservation:'Снятие резерва',issue:'Выдача в производство (не расход)',quality_change:'Решение о качестве (без движения количества)'} as Record<string,string>)[kind]??kind;
-export function ConfirmedStorage(){
+export function ConfirmedStorage({mode='inventory'}:{mode?:'receipts'|'inventory'}){
  const connection=useServerConnection(),user=useAuthStore(s=>s.currentUser),localSession=useAuthStore(s=>s.session);
  const [now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[error,setError]=useState(''),[search,setSearch]=useState(''),[locationFilter,setLocationFilter]=useState('');
  const [view,setView]=useState<{key:string;at:number;epoch:string;history:InventoryHistory[];access:WarehouseAccess;canCorrect:boolean;materials:InventoryMaterial[];places:InventoryLocation[];stocks:ConfirmedInventoryStock[];names:Record<string,string>;locations:Record<string,string>;queue:{id:string;state:string;kind:string;reason:string;at:number;quantity:number;unit:string;stockId:string;revision:number;destination?:string;reviewedAt?:number;reviewReason?:string;error?:string}[]}|null>(null);
@@ -93,13 +92,14 @@ export function ConfirmedStorage(){
   finally{sending.current=false;if(run===generation.current){setBusy(false);setConfirmSend(false);}}
  }
  return <section aria-label="Подтверждённый склад" className="min-w-0 space-y-3 rounded-lg bg-slate-800 p-3 break-words">
-  <h3 className="font-semibold">Подтверждённый склад</h3>
-  {!connection?<><p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p><OfflineStorage now={now}/></>:!fresh?<><p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p><OfflineStorage now={now} liveScope={scope??undefined}/></>:<>
+  <h3 className="font-semibold">{mode==='receipts'?'Поступление на склад':'Текущие остатки склада'}</h3>
+  {!connection?<><p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p><OfflineStorage now={now} mode={mode}/></>:!fresh?<><p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p><OfflineStorage now={now} mode={mode} liveScope={scope??undefined}/></>:<>
    <p>Обновление читает серверные данные. Операции отправляются только после отдельного подтверждения.</p>
    <button type="button" className="min-h-11 rounded bg-blue-700 px-3" disabled={busy} onClick={()=>void refresh()}>{busy?'Загрузка…':'Обновить подтверждённые данные'}</button>
    {!visible&&!busy&&!error&&<p>Данные ещё не загружены. Нажмите обновление.</p>}
    {visible&&<>
     <p>Последняя успешная синхронизация: {new Date(visible.at).toLocaleString('ru-RU')}. Последние известные остатки; изменения на других устройствах требуют обновления.</p>
+    {mode==='inventory'&&<>
     {scope&&connection&&user&&<InventoryIdentificationPanel scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} onSelected={(kind,id)=>{setLocationFilter(kind==='location'?id:'');setSearch(kind==='container'?id:'');requestAnimationFrame(()=>document.getElementById('inventory-container-'+id)?.scrollIntoView({block:'start'}));}}/>}
     {scope&&connection&&<InventoryAlertsPanel key={'alerts:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
     {scope&&connection&&<InventoryMovementsPanel key={'movements:'+key} scope={scope} session={connection.session} epoch={visible.epoch} materials={visible.materials}/>}
@@ -119,11 +119,17 @@ export function ConfirmedStorage(){
      {scope&&connection&&user&&<StockChangeForm {...{scope,stock:s,materialName:visible.names[s.materialId],sourceLocationName:visible.locations[s.locationId],session:connection.session,localActorId:user.id,locations:visible.places,canCorrect:visible.canCorrect,onQueued:()=>void queued()}}/>}
      <details><summary className="min-h-11 py-2 cursor-pointer">Полученная серверная история контейнера</summary><p>Из последних 200 изменений, полученных устройством. Полный журнал хранится на сервере; при обновлении старой версии история до сохранённого курсора может отсутствовать.</p>{visible.history.filter(h=>h.stockId===s.stockId).map(h=><p key={h.sequence}>{actionLabel(h.kind)} · {new Date(h.recordedAt).toLocaleString('ru-RU')} · Операция {h.operationId} · Версия {h.stock.revision} · {h.quantity??'—'} {h.stock.unit} · Автор {h.actorId??'не передан старым сервером'} · Устройство {h.deviceId??'не указано'} · {h.reason??'основание не передано старым сервером'} {h.evidence&&<>· Свидетельство: {h.evidence}</>} · Место после операции: {visible.locations[h.stock.locationId]??h.stock.locationId}</p>)}</details>
     </article>)}
-    {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
+    <details className="rounded border border-slate-700 p-3">
+      <summary className="min-h-11 cursor-pointer py-2 text-sm">Дополнительные операции, инвентаризация и администрирование</summary>
     {scope&&connection&&user&&<InventoryReturns key={'returns:'+key} scope={scope} session={connection.session} localActorId={user.id} locations={visible.places} onChanged={()=>void refresh()}/>}
     {scope&&connection&&user&&<InventoryCounts scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} stocks={visible.stocks} names={visible.names} canApprove={visible.access.level==='chief'||visible.access.level==='manager'} onChanged={()=>void refresh()}/>}
-    {scope&&connection&&user&&<InventoryOutputReceipts scope={scope} session={connection.session} localActorId={user.id} epoch={visible.epoch} locations={visible.places} onChanged={()=>void refresh()}/>}
     {scope&&connection&&user&&visible.access.canManageCatalog&&<StorageAdministration key={'administration:'+key} scope={scope} session={connection.session} localActorId={user.id} access={visible.access} materials={visible.materials} locations={visible.places} onChanged={()=>void refresh()}/>}
+    </details>
+    </>}
+    {mode==='receipts'&&<>
+      <p className="text-xs text-slate-400">Новая приёмка создаёт отдельную упаковку в карантине; подтвердите качество до выдачи. Номер партии и документ входного контроля не заменяют решение QA.</p>
+    {scope&&connection&&user&&<ReceivingForm key={key} scope={scope} session={connection.session} localActorId={user.id} materials={visible.materials} locations={visible.places} onQueued={()=>void queued()}/>}
+    </>}
     <h4>Операции / Синхронизация ({visible.queue.length})</h4>
     <p>Предложения не меняют подтверждённые остатки. Решения QA и администрация подтверждаются отдельно в соответствующих разделах.</p>
     {visible.queue.some(q=>q.state==='pending')&&<button type="button" className="min-h-11 bg-blue-700 px-3" disabled={busy} onClick={()=>setConfirmSend(true)}>Проверить отправку / повтор</button>}
@@ -135,6 +141,6 @@ export function ConfirmedStorage(){
   {fresh&&scope&&connection&&user&&<InventoryRecoveryPanel key={key} scope={scope} session={connection.session} localActorId={user.id} onReconciled={()=>{generation.current++;setView(null);setError('');setBusy(false);setConfirmSend(false);}}/>}
   {message&&<p role="status">{message}</p>}
   {error&&<p role="alert">{error}</p>}
-  {error&&fresh&&!visible&&<OfflineStorage now={now} liveScope={scope??undefined}/>}
+  {error&&fresh&&!visible&&<OfflineStorage now={now} mode={mode} liveScope={scope??undefined}/>}
  </section>;
 }

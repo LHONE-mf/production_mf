@@ -6,6 +6,7 @@ import {completeSortingWorkflow, recordSortingStation, startSortingWorkflow} fro
 import type {CutRun, DefectEntry, SortRun, SortSpec, SortingMode, SortingStation, SortingWorkflow} from '../../core/types';
 import {LocalDraftStatus, useLocalFormDraft} from '../_common/useLocalFormDraft';
 import {emptySortingDraft, emptyStationDraft, parseSortingDraft, sortingDraftKey, type SortingStationDraft} from './sortingDraft';
+import {parseMassReadings,parseThicknessReadings,summarizeMassReadings,summarizeThicknessReadings} from '../../core/manufacturing/sortingMeasurement';
 
 const stationOrder: SortingStation[] = ['visual', 'thickness', 'mass'];
 const stationName: Record<SortingStation, string> = {
@@ -17,6 +18,39 @@ const inputCls = 'w-full min-h-11 bg-slate-900 border border-slate-600 rounded-l
 const labelCls = 'block text-sm text-slate-300 mb-1';
 const count = (value:string):boolean => /^(0|[1-9]\d*)$/.test(value) && Number.isSafeInteger(Number(value));
 const message = (reason:unknown):string => reason instanceof Error ? reason.message : 'Не удалось сохранить запись';
+
+interface CountTapProps {
+  id:string;
+  label:string;
+  ariaLabel:string;
+  value:string;
+  disabled:boolean;
+  canAdd:boolean;
+  onChange:(value:string)=>void;
+  onDelta:(delta:-1|1)=>void;
+}
+
+/** One-tap counted observations. Text entry remains available for correction. */
+function CountTap({id,label,ariaLabel,value,disabled,canAdd,onChange,onDelta}:CountTapProps){
+  const valid=count(value),numeric=valid?Number(value):0;
+  const decrement=()=>{if(valid&&numeric>0)onDelta(-1);};
+  const increment=()=>{if((valid||value==='')&&canAdd&&numeric<Number.MAX_SAFE_INTEGER)onDelta(1);};
+  return <div className="min-w-0">
+    <label htmlFor={id} className={labelCls}>{label}</label>
+    <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_3.5rem] gap-2">
+      <button type="button" aria-label={'Уменьшить '+ariaLabel}
+        className="min-h-14 rounded-lg border border-slate-500 bg-slate-700 text-xl font-semibold text-white disabled:opacity-40"
+        disabled={disabled||!valid||numeric===0} onClick={decrement}>−1</button>
+      <input id={id} aria-label={ariaLabel} type="number" min="0" step="1" inputMode="numeric"
+        className={inputCls+' min-w-0 text-center font-bold'} value={value} placeholder="0"
+        disabled={disabled} onChange={e=>onChange(e.target.value)}/>
+      <button type="button" aria-label={'Добавить '+ariaLabel}
+        className="min-h-14 rounded-lg border border-blue-500 bg-blue-700 text-lg font-semibold text-white disabled:opacity-40"
+        disabled={disabled||!canAdd||(!valid&&value!=='')||numeric>=Number.MAX_SAFE_INTEGER}
+        onClick={increment}>+1</button>
+    </div>
+  </div>;
+}
 
 interface Props {
   batches:CutRun[];
@@ -49,7 +83,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const active=workflow && !workflow.finalizedSortRunId ? stationOrder[workflow.stages.length] : undefined;
   const formKey=workflow&&active ? sortingDraftKey(workflow.id,workflow.stages.length) : null;
   const form=formKey ? draft.value.entries[formKey]??emptyStationDraft() : emptyStationDraft();
-  const {passed,rejected,grades,reasonCounts,notes}=form;
+  const {passed,rejected,grades,reasonCounts,notes,massReadings='',thicknessReadings='',massBelow='',massAbove=''}=form;
   function editForm(patch:Partial<SortingStationDraft>){
     if(!formKey||!draft.ready)return;
     draft.edit(old=>({
@@ -69,8 +103,58 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
   const validReasons=typedReasons.length===0 || (typedReasons.every(([,v])=>count(v)) &&
     typedReasons.reduce((sum,[,v])=>sum+Number(v),0)===Number(rejected));
   const balanceTotal=accepted+(count(rejected)?Number(rejected):0);
+  const massSplitActive=active==='mass'&&(massBelow!==''||massAbove!=='');
+  const validMassSplit=!massSplitActive || (count(massBelow)&&count(massAbove) &&
+    Number.isSafeInteger(Number(massBelow)+Number(massAbove)) &&
+    Number(massBelow)+Number(massAbove)===Number(rejected));
   const balanced=!!active && count(rejected) && (gradedMass?!!validGrades:count(passed)) &&
-    Number.isSafeInteger(accepted+Number(rejected)) && accepted+Number(rejected)===inputCount && validReasons;
+    Number.isSafeInteger(accepted+Number(rejected)) && accepted+Number(rejected)===inputCount && validReasons && validMassSplit;
+  const canAdd=balanceTotal<inputCount;
+  // Read and commit the latest draft snapshot for every tap. Rapid successive
+  // taps must not derive the next count from a stale React-rendered value.
+  function tapCounter(target:'passed'|'rejected'|'grade'|'below'|'above',delta:-1|1,gradeName?:string){
+    if(!formKey||!draft.ready||busy)return;
+    if((target==='below'||target==='above')&&active!=='mass')return;
+    if(target==='grade'&&(!gradedMass||!gradeName))return;
+    draft.edit(old=>{
+      const previous=old.entries[formKey]??emptyStationDraft();
+      const raw=target==='grade'?previous.grades[gradeName!]??'':
+        target==='below'?previous.massBelow??'':target==='above'?previous.massAbove??'':
+        target==='passed'?previous.passed:previous.rejected;
+      if(raw!==''&&!count(raw))return old;
+      const oldCount=Number(raw||0);
+      if(delta<0&&oldCount===0)return old;
+      const nextCount=oldCount+delta;
+      if(!Number.isSafeInteger(nextCount)||nextCount<0)return old;
+      const asNumber=(v:string|undefined)=>!v?0:count(v)?Number(v):NaN;
+      const passedTotal=gradedMass
+        ?gradeSpecs.reduce((total,c)=>total+asNumber(previous.grades[c.name]),0)
+        :asNumber(previous.passed);
+      const used=passedTotal+asNumber(previous.rejected);
+      if(delta>0&&(!Number.isSafeInteger(used)||used>=inputCount))return old;
+      let next:SortingStationDraft;
+      if(target==='grade')next={...previous,grades:{...previous.grades,[gradeName!]:String(nextCount)}};
+      else if(target==='below'||target==='above'){
+        const below=target==='below'?String(nextCount):previous.massBelow||'0';
+        const above=target==='above'?String(nextCount):previous.massAbove||'0';
+        if(!count(below)||!count(above)||!Number.isSafeInteger(Number(below)+Number(above)))return old;
+        next={...previous,massBelow:below,massAbove:above,
+          rejected:String(Number(below)+Number(above))};
+      }else if(target==='rejected'){
+        next={...previous,rejected:String(nextCount),
+          ...(active==='mass'?{massBelow:'',massAbove:''}:{})};
+      }else next={...previous,passed:String(nextCount)};
+      return {...old,entries:{...old.entries,[formKey]:next}};
+    });
+  }
+  function editMassSplit(kind:'below'|'above',value:string){
+    const below=kind==='below'?value:massBelow||'0';
+    const above=kind==='above'?value:massAbove||'0';
+    editForm({massBelow:below,massAbove:above,
+      ...(count(below)&&count(above)&&Number.isSafeInteger(Number(below)+Number(above))
+        ? {rejected:String(Number(below)+Number(above))}:{}),
+    });
+  }
   const previousStation=workflow && workflow.stages.length>0
     ? workflow.stages[workflow.stages.length-1] : undefined;
   const canFillPassed=!!active && !gradedMass && count(rejected) && Number(rejected)<=inputCount;
@@ -105,10 +189,17 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
       : undefined;
     // Flush every queued operator edit before committing a production decision.
     // A failed local checkpoint must not turn an unsaved form into a station record.
+    const measured=active==='mass'&&massReadings.trim()!==''
+      ? parseMassReadings(massReadings,inputCount) : undefined;
+    const measuredThickness=active==='thickness'&&thicknessReadings.trim()!==''
+      ? parseThicknessReadings(thicknessReadings,inputCount) : undefined;
     await draft.checkpoint(current=>current);
     await recordSortingStation(workflow.id,{
       station:active,passedCount:accepted,rejectedCount:Number(rejected),workerId,
       grades:decisions,
+      ...(massSplitActive?{massOutOfRange:{belowMin:Number(massBelow),aboveMax:Number(massAbove)}}:{}),
+      ...(measured?{massReadingsG:measured}:{}),
+      ...(measuredThickness?{thicknessReadingsUm:measuredThickness}:{}),
       rejectionReasons:typedReasons.length
         ? typedReasons.map(([id,value])=>({reason:id,count:Number(value)}))
         : undefined,
@@ -145,7 +236,8 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
       </div>
       {!batch && <p className="text-slate-400 text-sm">Выберите партию с нарезки, чтобы начать или продолжить сортировку.</p>}
       {batch && <>
-        <p className="text-sm text-slate-300">Поступило с нарезки: <strong className="text-white">{batch.goodCount} шт</strong></p>
+        <p className="text-sm text-slate-300">{batch.receivedCustody?'Сервером подтверждена приёмка':'Поступило с нарезки'}: <strong className="text-white">{batch.goodCount} шт</strong></p>
+        {batch.receivedCustody&&<p className="text-xs text-amber-200">Сортировка ведётся по сохранённой приёмке. Текущую доступность источника сверяйте с сервером; QA и складской выпуск не создаются автоматически.</p>}
         {workflow ? <div className="rounded-lg bg-slate-900 p-3 text-sm space-y-1">
           <p className="text-emerald-300">Партия создана · {workflow.mode==='grading'?'градация по массе':'годен / брак'}</p>
           <p className="text-slate-300">КД: {workflow.specSnapshot.parameterName} · {workflow.specSnapshot.id}</p>
@@ -202,6 +294,19 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
           {saved ? <div className="mt-2 space-y-1 text-sm text-slate-300">
             <p>На входе: {saved.inputCount} · прошло: <b className="text-emerald-300">{saved.passedCount}</b> · брак: <b className="text-rose-300">{saved.rejectedCount}</b></p>
             {saved.grades?.map(g=><p key={g.categoryName}>{g.categoryName}: {g.count} шт</p>)}
+            {saved.massOutOfRange && <p>Брак по массе: ниже нижнего допуска {saved.massOutOfRange.belowMin} шт · выше верхнего допуска {saved.massOutOfRange.aboveMax} шт</p>}
+            {saved.thicknessReadingsUm && <details className="rounded border border-slate-600 p-2">
+              <summary className="cursor-pointer">Измеренные толщины: {saved.thicknessReadingsUm.length} шт · мкм</summary>
+              <ol className="max-h-48 overflow-y-auto text-xs text-slate-300">
+                {saved.thicknessReadingsUm.map((value,i)=><li key={i}>Электрод №{i+1}: {value} мкм</li>)}
+              </ol>
+            </details>}
+            {saved.massReadingsG && <details className="rounded border border-slate-600 p-2">
+              <summary className="cursor-pointer">Измеренные массы: {saved.massReadingsG.length} шт · г</summary>
+              <ol className="max-h-48 overflow-y-auto text-xs text-slate-300">
+                {saved.massReadingsG.map((value,i)=><li key={i}>Электрод №{i+1}: {value} г</li>)}
+              </ol>
+            </details>}
             <p className="text-xs text-slate-400">Оператор: {saved.workerId} · {new Date(saved.recordedAt).toLocaleString('ru-RU')}</p>
             {saved.notes && <p className="text-xs text-slate-400">Примечание: {saved.notes}</p>}
             {index===workflow.stages.length-1 && index<2 && !workflow.finalizedSortRunId &&
@@ -251,21 +356,35 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
               </p>)}
               <p className="text-xs text-amber-200">{gradedMass?'Распределите электроды по сортам вручную.':'Определите годные и брак вручную.'}</p>
             </div>}
-            {!gradedMass && <div>
-              <label htmlFor="sort-passed" className={labelCls}>Прошло контроль, шт</label>
-              <input id="sort-passed" aria-label="Прошло контроль" type="number" min="0" step="1"
-                inputMode="numeric" className={inputCls} value={passed} onChange={e=>editForm({passed:e.target.value})} disabled={busy}/>
-            </div>}
-            {gradedMass && gradeSpecs.map(c=><div key={c.name}>
-              <label className={labelCls} htmlFor={'grade-'+c.name}>{c.name}, шт · {c.minMass??'—'}–{c.maxMass??'—'} г</label>
-              <input id={'grade-'+c.name} aria-label={'Количество сорта '+c.name} type="number" min="0" step="1"
-                inputMode="numeric" className={inputCls} value={grades[c.name]??''} disabled={busy}
-                onChange={e=>editForm({grades:{...grades,[c.name]:e.target.value}})}/>
-            </div>)}
-            <div>
-              <label htmlFor="sort-rejected" className={labelCls}>Отбраковано на станции, шт (включая 0)</label>
-              <input id="sort-rejected" aria-label="Отбраковано на станции" type="number" min="0" step="1"
-                inputMode="numeric" className={inputCls} value={rejected} onChange={e=>editForm({rejected:e.target.value})} disabled={busy}/>
+            <div className="space-y-3">
+              {!gradedMass && <CountTap id="sort-passed" label="Прошло контроль, шт" ariaLabel="Прошло контроль"
+                value={passed} disabled={busy||!draft.ready} canAdd={canAdd} onChange={v=>editForm({passed:v})}
+                onDelta={delta=>tapCounter('passed',delta)}/>}
+              {gradedMass && gradeSpecs.map(c=><CountTap key={c.name} id={'grade-'+c.name}
+                label={c.name+', шт · '+(c.minMass??'—')+'–'+(c.maxMass??'—')+' г'}
+                ariaLabel={'Количество сорта '+c.name} value={grades[c.name]??''}
+                disabled={busy||!draft.ready} canAdd={canAdd}
+                onChange={v=>editForm({grades:{...grades,[c.name]:v}})}
+                onDelta={delta=>tapCounter('grade',delta,c.name)}/>)}
+              {station==='mass' && <>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <CountTap id="mass-below" label="Масса ниже нижнего допуска, шт"
+                    ariaLabel="Масса ниже допуска" value={massBelow}
+                    disabled={busy||!draft.ready} canAdd={canAdd}
+                    onChange={v=>editMassSplit('below',v)}
+                    onDelta={delta=>tapCounter('below',delta)}/>
+                  <CountTap id="mass-above" label="Масса выше верхнего допуска, шт"
+                    ariaLabel="Масса выше допуска" value={massAbove}
+                    disabled={busy||!draft.ready} canAdd={canAdd}
+                    onChange={v=>editMassSplit('above',v)}
+                    onDelta={delta=>tapCounter('above',delta)}/>
+                </div>
+                <p className="text-xs text-slate-400">Считайте электроды, не соответствующие массовым допускам КД. Кнопки ниже/выше автоматически обновляют общий брак; при ручной правке общего брака разбивка очищается.</p>
+              </>}
+              <CountTap id="sort-rejected" label="Отбраковано на станции, шт (включая 0)" ariaLabel="Отбраковано на станции"
+                value={rejected} disabled={busy||!draft.ready} canAdd={canAdd}
+                onChange={v=>editForm({rejected:v,...(active==='mass'?{massBelow:'',massAbove:''}:{})})}
+                onDelta={delta=>tapCounter('rejected',delta)}/>
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" className="min-h-11 rounded-lg border border-slate-600 px-3 text-sm text-white disabled:opacity-40"
@@ -285,6 +404,43 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
               </button>}
             </div>
             <p className="text-xs text-slate-400">Быстрые кнопки только заполняют поля по вашему явному действию. Решение о качестве остаётся за оператором.</p>
+            <details className="rounded-lg border border-slate-700 p-3">
+              <summary className="min-h-11 cursor-pointer text-xs text-slate-400">
+                Дополнительный поштучный ввод · не требуется оператору
+              </summary>
+              <p className="mt-2 text-xs text-amber-200">В рабочем процессе достаточно счётчиков. Поштучная масса оставлена как задел для возможного подключения весов; толщина снимается аналоговой головкой и учитывается суммарно.</p>
+            {station==='thickness' && <div className="rounded-lg border border-slate-600 bg-slate-900 p-3 space-y-2">
+              <label htmlFor="sort-thickness-readings" className={labelCls}>Индивидуальные измерения толщины, мкм (по одному на строку)</label>
+              <textarea id="sort-thickness-readings" aria-label="Измеренные толщины электродов" className={inputCls}
+                rows={5} placeholder="73,5 / новая строка / 74" value={thicknessReadings} disabled={busy}
+                onChange={e=>editForm({thicknessReadings:e.target.value})}/>
+              <p className="text-xs text-slate-400">Необязательно для исторических суммарных записей. При заполнении измерьте каждый электрод на входе Thickness. Положительные значения проверяются по границам КД без назначения сорта.</p>
+              <button type="button" className="min-h-11 rounded-lg border border-blue-600 px-3 text-sm font-medium text-white disabled:opacity-40"
+                disabled={busy||!draft.ready} onClick={()=>{
+                  try{
+                    const calculated=summarizeThicknessReadings(parseThicknessReadings(thicknessReadings,inputCount),gradeSpecs);
+                    editForm({passed:String(calculated.passedCount),rejected:String(calculated.rejectedCount)});
+                    setError('');
+                  }catch(cause){setError(message(cause));}
+                }}>Рассчитать годные и брак по толщине</button>
+            </div>}
+            {station==='mass' && <div className="rounded-lg border border-slate-600 bg-slate-900 p-3 space-y-2">
+              <label htmlFor="sort-mass-readings" className={labelCls}>Индивидуальные измерения массы, г (по одному на строку)</label>
+              <textarea id="sort-mass-readings" aria-label="Измеренные массы электродов" className={inputCls}
+                rows={5} placeholder="1,25\n1,42\n1,67" value={massReadings} disabled={busy}
+                onChange={e=>editForm({massReadings:e.target.value})}/>
+              <p className="text-xs text-slate-400">Необязательно для старых суммарных записей. Если заполнено, нужны значения для каждого электрода на входе Mass. По КД распределяются только однозначные массы; без измерений итог остаётся суммарным наблюдением, не доказательством поштучного контроля.</p>
+              <button type="button" className="min-h-11 rounded-lg border border-blue-600 px-3 text-sm font-medium text-white disabled:opacity-40"
+                disabled={busy||!draft.ready} onClick={()=>{
+                  try{
+                    const calculated=summarizeMassReadings(parseMassReadings(massReadings,inputCount),gradeSpecs,workflow.mode);
+                    editForm({passed:String(calculated.passedCount),rejected:String(calculated.rejectedCount),
+                      ...(gradedMass?{grades:Object.fromEntries(calculated.grades.map(g=>[g.categoryName,String(g.count)]))}:{})});
+                    setError('');
+                  }catch(cause){setError(message(cause));}
+                }}>Рассчитать количество и сорта по массам</button>
+            </div>}
+            </details>
             {station==='visual' && defects.length>0 && <details className="rounded-lg border border-slate-700 p-3">
               <summary className="text-sm text-slate-200 cursor-pointer">Причины визуального брака (необязательно)</summary>
               <p className="text-xs text-slate-400 mt-2">Если указываете причины, сумма должна совпадать с количеством брака.</p>
@@ -311,6 +467,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
                     'Превышение входа: '+(balanceTotal-inputCount)+' шт'}
                 </p>}
               {!validReasons&&<p className="text-amber-200">Количество по причинам брака не совпадает с общим браком.</p>}
+              {!validMassSplit&&<p className="text-amber-200">Сумма брака по массе ниже и выше допуска должна совпадать с общим браком.</p>}
             </div>
             <p className="text-xs text-slate-400">Оператор: {workerId??'не выбран'}. После записи станция блокируется от незаметного редактирования.</p>
             <LocalDraftStatus draft={draft} disabled={busy}/>

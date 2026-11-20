@@ -6,7 +6,7 @@ import React, { useEffect, useMemo,useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { SyncPacket } from '../../core/types';
 import { encodePacket,toQrChunks } from '../../transfer/packet';
-import { hasWorkshopKey } from '../../core/security';
+import { hasWorkshopKey, setWorkshopKey } from '../../core/security';
 import { useBluetooth } from '../../transfer/useBluetooth';
 
 interface Props {
@@ -19,14 +19,18 @@ type Tab = 'bluetooth' | 'qr' | 'text';
 export function PacketOutModal({ packet, onClose }: Props) {
   const [encoded, setEncoded] = useState('');
   const [encError, setEncError] = useState('');
+  const [workshopKeyInput,setWorkshopKeyInput]=useState('');
+  const [keyRevision,setKeyRevision]=useState(0);
+  const [keyMessage,setKeyMessage]=useState('');
   // encodePacket теперь async (подпись пакета WebCrypto) — считаем в useEffect.
   useEffect(() => {
     let alive = true;
+    setEncoded('');
     encodePacket(packet)
       .then((s) => { if (alive) { setEncoded(s); setEncError(''); } })
-      .catch((e) => { if (alive) setEncError(e instanceof Error ? e.message : String(e)); });
+      .catch((e) => { if (alive) {setEncoded('');setEncError(e instanceof Error ? e.message : String(e));} });
     return () => { alive = false; };
-  }, [packet]);
+  }, [packet,keyRevision]);
 
   const bt = useBluetooth();
   const [tab, setTab] = useState<Tab>('bluetooth');
@@ -78,9 +82,23 @@ export function PacketOutModal({ packet, onClose }: Props) {
         </div>
 
         {!hasWorkshopKey() && (
-          <p className="text-amber-300 text-sm bg-amber-500/10 border border-amber-500/40 rounded-lg p-2">
-            ⚠ Ключ цеха не задан — пакет нельзя подписать и передать. Задайте ключ в разделе «Синхронизация».
-          </p>
+          <form className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3"
+            onSubmit={e=>{e.preventDefault();const candidate=workshopKeyInput.trim();if(candidate.length<4){
+              setKeyMessage('Укажите ключ минимум из четырёх символов.');return;}
+              setWorkshopKey(candidate);setWorkshopKeyInput('');setKeyMessage('Ключ сохранён только на этом устройстве.');
+              setKeyRevision(n=>n+1);
+            }}>
+            <p className="text-sm text-amber-200">Передача пока заблокирована: на этом телефоне не задан общий ключ цеха.</p>
+            <p className="text-xs text-slate-300">Введите тот же ключ, что у принимающего телефона. Он нужен для проверки целостности пакета; ключ не подтверждает личность сотрудника и не заменяет права доступа.</p>
+            <label className="block text-xs text-slate-200">Общий ключ цеха
+              <input className="mt-1 min-h-11 w-full rounded-lg border border-slate-500 bg-slate-900 px-3 text-base text-white"
+                aria-label="Общий ключ цеха для передачи" type="password" autoComplete="off"
+                value={workshopKeyInput} onChange={e=>setWorkshopKeyInput(e.target.value)} />
+            </label>
+            {keyMessage&&<p role="status" className="text-sm text-amber-200">{keyMessage}</p>}
+            <button type="submit" className="min-h-11 w-full rounded-lg bg-amber-700 px-3 text-white"
+              disabled={workshopKeyInput.trim().length<4}>Сохранить ключ и подготовить передачу</button>
+          </form>
         )}
         {hasWorkshopKey() && !encoded && encError && (
           <p className="text-red-400 text-sm">Не удалось закодировать пакет для передачи: {encError}</p>

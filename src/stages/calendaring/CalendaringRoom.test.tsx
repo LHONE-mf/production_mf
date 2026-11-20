@@ -109,7 +109,7 @@ it('presents a touch-sized room workflow and separates assigned targets from mea
   node=document.createElement('div');document.body.appendChild(node);root=createRoot(node);
   await act(async()=>{root!.render(<CalendaringModule/>);});
   await vi.waitFor(()=>expect(node!.textContent).toContain('UI workflow roll'));
-  expect(node!.textContent).toContain('Локальная запись · офлайн');
+  expect(node!.textContent).toContain('Этап производства');
   const tabs=node!.querySelector('nav[aria-label="Разделы каландрирования"]')!;
   expect(tabs).not.toBeNull();
   expect([...tabs.querySelectorAll('button')].every(b=>b.className.includes('min-h-11'))).toBe(true);

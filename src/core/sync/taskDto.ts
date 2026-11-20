@@ -13,14 +13,51 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}
 function uuid(value: string, field: string) {
   if (typeof value !== 'string' || !uuidPattern.test(value)) throw new Error(field + ' must be a UUID');
 }
+function validateLocation(stage: unknown, workshopId: unknown) {
+  if (stage != null && !Object.values(StageId).includes(stage as StageId))
+    throw new Error('Invalid task stage');
+  if (workshopId != null && (typeof workshopId !== 'string' || workshopId.length > 120))
+    throw new Error('Invalid task workshop');
+}
+/** Mirror server task-schema limits before enqueueing or accepting task children. */
+function assertTaskChildLimits(
+  comments: Array<{ text: string }>,
+  attachments: Array<{ fileName: string; fileType: string; data: string }>,
+) {
+  if (!Array.isArray(comments) || comments.length > 1000 ||
+      !Array.isArray(attachments) || attachments.length > 30)
+    throw new Error('Invalid task child record count');
+  if (comments.some(comment => !comment || typeof comment.text !== 'string' || comment.text.length > 10_000))
+    throw new Error('Invalid task comment length');
+  if (attachments.some(attachment => !attachment ||
+      typeof attachment.fileName !== 'string' || attachment.fileName.length > 255 ||
+      typeof attachment.fileType !== 'string' || attachment.fileType.length > 120 ||
+      typeof attachment.data !== 'string' || attachment.data.length > 1_000_000))
+    throw new Error('Invalid task attachment length');
+}
+function optionalId(value: unknown, local: boolean) {
+  if (value === null || (local && (value === undefined || value === ''))) return;
+  if (typeof value !== 'string' || !uuidPattern.test(value)) throw new Error('Invalid optional task field');
+}
 function date(value: Date, field: string) {
   if (!(value instanceof Date) || !Number.isFinite(value.getTime())) throw new Error('Invalid date: ' + field);
   return value.toISOString();
 }
 export function encodeTask(task: Task): TaskPayloadV1 {
   uuid(task.id, 'task.id'); uuid(task.createdBy, 'task.createdBy');
-  if (task.assignedTo) uuid(task.assignedTo, 'task.assignedTo');
-  if (task.techCardId) uuid(task.techCardId, 'task.techCardId');
+  if (typeof task.title !== 'string' || task.title.length < 1 || task.title.length > 300 ||
+      typeof task.description !== 'string' || task.description.length > 20_000 ||
+      !Object.values(TaskPriority).includes(task.priority)) throw new Error('Invalid task text/priority');
+  if (!Object.values(TaskStatus).includes(task.status)) throw new Error('Invalid task status');
+  const createdAt = date(task.createdAt, 'createdAt');
+  const updatedAt = date(task.updatedAt, 'updatedAt');
+  if (updatedAt < createdAt) throw new Error('Invalid task date order');
+  optionalId(task.assignedTo, true);
+  optionalId(task.techCardId, true);
+  if (task.dueDate != null && !(task.dueDate instanceof Date))
+    throw new Error('Invalid optional task field');
+  validateLocation(task.stage, task.workshopId);
+  assertTaskChildLimits(task.comments, task.attachments);
   for (const comment of task.comments) {
     uuid(comment.id,'comment.id'); uuid(comment.taskId,'comment.taskId'); uuid(comment.authorId,'comment.authorId');
     if (comment.taskId !== task.id) throw new Error('Comment task mismatch');
@@ -32,8 +69,8 @@ export function encodeTask(task: Task): TaskPayloadV1 {
   return {
     schemaVersion: 1, title: task.title, description: task.description,
     status: task.status, priority: task.priority, assignedTo: task.assignedTo || null,
-    createdBy: task.createdBy, createdAt: date(task.createdAt,'createdAt'),
-    updatedAt: date(task.updatedAt,'updatedAt'), dueDate: task.dueDate ? date(task.dueDate,'dueDate') : null,
+    createdBy: task.createdBy, createdAt,
+    updatedAt, dueDate: task.dueDate ? date(task.dueDate,'dueDate') : null,
     techCardId: task.techCardId || null, stage: task.stage || null, workshopId: task.workshopId || null,
     comments: task.comments.map(c => ({...c, createdAt: date(c.createdAt,'comment.createdAt')})),
     attachments: task.attachments.map(a => ({...a, createdAt: date(a.createdAt,'attachment.createdAt')})),
@@ -50,19 +87,25 @@ export function decodeTask(id: string, payload: TaskPayloadV1): Task {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || payload.schemaVersion !== 1) throw new Error('Unsupported task payload version');
   // The typed network contract does not guarantee runtime JSON types.
   if (typeof payload.title !== 'string' || typeof payload.description !== 'string' ||
+      payload.title.length < 1 || payload.title.length > 300 || payload.description.length > 20_000 ||
       !Array.isArray(payload.comments) || !Array.isArray(payload.attachments)) {
     throw new Error('Invalid remote task fields');
   }
+  assertTaskChildLimits(payload.comments, payload.attachments);
   const statuses = Object.values(TaskStatus);
   const priorities = Object.values(TaskPriority);
   if (!statuses.includes(payload.status) || !priorities.includes(payload.priority)) throw new Error('Invalid task status/priority');
   const createdAt = parseRemoteDate(payload.createdAt, 'createdAt');
   const updatedAt = parseRemoteDate(payload.updatedAt, 'updatedAt');
   if (updatedAt.getTime() < createdAt.getTime()) throw new Error('Invalid remote task date order');
-  const dueDate = payload.dueDate ? parseRemoteDate(payload.dueDate, 'dueDate') : undefined;
+  optionalId(payload.assignedTo, false);
+  optionalId(payload.techCardId, false);
+  if (payload.dueDate !== null &&
+      (typeof payload.dueDate !== 'string' || !payload.dueDate.trim()))
+    throw new Error('Invalid optional task field');
+  const dueDate = payload.dueDate === null ? undefined : parseRemoteDate(payload.dueDate, 'dueDate');
   uuid(payload.createdBy, 'task.createdBy');
-  if (payload.assignedTo) uuid(payload.assignedTo, 'task.assignedTo');
-  if (payload.techCardId) uuid(payload.techCardId, 'task.techCardId');
+  validateLocation(payload.stage, payload.workshopId);
   for (const comment of payload.comments) {
     if (!comment || typeof comment !== 'object' || Array.isArray(comment) ||
         typeof comment.text !== 'string') throw new Error('Invalid remote task comment');

@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 import {CalenderedRolls} from './CalenderedRolls';
 import {CalendaringMaterials} from './CalendaringMaterials';
 import {CoatedRolls} from '../coating/CoatedRolls';
@@ -93,15 +94,7 @@ export function CalendaringModule() {
     <div className="space-y-4">
       <RoomWorkspaceHeader icon="🔄" title="Каландрирование"
         description="Выберите рулон с нанесения, сохраните назначение параметров отдельно от фактических измерений прокатки и передайте только записанный результат."/>
-      <nav aria-label="Разделы каландрирования" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
-        {tabs.map(t => (
-          <button key={t.id} type="button" aria-pressed={tab === t.id}
-            onClick={() => setTab(t.id)}
-            className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <RoomTabs label="Разделы каландрирования" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {tab === 'output' && <CalenderedRolls room="calendaring"/>}
       {tab === 'materials' && <CalendaringMaterials/>}

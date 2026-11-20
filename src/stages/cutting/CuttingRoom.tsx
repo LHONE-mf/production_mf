@@ -1,3 +1,4 @@
+import { RoomTabs } from '../_common/RoomTabs';
 import {CuttingOutputs} from './CuttingOutputs';
 import {CuttingMaterials} from './CuttingMaterials';
 import {CalenderedRolls} from '../calendaring/CalenderedRolls';
@@ -42,7 +43,8 @@ export function CuttingModule() {
 
   const runs = useLiveQuery(async () => {
     const all = await db.cuttingRuns.toArray();
-    return all.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+    // Server receipt projections belong to Sorting, never to Cutting measurements/export.
+    return all.filter(row=>!row.receivedCustody).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, []);
 
   const tasks = useLiveQuery(async () => {
@@ -72,14 +74,7 @@ export function CuttingModule() {
     <div className="space-y-4">
       <RoomWorkspaceHeader icon="✂️" title="Нарезка электродов"
         description="Выберите рулон с каландра, отдельно оцените раскрой и запишите фактические количества годных и дефектных электродов."/>
-      <nav aria-label="Разделы нарезки" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
-        {tabs.map(t => (
-          <button key={t.id} type="button" aria-pressed={tab === t.id} onClick={() => setTab(t.id)}
-            className={`min-h-11 rounded-md px-3 py-2 text-sm font-medium ${tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'}`}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <RoomTabs label="Разделы нарезки" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {tab === 'output' && <CuttingOutputs room="cutting"/>}
       {tab === 'materials' && <CuttingMaterials/>}

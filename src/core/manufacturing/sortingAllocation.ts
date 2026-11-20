@@ -37,6 +37,7 @@ async function insertAllocation(run:SortRun):Promise<SortRun>{
  await db.sortRuns.add(run);return run;
 }
 export async function saveSortingAllocation(source:CutRun,spec:SortSpec,result:Pick<SortRun,'id'|'buckets'|'rejected'|'notes'|'defects'>,workerId:string):Promise<SortRun>{
+ if(source.receivedCustody)throw new Error('Подтверждённая приёмка требует последовательного трёхстанционного контроля');
  if(!workerId)throw new Error('Войдите в профиль');
  const now=Date.now();
  const run:SortRun={...result,cutRunId:source.id,cutRunSnapshot:source,specSnapshot:spec,specId:spec.id,

@@ -1,3 +1,4 @@
+import { RoomTabs } from './RoomTabs';
 // Общий каркас «комнаты» этапа производства.
 // Каждая комната = StageRoom + свой инструмент (prop `tool`).
 // Стандартный состав: инструмент, журнал работ, комментарии, задания этапа.
@@ -59,20 +60,7 @@ export function StageRoom({ stage, title, icon, description='Откройте и
       <RoomWorkspaceHeader icon={icon} title={title} description={description}/>
 
       {/* Вкладки комнаты */}
-      <nav aria-label="Разделы комнаты" className="flex flex-wrap min-w-0 gap-2 rounded-lg bg-slate-800 p-2">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button" aria-pressed={activeTab===t.id}
-            onClick={() => setTab(t.id)}
-            className={`min-h-11 px-3 py-2 rounded-md text-sm font-medium transition ${
-              activeTab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <RoomTabs label="Разделы комнаты" tabs={tabs} activeTab={activeTab} onChange={setTab} />
 
       {tool && (activeTab === 'tool' || preserveToolDraft) && <div hidden={activeTab !== 'tool'}>{tool}</div>}
 

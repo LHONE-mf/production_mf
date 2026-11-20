@@ -23,6 +23,9 @@ export async function warehouseOutputClaims(scope:InventoryScope,localActorId:st
 }
 export async function freezeWarehouseOutput(scope:InventoryScope,localActorId:string,epoch:string,source:SortRun,input:ElectrodeSubmissionInput):Promise<WarehouseOutputClaim>{
  inventoryScopeKey(scope);
+ const receiptScope=source.cutRunSnapshot?.receivedCustody?.scopeKey;
+ if(receiptScope && !receiptScope.startsWith(new URL(scope.serverUrl).origin+'::'+scope.organizationId+'::'))
+  throw Error('Подтверждённая приёмка относится к другой организации или серверу');
  if(!issueIdValid(epoch)||input.deviceId!==scope.deviceId||!localActorId.trim())throw Error('Invalid original output scope/history');
  const request=submissionFromSortRun(source,input),safeScope={serverUrl:scope.serverUrl,organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId};
  return db.transaction('rw',[db.users,db.sortRuns,db.assemblyRuns,db.warehouseOutputClaims],async()=>{

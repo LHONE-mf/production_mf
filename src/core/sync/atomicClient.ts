@@ -28,14 +28,19 @@ export async function pushAtomicTasks(session: HybridSession) {
   // its acknowledgement and must never race past a conflict or rejection.
   const pendingAll = queued.filter(op => op.state === 'pending' && !blockedTasks.has(op.entityId))
     .sort((a, b) => a.queuedAt - b.queuedAt || a.operationId.localeCompare(b.operationId));
-  const firstDevice = pendingAll[0]?.deviceId;
+  // An older queue from another device must remain untouched, but must not
+  // prevent a currently proved device from uploading its independent tasks.
+  const provedDevice = session.deviceProofDeviceId;
   const seenTasks = new Set<string>();
   const pending = pendingAll.filter(op => {
-    if (op.deviceId !== firstDevice || seenTasks.has(op.entityId)) return false;
+    if (op.deviceId !== provedDevice || seenTasks.has(op.entityId)) return false;
     seenTasks.add(op.entityId);
     return true;
   }).slice(0, 50);
-  if (!pending.length) return { accepted: 0, conflicts: 0, rejected: 0 };
+  if (!pending.length) {
+    if (pendingAll.length) throw new Error('Fresh device proof for queued task device required before pushing tasks');
+    return { accepted: 0, conflicts: 0, rejected: 0 };
+  }
   const operations = pending.map(({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }) => ({ operationId, deviceId, entityType, entityId, operationType, expectedRevision, payload }));
   if (!session.deviceProofToken || session.deviceProofDeviceId !== pending[0].deviceId || !session.deviceProofExpiresAt || session.deviceProofExpiresAt <= Date.now() + 5000)
     throw new Error('Fresh device proof for queued task device required before pushing tasks');

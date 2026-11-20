@@ -3,7 +3,7 @@ name: Build Android APK (Capacitor)
 # Собираем APK через GitHub Actions при пуше в main и при релизных тегах.
 on:
   push:
-    branches: [main, feat/hybrid-server-foundation]
+    branches: [main, feat/hybrid-server-foundation, integration/approved-five-20261119, fix/mobile-room-layout-20261119, feat/sorting-measured-thickness-20261120, feat/sorting-tap-counters-20261120, feat/production-warehouse-handoffs-kd-20261120]
     tags: ['v*']
     # Server-only changes do not require rebuilding the Android APK.
     # Tag builds remain available for releases; manual builds remain available on demand.

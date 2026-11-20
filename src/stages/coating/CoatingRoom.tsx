@@ -1,3 +1,5 @@
+import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
+import { RoomTabs } from '../_common/RoomTabs';
 import {CoatedRolls} from './CoatedRolls';
 import {CoatingFoil} from './CoatingFoil';
 import {hasSlurryHandover} from '../../core/manufacturing/slurryBatch';
@@ -17,6 +19,7 @@ import { PacketOutModal } from '../_ui/PacketOutModal';
 import { coatingSourceFromBatch, hasRecordedCoatingRun, saveCoatingRollHandover } from './coatingJournal';
 import {CoatingMaterials} from './CoatingMaterials';
 import {RoomCustody} from '../_common/RoomCustody';
+import {coatingMixMassDisplay,formatCoatingPercent} from './coatingMixDisplay';
 import {CoatingSetup} from './CoatingSetup';
 
 type Tab = 'mixes' | 'setup' | 'journal' | 'comments' | 'custody' | 'materials' | 'foil' | 'output';
@@ -85,24 +88,9 @@ export function CoatingModule() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h2 className="text-xl font-bold text-white flex items-center gap-2">🖌️ Нанесение покрытия</h2>
-        <span className="text-xs text-slate-400">Офлайн · данные замесов по QR/тексту (позже Bluetooth)</span>
-      </div>
+      <RoomWorkspaceHeader icon="🖌️" title="Нанесение покрытия" description="Данные замесов, настройка линии, фактический расход материалов и журнал нанесения. Выпуск и приёмка рулонов подтверждаются отдельно." />
 
-      <div className="flex gap-1 bg-slate-800 rounded-lg p-1 w-fit flex-wrap">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`min-h-11 px-3 py-1.5 rounded-md text-sm transition ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <RoomTabs label="Разделы нанесения покрытия" tabs={tabs} activeTab={tab} onChange={setTab} />
 
       {handoverError && <p role="alert" className="text-sm text-red-200">{handoverError}</p>}
       {handoverBusy && <p role="status" className="text-sm text-slate-300">Сохраняем данные рулона…</p>}
@@ -182,11 +170,12 @@ function MixesTab({ mixes }: { mixes: CoatingMixSnapshot[] }) {
             <div className="grid grid-cols-2 gap-x-3 text-xs text-slate-300">
               <span>Вязкость: <b className="text-white">{m.viscosity ?? '—'} сП</b></span>
               <span>Перетир: <b className="text-white">{m.fineness ?? '—'} мкм</b></span>
-              <span>СВ (масс.): <b className="text-white">{m.solidsPctMass!==undefined ? `${m.solidsPctMass}%` : '—'}</b></span>
+              <span>СВ (масс.): <b className="text-white">{m.solidsPctMass!==undefined ? `${formatCoatingPercent(m.solidsPctMass)}%` : '—'}</b></span>
               <span>СВ (объём φ): <b className="text-white">{m.solidsPctVol ? `${m.solidsPctVol}%` : '—'}</b></span>
               <span>ρ пасты: <b className="text-white">{m.pasteDensity ? `${m.pasteDensity} г/см³` : '—'}</b></span>
-              <span>Масса СВ: <b className="text-white">{m.batchKg!==undefined ? `${m.batchKg} кг` : '—'}</b></span>
+              <span>{coatingMixMassDisplay(m).label}: <b className="text-white">{coatingMixMassDisplay(m).value}</b></span>
             </div>
+            {coatingMixMassDisplay(m).warning&&<p role="alert" className="text-xs text-amber-200">{coatingMixMassDisplay(m).warning}</p>}
             {hasSlurryHandover(m)?<p className="text-xs text-slate-400 break-all">Партия {m.sourceBatch?.batchCode} · автор передачи {m.preparedBy} · СВ рассчитаны по навескам и заявленному составу · плотность {m.densityBasis==='measured'?'измерена':'неизвестна'}. Физическое получение и QA не подтверждены.</p>:<p className="text-xs text-amber-200">Исторический источник: происхождение свойств не подтверждено новым измеренным потоком; значения могли быть модельными.</p>}
           </div>
         ))}
