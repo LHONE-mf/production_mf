@@ -22,11 +22,10 @@ import { useAuthStore } from '../../core/store/authStore';
 import { CommentsSection } from '../_common/CommentsSection';
 import { PacketOutModal } from '../_ui/PacketOutModal';
 import { SortingWorkflowTab } from './SortingWorkflowTab';
-import {FinishedElectrodeOffers} from './FinishedElectrodeOffers';
 import {useServerConnection} from '../../core/sync/serverConnection';
 import {inventoryScopeKey} from '../../core/sync/inventoryOutbox';
 
-type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'outputs' | 'custody';
+type Tab = 'batches' | 'specs' | 'sort' | 'defects' | 'journal' | 'comments' | 'custody';
 
 const inputCls =
   'w-full min-h-11 bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500';
@@ -91,15 +90,13 @@ export function SortingModule() {
     { id: 'journal', label: `📒 Журнал (${(runs ?? []).length})` },
     { id: 'custody', label: '🔁 Подтверждённая приёмка электродов' },
     { id: 'comments', label: '💬 Комментарии' },
-    ...(isTechManager?[{id:'outputs' as const,label:'Выход на склад'}]:[]),
   ];
 
   return (
     <div className="space-y-4">
-      <RoomWorkspaceHeader icon="🗂️" title="Сортировка электродов" description="Партии с нарезки, спецификации КД и фактические результаты визуального контроля, толщины и массы. Передача годных электродов подтверждается отдельно." />
+      <RoomWorkspaceHeader icon="🗂️" title="Сортировка электродов" description="Партии с нарезки, спецификации КД и результаты визуального контроля, толщины и массы. Годные электроды передаются непосредственно на следующий производственный этап, минуя склад." />
       <RoomTabs label="Разделы сортировки" tabs={tabs} activeTab={tab} onChange={setTab} />
 
-      {tab==='outputs'&&<FinishedElectrodeOffers runs={runs??[]}/>}
       {tab === 'custody' && <CuttingOutputs room="sorting"/>}
       {tab === 'batches' && (
         <BatchesTab
