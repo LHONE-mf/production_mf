@@ -94,10 +94,6 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('receipt-bound Sorting to wareho
     JOIN process_route_steps s ON s.organization_id=o.organization_id AND s.route_id=o.route_id
       AND s.route_version=o.route_version AND s.step_number=1
     WHERE b.organization_id=$1 AND b.id=$2`,[f.org,f.batch])).rows[0];
-  await f.pool.query(`INSERT INTO process_route_steps
-    (organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line)
-    VALUES($1,$2,$3,6,'Assembly custody','assembly',$4,'common')`,
-   [f.org,context.route_id,context.route_version,context.workshop_id]);
   const cellBatch=randomUUID();
   await f.pool.query(`INSERT INTO production_batches
     (organization_id,id,order_id,batch_code,material_line,status,created_by)
