@@ -459,3 +459,33 @@ it('does not lose rapid taps before React re-renders the displayed counter',asyn
  await clickRoomButton('Сохранить 1.');
  await vi.waitFor(async()=>expect((await db.sortingWorkflows.get('cut'))?.stages[0].passedCount).toBe(10));
 });
+
+
+it('Chief prepares KD before Cutting exists and explicitly binds an independent copy after arrival',async()=>{
+ const page=await referenceRoom();
+ await db.cuttingRuns.delete('TEST-cut');
+ await vi.waitFor(()=>expect(page.textContent).toContain('Партии с нарезки (0)'));
+ await clickText('Спецификации КД');
+ await clickText('Новая спецификация');
+ const name=page.querySelector<HTMLInputElement>('[aria-label="Обозначение партии КД"]')!;
+ expect(name).toBeTruthy();
+ const save=()=>[...page.querySelectorAll('button')].find(b=>b.textContent?.includes('Сохранить локально'))!;
+ expect(save().disabled).toBe(true);
+ await act(async()=>enterText(name,'LOT-TECH-42'));
+ expect(save().disabled).toBe(false);
+ await clickText('Сохранить локально');
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(1));
+ const template=(await db.sortSpecs.toArray())[0];
+ expect(template.batchName).toBe('LOT-TECH-42');
+ expect(template.cutRunId).toBeUndefined();
+ await db.cuttingRuns.add({id:'TEST-bound',incomingId:'LOT-TECH-42',electrodeType:'strip',
+   goodCount:8,defectCount:0,workerId:'cutter',createdAt:100,updatedAt:100});
+ await vi.waitFor(()=>expect(page.textContent).toContain('Привязать копию КД к партии LOT-TECH-42'));
+ await clickText('Привязать копию КД к партии LOT-TECH-42');
+ await vi.waitFor(async()=>expect(await db.sortSpecs.count()).toBe(2));
+ const specs=await db.sortSpecs.toArray();
+ expect(specs.find(x=>x.id===template.id)?.cutRunId).toBeUndefined();
+ const bound=specs.find(x=>x.cutRunId==='TEST-bound');
+ expect(bound).toMatchObject({batchName:'LOT-TECH-42',electrodeType:'strip',authorId:'chief'});
+ expect(bound?.id).not.toBe(template.id);
+});
