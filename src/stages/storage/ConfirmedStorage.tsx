@@ -93,7 +93,7 @@ export function ConfirmedStorage({mode='inventory'}:{mode?:'receipts'|'inventory
  }
  return <section aria-label="Подтверждённый склад" className="min-w-0 space-y-3 rounded-lg bg-slate-800 p-3 break-words">
   <h3 className="font-semibold">{mode==='receipts'?'Поступление на склад':'Текущие остатки склада'}</h3>
-  {!connection?<><p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p><OfflineStorage now={now}/></>:!fresh?<><p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p><OfflineStorage now={now} liveScope={scope??undefined}/></>:<>
+  {!connection?<><p>Сервер не подключён. Войдите на сервер в разделе Синхронизация.</p><OfflineStorage now={now} mode={mode}/></>:!fresh?<><p>Требуется проверка устройства в разделе Синхронизация. Сохранённая очередь остаётся на устройстве.</p><OfflineStorage now={now} mode={mode} liveScope={scope??undefined}/></>:<>
    <p>Обновление читает серверные данные. Операции отправляются только после отдельного подтверждения.</p>
    <button type="button" className="min-h-11 rounded bg-blue-700 px-3" disabled={busy} onClick={()=>void refresh()}>{busy?'Загрузка…':'Обновить подтверждённые данные'}</button>
    {!visible&&!busy&&!error&&<p>Данные ещё не загружены. Нажмите обновление.</p>}
@@ -141,6 +141,6 @@ export function ConfirmedStorage({mode='inventory'}:{mode?:'receipts'|'inventory
   {fresh&&scope&&connection&&user&&<InventoryRecoveryPanel key={key} scope={scope} session={connection.session} localActorId={user.id} onReconciled={()=>{generation.current++;setView(null);setError('');setBusy(false);setConfirmSend(false);}}/>}
   {message&&<p role="status">{message}</p>}
   {error&&<p role="alert">{error}</p>}
-  {error&&fresh&&!visible&&<OfflineStorage now={now} liveScope={scope??undefined}/>}
+  {error&&fresh&&!visible&&<OfflineStorage now={now} mode={mode} liveScope={scope??undefined}/>}
  </section>;
 }
