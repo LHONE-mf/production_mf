@@ -37,6 +37,80 @@ describe.skipIf(!process.env.POSTGRES_TEST_URL)('finished electrode submission a
  function acceptance(id:string,grade='A',quantity=4,i=2){return{operationId:randomUUID(),deviceId:f.actors[i].device,submissionId:id,grade,expectedRevision:1,stockId:randomUUID(),locationId:f.location,quantity,reason:'Separate actual physical Storage acceptance',evidence:'Synthetic receiving count sheet'};}
  const accept=(body:object,i=2)=>f.post('/inventory/outputs/accept',body,i);
 
+ async function assemblyTarget(){
+  const route=randomUUID(),order=randomUUID(),assemblyBatchId=randomUUID();
+  const workshop=(await f.pool.query('SELECT workshop_id FROM user_workshop_memberships WHERE user_id=$1',[f.actors[4].id])).rows[0].workshop_id;
+  await f.pool.query("INSERT INTO process_routes(organization_id,id,code,name,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Synthetic direct Assembly intake',$3)",[f.org,route,f.actors[0].id]);
+  await f.pool.query('INSERT INTO process_route_versions(organization_id,route_id,version) VALUES($1,$2,1)',[f.org,route]);
+  await f.pool.query("INSERT INTO process_route_steps(organization_id,route_id,route_version,step_number,name,stage,workshop_id,electrode_line) VALUES($1,$2,1,1,'Receive electrodes','assembly',$3,'common')",[f.org,route,workshop]);
+  await f.pool.query("UPDATE process_route_versions SET state='approved',approved_at=now(),approved_by=$3 WHERE organization_id=$1 AND route_id=$2",[f.org,route,f.actors[0].id]);
+  await f.pool.query("INSERT INTO production_orders(organization_id,id,order_code,product_code,route_id,route_version,status,planned_quantity,quantity_unit,created_by) VALUES($1,$2::uuid,$2::uuid::text,'Synthetic cell WIP',$3,1,'released',10,'pieces',$4)",[f.org,order,route,f.actors[0].id]);
+  await f.pool.query("INSERT INTO production_batches(organization_id,id,order_id,batch_code,material_line,status,created_by) VALUES($1,$2::uuid,$3,$2::uuid::text,'cell','in_progress',$4)",[f.org,assemblyBatchId,order,f.actors[0].id]);
+  return assemblyBatchId;
+ }
+ it('transfers a full named Sorting grade directly to an assigned Assembly receiver, with independent exact physical receipt and no stock',async()=>{
+  const body=await proposal(),source=await submit(body);
+  expect(source.statusCode,source.body).toBe(201);
+  const assemblyBatchId=await assemblyTarget(),offer={
+   operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+   grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
+   reason:'Direct actual Sorting output handoff',evidence:'Independently counted grade A packet',
+  };
+  const sent=await f.post('/inventory/assembly-electrodes/handoffs',offer,3);
+  expect(sent.statusCode,sent.body).toBe(201);
+  expect(sent.json().handoff).toMatchObject({...offer,sourceBatchId:batch,
+   materialId:body.outputs[0].materialId,qualityStatus:'unreviewed',warehouseEffect:'none'});
+  const same=await f.post('/inventory/assembly-electrodes/handoffs',offer,3);
+  expect(same.statusCode,same.body).toBe(200);
+  expect(same.json().handoff).toEqual(sent.json().handoff);
+  const list=await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[4].device,4);
+  expect(list.statusCode,list.body).toBe(200);
+  expect(list.json().items).toMatchObject([{handoff:{operationId:offer.operationId,grade:'A',quantity:4},received:null}]);
+  expect((await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[5].device,5)).json().items).toEqual([]);
+  const receipt={
+   operationId:randomUUID(),deviceId:f.actors[4].device,handoffId:offer.operationId,
+   observedQuantity:4,observedGrade:'A',observedLabel:'production:'+body.operationId+':A',
+   reason:'Physical Assembly WIP acceptance',evidence:'Independent count and batch/grade label verification',
+  };
+  for(const mismatch of [{...receipt,observedQuantity:3},{...receipt,observedGrade:'B'},
+   {...receipt,observedLabel:'unknown-lot'}]){
+   expect((await f.post('/inventory/assembly-electrodes/acknowledgements',mismatch,4)).statusCode).toBe(409);
+  }
+  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',{...receipt,deviceId:f.actors[5].device},5)).statusCode).toBe(403);
+  const accepted=await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4);
+  expect(accepted.statusCode,accepted.body).toBe(201);
+  expect(accepted.json().receipt).toMatchObject({...receipt,
+   sourceSnapshot:sent.json().handoff,custodyEffect:'received',qualityStatus:'unreviewed',warehouseEffect:'none'});
+  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',receipt,4)).statusCode).toBe(200);
+  expect((await f.post('/inventory/assembly-electrodes/acknowledgements',
+   {...receipt,operationId:randomUUID()},4)).statusCode).toBe(409);
+  const after=await f.get('/inventory/assembly-electrodes/handoffs?deviceId='+f.actors[4].device,4);
+  expect(after.json().items[0].received.operationId).toBe(receipt.operationId);
+  const channel=await accept(acceptance(body.operationId,'A',4));
+  expect(channel.statusCode,channel.body).toBe(409);
+  expect((await f.pool.query('SELECT count(*)::int AS count FROM inventory_stocks WHERE organization_id=$1',[f.org])).rows[0].count).toBe(0);
+  const untouchedGrade=await accept(acceptance(body.operationId,'B',3));
+  expect(untouchedGrade.statusCode,untouchedGrade.body).toBe(201);
+ });
+ it('requires authentic Sorting grade, current sender, assigned Assembly route and rejects warehouse-owned output',async()=>{
+  const body=await proposal();
+  expect((await submit(body)).statusCode).toBe(201);
+  const assemblyBatchId=await assemblyTarget();
+  const offer={operationId:randomUUID(),deviceId:f.actors[3].device,submissionId:body.operationId,
+   grade:'A',quantity:4,assemblyBatchId,assemblyStepNumber:1,recipientId:f.actors[4].id,
+   reason:'Synthetic direct route',evidence:'Verified manual measurements'};
+  for(const invalid of [
+   {...offer,grade:'UNKNOWN'},{...offer,quantity:3},{...offer,assemblyBatchId:randomUUID()},
+   {...offer,assemblyStepNumber:2},{...offer,recipientId:f.actors[5].id},
+  ])expect([400,404,409]).toContain((await f.post('/inventory/assembly-electrodes/handoffs',invalid,3)).statusCode);
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',
+   {...offer,deviceId:f.actors[5].device},5)).statusCode).toBe(403);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_assembly_electrode_handoffs WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+  expect((await accept(acceptance(body.operationId,'A',4))).statusCode).toBe(201);
+  expect((await f.post('/inventory/assembly-electrodes/handoffs',offer,3)).statusCode).toBe(409);
+  expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_assembly_electrode_receipts WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
+ });
+
  it('submits actual grades without stock, accepts once into quarantine, then requires separate Chief QA',async()=>{
   const body=await proposal(),sent=await submit(body);expect(sent.statusCode,sent.body).toBe(201);
   expect((await f.pool.query('SELECT count(*)::int AS n FROM inventory_operations WHERE organization_id=$1',[f.org])).rows[0].n).toBe(0);
