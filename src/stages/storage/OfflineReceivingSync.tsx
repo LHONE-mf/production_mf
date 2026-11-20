@@ -3,7 +3,7 @@ import {useLiveQuery} from 'dexie-react-hooks';
 import {useAuthStore} from '../../core/store/authStore';
 import {useServerConnection} from '../../core/sync/serverConnection';
 import {inventoryOutbox} from '../../core/sync/inventoryOutbox';
-import {autoSyncLocalReceipts,localReceiptsForUser,saveUnboundReceipt,type LocalReceiptFields}
+import {autoSyncLocalReceipts,localReceiptsForUser,saveUnboundReceipt,correctUnboundReceiptMatch,type LocalReceiptFields}
  from '../../core/sync/localWarehouseReceipts';
 
 const empty=():LocalReceiptFields=>({
@@ -16,6 +16,8 @@ export function OfflineReceivingSync(){
  const user=useAuthStore(s=>s.currentUser),connection=useServerConnection();
  const [fields,setFields]=useState<LocalReceiptFields>(empty);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+ const [matchingId,setMatchingId]=useState<string|null>(null);
+ const [matchCode,setMatchCode]=useState(''),[matchPath,setMatchPath]=useState('');
  const records=useLiveQuery(async()=>{
   if(!user)return [];
   const rows=await localReceiptsForUser(user.id);
@@ -41,6 +43,16 @@ export function OfflineReceivingSync(){
   setBusy(true);setError('');setMessage('');
   try{await autoSyncLocalReceipts(connection,user.id);setMessage('Проверка очереди завершена. Статусы поступлений обновлены.');}
   catch(cause){setError('Очередь сохранена: '+(cause instanceof Error?cause.message:String(cause)));}
+  finally{setBusy(false);}
+ }
+ async function saveMatch(operationId:string){
+  if(!user||busy)return;
+  setBusy(true);setError('');
+  try{
+   await correctUnboundReceiptMatch(user.id,operationId,matchCode,matchPath);
+   setMatchingId(null);
+   if(connection)void autoSyncLocalReceipts(connection,user.id).catch(()=>{});
+  }catch(cause){setError(cause instanceof Error?cause.message:String(cause));}
   finally{setBusy(false);}
  }
  function field(key:keyof LocalReceiptFields,title:string,placeholder?:string){
@@ -82,6 +94,23 @@ export function OfflineReceivingSync(){
     row.queueState==='rejected'?'Отклонено сервером — проверьте реквизиты':
     row.state==='queued'?'Ожидает подтверждения сервера':'Ожидает подключения'}</p>
    {(row.error||row.queueError)&&<p className="text-amber-200">{row.queueError??row.error}</p>}
+   {row.state==='needs_review'&&!row.boundScopeKey&&<button type="button" className="min-h-11 rounded bg-amber-700 px-3 text-white"
+    onClick={()=>{setMatchingId(row.operationId);setMatchCode(row.matchMaterialCode??row.materialCode);setMatchPath(row.matchLocationPath??row.locationPath);}}>
+    Уточнить код материала и место для синхронизации
+   </button>}
+   {matchingId===row.operationId&&<section aria-label="Сверка справочника" className="space-y-2 rounded border border-amber-500 p-2">
+    <p>Измерения, партия и исходная запись не изменяются. Введите точные данные из справочника сервера.</p>
+    <label className="block">Серверный код материала<input aria-label="Серверный код материала" className={inputClass}
+     value={matchCode} onChange={e=>setMatchCode(e.target.value)}/></label>
+    <label className="block">Полный путь места<input aria-label="Полный путь места" className={inputClass}
+     value={matchPath} onChange={e=>setMatchPath(e.target.value)}/></label>
+    <div className="flex flex-wrap gap-2">
+     <button type="button" disabled={busy} className="min-h-11 rounded bg-blue-700 px-3 text-white"
+      onClick={()=>void saveMatch(row.operationId)}>Сохранить сверку и повторить</button>
+     <button type="button" className="min-h-11 rounded bg-slate-700 px-3 text-white"
+      onClick={()=>setMatchingId(null)}>Отмена</button>
+    </div>
+   </section>}
   </article>)}
   {connection&&records.some(row=>row.state!=='confirmed')&&
    <button type="button" disabled={busy} className="min-h-11 rounded bg-slate-700 px-3 py-2 text-white disabled:opacity-40"
