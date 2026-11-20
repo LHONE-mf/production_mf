@@ -424,7 +424,7 @@ export function SortingWorkflowTab({batches,specs,defects,runs,selectedBatchId,o
                     'Превышение входа: '+(balanceTotal-inputCount)+' шт'}
                 </p>}
               {!validReasons&&<p className="text-amber-200">Количество по причинам брака не совпадает с общим браком.</p>}
-              {!validMassSplit&&<p className="text-amber-200">Сумма брака по массе ниже и выше допуска должна совпадать с общим браком.</p>}}
+              {!validMassSplit&&<p className="text-amber-200">Сумма брака по массе ниже и выше допуска должна совпадать с общим браком.</p>}
             </div>
             <p className="text-xs text-slate-400">Оператор: {workerId??'не выбран'}. После записи станция блокируется от незаметного редактирования.</p>
             <LocalDraftStatus draft={draft} disabled={busy}/>
