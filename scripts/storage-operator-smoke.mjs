@@ -159,7 +159,11 @@ try{
  await p.reload();await p.waitForFunction(()=>!!window.mount);await p.evaluate(()=>window.mount(null));await p.getByRole('button',{name:'Открыть сохранённый склад',exact:true}).click();await p.getByText('Последний известный остаток: 2000000 mg',{exact:false}).waitFor();
  // Independent profiles freeze conflicting moves at the same revision.
  for(const [i,page]of pages.entries()){
-  const unit=page.locator('article').first();if(!await unit.getByRole('button',{name:'Новое предложение после сверки',exact:true}).isVisible())await unit.getByText('Перемещение / коррекция / списание контейнера',{exact:true}).click();
+  const unit=page.locator('article').first();
+  // Offline cached stock keeps provisional controls under another disclosure.
+  const offlineControls=unit.getByText('Дополнительные операции с контейнером',{exact:true});
+  if(await offlineControls.count()&&await offlineControls.isVisible())await offlineControls.click();
+  if(!await unit.getByRole('button',{name:'Новое предложение после сверки',exact:true}).isVisible())await unit.getByText('Перемещение / коррекция / списание контейнера',{exact:true}).click();
   await unit.getByRole('button',{name:'Новое предложение после сверки',exact:true}).click();await unit.getByRole('button',{name:'Подтвердить новый черновик',exact:true}).click();
   await contexts[i].route('http://127.0.0.1:3002/**',r=>r.abort());
   await unit.getByLabel('Место назначения',{exact:true}).selectOption(locations[3]);await unit.getByLabel('Основание изменения',{exact:true}).fill('Independent offline move '+i);await unit.getByRole('button',{name:'Проверить изменение',exact:true}).click();await unit.getByRole('button',{name:'Сохранить изменение в очередь',exact:true}).click();await unit.getByText('Сохранённая операция:',{exact:false}).waitFor();
