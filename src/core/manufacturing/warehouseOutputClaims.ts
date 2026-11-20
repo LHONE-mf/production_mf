@@ -28,7 +28,7 @@ export async function freezeWarehouseOutput(scope:InventoryScope,localActorId:st
   throw Error('Подтверждённая приёмка относится к другой организации или серверу');
  if(!issueIdValid(epoch)||input.deviceId!==scope.deviceId||!localActorId.trim())throw Error('Invalid original output scope/history');
  const request=submissionFromSortRun(source,input),safeScope={serverUrl:scope.serverUrl,organizationId:scope.organizationId,actorId:scope.actorId,deviceId:scope.deviceId};
- return db.transaction('rw',[db.users,db.sortRuns,db.assemblyRuns,db.warehouseOutputClaims],async()=>{
+ return db.transaction('rw',[db.users,db.sortRuns,db.sortingWorkflows,db.assemblyRuns,db.warehouseOutputClaims],async()=>{
   const actor=await db.users.get(localActorId);
   if(!actor?.isActive||![UserRole.CHIEF,UserRole.MASTER,UserRole.TECHNOLOGIST].includes(actor.role))throw Error('Нужен активный локальный руководитель производства');
   const old=await db.warehouseOutputClaims.get(request.source.cutRunId);
@@ -37,6 +37,12 @@ export async function freezeWarehouseOutput(scope:InventoryScope,localActorId:st
    throw Error('Источник уже предложен на склад; исходный ID, автор, сервер и история не заменены');
   }
   if(!sameOutput(await db.sortRuns.get(source.id),source))throw Error('Источник сортировки изменён или отсутствует');
+  // A valid-looking final summary is insufficient if the separately frozen
+  // Visual/Thickness/Mass journal differs. Read both within this claim transaction.
+  const journal=await db.sortingWorkflows.get(source.cutRunId!);
+  if(!journal || journal.finalizedSortRunId!==source.id ||
+     !sameOutput(journal,source.sortingWorkflow))
+    throw Error('Итог сортировки расходится с сохранённым журналом станций; передача заблокирована');
   const allocated=await db.assemblyRuns.filter(r=>r.intake?.sortRunId===source.id||r.sourceSort?.id===source.id||r.sourceSort?.cutRunId===source.cutRunId||
    !r.intake&&r.batchName===source.batchName||r.ops.some(op=>op.source?.kind==='declared'&&[source.id,source.cutRunId].includes(op.source.reference))).first();
   if(allocated)throw Error('Источник уже распределён в сборку или имеет неоднозначную историю');

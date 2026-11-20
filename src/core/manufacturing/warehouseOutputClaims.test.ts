@@ -42,6 +42,25 @@ it('refuses already allocated/ambiguous history, changed sources and inactive au
  await db.users.update('master',{isActive:false});await expect(freezeWarehouseOutput(scope,'master',epoch,source,input())).rejects.toThrow();
  expect(await db.warehouseOutputClaims.count()).toBe(0);
 });
+it('refuses an output offer if the separate frozen Sorting station journal disagrees with the valid saved summary',async()=>{
+ const journal=await db.sortingWorkflows.get('cut');
+ expect(journal?.finalizedSortRunId).toBe(source.id);
+ const altered={...journal!,stages:journal!.stages.map((s,i)=>i===2?{...s,workerId:'different-inspector'}:s)};
+ // Both histories remain individually well-formed, but only one can be authoritative.
+ await db.sortingWorkflows.put(altered);
+ const {validateSortPartition}=await import('./sortingAllocation');
+ expect(()=>validateSortPartition(source)).not.toThrow();
+ await expect(freezeWarehouseOutput(scope,'master',epoch,source,input()))
+   .rejects.toThrow(/журнал|сортировк|расходится/i);
+ expect(await db.warehouseOutputClaims.count()).toBe(0);
+ expect(await db.sortRuns.get(source.id)).toEqual(source);
+ expect(await db.sortingWorkflows.get('cut')).toEqual(altered);
+ // Restoring the exact originally recorded station decisions permits the same source.
+ await db.sortingWorkflows.put(journal!);
+ await expect(freezeWarehouseOutput(scope,'master',epoch,source,input()))
+   .resolves.toHaveProperty('state','pending');
+});
+
 it('rejects incoming Assembly provenance and legacy aliases after the original warehouse offer',async()=>{
  const run=await takeAssemblySource(source,'assembler','assembly');await db.assemblyRuns.clear();await freezeWarehouseOutput(scope,'master',epoch,source,input());
  await expect(receiveAssemblyIntake(run)).rejects.toThrow('склад');
