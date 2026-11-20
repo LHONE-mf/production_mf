@@ -1,5 +1,7 @@
 import { RoomWorkspaceHeader } from '../_common/RoomWorkspaceHeader';
 import { RoomTabs } from '../_common/RoomTabs';
+import {AssemblyServerEligibility} from './AssemblyServerEligibility';
+import {useServerConnection} from '../../core/sync/serverConnection';
 import {AssemblyCellOutputForm} from './AssemblyCellOutputForm';
 import {appendAssemblyOperation} from '../../core/manufacturing/assemblyOperations';
 import {takeAssemblySource} from '../../core/manufacturing/assemblyIntake';
@@ -38,6 +40,7 @@ const labelCls = 'block text-xs text-slate-400 mb-1';
 
 export function AssemblyModule() {
   const currentUser = useAuthStore((s) => s.currentUser);
+  const serverConnection = useServerConnection();
   const isTechManager = !!currentUser && [UserRole.TECHNOLOGIST, UserRole.MASTER, UserRole.CHIEF].includes(currentUser.role);
   const [tab, setTab] = useState<Tab>('incoming');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -148,6 +151,7 @@ export function AssemblyModule() {
 
       {tab === 'incoming' && (
         <div className="space-y-2">
+          <AssemblyServerEligibility connection={serverConnection}/>
           <p className="text-xs text-slate-400">Доступные локальные партии сортировки, ещё не переданные на склад или в сборку. Подтверждённые серверные партии требуют отдельной приёмки Assembly.</p>
           {(sortRuns ?? []).length === 0 && <p className="text-xs text-slate-500">Нет партий с электродами для сборки. Полностью отбракованные результаты остаются в журнале сортировки.</p>}
           {(sortRuns ?? []).map((sr) => (
