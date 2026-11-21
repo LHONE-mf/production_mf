@@ -3,7 +3,7 @@ name: Build Android APK (Capacitor)
 # Собираем APK через GitHub Actions при пуше в main и при релизных тегах.
 on:
   push:
-    branches: [main, feat/hybrid-server-foundation, integration/approved-five-20261119, fix/mobile-room-layout-20261119, feat/sorting-measured-thickness-20261120, feat/sorting-tap-counters-20261120, feat/production-warehouse-handoffs-kd-20261120]
+    branches: [main, feat/hybrid-server-foundation, integration/approved-five-20261119, fix/mobile-room-layout-20261119, feat/sorting-measured-thickness-20261120, feat/sorting-tap-counters-20261120, feat/production-warehouse-handoffs-kd-20261120, apk/review-slurry-storage-20261121]
     tags: ['v*']
     # Server-only changes do not require rebuilding the Android APK.
     # Tag builds remain available for releases; manual builds remain available on demand.
@@ -68,10 +68,10 @@ jobs:
       - name: Подготовка ключа подписи
         id: keystore
         env:
-          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
-          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
-          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+          KS_B64: '' # review-only: always use the public development signing key
+          KS_PASS: ''
+          KS_ALIAS: ''
+          KEY_PASS: ''
         run: |
           if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KS_ALIAS" ] && [ -n "$KEY_PASS" ]; then
             echo "Using secure release signing secrets"
@@ -179,7 +179,7 @@ jobs:
       - name: Публикация артефакта
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-signed
+          name: app-review-slurry-storage-dev-signed
           path: |
             android/app/build/outputs/apk/release/app-release.apk
             android/app/build/outputs/apk/release/release-provenance.txt
