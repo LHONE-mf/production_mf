@@ -111,3 +111,30 @@ it('adds v7 recovery archives without marking already bound v6 pending work for 
  await old.table('operations').put(row);await old.table('streams').put({scopeKey,epoch});await old.table('acknowledgements').put(ack);old.close();await inventoryOutbox.open();
  expect(await inventoryOutbox.operations.get(stockId)).toEqual(row);expect(await inventoryOutbox.acknowledgements.get(materialId)).toEqual(ack);expect((await inventoryOutbox.streams.get(scopeKey))?.epoch).toBe(epoch);expect(await inventoryOutbox.recoveryArchives.count()).toBe(0);
 });
+
+it('adds the offline receipt store in v8 without changing populated v7 scopes, drafts, cursor, operations or receipts',async()=>{
+ inventoryOutbox.close();await inventoryOutbox.delete();
+ const old=new Dexie('ProductionMfInventoryOutbox');
+ old.version(7).stores({
+  operations:'operationId,scopeKey,state,queuedAt',
+  stocks:'[scopeKey+stockId],scopeKey',metadata:'key',
+  stockOperations:'operationId,scopeKey,[scopeKey+stockId],stockId,state,queuedAt',
+  receivingDrafts:'key',history:'[scopeKey+sequence],scopeKey,[scopeKey+stockId]',
+  offlineViews:'localActorId,scopeKey',streams:'scopeKey',
+  acknowledgements:'operationId,scopeKey,epoch',recoveryArchives:'approvalId,scopeKey,epoch',
+ });
+ await old.open();
+ const original={operationId:'77777777-7777-4777-8777-777777777777',scopeKey,
+  request:{reason:'Existing verified receipt',stockId,quantity:25},queuedAt:123,state:'pending'};
+ const draft={key:scopeKey,revision:2,fields:{reason:'Retained physical draft'},operationId:original.operationId};
+ await old.table('operations').put(original);
+ await old.table('receivingDrafts').put(draft);
+ await old.table('metadata').put({key:scopeKey+':cursor',value:42});
+ old.close();
+ await inventoryOutbox.open();
+ expect(inventoryOutbox.verno).toBe(8);
+ expect(await inventoryOutbox.operations.get(original.operationId)).toEqual(original);
+ expect(await inventoryOutbox.receivingDrafts.get(draft.key)).toEqual(draft);
+ expect((await inventoryOutbox.metadata.get(scopeKey+':cursor'))?.value).toBe(42);
+ expect(await inventoryOutbox.localReceipts.count()).toBe(0);
+});

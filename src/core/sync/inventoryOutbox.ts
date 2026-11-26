@@ -50,6 +50,18 @@ export interface ConfirmedInventoryStock extends InventoryStockSnapshot {
 }
 interface InventorySyncMetadata {key:string;value:number;}
 
+/** A never-connected device can record physical evidence without inventing server IDs.
+ * Only explicit NEW local receipts enter this table; old legacy journals never auto-post. */
+export interface LocalUnboundReceipt {
+  operationId:string;stockId:string;localActorId:string;recordedAt:number;
+  materialCode:string;locationPath:string;manufacturerLot:string;quantity:string;unit:string;
+  reason:string;receiptReference:string;supplier:string;
+  manufacturedOn?:string;expiresOn?:string;
+  /** Explicit catalog-match correction: original observed labels remain unchanged. */
+  matchMaterialCode?:string;matchLocationPath?:string;matchReviewedAt?:number;
+  state:'pending'|'needs_review'|'queued'|'confirmed';
+  boundScopeKey?:string;error?:string;
+}
 export interface ReceivingDraft {key:string;revision:number;fields:Record<string,string>;operationId?:string}
 export interface InventoryHistory {scopeKey:string;stockId:string;sequence:number;operationId:string;kind:string;stock:InventoryStockSnapshot;recordedAt:string;actorId?:string;deviceId?:string|null;reason?:string;evidence?:string;quantity?:number}
 export interface InventoryStreamState {scopeKey:string;epoch:string}
@@ -60,6 +72,7 @@ export class InventoryOutboxDatabase extends Dexie {
   acknowledgements!:Table<InventoryAcknowledgement,string>;
   offlineViews!:Table<InventoryOfflineView,string>;
   history!:Table<InventoryHistory,[string,number]>;
+  localReceipts!:Table<LocalUnboundReceipt,string>;
   receivingDrafts!:Table<ReceivingDraft,string>;
   operations!: Table<QueuedInventoryReceipt,string>;
   stocks!: Table<ConfirmedInventoryStock,[string,string]>;
@@ -83,6 +96,8 @@ export class InventoryOutboxDatabase extends Dexie {
       for(const name of ['operations','stockOperations'])await tx.table(name).where('state').equals('pending').modify({requiresStreamReview:true});
     });
     this.version(7).stores({recoveryArchives:'approvalId,scopeKey,epoch'});
+    // Additive: leave every existing offline receipt, draft and warehouse cursor intact.
+    this.version(8).stores({localReceipts:'operationId,localActorId,state,boundScopeKey'});
   }
 }
 export const inventoryOutbox = new InventoryOutboxDatabase();

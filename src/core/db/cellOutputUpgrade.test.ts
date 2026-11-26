@@ -13,7 +13,7 @@ it('adds cell claims over populated v23 preserving every main row, unknown/confl
  await inventoryOutbox.open();const proposal={key:'original-receipt',revision:1,operationId:'original-id',fields:{state:'pending',request:'original immutable body',epoch:'original-epoch'}};await inventoryOutbox.receivingDrafts.add(proposal);
  await db.open();expect(db.verno).toBe(24);expect(await db.cellOutputClaims.count()).toBe(0);expect(before.size).toBe(37);
  for(const[name,rows]of before)expect(await db.table(name).toArray(),name).toEqual(rows);
- expect(inventoryOutbox.verno).toBe(7);expect(await inventoryOutbox.receivingDrafts.get(proposal.key)).toEqual(proposal);
+ expect(inventoryOutbox.verno).toBe(8);expect(await inventoryOutbox.receivingDrafts.get(proposal.key)).toEqual(proposal);
 });
 it('accepts checksum-verified v23 local-only archives without cell claims or changing historical observations',async()=>{
  await db.open();await db.users.add({id:'worker',login:'worker',fullName:'Worker',password:'test-only',role:UserRole.WORKER,isActive:true,createdAt:new Date(123)});

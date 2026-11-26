@@ -34,7 +34,10 @@ it('keeps missing weights unknown, retains a failed draft/ID and exports only on
   const saved=(await db.mixBatches.toArray())[0];expect(saved.id).toBe(failedId);expect(await db.mixBatches.count()).toBe(1);expect(saved.massBalance?.totalActualG).toBe(1000);expect(saved.modeActual).toBeUndefined();expect(saved.pasteCalc).toBeUndefined();expect(await db.journal.get(saved.id)).toBeDefined();
   await act(async()=>root.unmount());db.close();await db.open();root=createRoot(node);await act(async()=>root.render(<GrammageCalculator/>));await wait(()=>expect(node.textContent).toContain('Сохранён измеренный замес SL-001'));
   expect(node.textContent).not.toContain('Saved slurry packet');expect(await db.mixBatches.count()).toBe(1);
-  await click('Очистить форму для нового замеса');await wait(()=>expect(node.querySelector<HTMLInputElement>('input[aria-label="Код партии замеса"]')?.value).toBe(''));
+  const newBatchButton=[...node.querySelectorAll('button')].find(button=>button.textContent?.includes('Создать новый замес — сохранить предыдущий в журнале'));
+  expect(newBatchButton).toBeDefined();expect(newBatchButton?.disabled).toBe(false);
+  expect(node.querySelector('section[aria-label="Завершённый замес"]')?.textContent).toContain('нельзя менять как черновик');
+  await click('Создать новый замес — сохранить предыдущий в журнале');await wait(()=>expect(node.querySelector<HTMLInputElement>('input[aria-label="Код партии замеса"]')?.value).toBe(''));
   expect((await db.localFormDrafts.toArray())[0].payload).toBeNull();expect(await db.mixBatches.count()).toBe(1);
   const row=(await db.localFormDrafts.toArray())[0];
   const complete={version:1,draft:{taskId:'',batchCode:'unfinished',recipeName:'manual',targetKg:'',basis:false,lines:[],note:'',viscosity:'',fineness:'',density:'',notes:''},source:null,phi:'',shear:''};
